@@ -1,0 +1,171 @@
+# OASIS_START
+# DO NOT EDIT (digest: 14da9db924665960fac5776e13247fac)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library imap
+"lib/imap.cmxs": use_imap
+<lib/*.ml{,i}>: pkg_cryptokit
+<lib/*.ml{,i}>: pkg_gsasl
+<lib/*.ml{,i}>: pkg_lwt
+<lib/*.ml{,i}>: pkg_lwt.ssl
+<lib/*.ml{,i}>: pkg_lwt.unix
+<lib/*.ml{,i}>: pkg_sexplib
+<lib/*.ml{,i}>: pkg_ssl
+<lib/*.ml{,i}>: pkg_str
+<lib/*.ml{,i}>: pkg_ucorelib
+<lib/*.ml{,i}>: pkg_uint
+<lib/*.ml{,i}>: pkg_zip
+# Executable test_parser
+<lib_test/test_parser.{native,byte}>: pkg_cryptokit
+<lib_test/test_parser.{native,byte}>: pkg_gsasl
+<lib_test/test_parser.{native,byte}>: pkg_lwt
+<lib_test/test_parser.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_parser.{native,byte}>: pkg_lwt.unix
+<lib_test/test_parser.{native,byte}>: pkg_oUnit
+<lib_test/test_parser.{native,byte}>: pkg_sexplib
+<lib_test/test_parser.{native,byte}>: pkg_ssl
+<lib_test/test_parser.{native,byte}>: pkg_str
+<lib_test/test_parser.{native,byte}>: pkg_ucorelib
+<lib_test/test_parser.{native,byte}>: pkg_uint
+<lib_test/test_parser.{native,byte}>: pkg_zip
+<lib_test/test_parser.{native,byte}>: use_imap
+<lib_test/test_parser.{native,byte}>: custom
+# Executable test_set
+<lib_test/test_set.{native,byte}>: pkg_cryptokit
+<lib_test/test_set.{native,byte}>: pkg_gsasl
+<lib_test/test_set.{native,byte}>: pkg_lwt
+<lib_test/test_set.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_set.{native,byte}>: pkg_lwt.unix
+<lib_test/test_set.{native,byte}>: pkg_oUnit
+<lib_test/test_set.{native,byte}>: pkg_sexplib
+<lib_test/test_set.{native,byte}>: pkg_ssl
+<lib_test/test_set.{native,byte}>: pkg_str
+<lib_test/test_set.{native,byte}>: pkg_ucorelib
+<lib_test/test_set.{native,byte}>: pkg_uint
+<lib_test/test_set.{native,byte}>: pkg_zip
+<lib_test/test_set.{native,byte}>: use_imap
+<lib_test/test_set.{native,byte}>: custom
+# Executable test_mutf7
+<lib_test/test_mutf7.{native,byte}>: pkg_cryptokit
+<lib_test/test_mutf7.{native,byte}>: pkg_gsasl
+<lib_test/test_mutf7.{native,byte}>: pkg_lwt
+<lib_test/test_mutf7.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_mutf7.{native,byte}>: pkg_lwt.unix
+<lib_test/test_mutf7.{native,byte}>: pkg_oUnit
+<lib_test/test_mutf7.{native,byte}>: pkg_sexplib
+<lib_test/test_mutf7.{native,byte}>: pkg_ssl
+<lib_test/test_mutf7.{native,byte}>: pkg_str
+<lib_test/test_mutf7.{native,byte}>: pkg_ucorelib
+<lib_test/test_mutf7.{native,byte}>: pkg_uint
+<lib_test/test_mutf7.{native,byte}>: pkg_zip
+<lib_test/test_mutf7.{native,byte}>: use_imap
+<lib_test/test_mutf7.{native,byte}>: custom
+# Executable test_live
+<lib_test/test_live.{native,byte}>: pkg_cryptokit
+<lib_test/test_live.{native,byte}>: pkg_gsasl
+<lib_test/test_live.{native,byte}>: pkg_lwt
+<lib_test/test_live.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_live.{native,byte}>: pkg_lwt.unix
+<lib_test/test_live.{native,byte}>: pkg_oUnit
+<lib_test/test_live.{native,byte}>: pkg_sexplib
+<lib_test/test_live.{native,byte}>: pkg_ssl
+<lib_test/test_live.{native,byte}>: pkg_str
+<lib_test/test_live.{native,byte}>: pkg_ucorelib
+<lib_test/test_live.{native,byte}>: pkg_uint
+<lib_test/test_live.{native,byte}>: pkg_zip
+<lib_test/test_live.{native,byte}>: use_imap
+<lib_test/test_live.{native,byte}>: custom
+# Executable test_io
+<lib_test/test_io.{native,byte}>: pkg_cryptokit
+<lib_test/test_io.{native,byte}>: pkg_gsasl
+<lib_test/test_io.{native,byte}>: pkg_lwt
+<lib_test/test_io.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_io.{native,byte}>: pkg_lwt.unix
+<lib_test/test_io.{native,byte}>: pkg_oUnit
+<lib_test/test_io.{native,byte}>: pkg_sexplib
+<lib_test/test_io.{native,byte}>: pkg_ssl
+<lib_test/test_io.{native,byte}>: pkg_str
+<lib_test/test_io.{native,byte}>: pkg_ucorelib
+<lib_test/test_io.{native,byte}>: pkg_uint
+<lib_test/test_io.{native,byte}>: pkg_zip
+<lib_test/test_io.{native,byte}>: use_imap
+<lib_test/test_io.{native,byte}>: custom
+# Executable test_condstore
+<lib_test/test_condstore.{native,byte}>: pkg_cryptokit
+<lib_test/test_condstore.{native,byte}>: pkg_gsasl
+<lib_test/test_condstore.{native,byte}>: pkg_lwt
+<lib_test/test_condstore.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_condstore.{native,byte}>: pkg_lwt.unix
+<lib_test/test_condstore.{native,byte}>: pkg_oUnit
+<lib_test/test_condstore.{native,byte}>: pkg_sexplib
+<lib_test/test_condstore.{native,byte}>: pkg_ssl
+<lib_test/test_condstore.{native,byte}>: pkg_str
+<lib_test/test_condstore.{native,byte}>: pkg_ucorelib
+<lib_test/test_condstore.{native,byte}>: pkg_uint
+<lib_test/test_condstore.{native,byte}>: pkg_zip
+<lib_test/test_condstore.{native,byte}>: use_imap
+<lib_test/test_condstore.{native,byte}>: custom
+# Executable test_id
+<lib_test/test_id.{native,byte}>: pkg_cryptokit
+<lib_test/test_id.{native,byte}>: pkg_gsasl
+<lib_test/test_id.{native,byte}>: pkg_lwt
+<lib_test/test_id.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_id.{native,byte}>: pkg_lwt.unix
+<lib_test/test_id.{native,byte}>: pkg_oUnit
+<lib_test/test_id.{native,byte}>: pkg_sexplib
+<lib_test/test_id.{native,byte}>: pkg_ssl
+<lib_test/test_id.{native,byte}>: pkg_str
+<lib_test/test_id.{native,byte}>: pkg_ucorelib
+<lib_test/test_id.{native,byte}>: pkg_uint
+<lib_test/test_id.{native,byte}>: pkg_zip
+<lib_test/test_id.{native,byte}>: use_imap
+<lib_test/test_id.{native,byte}>: custom
+# Executable test_namespace
+<lib_test/test_namespace.{native,byte}>: pkg_cryptokit
+<lib_test/test_namespace.{native,byte}>: pkg_gsasl
+<lib_test/test_namespace.{native,byte}>: pkg_lwt
+<lib_test/test_namespace.{native,byte}>: pkg_lwt.ssl
+<lib_test/test_namespace.{native,byte}>: pkg_lwt.unix
+<lib_test/test_namespace.{native,byte}>: pkg_oUnit
+<lib_test/test_namespace.{native,byte}>: pkg_sexplib
+<lib_test/test_namespace.{native,byte}>: pkg_ssl
+<lib_test/test_namespace.{native,byte}>: pkg_str
+<lib_test/test_namespace.{native,byte}>: pkg_ucorelib
+<lib_test/test_namespace.{native,byte}>: pkg_uint
+<lib_test/test_namespace.{native,byte}>: pkg_zip
+<lib_test/test_namespace.{native,byte}>: use_imap
+<lib_test/*.ml{,i}>: pkg_cryptokit
+<lib_test/*.ml{,i}>: pkg_gsasl
+<lib_test/*.ml{,i}>: pkg_lwt
+<lib_test/*.ml{,i}>: pkg_lwt.ssl
+<lib_test/*.ml{,i}>: pkg_lwt.unix
+<lib_test/*.ml{,i}>: pkg_oUnit
+<lib_test/*.ml{,i}>: pkg_sexplib
+<lib_test/*.ml{,i}>: pkg_ssl
+<lib_test/*.ml{,i}>: pkg_str
+<lib_test/*.ml{,i}>: pkg_ucorelib
+<lib_test/*.ml{,i}>: pkg_uint
+<lib_test/*.ml{,i}>: pkg_zip
+<lib_test/*.ml{,i}>: use_imap
+<lib_test/test_namespace.{native,byte}>: custom
+# OASIS_STOP
+<lib/imap_types.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib/imap.ml{,i}>: syntax_camlp4o, pkg_lwt.syntax, pkg_sexplib.syntax
+<lib/imap_client.ml{,i}>: syntax_camlp4o, pkg_lwt.syntax, pkg_sexplib.syntax
+<lib/imap_response.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib/imap_envelope.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib/imap_body.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib/imap_set.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib/imap_uint.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
+<lib_test/test_set.ml>: syntax_camlp4o, pkg_sexplib.syntax

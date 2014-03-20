@@ -1,0 +1,137 @@
+OASISFormat: 0.4
+Name: imap
+Version: 0.9.0
+Synopsis: IMAP client library for Lwt
+Authors: Nicolas Ojeda Bar
+License: MIT
+Plugins: DevFiles (0.4), META (0.4)
+BuildTools: ocamlbuild
+
+Library imap
+  Path: lib
+  Findlibname: imap
+  Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
+           Imap, Imap_client, Imap_io, Imap_uint,
+           Imap_parser, Imap_sender, Imap_response, Imap_io_low, Imap_auth
+  BuildDepends: uint, ssl, str, cryptokit, ucorelib, lwt, lwt.ssl,
+                lwt.unix, sexplib, gsasl, zip
+
+Document imap
+  Title: Imap docs
+  Type: ocamlbuild (0.4)
+  BuildTools+: ocamldoc
+  Install: true
+  XOCamlbuildPath: lib
+  XOCamlbuildLibraries: imap
+
+Executable test_parser
+  Path: lib_test
+  MainIs: test_parser.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_set
+  Path: lib_test
+  MainIs: test_set.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_mutf7
+  Path: lib_test
+  MainIs: test_mutf7.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_live
+  Path: lib_test
+  MainIs: test_live.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_io
+  Path: lib_test
+  MainIs: test_io.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_condstore
+  Path: lib_test
+  MainIs: test_condstore.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_id
+  Path: lib_test
+  MainIs: test_id.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Executable test_namespace
+  Path: lib_test
+  MainIs: test_namespace.ml
+  Build$: flag(tests)
+  Custom: true
+  CompiledObject: best
+  Install: false
+  BuildDepends: imap, oUnit (>= 2.0.0)
+
+Test test_parser
+  Run$: flag(tests)
+  Command: $test_parser
+  WorkingDirectory: lib_test
+
+Test test_set
+  Run$: flag(tests)
+  Command: $test_set
+  WorkingDirectory: lib_test
+
+Test test_mutf7
+  Run$: flag(tests)
+  Command: $test_mutf7
+  WorkingDirectory: lib_test
+
+Test test_live
+  Run$: flag(tests)
+  Command: $test_live -runner sequential
+  WorkingDirectory: lib_test
+
+Test test_io
+  Run$: flag(tests)
+  Command: $test_io -runner sequential
+  WorkingDirectory: lib_test
+
+Test test_condstore
+  Run$: flag(tests)
+  Command: $test_condstore
+  WorkingDirectory: lib_test
+
+Test test_id
+  Run$: flag(tests)
+  Command: $test_id -runner sequential
+  WorkingDirectory: lib_test
+
+Test test_namespace
+  Run$: flag(tests)
+  Command: $test_namespace -runner sequential
+  WorkingDirectory: lib_test
