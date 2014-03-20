@@ -14,7 +14,7 @@ is available, but it is already enough to do interesting things.
 
 This library has been greatly influenced by the
 [MailCore2](https://github.com/MailCore/mailcore2) library and Ruby's
-[[Net::IMAP](http://ruby-doc.org/stdlib-2.0/libdoc/net/imap/rdoc/Net/IMAP.html)
+[Net::IMAP](http://ruby-doc.org/stdlib-2.0/libdoc/net/imap/rdoc/Net/IMAP.html)
 module.
 
 ## Requirements and installation
@@ -38,15 +38,15 @@ is to use [OPAM](http://opam.ocaml.org).
    ```
 
 Once we are done with the package, it is easy to uninstall and remove the added repository:
-   ```sh
-   opam remove imap
-   opam repo remove nojb-personal
-   ```
+```sh
+opam remove imap
+opam repo remove nojb-personal
+```
 
 ## Usage
 
 Since the library is written using Lwt, it is easier to explore using the
-[utop](https://github.com/diml/utop) topleve, which has auto-evaluation of Lwt
+[utop](https://github.com/diml/utop) toplevel, which has auto-evaluation of Lwt
 threads.  All the examples below are done using the `utop` toplevel.
 
 ### Connection, Authentication, and Disconnection
@@ -81,9 +81,8 @@ threads.  All the examples below are done using the `utop` toplevel.
    # Imap.login imap "<login>" "<password>";;
    - : unit = ()
    ```
-
-At this point we have successfully authenticated and we are ready to interact
-with the server.
+   At this point we have successfully authenticated and we are ready to interact
+   with the server.
 
 5. Logout
    ```ocaml
