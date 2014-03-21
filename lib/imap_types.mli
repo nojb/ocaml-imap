@@ -152,9 +152,13 @@ type search_key =
   (** Messages that match both search keys. *)
   | `MODSEQ of (flag * [`Shared | `Priv | `All]) option * uint64
   | `X_GM_RAW of string
+  (** Messages that satisfy Gmail search expression. *)
   | `X_GM_MSGID of uint64
+  (** Message with given Gmail Message ID. *)
   | `X_GM_THRID of uint64
-  | `X_GM_LABELS of string ]
+  (** Messages with given Gmail Thread ID. *)
+  | `X_GM_LABELS of string
+  (** Messages with given Gmail labels. *) ]
 
 (** {2 FETCH command} *)
 
@@ -162,23 +166,31 @@ type search_key =
 
 type section_msgtext =
   [ `HEADER
+  (** All header fields *)
   | `HEADER_FIELDS of string list
+  (** Header fields in the given list. *)
   | `HEADER_FIELDS_NOT of string list
+  (** Header fields not in the given list. *)
   | `TEXT
-  | `ALL ] with sexp
+  (** Text body of the message, omitting headers. *)
+  | `ALL
+  (** Everything *) ] with sexp
 
 type section_spec =
   [ section_msgtext
   | `MIME
+  (** MIME header for the corresponding part *)
   | `PART of int * section_spec ] with sexp
 
 type section =
   [ section_msgtext
-  | `PART of int * section_spec ] with sexp
+  | `PART of int * section_spec
+  (** Part in a multipart message *) ] with sexp
 
 type fetch_att_section =
   [ section
-  | `PARTIAL of section * int * int ] with sexp
+  | `PARTIAL of section * int * int
+  (** Partial section, offset, length *) ] with sexp
 
 (** FETCH queries *)
 type fetch_att =
@@ -199,6 +211,7 @@ type fetch_att =
   | `BODYSECTION of fetch_att_section
   (** A MIME part content *)
   | `BODYPEEK of fetch_att_section
+  (** Like [`BODYSECTION], but does not set the [`Seen] flag. *)
   | `BODYSTRUCTURE
   (** The MIME description of the message with additional information *)
   | `UID
