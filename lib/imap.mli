@@ -56,12 +56,9 @@ exception Auth_error of exn
 (** {2 IMAP sessions} *)
 
 val make : ?port : int -> string -> session
-(** [make ?ssl_context ?port host] creates a new IMAP session with the server
-    [host] using port [?port] (using the default port if omitted).  The session
-    is initially disconnected and has to be connected using {!connect}.  If
-    [?ssl_context] is given, a TLS connection is stablished. *)
-
-(* val make' : ?port : int -> string -> session *)
+(** [make ?port host] creates a new IMAP session with the server [host] using
+    port [?port] (using the default port if omitted).  The session is initially
+    disconnected and has to be connected using {!connect}. *)
 
 val connect : ?ssl_context : Ssl.context -> session -> [ `Needsauth | `Preauth ] Lwt.t
 (** Connects to the IMAP server.  It returns [`Needsauth] if the server requires
