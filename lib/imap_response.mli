@@ -65,7 +65,11 @@ type resp_text_code =
   | `HIGHESTMODSEQ of uint64
   (** Highest modification sequence.  Requires support for the CONDSTORE extension. *)
   | `NOMODSEQ
+  (** The server does not support persistent storage of modification sequence
+      numbers.  Requires support for the CONDSTORE extension. *)
   | `MODIFIED of Imap_set.t
+  (** Set of message numbers or unique identification numbers that failed the
+      UNCHANGEDSINCE test in a STORE or UID STORE command. *)
   | `OTHER of string * string
   (** other type of response *)
   | `NONE
