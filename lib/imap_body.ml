@@ -24,31 +24,21 @@ open Sexplib.Std
 open Sexplib.Conv
 open Imap_uint
 
-(** MIME media types *)
 type media_basic =
   [ `APPLICATION
-  (** application/xxx *)
   | `AUDIO
-  (** audio/xxx *)
   | `IMAGE
-  (** image/xxx *)
   | `MESSAGE
-  (** message/xxx *)
   | `VIDEO
-  (** video/xxx *)
-  | `OTHER of string
-  (** for all other cases *)
-  ] with sexp
+  | `OTHER of string ] with sexp
 
-(** Values of the [Content-Transfer-Encoding] header *)
 type encoding =
   [ `BIT7
   | `BIT8
   | `BINARY
   | `BASE64
   | `QUOTED_PRINTABLE
-  | `OTHER of string
-  ] with sexp
+  | `OTHER of string ] with sexp
 
 type extension =
   | List of extension list
@@ -101,14 +91,11 @@ and multi_part = {
   bd_mexts : mexts
 }
 
-(** The type of MIME body parsed by IMAP server *)
 and t =
   | Basic of basic single_part
   | Text of text single_part
   | Message of message single_part
-  (** Single part *)
   | Multi_part of multi_part with sexp
-  (** Multi part *)
 
 open Imap_parser
 

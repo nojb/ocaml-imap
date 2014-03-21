@@ -22,6 +22,8 @@
 
 (** IMAP message envelope *)
 
+open Sexplib.Std
+
 type address = {
   addr_name : string;
   addr_adl : string;
@@ -45,3 +47,4 @@ type envelope = {
 type t = envelope with sexp
 
 val envelope : t Imap_parser.t
+(** Parses an IMAP envelope *)

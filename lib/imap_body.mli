@@ -39,8 +39,7 @@ type media_basic =
   | `VIDEO
   (** video/xxx *)
   | `OTHER of string
-  (** for all other cases *)
-  ] with sexp
+  (** for all other cases *) ] with sexp
 
 (** Values of the [Content-Transfer-Encoding] header *)
 type encoding =
@@ -49,8 +48,7 @@ type encoding =
   | `BINARY
   | `BASE64
   | `QUOTED_PRINTABLE
-  | `OTHER of string
-  ] with sexp
+  | `OTHER of string ] with sexp
 
 type extension =
   | List of extension list

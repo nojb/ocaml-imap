@@ -170,10 +170,10 @@ val rabra : char t
 (** Parses ['>']. *)
     
 val lbra : char t
-(** Parses ['[']. *)
+(** Parses ['\[']. *)
     
 val rbra : char t
-(** Parses [']']. *)
+(** Parses ['\]']. *)
     
 val text : string t
 (** Parses IMAP terminal [text]. *)
