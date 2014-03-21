@@ -24,45 +24,68 @@
 
     The numbers are either "sequence numbers" or "unique identification
     numbers".  The sets are in the "formal" sense.  That is, the order and the
-    reptitions matter.  The elements are kept in the order they are given. *)
+    reptitions matter.  The elements are kept in the order they are given.
+
+    The elements of the set are unsigned 32-bit integers.  This is the data type
+    that represents both IMAP sequence numbers and unique identification
+    numbers, except for zero.  Zero will be interpreted as being IMAP '*', the
+    highest possible number of the messages in the mailbox.
+
+    Briefly, an expression such as 1:3,4,5:12,18:* will be represented by the OCaml
+    list [[(1, 3); (4, 4); (5, 12); (18, 0)]]. *)
 
 open Sexplib.Std
 open Imap_uint
 
+(** The type of sets, a formal, ordered, union of intervals. *)
 type t = (uint32 * uint32) list with sexp
 
-(** The type of element of the index set.  [n] means the number [n] if [n > 0],
-    and it means [*] if [n = 0]. *)
 val empty : t
-(** The empty index set. *)
+(** The empty set. *)
 
 val all : t
+(** The interval of all positive numbers. *)
 
 val singleton : uint32 -> t
+(** The interval consisting of a single number. *)
 
 val interval : uint32 * uint32 -> t
+(** The set consisting of a single interval. *)
 
 val from : uint32 -> t
-(** [from n] forms the half-interval starting from [n] (inclusive).  It
-    corresponds to the expression "n:*" in the IMAP protocol. *)
+(** The half-interval starting from [n] (inclusive).  It corresponds to the
+    IMAP expression "n:*". *)
 
 val add : uint32 -> t -> t
 (** [add n s] adds a single number [n] to the set [s]. *)
 
 val add_interval : uint32 * uint32 -> t -> t
-(** [add_interval n m s] adds the whole interval between numbers [n] and [m] to
-    the index set [s] (including both [n] and [m]). *)
+(** [add_interval n m s] adds the whole interval between numbers [n] and [m]
+    (including both [n] and [m]) to the set [s]. *)
 
 val union : t -> t -> t
 (** [union s1 s2] forms the union of the [s1] and [s2]. *)
 
 val mem : t -> uint32 -> bool
+(** Whether an element belongs to the set. *)
+  
 val mem_zero : t -> bool
+(** Whether zero belongs to the set. *)
 
 val iter : (uint32 -> unit) -> t -> unit
+(** [iter f s] computes [f n1; f n2; ...], where [n1, n2, ...] is an enumeration
+    of the elements of the set [s], in the order that they appear in the
+    underlying list. *)
 
 val iter2 : (uint32 -> uint32 -> unit) -> t -> t -> unit
+(** [iter2 f s1 s2] computes [f n1 m1; f n2 m2; ...], where [n1, n2, ...] and
+    [m1, m2, ...] are enumerations of the elements of the sets [s1] and [s2],
+    in the order that they appear in the underlying lists. *)
 
 val fold : (uint32 -> 'a -> 'a) -> t -> 'a -> 'a
+(** [fold f s x] computes [... (f n2 (f n1 x))] where [n1, n2, ...] is an
+    anumeration of the elements of [s] in the order that they appear in the
+    underlying list. *)
 
 val fold_intervals : (uint32 * uint32 -> 'a -> 'a) -> t -> 'a -> 'a
+(** [fold_intervals f s x] is equivalent to [List.fold_right f s x]. *)
