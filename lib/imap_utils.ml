@@ -75,3 +75,6 @@ let rec option_map f = function
     match f x with
     | Some v -> v :: option_map f xs
     | None -> option_map f xs
+
+let compare_ci s1 s2 =
+  compare (String.uppercase s1) (String.uppercase s2)

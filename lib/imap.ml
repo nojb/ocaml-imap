@@ -818,7 +818,7 @@ let uid_copy s set destbox =
 let has_capability_name s name =
   let ci = connection_info s in
   List.exists (function
-      | `NAME x -> String.uppercase x = name
+      | `NAME x -> Imap_utils.compare_ci x name
       | `AUTH_TYPE _ -> false) ci.cap_info
 
 let has_uidplus s =
