@@ -666,7 +666,7 @@ let status s mbox attrs =
   in
   Lwt_mutex.with_lock ci.send_lock aux
 
-let append s mbox ?flags ?date data =
+let append_uidplus s mbox ?flags ?date data =
   let ci = connection_info s in
   let flags = match flags with
     | None | Some [] -> S.null
@@ -684,6 +684,10 @@ let append s mbox ?flags ?date data =
     send_command ci cmd >|= fun () -> ci.rsp_info.rsp_appenduid
   in
   Lwt_mutex.with_lock ci.send_lock aux
+
+let append s mbox ?flags ?date data =
+  append_uidplus s mbox ?flags ?date data >>= fun _ ->
+  Lwt.return ()
 
 let idle s f =
   let ci = connection_info s in

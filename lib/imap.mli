@@ -162,15 +162,18 @@ val status : session -> string -> status_att list -> mailbox_data_status Lwt.t
 (** [status s mbox atts] returns the value of the attributes [atts] of the
     mailbox [mbox]. *)
 
-val append : session -> string -> ?flags:flag list -> ?date:float -> string -> (uint32 * uint32) Lwt.t
+val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit Lwt.t
 (** [append s mbox ?flags ?date msg] appends a message [msg] to the mailbox
     [mbox].  The flags of the new message will be set to [?flags] (or the empty
     list if omitted).  The timestamp of the message will be set to [?date] (or
-    current time and date if omitted).
+    current time and date if omitted). *)
 
-    If the server supports the UIDPLUS extension it returns the updated value of
-    UIDVALIDITY for [mbox] and the UID of the newly appended message.
-    Otherwise, it returns zero for both of them. *)
+val append_uidplus : session -> string -> ?flags:flag list -> ?date:float -> string ->
+  (uint32 * uint32) Lwt.t
+(** Like {!append} but returns a pair with the updated value of UIDVALIDITY and
+    the UID of the newly appended message.
+
+    This command requires support for the UIDPLUS extension. *)
 
 val idle : session -> (unit -> [`Continue | `Stop]) -> unit Lwt.t * (unit -> unit)
 (** [idle s f] indicates the server that we are ready to accept real-time
