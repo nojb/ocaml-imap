@@ -318,8 +318,8 @@ let resp_text_code : resp_text_code Imap_parser.t =
     space >> delimited lpar (separated_list space flag_perm) rpar >|= fun flags ->
     `PERMANENTFLAGS flags
   in
-  let uidnext = space >> number >|= fun n -> `UIDNEXT n in
-  let uidvalidity = space >> number >|= fun n -> `UIDVALIDITY n in
+  let uidnext = space >> nz_number >|= fun n -> `UIDNEXT n in
+  let uidvalidity = space >> nz_number >|= fun n -> `UIDVALIDITY n in
   let unseen = space >> nz_number >|= fun n -> `UNSEEN n in
   let appenduid =
     space >> nz_number >>= fun uidvalidity -> nz_number >|= fun uid ->
@@ -455,8 +455,8 @@ status-att          =/ "HIGHESTMODSEQ"
 let status_att_number : status_info t =
   let messages = space >> number' >|= fun n -> `MESSAGES n in
   let recent = space >> number' >|= fun n -> `RECENT n in
-  let uidnext = space >> number >|= fun n -> `UIDNEXT n in
-  let uidvalidity = space >> number >|= fun n -> `UIDVALIDITY n in
+  let uidnext = space >> nz_number >|= fun n -> `UIDNEXT n in
+  let uidvalidity = space >> nz_number >|= fun n -> `UIDVALIDITY n in
   let unseen = space >> number' >|= fun n -> `UNSEEN n in
   let highestmodseq = space >> mod_sequence_value >|= fun n -> `HIGHESTMODSEQ n in
   choices [
@@ -605,7 +605,7 @@ let msg_att_static : [> msg_att_static] Imap_parser.t =
       section >>= section_
     ]
   in
-  let uid = space >> number >|= fun uid -> `UID uid in
+  let uid = space >> nz_number >|= fun uid -> `UID uid in
   let x_gm_msgid = space >> mod_sequence_value >|= fun n -> `X_GM_MSGID n in
   let x_gm_thrid = space >> mod_sequence_value >|= fun n -> `X_GM_THRID n in
   choices [
