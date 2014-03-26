@@ -68,7 +68,6 @@ let fresh_capability_info =
 
 type connection_info = {
   chan : Imap_io.t;
-  sock : Lwt_unix.file_descr;
   mutable next_tag : int;
   mutable imap_response : string;
   mutable rsp_info : response_info;
@@ -83,8 +82,6 @@ type connection_state =
   | Disconnected
 
 type session = {
-  port : int option;
-  host : string;
   mutable conn_state : connection_state
 }
 
@@ -102,17 +99,8 @@ let connection_info s =
   | Connected ci -> ci
   | Disconnected -> raise Not_connected
 
-let default_port = 143
-let default_ssl_port = 993
-
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
-
-(* let test_ssl_context = *)
-(*   let _ = Ssl.init () in *)
-(*   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in *)
-(*   Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
-(*   ctx *)
 
 let literal_re = Str.regexp "{\\([0-9]+\\)}$"
 
@@ -387,44 +375,14 @@ let get_auth_response step ci tag =
 let get_continuation_request ci =
   read ci Imap_response.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
 
-let make ?port host =
-  {port; host; conn_state = Disconnected}
-
-let connect_lwt port host =
-  let sock = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-  Lwt_unix.gethostbyname host >>= fun he ->
-  Lwt_unix.connect sock (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >|= fun () ->
-  (Imap_io.of_low (Imap_io_low.of_fd sock), sock)
-
-let ssl_connect_lwt io ssl_context =
-  Imap_io.flush io >>= fun () ->
-  let low = Imap_io.get_low io in
-  match Imap_io_low.get_fd low with
-  | None -> assert false
-  | Some fd ->
-    let low, connect = Imap_io_low.open_ssl ssl_context fd in
-    connect () >>= fun () ->
-    Imap_io_low.set_logger low (if !debug then Some Imap_io_low.default_logger else None);
-    Imap_io.set_low io low;
-    Lwt.return ()
-
-let connect ?ssl_context s =
+let make () =
+  { conn_state = Disconnected }
+  
+let connect s low =
   match s.conn_state with
   | Disconnected ->
-    let port = match ssl_context, s.port with
-      | None, None -> default_port
-      | _, Some port -> port
-      | Some _, None -> default_ssl_port
-    in
-    connect_lwt port s.host >>= fun (io, sock) ->
-    begin match ssl_context with
-      | Some ssl_context ->
-        ssl_connect_lwt io ssl_context
-      | None ->
-        Lwt.return ()
-    end >>= fun () ->
     let ci = {
-      chan = io; sock; next_tag = 1;
+      chan = Imap_io.of_low low; next_tag = 1;
       imap_response = "";
       rsp_info = fresh_response_info;
       sel_info = fresh_selection_info;
@@ -436,7 +394,7 @@ let connect ?ssl_context s =
     s.conn_state <- Connected ci;
     begin match_lwt read_greeting ci with
       | `BYE _ ->
-        Lwt_unix.close sock >>= fun () ->
+        Imap_io.close ci.chan >>= fun () ->
         s.conn_state <- Disconnected;
         raise_lwt BYE
       | `OK _ ->
@@ -544,7 +502,13 @@ let starttls s ssl_context =
       raise_lwt (Failure "starttls: compression active")
     else
       send_command ci cmd >>= fun () ->
-      ssl_connect_lwt ci.chan ssl_context >|= fun () ->
+      let fd = match Imap_io_low.get_fd (Imap_io.get_low ci.chan) with
+        | None -> failwith "starttls: no file descriptor"
+        | Some fd -> fd
+      in
+      let low, connect = Imap_io_low.open_tls ~ssl_context fd in
+      connect () >|= fun () ->
+      Imap_io.set_low ci.chan low;
       ci.cap_info <- fresh_capability_info (* See 6.2.1 in RFC 3501 *)
   in
   Lwt_mutex.with_lock ci.send_lock aux

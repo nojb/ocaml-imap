@@ -55,15 +55,14 @@ exception Auth_error of exn
 
 (** {2 IMAP sessions} *)
 
-val make : ?port : int -> string -> session
-(** [make ?port host] creates a new IMAP session with the server [host] using
-    port [?port] (using the default port if omitted).  The session is initially
-    disconnected and has to be connected using {!connect}. *)
+val make : unit -> session
+(** Creates a new IMAP session.  The session is initially disconnected and has
+    to be connected using {!connect}. *)
 
-val connect : ?ssl_context : Ssl.context -> session -> [ `Needsauth | `Preauth ] Lwt.t
-(** Connects to the IMAP server.  It returns [`Needsauth] if the server requires
-    authentication and [`Preauth] if the session has already been authenticated
-    in some other fashion. *)
+val connect : session -> Imap_io_low.t -> [ `Needsauth | `Preauth ] Lwt.t
+(** Connects to the IMAP server using the given i/o stream.  It returns
+    [`Needsauth] if the server requires authentication and [`Preauth] if the
+    session has already been authenticated in some other fashion. *)
 
 val disconnect : session -> unit
 (** Disconnects from the server forcefully.  For a graceful exit, {!logout} is
@@ -101,7 +100,8 @@ val enable : session -> capability list -> capability list Lwt.t
     extension. *)
 
 val starttls : session -> Ssl.context -> unit Lwt.t
-(** Start a TLS session in a given SSL context. *)
+(** Start a TLS session with a given SSL context.  Do not forget to call
+    [Ssl.init ()] before using this! *)
 
 val authenticate : session -> Imap_auth.t -> unit Lwt.t
 (** [authenticate s auth] authenticates the client using the SASL mechanism

@@ -108,6 +108,16 @@ let of_string s =
    _fd = None;
    logger = None}
 
+let default_port = 143
+
+let open_socket () =
+  let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  let connect ?(port = default_port) host =
+    Lwt_unix.gethostbyname host >>= fun he ->
+    Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port))
+  in
+  of_fd fd, connect
+
 let wrap_call f () =
   try
     f ()
@@ -146,11 +156,31 @@ let ssl_read fd sock buf off len =
 let ssl_write fd sock buf off len =
   repeat_call fd (fun () -> Ssl.write sock buf off len)
 
-let open_ssl ctx fd =
-  let sock = Ssl.embed_socket (Lwt_unix.unix_file_descr fd) ctx in
-  let connect () =
+let default_ssl_context =
+  let () = Ssl.init () in
+  let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
+  Ssl.set_verify ctx [Ssl.Verify_peer] None;
+  ctx
+
+let default_ssl_port = 993
+
+let open_ssl ?(ssl_context = default_ssl_context) () =
+  let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  let sock = Ssl.embed_socket (Lwt_unix.unix_file_descr fd) ssl_context in
+  let connect ?(port = default_ssl_port) host =
+    Lwt_unix.gethostbyname host >>= fun he ->
+    Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
     repeat_call fd (fun () -> Ssl.connect sock)
   in
+  {_read = ssl_read fd sock;
+   _write = ssl_write fd sock;
+   _close = (fun () -> Lwt_unix.close fd);
+   _fd = Some fd;
+   logger = None}, connect
+
+let open_tls ?(ssl_context = default_ssl_context) fd =
+  let sock = Ssl.embed_socket (Lwt_unix.unix_file_descr fd) ssl_context in
+  let connect () = repeat_call fd (fun () -> Ssl.connect sock) in
   {_read = ssl_read fd sock;
    _write = ssl_write fd sock;
    _close = (fun () -> Lwt_unix.close fd);

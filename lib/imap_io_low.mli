@@ -61,11 +61,23 @@ val get_fd : t -> Lwt_unix.file_descr option
 val of_fd : Lwt_unix.file_descr -> t
 (** Returns a new i/o object that will read and write from a Unix file descriptor. *)
 
-val open_ssl : Ssl.context -> Lwt_unix.file_descr -> t * (unit -> unit Lwt.t)
-(** Embeds a Unix file descriptor into a SSL socket and returns a pair [(io,
-    connect)]. The channel [io] that can be used to read and write on this
-    socket.  The function [connect] should be used before reading and writing
-    [io] to negotiate the SSL connection. *)
+val open_socket : unit -> t * (?port : int -> string -> unit Lwt.t)
+(** Returns a pair [(io, connect)], where [io] is a new i/o object that will
+    read and write from a Unix tcp socket.  The function [connect] should be
+    called before trying to do any reading or writing in order to connect the
+    socket to the given port and host. *)
+                              
+val open_ssl : ?ssl_context:Ssl.context -> unit -> t * (?port : int -> string -> unit Lwt.t)
+(** Returns a pair [(io, connect)].  [io] is a new i/o object that will read and
+    write from a Unix tcp SSL socket.  The function [connect] should be used
+    before reading and writing [io] to negotiate the SSL connection on the given
+    port and host. *)
+
+val open_tls : ?ssl_context:Ssl.context -> Lwt_unix.file_descr -> t * (unit -> unit Lwt.t)
+(** Returns a pair [(io, connect)].  [io] is a new i/o object that will read and
+    write from a SSL connection over the given socket.  The function [connect]
+    should be used before reading and writing [io] to negotiate the SSL
+    connection. *)
 
 val compress : t -> t
 (** [compress io] returns a new i/o channel that performs on-the-fly DEFLATE compression. *)
