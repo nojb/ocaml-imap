@@ -31,8 +31,11 @@ let empty =
 let all =
   [(Uint32.succ Uint32.zero, Uint32.max_int)]
 
-let singleton n =
+let single n =
   [(n, n)]
+
+let single' n =
+  single (Uint32.of_int n)
 
 let interval (n, m) =
   [(n, m)]

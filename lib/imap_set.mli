@@ -46,8 +46,10 @@ val empty : t
 val all : t
 (** The interval of all positive numbers. *)
 
-val singleton : uint32 -> t
+val single : uint32 -> t
 (** The interval consisting of a single number. *)
+
+val single' : int -> t
 
 val interval : uint32 * uint32 -> t
 (** The set consisting of a single interval. *)

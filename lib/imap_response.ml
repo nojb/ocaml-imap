@@ -214,7 +214,7 @@ uid-set         = (uniqueid / uid-range) *("," uid-set)
 *)
 let uid_set =
   separated_nonempty_list comma
-    ((uniqueid >|= fun id -> Imap_set.singleton id) <|>
+    ((uniqueid >|= fun id -> Imap_set.single id) <|>
      (uid_range >|= Imap_set.interval)) >|=
   List.fold_left Imap_set.union Imap_set.empty
 
@@ -268,7 +268,7 @@ sequence-set    = (seq-number / seq-range) *("," sequence-set)
 *)
 let sequence_set =
   separated_nonempty_list comma
-    ((seq_number >|= fun x -> Imap_set.singleton x) <|> seq_range) >|=
+    ((seq_number >|= fun x -> Imap_set.single x) <|> seq_range) >|=
   List.fold_left Imap_set.union Imap_set.empty
 
 (* [RFC 4551]
