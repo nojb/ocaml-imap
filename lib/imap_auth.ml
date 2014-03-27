@@ -29,7 +29,7 @@ let gsasl name props =
   let ctx = Gsasl.init () in
   let gsasl = Gsasl.client_start ctx name in
   Gsasl.callback_set ctx
-    (fun _ _ prop ->
+    (fun prop ->
        try 
          Gsasl.property_set gsasl prop (List.assoc prop props);
          `OK
