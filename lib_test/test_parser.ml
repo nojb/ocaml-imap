@@ -175,8 +175,8 @@ let test_body ctxt =
   let check =
     Text
       { bd_param = ["CHARSET", "US-ASCII"];
-        bd_id = "";
-        bd_desc = "";
+        bd_id = None;
+        bd_desc = None;
         bd_enc = `BIT7;
         bd_octets = 3028;
         bd_other = { text_subtype = "PLAIN"; text_lines = 92 };
