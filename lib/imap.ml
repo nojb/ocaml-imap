@@ -391,6 +391,7 @@ let connect s low =
       send_lock = Lwt_mutex.create ()
     }
     in
+    if !debug then Imap_io_low.set_logger low (Some Imap_io_low.default_logger);
     s.conn_state <- Connected ci;
     begin match_lwt read_greeting ci with
       | `BYE _ ->
