@@ -405,6 +405,11 @@ let connect s low =
   | _ ->
     raise_lwt (Failure "Imap.connect: already connected")
 
+let connect_simple s ?port host =
+  let low, connect_ssl = Imap_io_low.open_ssl () in
+  connect_ssl ?port host >>= fun () ->
+  connect s low
+
 let disconnect s =
   match s.conn_state with
   | Disconnected -> ()

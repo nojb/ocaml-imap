@@ -60,9 +60,15 @@ val make : unit -> session
     to be connected using {!connect}. *)
 
 val connect : session -> Imap_io_low.t -> [ `Needsauth | `Preauth ] Lwt.t
-(** Connects to the IMAP server using the given i/o stream.  It returns
+(** Connects to the IMAP server using the given i/o stream.  Returns
     [`Needsauth] if the server requires authentication and [`Preauth] if the
     session has already been authenticated in some other fashion. *)
+
+val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t
+(** Connects to the IMAP server using a SSL connection on port [?port] and given
+    hostname.  Returns [`Needsauth] if the server requires authentication and
+    [`Preauth] if the session has already been authenticated in some other
+    fashion. *)
 
 val disconnect : session -> unit
 (** Disconnects from the server forcefully.  For a graceful exit, {!logout} is
