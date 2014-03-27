@@ -741,11 +741,17 @@ let fetch_aux cmd s set changedsince attrs =
   in
   Lwt_mutex.with_lock ci.send_lock aux
 
-let fetch s set ?changedsince attrs =
-  fetch_aux "FETCH" s set changedsince attrs
+let fetch_changedsince s set modseq atts =
+  fetch_aux "FETCH" s set (Some modseq) atts
 
-let uid_fetch s set ?changedsince attrs =
-  fetch_aux "UID FETCH" s set changedsince attrs
+let fetch s set attrs =
+  fetch_aux "FETCH" s set None attrs
+
+let uid_fetch_changedsince s set modseq atts =
+  fetch_aux "UID FETCH" s set (Some modseq) atts
+
+let uid_fetch s set attrs =
+  fetch_aux "UID FETCH" s set None attrs
 
 let store_aux cmd s set unchangedsince mode att =
   let ci = connection_info s in
@@ -762,25 +768,41 @@ let store_aux cmd s set unchangedsince mode att =
     S.(raw cmd @> space @> message_set set @> space @>
        unchangedsince @> mode @> store_att att)
   in
-  let aux () = send_command ci cmd in
+  let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_modified in
   Lwt_mutex.with_lock ci.send_lock aux
 
-let store s set ?unchangedsince mode flags =
-  store_aux "STORE" s set unchangedsince mode flags
+let store s set mode flags =
+  store_aux "STORE" s set None mode flags >>= fun _ ->
+  Lwt.return ()
 
-let uid_store s set ?unchangedsince mode flags =
-  store_aux "UID STORE" s set unchangedsince mode flags
+let uid_store s set mode flags =
+  store_aux "UID STORE" s set None mode flags >>= fun _ ->
+  Lwt.return ()
+
+let store_unchangedsince s set unchangedsince mode flags =
+  store_aux "STORE" s set (Some unchangedsince) mode flags
+
+let uid_store_unchangedsince s set unchangedsince mode flags =
+  store_aux "UID STORE" s set (Some unchangedsince) mode flags
 
 let copy_aux cmd s set destbox =
   let ci = connection_info s in
   let cmd = S.(raw cmd @> space @> message_set set @> space @> mailbox destbox) in
-  let aux () = send_command ci cmd in
+  let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_copyuid in
   Lwt_mutex.with_lock ci.send_lock aux
 
 let copy s set destbox =
+  copy_aux "COPY" s set destbox >>= fun _ ->
+  Lwt.return ()
+
+let uidplus_copy s set destbox =
   copy_aux "COPY" s set destbox
 
 let uid_copy s set destbox =
+  copy_aux "UID COPY" s set destbox >>= fun _ ->
+  Lwt.return ()
+
+let uidplus_uid_copy s set destbox =
   copy_aux "UID COPY" s set destbox
 
 let has_capability_name s name =
