@@ -43,7 +43,7 @@ type encoding =
 type extension =
   | List of extension list
   | Number of uint32
-  | String of string with sexp
+  | String of string option with sexp
 
 type exts = {
   ext_md5 : Digest.t option sexp_opaque;
@@ -60,7 +60,7 @@ type mexts = {
 } with sexp
 
 type basic = {
-  basic_type : string;
+  basic_type : media_basic;
   basic_subtype : string;
 } with sexp
 
@@ -77,8 +77,8 @@ type message = {
 
 and 'a single_part = {
   bd_param : (string * string) list;
-  bd_id : string;
-  bd_desc : string;
+  bd_id : string option;
+  bd_desc : string option;
   bd_enc : encoding;
   bd_octets : int;
   bd_other : 'a;
@@ -99,26 +99,53 @@ and t =
 
 open Imap_parser
 
-let media_basic : (string * string) t =
-  separated_pair imap_string space imap_string
+let media_subtype =
+  imap_string
+    
+(*
+media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
+                  "MESSAGE" / "VIDEO") DQUOTE) / string) SP
+                  media-subtype
+                    ; Defined in [MIME-IMT]
+*)
+let media_basic : (media_basic * string) t =
+  let table = [
+    "APPLICATION", `APPLICATION;
+    "AUDIO", `AUDIO;
+    "IMAGE", `IMAGE;
+    "MESSAGE", `MESSAGE;
+    "VIDEO", `VIDEO
+  ]
+  in
+  let media_basic' =
+    imap_string >|= fun s ->
+    try List.assoc (String.uppercase s) table with Not_found -> `OTHER s
+  in
+  separated_pair media_basic' space media_subtype
 
+(*
+body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
+*)
 let body_fld_param : (string * string) list t =
-  delimited lpar (separated_nonempty_list space (separated_pair imap_string space imap_string)) rpar
+  (delimited lpar
+     (separated_nonempty_list space (separated_pair imap_string space imap_string)) rpar) <|>
+  (nil >| [])
 
 (*
 body-fld-enc    = (DQUOTE ("7BIT" / "8BIT" / "BINARY" / "BASE64"/
                   "QUOTED-PRINTABLE") DQUOTE) / string
 *)
 let body_fld_enc : encoding Imap_parser.t =
-  (* XXX is it right to recognize a literal containing 7BIT as `7BIT ? *)
+  let table = [
+    "7BIT", `BIT7;
+    "8BIT", `BIT8;
+    "BINARY", `BINARY;
+    "BASE64", `BASE64;
+    "QUOTED-PRINTABLE", `QUOTED_PRINTABLE
+  ]
+  in
   imap_string >|= fun s ->
-  match String.uppercase s with
-  | "7BIT" -> `BIT7
-  | "8BIT" -> `BIT8
-  | "BINARY" -> `BINARY
-  | "BASE64" -> `BASE64
-  | "QUOTED-PRINTABLE" -> `QUOTED_PRINTABLE
-  | _ -> `OTHER s
+  try List.assoc (String.uppercase s) table with Not_found -> `OTHER s
 
 (*
 body-fld-id     = nstring
@@ -150,12 +177,20 @@ let body_fields =
   space >> body_fld_octets >|= fun octets ->
   (param, id, desc, enc, octets)
 
+(*
+media-message   = DQUOTE "MESSAGE" DQUOTE SP DQUOTE "RFC822" DQUOTE
+                    ; Defined in [MIME-IMT]
+*)
 let media_message =
   delimited dquote (string_ci "MESSAGE") dquote >> space >>
   delimited dquote (string_ci "RFC822") dquote
 
+(*
+media-text      = DQUOTE "TEXT" DQUOTE SP media-subtype
+                    ; Defined in [MIME-IMT]
+*)
 let media_text =
-  delimited dquote (string_ci "TEXT") dquote >> space >> imap_string
+  delimited dquote (string_ci "TEXT") dquote >> space >> media_subtype
 
 (*
 body-fld-md5    = nstring
@@ -175,7 +210,7 @@ body-fld-lang   = nstring / "(" string *(SP string) ")"
 *)
 let body_fld_lang =
   (delimited lpar (separated_nonempty_list space imap_string) rpar) <|>
-  ((imap_string >|= fun s -> [s]) <|> return [])
+  (nstring >|= function None -> [] | Some s -> [s])
 
 (*
 body-extension  = nstring / number /
@@ -251,6 +286,10 @@ let body_ext_mpart =
   { mext_param = param; mext_dsp = dsp;
     mext_lang = lang; mext_exts = ext }
 
+(*
+body-type-basic = media-basic SP body-fields
+                    ; MESSAGE subtype MUST NOT be "RFC822"
+*)
 let rec body_type_basic () =
   media_basic >>= fun (basic_type, basic_subtype) ->
   space >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
@@ -259,6 +298,10 @@ let rec body_type_basic () =
     { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
       bd_other = { basic_type; basic_subtype }; bd_ext }
 
+(*
+body-type-msg   = media-message SP body-fields SP envelope
+                  SP body SP body-fld-lines
+*)
 and body_type_msg () =
   media_message >> space >> body_fields
   >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
@@ -271,6 +314,9 @@ and body_type_msg () =
       bd_other = { message_envelope; message_body; message_lines };
       bd_ext }
 
+(*
+body-type-text  = media-text SP body-fields SP body-fld-lines
+*)
 and body_type_text () =
   media_text >>= fun text_subtype ->
   space >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
@@ -280,16 +326,27 @@ and body_type_text () =
     { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
       bd_other = { text_subtype; text_lines }; bd_ext }
 
+(*
+body-type-1part = (body-type-basic / body-type-msg / body-type-text)
+                  [SP body-ext-1part]
+*)
 and body_type_1part () =
   fix body_type_msg <|> fix body_type_text <|> fix body_type_basic
-     
+
+(*
+body-type-mpart = 1*body SP media-subtype
+                  [SP body-ext-mpart]
+*)
 and body_type_mpart () =
   nonempty_list (fix body) >>= fun bs ->
-  space >> imap_string >>= fun media_subtype ->
+  space >> media_subtype >>= fun media_subtype ->
   body_ext_mpart >|= fun ext ->
   Multi_part
     { bd_subtype = media_subtype; bd_parts = bs; bd_mexts = ext }
 
+(*
+body            = "(" (body-type-1part / body-type-mpart) ")"
+*)
 and body () =
   delimited lpar (fix body_type_1part <|> fix body_type_mpart) rpar
 

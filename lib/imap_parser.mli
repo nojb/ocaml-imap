@@ -145,8 +145,13 @@ val bslash : char t
 val nil : string t
 (** [nil] is equivalent to [string_ci "NIL"]. *)
     
-val nstring : string t
-(** Tries to apply [imap_string] or [nil].  If [nil] succeeds, returns [""]. *)
+val nstring : string option t
+(** Tries to apply [imap_string] or [nil].  If [imap_string] returns [x], then
+    it returns [Some x].  If [nil] succeeds, then it returns [None]. *)
+
+val nstring' : string t
+(** Like {!nstring} but returns [x] if [imap_string] returns [x] and [""] if
+    [nil] suceeds. *)
     
 val astring : string t
 (** Parses the IMAP terminal [astring]. *)

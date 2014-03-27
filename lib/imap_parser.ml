@@ -318,7 +318,12 @@ let nz_number' =
   matches nz_number_re >>= fun s -> try return (int_of_string s) with _ -> fail
 
 let nstring =
-  imap_string <|> (nil >| "")
+  (imap_string >|= fun s -> Some s) <|> (nil >| None)
+
+let nstring' =
+  nstring >|= function
+  | None -> ""
+  | Some s -> s
 
 let digits2 =
   let digits2_re = Str.regexp "[0-9][0-9]" in

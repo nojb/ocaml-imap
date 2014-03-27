@@ -48,10 +48,10 @@ open Imap_parser
 
 let address =
   delimited lpar
-    (nstring >>= fun addr_name -> space >>
-     nstring >>= fun addr_adl -> space >>
-     nstring >>= fun addr_mailbox -> space >>
-     nstring >|= fun addr_host ->
+    (nstring' >>= fun addr_name -> space >>
+     nstring' >>= fun addr_adl -> space >>
+     nstring' >>= fun addr_mailbox -> space >>
+     nstring' >|= fun addr_host ->
      { addr_name; addr_adl; addr_mailbox; addr_host })
     rpar
 
@@ -60,16 +60,16 @@ let address_list =
 
 let envelope =
   delimited lpar
-    (nstring >>= fun env_date -> space >>
-     nstring >>= fun env_subject -> space >>
+    (nstring' >>= fun env_date -> space >>
+     nstring' >>= fun env_subject -> space >>
      address_list >>= fun env_from -> space >>
      address_list >>= fun env_sender -> space >>
      address_list >>= fun env_reply_to -> space >>
      address_list >>= fun env_to -> space >>
      address_list >>= fun env_cc -> space >>
      address_list >>= fun env_bcc -> space >>
-     nstring >>= fun env_in_reply_to -> space >>
-     nstring >|= fun env_message_id ->
+     nstring' >>= fun env_in_reply_to -> space >>
+     nstring' >|= fun env_message_id ->
      { env_date; env_subject; env_from; env_sender;
        env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
        env_message_id })

@@ -53,7 +53,7 @@ type encoding =
 type extension =
   | List of extension list
   | Number of uint32
-  | String of string with sexp
+  | String of string option with sexp
 
 type exts = {
   ext_md5 : Digest.t option sexp_opaque;
@@ -70,7 +70,7 @@ type mexts = {
 } with sexp
 
 type basic = {
-  basic_type : string;
+  basic_type : media_basic;
   basic_subtype : string;
 } with sexp
 
@@ -87,8 +87,8 @@ type message = {
 
 and 'a single_part = {
   bd_param : (string * string) list;
-  bd_id : string;
-  bd_desc : string;
+  bd_id : string option;
+  bd_desc : string option;
   bd_enc : encoding;
   bd_octets : int;
   bd_other : 'a;
