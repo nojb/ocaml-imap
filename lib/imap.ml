@@ -426,16 +426,14 @@ let generate_tag s =
 module S = Imap_sender
 
 let run_sender ci (f : S.t) =
-  let rec loop f =
-    f (Imap_io.write ci.chan) >>= function
-    | `Ok ->
-      Imap_io.flush ci.chan
-    | `Cont_req cont ->
-      Imap_io.flush ci.chan >>= fun () ->
-      get_continuation_request ci >>= fun _ ->
-      loop cont
+  let get_cont_req () =
+    Imap_io.flush ci.chan >>=
+    get_continuation_request ci >>= fun _ ->
+    Lwt.return ()
   in
-  Lwt.catch (fun () -> loop f) (fun exn -> raise_lwt (Io_error exn))
+  Lwt.catch
+    (fun () -> f (ci.chan, get_cont_req) >>= fun () -> Imap_io.flush ci.chan)
+    (fun e -> Lwt.fail (Io_error e))
 
 let send_command' ci f =
   let tag = generate_tag ci in

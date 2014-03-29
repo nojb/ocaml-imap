@@ -24,17 +24,10 @@
 
 open Imap_uint
 
-type output = string -> unit Lwt.t
-
-(** The type of senders. *)
-type t = output -> [ `Ok | `Cont_req of t ] Lwt.t
-(** A value [f] of type [t] is invoked with an output function [out].  [f] calls
-    [out] each time it needs to output anything and will return [`Ok] when done.
-    If it needs a continuation request from the server (e.g. to send IMAP
-    literals), then it will return [`Cont_req g], where [g] is the continuation
-    sender that should be invoked after the server provides the desired
-    continuation request.  See [Imap.run_sender] for details on how this
-    works. *)
+(** The type of senders.  The argument is a pair [(io, get_cont_req)] consisting
+    of an IO channel [io] and a function [get_cont_req] that should be called when a
+    continuation request is required.  See {!Imap.run_sender}. *)
+type t = Imap_io.t * (unit -> unit Lwt.t) -> unit Lwt.t
 
 val (@>) : t -> t -> t
 (** [f @> g] sends with [f], then with [g]. *)

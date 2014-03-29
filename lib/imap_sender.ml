@@ -25,22 +25,17 @@ open Imap_uint
 let (>>=) = Lwt.bind
 let (>|=) = Lwt.(>|=)
 
-type output = string -> unit Lwt.t
-
 type t =
-  output -> [ `Ok | `Cont_req of t ] Lwt.t
+  Imap_io.t * (unit -> unit Lwt.t) -> unit Lwt.t
 
 let rec (@>) (f : t) (g : t) : t =
-  fun out ->
-    f out >>= function
-    | `Ok -> g out
-    | `Cont_req fcont -> Lwt.return (`Cont_req (fcont @> g))
+  fun io -> f io >>= fun () -> g io
 
-let continuation_req _ =
-  Lwt.return (`Cont_req (fun _ -> Lwt.return `Ok))
+let continuation_req (_, get_cont_request) =
+  get_cont_request ()
 
-let raw s out =
-  out s >>= fun () -> Lwt.return `Ok
+let raw s (io, _) =
+  Imap_io.write io s
 
 let char ch out =
   raw (String.make 1 ch) out
@@ -61,7 +56,8 @@ let crlf out =
   raw "\r\n" out
 
 let null _ =
-  Lwt.return `Ok
+  Lwt.return ()
+  (* Lwt.return `Ok *)
 
 let rec separated sep f = function
   | [] -> null
