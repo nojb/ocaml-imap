@@ -161,7 +161,7 @@
 <lib_test/test_namespace.{native,byte}>: custom
 # OASIS_STOP
 <lib/imap_types.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
-<lib/imap.ml{,i}>: syntax_camlp4o, pkg_lwt.syntax, pkg_sexplib.syntax
+<lib/imap.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
 <lib/imap_client.ml{,i}>: syntax_camlp4o, pkg_lwt.syntax, pkg_sexplib.syntax
 <lib/imap_response.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax
 <lib/imap_envelope.ml{,i}>: syntax_camlp4o, pkg_sexplib.syntax

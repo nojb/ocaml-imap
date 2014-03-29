@@ -114,7 +114,7 @@ let is_literal s =
 let read_line io =
   let b = Buffer.create 64 in
   let rec loop () =
-    lwt s = Imap_io.read_line io in
+    Imap_io.read_line io >>= fun s ->
     Buffer.add_string b s;
     Buffer.add_string b "\r\n";
     match is_literal s with
@@ -126,7 +126,7 @@ let read_line io =
     | None ->
       Lwt.return (Buffer.contents b)
   in
-  Lwt.catch loop (fun exn -> raise_lwt (Io_error exn))
+  Lwt.catch loop (fun exn -> Lwt.fail (Io_error exn))
 
 let resp_text_store s (c, text) =
   match c with
@@ -280,11 +280,11 @@ let cont_req_or_resp_data_or_resp_done_store s = function
     resp_data_or_resp_done_store s resp
 
 let read ci p store =
-  lwt s = read_line ci.chan in
+  read_line ci.chan >>= fun s ->
   match Imap_parser.parse p s with
   | `Ok x -> store ci x; Lwt.return x
-  | `Fail i -> raise_lwt (Parse_error (s, i))
-  | `Exn exn -> raise_lwt exn
+  | `Fail i -> Lwt.fail (Parse_error (s, i))
+  | `Exn exn -> Lwt.fail exn
 
 let read_greeting ci =
   read ci Imap_response.greeting greetings_store
@@ -302,18 +302,18 @@ let read_cont_req_or_resp_data_or_resp_done ci =
 let get_response ci tag : Imap_response.resp_text Lwt.t =
   ci.rsp_info <- fresh_response_info;
   let rec loop () =
-    match_lwt read_resp_data_or_resp_done ci with
+    read_resp_data_or_resp_done ci >>= function
     | `BYE _ -> (* FIXME change mode *)
-      raise_lwt BYE
+      Lwt.fail BYE
     | #Imap_response.response_data ->
       loop ()
     | `TAGGED (tag', `OK rt) ->
-      if tag <> tag' then raise_lwt Bad_tag
+      if tag <> tag' then Lwt.fail Bad_tag
       else Lwt.return rt
     | `TAGGED (_, `BAD rt) ->
-      raise_lwt BAD
+      Lwt.fail BAD
     | `TAGGED (_, `NO rt) ->
-      raise_lwt NO
+      Lwt.fail NO
   in
   loop ()
 
@@ -322,19 +322,19 @@ let get_idle_response ci tag f stop =
   let rec loop () =
     read_cont_req_or_resp_data_or_resp_done ci >>= function
     | `BYE _ -> (* FIXME change mode *)
-      raise_lwt BYE
+      Lwt.fail BYE
     | #Imap_response.response_data ->
       begin match f () with
         | `Continue -> loop ()
         | `Stop -> stop (); loop ()
       end
     | `TAGGED (tag', `OK _) ->
-      if tag <> tag' then raise_lwt Bad_tag
+      if tag <> tag' then Lwt.fail Bad_tag
       else Lwt.return ()
     | `TAGGED (_, `BAD rt) ->
-      raise_lwt BAD
+      Lwt.fail BAD
     | `TAGGED (_, `NO rt) ->
-      raise_lwt NO
+      Lwt.fail NO
     | `CONT_REQ _ ->
       loop ()
   in
@@ -345,22 +345,22 @@ let get_auth_response step ci tag =
   let rec loop needs_more =
     read_cont_req_or_resp_data_or_resp_done ci >>= function
     | `BYE _ -> (* FIXME change mode *)
-      raise_lwt BYE
+      Lwt.fail BYE
     | #Imap_response.response_data ->
       loop needs_more
     | `TAGGED (tag', `OK _) ->
       begin if needs_more then step "" else Lwt.return `OK end >>=
       begin function
         | `OK ->
-          if tag <> tag' then raise_lwt Bad_tag
+          if tag <> tag' then Lwt.fail Bad_tag
           else Lwt.return ()
         | `NEEDS_MORE ->
-          raise_lwt (Auth_error (Failure "Insufficient data for SASL authentication"))
+          Lwt.fail (Auth_error (Failure "Insufficient data for SASL authentication"))
       end
     | `TAGGED (_, `BAD rt) ->
-      raise_lwt BAD
+      Lwt.fail BAD
     | `TAGGED (_, `NO rt) ->
-      raise_lwt NO
+      Lwt.fail NO
     | `CONT_REQ data ->
       let data = match data with
         | `BASE64 data -> data
@@ -393,18 +393,18 @@ let connect s low =
     in
     if !debug then Imap_io_low.set_logger low (Some Imap_io_low.default_logger);
     s.conn_state <- Connected ci;
-    begin match_lwt read_greeting ci with
+    read_greeting ci >>= begin function
       | `BYE _ ->
         Imap_io.close ci.chan >>= fun () ->
         s.conn_state <- Disconnected;
-        raise_lwt BYE
+        Lwt.fail BYE
       | `OK _ ->
         Lwt.return `Needsauth
       | `PREAUTH _ ->
         Lwt.return `Preauth
     end
   | _ ->
-    raise_lwt (Failure "Imap.connect: already connected")
+    Lwt.fail (Failure "Imap.connect: already connected")
 
 let connect_simple s ?port host =
   let low, connect_ssl = Imap_io_low.open_ssl () in
@@ -427,7 +427,7 @@ module S = Imap_sender
 
 let run_sender ci (f : S.t) =
   let get_cont_req () =
-    Imap_io.flush ci.chan >>=
+    Imap_io.flush ci.chan >>= fun () ->
     get_continuation_request ci >>= fun _ ->
     Lwt.return ()
   in
@@ -466,7 +466,7 @@ let logout s =
       (fun () -> send_command ci cmd)
       (function
         | BYE -> s.conn_state <- Disconnected; Lwt.return ()
-        | exn -> raise_lwt exn)
+        | exn -> Lwt.fail exn)
   in
   Lwt_mutex.with_lock ci.send_lock aux
 
@@ -503,7 +503,7 @@ let starttls s ssl_context =
   let cmd = S.raw "STARTTLS" in
   let aux () =
     if ci.compress_deflate then
-      raise_lwt (Failure "starttls: compression active")
+      Lwt.fail (Failure "starttls: compression active")
     else
       send_command ci cmd >>= fun () ->
       let fd = match Imap_io_low.get_fd (Imap_io.get_low ci.chan) with
@@ -662,13 +662,13 @@ let idle s f =
   let cmd = S.raw "IDLE" in
   let idling = ref false in
   let stop () =
-    if !idling then
+    if !idling then begin
       idling := false;
-      Lwt.async (fun () ->
-          try_lwt
-            run_sender ci S.(raw "DONE" @> crlf)
-          with
-          | _ -> Lwt.return ())
+      Lwt.ignore_result
+        (Lwt.catch
+           (fun () -> run_sender ci S.(raw "DONE" @> crlf))
+           (fun _ -> Lwt.return ()))
+    end
   in
   let aux () =
     ci.sel_info <- {ci.sel_info with sel_exists = None; sel_recent = None};
@@ -706,7 +706,7 @@ let expunge s =
   Lwt_mutex.with_lock ci.send_lock aux
 
 let uid_expunge s set =
-  lwt () = assert_lwt (not (Imap_set.mem_zero set)) in
+  assert (not (Imap_set.mem_zero set));
   let ci = connection_info s in
   let cmd = S.(raw "UID EXPUNGE" @> space @> message_set set) in
   let aux () = send_command ci cmd in
