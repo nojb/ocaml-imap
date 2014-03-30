@@ -104,7 +104,7 @@ type resp_cond_state =
 (** Message information *)
 type message_data =
   [ `EXPUNGE of uint32
-  | `FETCH of msg_att ] with sexp
+  | `FETCH of (uint32 * msg_att list) ] with sexp
 
 (** Mailbox information *)
 type mailbox_data =

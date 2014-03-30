@@ -76,7 +76,7 @@ type response_done =
 
 type message_data =
   [ `EXPUNGE of uint32
-  | `FETCH of msg_att ] with sexp
+  | `FETCH of (uint32 * msg_att list) ] with sexp
 
 type mailbox_data =
   [ `FLAGS of flag list

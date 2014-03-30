@@ -264,7 +264,7 @@ type msg_att_dynamic =
   | `X_GM_LABELS of string list ] with sexp
   
 type msg_att =
-  uint32 * [ msg_att_static | msg_att_dynamic ] list with sexp
+  [ msg_att_static | msg_att_dynamic ] with sexp
 
 (** {2 STORE command} *)
 
@@ -376,7 +376,7 @@ type response_info = {
   rsp_search_results_modseq : uint64;
   rsp_status : mailbox_data_status;
   rsp_expunged : uint32 list;
-  rsp_fetch_list : msg_att list;
+  rsp_fetch_list : (uint32 * msg_att list) list;
   rsp_appenduid : uint32 * uint32;
   rsp_copyuid : uint32 * Imap_set.t * Imap_set.t;
   rsp_compressionactive : bool;
