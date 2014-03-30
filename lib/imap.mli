@@ -231,7 +231,10 @@ val uid_search : session -> ?charset:string -> search_key -> uint32 list Lwt.t
 (** Like {!search}, but returns the unique identification numbers of the
     matching messages. *)
 
-val fetch : session -> Imap_set.t -> fetch_att list -> msg_att list Lwt.t
+type msg_att_handler =
+  uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
+
+val fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list -> unit Lwt.t
 (** [fetch s set atts] retrieve flags and/or other attributes [att] for those
     messages whose message sequence numbers belong to [set].  The most common
     attribytes are:
@@ -246,18 +249,21 @@ val fetch : session -> Imap_set.t -> fetch_att list -> msg_att list Lwt.t
     - [`FLAGS] - the flags in the message,
     - [`UID] - the unique identifier of the message. *)
 
-val fetch_changedsince : session -> Imap_set.t -> uint64 -> fetch_att list -> msg_att list Lwt.t
+val fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+  fetch_att list -> unit Lwt.t
 (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
     messages that have a modification sequence number at least [modseq] are
     fetched.
 
     This command requires the CONDSTORE extension. *)
 
-val uid_fetch : session -> Imap_set.t -> fetch_att list -> msg_att list Lwt.t
+val uid_fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list ->
+  unit Lwt.t
 (** Like {!fetch}, but the elements of the set are taken to be unique
     identification numbers. *)
 
-val uid_fetch_changedsince : session -> Imap_set.t -> uint64 -> fetch_att list -> msg_att list Lwt.t
+val uid_fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+  fetch_att list -> unit Lwt.t
 (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
     unique identification numbers.
 

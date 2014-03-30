@@ -193,7 +193,7 @@ let mailbox_data_store s = function
   | `RECENT n ->
     s.sel_info <- {s.sel_info with sel_recent = Some n}
 
-let message_data_store s = function
+let message_data_store s ?handler = function
   | `EXPUNGE n ->
     s.rsp_info <- {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]};
     begin match s.sel_info.sel_exists with
@@ -203,7 +203,12 @@ let message_data_store s = function
         ()
     end
   | `FETCH att ->
-    s.rsp_info <- {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}
+    match handler with
+    | Some h ->
+      let n, atts = att in
+      List.iter (h n) atts
+    | None ->
+      s.rsp_info <- {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}
 
 let resp_cond_state_store s = function
   | `OK rt
@@ -215,7 +220,7 @@ let resp_cond_bye_store s = function
   | `BYE rt ->
     resp_text_store s rt
 
-let response_data_store s = function
+let response_data_store s ?handler = function
   | #Imap_response.resp_cond_state as resp ->
     resp_cond_state_store s resp
   | #Imap_response.resp_cond_bye as resp ->
@@ -223,7 +228,7 @@ let response_data_store s = function
   | #Imap_response.mailbox_data as resp ->
     mailbox_data_store s resp
   | #Imap_response.message_data as resp ->
-    message_data_store s resp
+    message_data_store s ?handler resp
   | `CAPABILITY caps ->
     s.cap_info <- caps
   | `ID params ->
@@ -254,10 +259,10 @@ let response_done_store s resp =
   | #Imap_response.response_fatal as resp ->
     response_fatal_store s resp
 
-let resp_data_or_resp_done_store s resp =
+let resp_data_or_resp_done_store s ?handler resp =
   match resp with
   | #Imap_response.response_data as resp ->
-    response_data_store s resp
+    response_data_store s ?handler resp
   | #Imap_response.response_done as resp ->
     response_done_store s resp
 
@@ -272,12 +277,12 @@ let greetings_store s = function
   | #Imap_response.resp_cond_bye as resp ->
     resp_cond_bye_store s resp
 
-let cont_req_or_resp_data_or_resp_done_store s = function
+let cont_req_or_resp_data_or_resp_done_store s ?handler = function
   | `CONT_REQ _ ->
     ()
   | #Imap_response.response_data
   | #Imap_response.response_done as resp ->
-    resp_data_or_resp_done_store s resp
+    resp_data_or_resp_done_store s ?handler resp
 
 let read ci p store =
   read_line ci.chan >>= fun s ->
@@ -289,20 +294,20 @@ let read ci p store =
 let read_greeting ci =
   read ci Imap_response.greeting greetings_store
 
-let read_resp_data_or_resp_done ci =
+let read_resp_data_or_resp_done ?handler ci =
   read ci
     Imap_response.resp_data_or_resp_done
-    resp_data_or_resp_done_store
+    (resp_data_or_resp_done_store ?handler)
 
-let read_cont_req_or_resp_data_or_resp_done ci =
+let read_cont_req_or_resp_data_or_resp_done ?handler ci =
   read ci
     Imap_response.cont_req_or_resp_data_or_resp_done
-    cont_req_or_resp_data_or_resp_done_store
+    (cont_req_or_resp_data_or_resp_done_store ?handler)
 
-let get_response ci tag : Imap_response.resp_text Lwt.t =
+let get_response ci ?handler tag : Imap_response.resp_text Lwt.t =
   ci.rsp_info <- fresh_response_info;
   let rec loop () =
-    read_resp_data_or_resp_done ci >>= function
+    read_resp_data_or_resp_done ?handler ci >>= function
     | `BYE _ -> (* FIXME change mode *)
       Lwt.fail BYE
     | #Imap_response.response_data ->
@@ -317,10 +322,10 @@ let get_response ci tag : Imap_response.resp_text Lwt.t =
   in
   loop ()
 
-let get_idle_response ci tag f stop =
+let get_idle_response ci ?handler tag f stop =
   ci.rsp_info <- fresh_response_info;
   let rec loop () =
-    read_cont_req_or_resp_data_or_resp_done ci >>= function
+    read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
     | `BYE _ -> (* FIXME change mode *)
       Lwt.fail BYE
     | #Imap_response.response_data ->
@@ -340,10 +345,10 @@ let get_idle_response ci tag f stop =
   in
   loop ()
 
-let get_auth_response step ci tag =
+let get_auth_response step ?handler ci tag =
   ci.rsp_info <- fresh_response_info;
   let rec loop needs_more =
-    read_cont_req_or_resp_data_or_resp_done ci >>= function
+    read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
     | `BYE _ -> (* FIXME change mode *)
       Lwt.fail BYE
     | #Imap_response.response_data ->
@@ -440,9 +445,9 @@ let send_command' ci f =
   let f = S.(raw tag @> space @> f @> crlf) in
   run_sender ci f >|= fun () -> tag
 
-let send_command ci f =
+let send_command ci ?handler f =
   send_command' ci f >>= fun tag ->
-  get_response ci tag >|= fun _ -> ()
+  get_response ci ?handler tag >|= fun _ -> ()
   
 let capability s =
   let ci = connection_info s in
@@ -730,7 +735,10 @@ let search s ?charset query =
 let uid_search s ?charset query =
   search_aux s "UID SEARCH" ?charset query
 
-let fetch_aux cmd s set changedsince attrs =
+type msg_att_handler =
+  uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
+
+let fetch_aux cmd handler s set changedsince attrs =
   let ci = connection_info s in
   let changedsince = match changedsince with
     | None -> S.null
@@ -741,21 +749,21 @@ let fetch_aux cmd s set changedsince attrs =
        list fetch_att attrs @> changedsince)
   in
   let aux () =
-    send_command ci cmd >|= fun () -> ci.rsp_info.rsp_fetch_list
+    send_command ci ~handler cmd (* >|= fun () -> ci.rsp_info.rsp_fetch_list *)
   in
   Lwt_mutex.with_lock ci.send_lock aux
 
-let fetch_changedsince s set modseq atts =
-  fetch_aux "FETCH" s set (Some modseq) atts
+let fetch_changedsince s handler set modseq atts =
+  fetch_aux "FETCH" handler s set (Some modseq) atts
 
-let fetch s set attrs =
-  fetch_aux "FETCH" s set None attrs
+let fetch s handler set attrs =
+  fetch_aux "FETCH" handler s set None attrs
 
-let uid_fetch_changedsince s set modseq atts =
-  fetch_aux "UID FETCH" s set (Some modseq) atts
+let uid_fetch_changedsince s handler set modseq atts =
+  fetch_aux "UID FETCH" handler s set (Some modseq) atts
 
-let uid_fetch s set attrs =
-  fetch_aux "UID FETCH" s set None attrs
+let uid_fetch s handler set attrs =
+  fetch_aux "UID FETCH" handler s set None attrs
 
 let store_aux cmd s set unchangedsince mode att =
   let ci = connection_info s in
