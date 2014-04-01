@@ -5,13 +5,13 @@ let (>>=) = Lwt.(>>=)
 let test_buf =
   "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum."
 
-open Imap_io.Low
+open Imap_io_low
 
 let write_all low buf =
   let rec loop off len =
     if len <= 0 then Lwt.return ()
     else
-      low.write buf off len >>= fun n ->
+      write low buf off len >>= fun n ->
       (* Lwt_log.error_f "Wrote %d bytes: %S\n%!" n (String.sub buf off n) >>= fun () -> *)
       loop (off + n) (len - n)
   in
@@ -30,7 +30,7 @@ let read_all low =
       loop buf' off stepsize
     end
     else
-      low.read buf off len >>= fun n ->
+      read low buf off len >>= fun n ->
       (* Lwt_log.error_f "Read %d bytes: %S" n (String.sub buf off n) >>= fun () -> *)
       if n = 0 then
         Lwt.return (String.sub buf 0 off)

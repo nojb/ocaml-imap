@@ -9,10 +9,7 @@ let examples = [
   "* 4 FETCH (UID 8 MODSEQ (12121130956))",
   `FETCH (Uint32.of_int 4, [`UID (Uint32.of_int 8); `MODSEQ (Uint64.of_string "12121130956")]);
   "d105 OK [MODIFIED 7,9] Conditional STORE failed",
-  `TAGGED ("d105", `OK (`MODIFIED
-                          (Imap_set.(union
-                                      (singleton (Uint32.of_int 7))
-                                      (singleton (Uint32.of_int 9)))),
+  `TAGGED ("d105", `OK (`MODIFIED (Imap_set.(union (single' 7) (single' 9))),
                         "Conditional STORE failed"));
   "* SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)",
   `SEARCH (List.map Uint32.of_int [2; 5; 6; 7; 11; 12; 18; 19; 20; 23],

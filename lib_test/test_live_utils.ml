@@ -27,8 +27,8 @@ let delete_if_exists imap mbox =
   Lwt_list.iter_s (fun mb -> Imap.delete imap mb.mb_name) mbs
 
 let set_up_test f =
-  let imap = Imap.make' test_host in
-  Imap.connect imap
+  let imap = Imap.make () in
+  Imap.connect_simple imap test_host
   >>= begin function
     | `Needsauth -> Imap.login imap test_user test_password
     | `Preauth -> Lwt.return ()
