@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 2c6ce4a36a3ab29df5d72f0f125119eb) *)
+(* DO NOT EDIT (digest: 61aee704959149b51175264537ba81e6) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -595,27 +595,43 @@ end
 open Ocamlbuild_plugin;;
 let package_default =
   {
-     MyOCamlbuildBase.lib_ocaml = [("imap", ["lib"], [])];
+     MyOCamlbuildBase.lib_ocaml =
+       [
+          ("imap", ["lib/core"], []);
+          ("imap-common", ["lib/common"], []);
+          ("imap-unix", ["lib/unix"], []);
+          ("imap-lwt", ["lib/lwt"], []);
+          ("imap-gsasl", ["lib/gsasl"], []);
+          ("imap-async", ["lib/async"], [])
+       ];
      lib_c = [];
      flags =
        [
-          (["oasis_library_imap_cclib"; "link"],
+          (["oasis_library_imap_gsasl_cclib"; "link"],
             [
                (OASISExpr.EBool true,
                  S [A "-cclib"; A "-L/usr/local/Cellar/libffi/3.0.13/lib"])
             ]);
-          (["oasis_library_imap_cclib"; "ocamlmklib"; "c"],
+          (["oasis_library_imap_gsasl_cclib"; "ocamlmklib"; "c"],
             [
                (OASISExpr.EBool true,
                  S [A "-L/usr/local/Cellar/libffi/3.0.13/lib"])
             ])
        ];
-     includes = [("lib_test", ["lib"])]
+     includes =
+       [
+          ("lib_test", ["lib/core"]);
+          ("lib/unix", ["lib/common"; "lib/core"]);
+          ("lib/lwt", ["lib/common"; "lib/core"]);
+          ("lib/gsasl", ["lib/core"]);
+          ("lib/common", ["lib/core"]);
+          ("lib/async", ["lib/core"])
+       ]
   }
   ;;
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 620 "myocamlbuild.ml"
+# 636 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

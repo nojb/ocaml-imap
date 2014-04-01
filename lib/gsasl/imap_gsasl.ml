@@ -20,11 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type t = {
-  name : string;
-  step : string -> [`OK | `NEEDS_MORE] * string
-}
-
+open Imap_auth
+  
 let gsasl name props =
   let ctx = Gsasl.init () in
   let gsasl = Gsasl.client_start ctx name in
@@ -35,22 +32,4 @@ let gsasl name props =
          `OK
        with
        | Not_found -> `NO_CALLBACK);
-  {name; step = (Gsasl.step gsasl)}
-
-let plain user pass =
-  gsasl "PLAIN" [
-    Gsasl.AUTHID, user;
-    Gsasl.PASSWORD, pass
-  ]
-
-let xoauth2 user token =
-  let s =
-    Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token
-  in
-  let stage = ref `Begin in
-  let step _ =
-    match !stage with
-    | `Begin -> stage := `Error; `OK, s
-    | `Error -> `OK, ""
-  in
-  {name = "XOAUTH2"; step}
+  {name; step = Gsasl.step gsasl}

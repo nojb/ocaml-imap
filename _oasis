@@ -7,16 +7,79 @@ License: MIT
 Plugins: DevFiles (0.4), META (0.4)
 BuildTools: ocamlbuild
 
-Library imap
-  Path: lib
-  Findlibname: imap
-  CCLib: -L/usr/local/Cellar/libffi/3.0.13/lib
-  Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
-           Imap, Imap_uint, IO, Imap_io_low, Imap_io, Imap_lwt,
-           Imap_parser, Imap_sender, Imap_response, Imap_auth, Imap_unix
-  BuildDepends: uint, ssl, str, cryptokit, ucorelib, lwt, lwt.ssl,
-                lwt.unix, sexplib, gsasl, zip
+Flag all
+  Description: build and install everything
+  Default$: true
 
+Flag gsasl
+  Description: GNU SASL support
+  Default$: flag(all)
+
+Flag lwt
+  Description: Lwt support
+  Default$: flag(all)
+
+Flag unix
+  Description: Unix support
+  Default$: flag(all)
+
+Flag async
+  Description: Async support
+  Default$: flag(all)
+
+Library "imap"
+  Path: lib/core
+  FindlibName: imap
+  Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
+           Imap, Imap_uint, IO, Imap_parser, Imap_sender, Imap_response,
+           Imap_auth
+  BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax, zip
+
+Library "imap-common"
+  Path: lib/common
+  FindlibName: common
+  FindlibParent: imap
+  InternalModules: Imap_io, Imap_io_low
+  BuildDepends: imap, ssl, unix
+
+Library "imap-unix"
+  Build$: flag(unix)
+  Install$: flag(unix)
+  Path: lib/unix
+  FindlibName: unix
+  FindlibParent: imap
+  Modules: Imap_unix
+  BuildDepends: imap, imap.common, unix
+
+Library "imap-lwt"
+  Build$: flag(lwt)
+  Install$: flag(lwt)
+  Path: lib/lwt
+  FindlibName: lwt
+  FindlibParent: imap
+  Modules: Imap_lwt
+  BuildDepends: imap, imap.common, lwt, lwt.ssl, lwt.unix
+
+Library "imap-gsasl"
+  Build$: flag(gsasl)
+  Install$: flag(gsasl)
+  Path: lib/gsasl
+  FindlibName: gsasl
+  FindlibParent: imap
+  # XXX
+  CCLib: -L/usr/local/Cellar/libffi/3.0.13/lib
+  Modules: Imap_gsasl
+  BuildDepends: imap, gsasl
+
+Library "imap-async"
+  Build$: flag(async)
+  Install$: flag(async)
+  Path: lib/async
+  FindlibName: async
+  FindlibParent: imap
+  Modules: Imap_async
+  BuildDepends: threads, imap, async, async_ssl
+  
 Document imap
   Title: Imap docs
   Type: ocamlbuild (0.4)
