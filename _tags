@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 14da9db924665960fac5776e13247fac)
+# DO NOT EDIT (digest: 1492f3ae779a12f4658b7252f33ad994)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -15,6 +15,7 @@
 "_darcs": not_hygienic
 # Library imap
 "lib/imap.cmxs": use_imap
+<lib/imap.{cma,cmxa}>: oasis_library_imap_cclib
 <lib/*.ml{,i}>: pkg_cryptokit
 <lib/*.ml{,i}>: pkg_gsasl
 <lib/*.ml{,i}>: pkg_lwt

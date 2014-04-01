@@ -10,9 +10,10 @@ BuildTools: ocamlbuild
 Library imap
   Path: lib
   Findlibname: imap
+  CCLib: -L/usr/local/Cellar/libffi/3.0.13/lib
   Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
-           Imap, Imap_io, Imap_uint,
-           Imap_parser, Imap_sender, Imap_response, Imap_io_low, Imap_auth
+           Imap, Imap_uint, IO, Imap_io_low, Imap_io, Imap_lwt,
+           Imap_parser, Imap_sender, Imap_response, Imap_auth, Imap_unix
   BuildDepends: uint, ssl, str, cryptokit, ucorelib, lwt, lwt.ssl,
                 lwt.unix, sexplib, gsasl, zip
 

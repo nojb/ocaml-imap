@@ -24,337 +24,343 @@
 
 open Imap_types
 open Imap_uint
-  
+
 val debug : bool ref
 
-(** Type of IMAP sessions. *)
-type session
+module type S = sig
+  module IO : IO.S
+                
+  (** Type of IMAP sessions. *)
+  type session
 
-(** {2 Error handling} *)
+  (** {2 Error handling} *)
 
-(** Raised when the server returns a [NO] response. *)
-exception NO
+  (** Raised when the server returns a [NO] response. *)
+  exception NO
 
-(** Raised when the server returns a [BAD] response. *)
-exception BAD
+  (** Raised when the server returns a [BAD] response. *)
+  exception BAD
 
-(** Raised when the server closes the connection abruptly by sending a [BYE] message. *)
-exception BYE
+  (** Raised when the server closes the connection abruptly by sending a [BYE] message. *)
+  exception BYE
 
-(** Raised when a server response cannot be parsed. *)
-exception Parse_error of string * int
+  (** Raised when a server response cannot be parsed. *)
+  exception Parse_error of string * int
 
-(** Raised if the session is not connected. *)
-exception Not_connected
+  (** Raised if the session is not connected. *)
+  exception Not_connected
 
-(** I/O error *)
-exception Io_error of exn
+  (** I/O error *)
+  exception Io_error of exn
 
-(** Authentication error *)
-exception Auth_error of exn
+  (** Authentication error *)
+  exception Auth_error of exn
 
-(** {2 IMAP sessions} *)
+  (** {2 IMAP sessions} *)
 
-val make : unit -> session
-(** Creates a new IMAP session.  The session is initially disconnected and has
-    to be connected using {!connect}. *)
+  val make : unit -> session
+  (** Creates a new IMAP session.  The session is initially disconnected and has
+      to be connected using {!connect}. *)
 
-val connect : session -> Imap_io_low.t -> [ `Needsauth | `Preauth ] Lwt.t
-(** Connects to the IMAP server using the given i/o stream.  Returns
-    [`Needsauth] if the server requires authentication and [`Preauth] if the
-    session has already been authenticated in some other fashion. *)
+  val connect : session -> IO.ic * IO.oc -> [ `Needsauth | `Preauth ] IO.t
+  (** Connects to the IMAP server using the given i/o stream.  Returns
+      [`Needsauth] if the server requires authentication and [`Preauth] if the
+      session has already been authenticated in some other fashion. *)
 
-val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t
-(** Connects to the IMAP server using a SSL connection on port [?port] and given
-    hostname.  Returns [`Needsauth] if the server requires authentication and
-    [`Preauth] if the session has already been authenticated in some other
-    fashion. *)
+  (* val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t *)
+  (* (\** Connects to the IMAP server using a SSL connection on port [?port] and given *)
+  (*     hostname.  Returns [`Needsauth] if the server requires authentication and *)
+  (*     [`Preauth] if the session has already been authenticated in some other *)
+  (*     fashion. *\) *)
 
-val disconnect : session -> unit
-(** Disconnects from the server forcefully.  For a graceful exit, {!logout} is
-    preferred. *)
+  val disconnect : session -> unit
+  (** Disconnects from the server forcefully.  For a graceful exit, {!logout} is
+      preferred. *)
 
-(** {2 Commands valid in any state} *)
+  (** {2 Commands valid in any state} *)
 
-val capability : session -> capability list Lwt.t
-(** Queries the IMAP server for its capabilities by sending a {b CAPABILITY}
-    command. *)
+  val capability : session -> capability list IO.t
+  (** Queries the IMAP server for its capabilities by sending a {b CAPABILITY}
+      command. *)
 
-val noop : session -> unit Lwt.t
-(** Polls the server for an event by sending a {b NOOP} command. *)
+  val noop : session -> unit IO.t
+  (** Polls the server for an event by sending a {b NOOP} command. *)
 
-val logout : session -> unit Lwt.t
-(** Logs out from the server by sending a {b LOGOUT} command. *)
+  val logout : session -> unit IO.t
+  (** Logs out from the server by sending a {b LOGOUT} command. *)
 
-val id : session -> (string * string) list -> (string * string) list Lwt.t
-(** Sends an {b ID} command with an association list of identification
-    parameters [params] and returns whatever identification parameters the
-    server sends back.
+  val id : session -> (string * string) list -> (string * string) list IO.t
+  (** Sends an {b ID} command with an association list of identification
+      parameters [params] and returns whatever identification parameters the
+      server sends back.
 
-    Some common values for the identification keys are:
-    - {b name} Name of the program
-    - {b version} Version number of the program
-    - {b support-url} URL to contact for support
+      Some common values for the identification keys are:
+      - {b name} Name of the program
+      - {b version} Version number of the program
+      - {b support-url} URL to contact for support
 
-    This command requires the ID extension. *)
+      This command requires the ID extension. *)
 
-(** {2 Commands valid in {b Non-authenticated} state} *)
+  (** {2 Commands valid in {b Non-authenticated} state} *)
 
-val enable : session -> capability list -> capability list Lwt.t
-(** Tells the server to enable the given list of capabilities.  Returns the list
-    of capabilities actually enabled.
+  val enable : session -> capability list -> capability list IO.t
+  (** Tells the server to enable the given list of capabilities.  Returns the list
+      of capabilities actually enabled.
 
-    This command requires the ENABLE extension. *)
+      This command requires the ENABLE extension. *)
 
-val starttls : ?ssl_context:Ssl.context -> session -> unit Lwt.t
-(** Start a TLS session with a given SSL context.  Do not forget to call
-    [Ssl.init ()] before using this! *)
+  val starttls : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  (** Start a TLS session with a given SSL context.  Do not forget to call
+      [Ssl.init ()] before using this! *)
 
-val authenticate : session -> Imap_auth.t -> unit Lwt.t
-(** [authenticate s auth] authenticates the client using the SASL mechanism
-    [auth]. *)
+  val authenticate : session -> Imap_auth.t -> unit IO.t
+  (** [authenticate s auth] authenticates the client using the SASL mechanism
+      [auth]. *)
 
-val login : session -> string -> string -> unit Lwt.t
-(** [login s user pass] authenticates the client using login [user] and password
-    [pass]. *)
+  val login : session -> string -> string -> unit IO.t
+  (** [login s user pass] authenticates the client using login [user] and password
+      [pass]. *)
 
-(** {2 Commands valid in {b Authenticated} or {b Selected} state} *)
+  (** {2 Commands valid in {b Authenticated} or {b Selected} state} *)
 
-val compress : session -> unit Lwt.t
-(** Enables compression.
+  val compress : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  (** Enables compression.
 
-    This command requires the COMPRESS=DEFLATE extension. *)
+      This command requires the COMPRESS=DEFLATE extension. *)
 
-val select : session -> string -> unit Lwt.t
-(** Selects a mailbox so that the messages inside can be accessed and modified.
-    Mailbox names are assumed to be encoded using UTF8. *)
+  val select : session -> string -> unit IO.t
+  (** Selects a mailbox so that the messages inside can be accessed and modified.
+      Mailbox names are assumed to be encoded using UTF8. *)
 
-val select_condstore : session -> string -> uint64 Lwt.t
-(** Like {!select}, but returns the higest modification sequence of the
-    mailbox.
+  val select_condstore : session -> string -> uint64 IO.t
+  (** Like {!select}, but returns the higest modification sequence of the
+      mailbox.
 
-    This command requires the CONDSTORE extension. *)
+      This command requires the CONDSTORE extension. *)
 
-val examine : session -> string -> unit Lwt.t
-(** Like {!select}, but opens the mailbox in read-only mode. *)
+  val examine : session -> string -> unit IO.t
+  (** Like {!select}, but opens the mailbox in read-only mode. *)
 
-val examine_condstore : session -> string -> uint64 Lwt.t
-(** Like {!select_condstore}, but opens the mailbox in read-only mode. *)
+  val examine_condstore : session -> string -> uint64 IO.t
+  (** Like {!select_condstore}, but opens the mailbox in read-only mode. *)
 
-val create : session -> string -> unit Lwt.t
-(** Creates a mailbox.  Mailbox names are assumed to be encoded using UTF8. *)
+  val create : session -> string -> unit IO.t
+  (** Creates a mailbox.  Mailbox names are assumed to be encoded using UTF8. *)
 
-val delete : session -> string -> unit Lwt.t
-(** Deletes a mailbox.  Mailbox names are assumed to be encoded using UTF8. *)
+  val delete : session -> string -> unit IO.t
+  (** Deletes a mailbox.  Mailbox names are assumed to be encoded using UTF8. *)
 
-val rename : session -> string -> string -> unit Lwt.t
-(** [rename s oldname newname] renames a mailbox from [oldname] to [newname].
-    Mailbox names are assumed to be encoded using UTF8. *)
+  val rename : session -> string -> string -> unit IO.t
+  (** [rename s oldname newname] renames a mailbox from [oldname] to [newname].
+      Mailbox names are assumed to be encoded using UTF8. *)
 
-val subscribe : session -> string -> unit Lwt.t
-(** Adds the specified mailbox name to the server's set of "active" or
-    "subscribed" mailboxes.  Mailbox names are assumed to be encoded using
-    UTF8. *)
+  val subscribe : session -> string -> unit IO.t
+  (** Adds the specified mailbox name to the server's set of "active" or
+      "subscribed" mailboxes.  Mailbox names are assumed to be encoded using
+      UTF8. *)
 
-val unsubscribe : session -> string -> unit Lwt.t
-(** Removes the specified mailbox name from the server's set of "active" or
-    "subscribed" mailboxes.  Mailbox names are assumed to be encoded using
-    UTF8. *)
-
-val list : session -> string -> string -> mailbox_list list Lwt.t
-(** [list s base names] returns a list of all the mailbox based at [base] and
-    matching [names].  Here [names] can contain wildcards like '*' and '%' (see
-    RFC 3501). *)
-
-val lsub : session -> string -> string -> mailbox_list list Lwt.t
-(** Like {!list} but only return those mailboxes which are "subscribed" (see {!subscribe}). *)
-
-val status : session -> string -> status_att list -> mailbox_data_status Lwt.t
-(** [status s mbox atts] returns the value of the attributes [atts] of the
-    mailbox [mbox]. *)
-
-val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit Lwt.t
-(** [append s mbox ?flags ?date msg] appends a message [msg] to the mailbox
-    [mbox].  The flags of the new message will be set to [?flags] (or the empty
-    list if omitted).  The timestamp of the message will be set to [?date] (or
-    current time and date if omitted). *)
-
-val append_uidplus : session -> string -> ?flags:flag list -> ?date:float -> string ->
-  (uint32 * uint32) Lwt.t
-(** Like {!append} but returns a pair with the updated value of UIDVALIDITY and
-    the UID of the newly appended message.
-
-    This command requires the UIDPLUS extension. *)
-
-val idle : session -> (unit -> [`Continue | `Stop]) -> unit Lwt.t * (unit -> unit)
-(** [idle s f] indicates the server that we are ready to accept real-time
-    notifications by sending an {b IDLE} command.  It returns a pair [(idle,
-    stop)] of a lwt thread [idle] which only returns once the IDLE command ends.
-    The function [stop] can be used to end the IDLE command at any time.  If
-    [stop] is invoked after the [IDLE] command has ended nothing will happen.
-    Each time the server sends a response the function [f] is invoked.  If it
-    returns [`Continue] we keep listening.  If it returns [`Stop], the IDLE
-    command is stopped.
-
-    This command requires the IDLE extension. *)
-
-val namespace : session -> (namespace list * namespace list * namespace list) Lwt.t
-(** Returns the three types of namespaces (personal, other users, shared) in the server.
-
-    This command requires the NAMESPACE extension. *)
-
-(** {2 Commands valid only in {b Selected} state} *)
-
-val check : session -> unit Lwt.t
-(** Request a checkpoint of the currently selected mailbox.  The exact meaning
-    of this is implementation-dependant. *)
-
-val close : session -> unit Lwt.t
-(** Closes the currently selected mailbox. *)
-
-val expunge : session -> unit Lwt.t
-(** Permanently removes the messages from the selected mailbox that have the
-    [\Deleted] flag set. *)
-
-val uid_expunge : session -> Imap_set.t -> unit Lwt.t
-(** [uid_expunge s uids] is like {!expunge} but only removes those messages
-    whose unique identificatio number belongs to the set [uids].
+  val unsubscribe : session -> string -> unit IO.t
+  (** Removes the specified mailbox name from the server's set of "active" or
+      "subscribed" mailboxes.  Mailbox names are assumed to be encoded using
+      UTF8. *)
 
-    This command requires the UIDPLUS extension. *)
+  val list : session -> string -> string -> mailbox_list list IO.t
+  (** [list s base names] returns a list of all the mailbox based at [base] and
+      matching [names].  Here [names] can contain wildcards like '*' and '%' (see
+      RFC 3501). *)
+
+  val lsub : session -> string -> string -> mailbox_list list IO.t
+  (** Like {!list} but only return those mailboxes which are "subscribed" (see {!subscribe}). *)
 
-val search : session -> ?charset:string -> search_key -> uint32 list Lwt.t
-(** [search s ?charset query] return the sequence numbers of all the messages
-    that match the given criteria [query].  The parameter [?charset] specifies
-    which encoding is used to encode whatever text is present in [query]. *)
+  val status : session -> string -> status_att list -> mailbox_data_status IO.t
+  (** [status s mbox atts] returns the value of the attributes [atts] of the
+      mailbox [mbox]. *)
 
-val uid_search : session -> ?charset:string -> search_key -> uint32 list Lwt.t
-(** Like {!search}, but returns the unique identification numbers of the
-    matching messages. *)
+  val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit IO.t
+  (** [append s mbox ?flags ?date msg] appends a message [msg] to the mailbox
+      [mbox].  The flags of the new message will be set to [?flags] (or the empty
+      list if omitted).  The timestamp of the message will be set to [?date] (or
+      current time and date if omitted). *)
+
+  val append_uidplus : session -> string -> ?flags:flag list -> ?date:float -> string ->
+    (uint32 * uint32) IO.t
+  (** Like {!append} but returns a pair with the updated value of UIDVALIDITY and
+      the UID of the newly appended message.
+
+      This command requires the UIDPLUS extension. *)
+
+  val idle : session -> (unit -> [`Continue | `Stop]) -> unit IO.t * (unit -> unit)
+  (** [idle s f] indicates the server that we are ready to accept real-time
+      notifications by sending an {b IDLE} command.  It returns a pair [(idle,
+      stop)] of a lwt thread [idle] which only returns once the IDLE command ends.
+      The function [stop] can be used to end the IDLE command at any time.  If
+      [stop] is invoked after the [IDLE] command has ended nothing will happen.
+      Each time the server sends a response the function [f] is invoked.  If it
+      returns [`Continue] we keep listening.  If it returns [`Stop], the IDLE
+      command is stopped.
+
+      This command requires the IDLE extension. *)
+
+  val namespace : session -> (namespace list * namespace list * namespace list) IO.t
+  (** Returns the three types of namespaces (personal, other users, shared) in the server.
+
+      This command requires the NAMESPACE extension. *)
+
+  (** {2 Commands valid only in {b Selected} state} *)
+
+  val check : session -> unit IO.t
+  (** Request a checkpoint of the currently selected mailbox.  The exact meaning
+      of this is implementation-dependant. *)
+
+  val close : session -> unit IO.t
+  (** Closes the currently selected mailbox. *)
+
+  val expunge : session -> unit IO.t
+  (** Permanently removes the messages from the selected mailbox that have the
+      [\Deleted] flag set. *)
+
+  val uid_expunge : session -> Imap_set.t -> unit IO.t
+  (** [uid_expunge s uids] is like {!expunge} but only removes those messages
+      whose unique identificatio number belongs to the set [uids].
 
-type msg_att_handler =
-  uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
+      This command requires the UIDPLUS extension. *)
 
-val fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list -> unit Lwt.t
-(** [fetch s set atts] retrieve flags and/or other attributes [att] for those
-    messages whose message sequence numbers belong to [set].  The most common
-    attribytes are:
+  val search : session -> ?charset:string -> search_key -> uint32 list IO.t
+  (** [search s ?charset query] return the sequence numbers of all the messages
+      that match the given criteria [query].  The parameter [?charset] specifies
+      which encoding is used to encode whatever text is present in [query]. *)
 
-    - [`BODYSECTION `ALL] - this returns the full message: headers
-      and body,
-    - [`BODYSECTION `TEXT] - this returns just the the text of the body
-      of the message, not the header,
-    - [`BODY] - this returns a {!Imap_body.t} describing the structure of the message,
-    - [`ENVELOPE] - this parses the header and returns a {!Imap_envelope.t} with this
-      information,
-    - [`FLAGS] - the flags in the message,
-    - [`UID] - the unique identifier of the message. *)
+  val uid_search : session -> ?charset:string -> search_key -> uint32 list IO.t
+  (** Like {!search}, but returns the unique identification numbers of the
+      matching messages. *)
 
-val fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
-  fetch_att list -> unit Lwt.t
-(** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
-    messages that have a modification sequence number at least [modseq] are
-    fetched.
+  type msg_att_handler =
+    uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-    This command requires the CONDSTORE extension. *)
+  val fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list -> unit IO.t
+  (** [fetch s set atts] retrieve flags and/or other attributes [att] for those
+      messages whose message sequence numbers belong to [set].  The most common
+      attribytes are:
 
-val uid_fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list ->
-  unit Lwt.t
-(** Like {!fetch}, but the elements of the set are taken to be unique
-    identification numbers. *)
+      - [`BODYSECTION `ALL] - this returns the full message: headers
+        and body,
+      - [`BODYSECTION `TEXT] - this returns just the the text of the body
+        of the message, not the header,
+      - [`BODY] - this returns a {!Imap_body.t} describing the structure of the message,
+      - [`ENVELOPE] - this parses the header and returns a {!Imap_envelope.t} with this
+        information,
+      - [`FLAGS] - the flags in the message,
+      - [`UID] - the unique identifier of the message. *)
 
-val uid_fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
-  fetch_att list -> unit Lwt.t
-(** Like {!fetch_changedsince}, but the elements fo the set are taken to be
-    unique identification numbers.
+  val fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+    fetch_att list -> unit IO.t
+  (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
+      messages that have a modification sequence number at least [modseq] are
+      fetched.
 
-    This command requires the CONDSTORE extension. *)
+      This command requires the CONDSTORE extension. *)
 
-val store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit Lwt.t
-(** [store s set mode silent flags] modifies the flags and/or other attributes
-    for those messages whose sequence numbers belong to [set].  The attribute is
-    added, remove, or changed (regardless of its original value) according to
-    [mode]. *)
+  val uid_fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list ->
+    unit IO.t
+  (** Like {!fetch}, but the elements of the set are taken to be unique
+      identification numbers. *)
 
-val store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
-  store_att -> Imap_set.t Lwt.t
-(** [store_unchangedsince s set modseq mode att] is like {!store}, but only
-    those messages that have a modification sequence number not greater than
-    [modseq] are affected.  Retruns the set of message numbers that failed the
-    UNCHANGEDSINCE test.
+  val uid_fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+    fetch_att list -> unit IO.t
+  (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
+      unique identification numbers.
 
-    This command requires the CONDSTORE extension. *)
+      This command requires the CONDSTORE extension. *)
 
-val uid_store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit Lwt.t
-(** Like {!store} but the elements of the set are taken to be unique
-    identification numbers. *)
+  val store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  (** [store s set mode silent flags] modifies the flags and/or other attributes
+      for those messages whose sequence numbers belong to [set].  The attribute is
+      added, remove, or changed (regardless of its original value) according to
+      [mode]. *)
 
-val uid_store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
-  store_att -> Imap_set.t Lwt.t
-(** [uid_store_unchangedsince s set modseq mode att] is like {!uid_store}, but
-    only those messages that have a modification sequence number not greater than
-    [modseq] are affected.  Retruns the set of unique identification numbers that
-    failed the UNCHANGEDSINCE test.
+  val store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
+    store_att -> Imap_set.t IO.t
+  (** [store_unchangedsince s set modseq mode att] is like {!store}, but only
+      those messages that have a modification sequence number not greater than
+      [modseq] are affected.  Retruns the set of message numbers that failed the
+      UNCHANGEDSINCE test.
 
-    This command requires the CONDSTORE extension. *)
+      This command requires the CONDSTORE extension. *)
 
-val copy : session -> Imap_set.t -> string -> unit Lwt.t
-(** Copies the given set of messages from the selected mailbox to the given
-    mailbox.  The set elements are assumed to be sequence numbers. *)
+  val uid_store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  (** Like {!store} but the elements of the set are taken to be unique
+      identification numbers. *)
 
-val uidplus_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) Lwt.t
-(** Like {!copy}, but returns a tuple [(uid, srcuids, dstuids)] where [uid] is
-    the updated UIDVALIDITY of the destination mailbox, [srcuids] is the set of
-    message UIDs that where copied and [dstuids] is the sequence set of message UIDs
-    assigned to the copied messages, in the same order.
+  val uid_store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
+    store_att -> Imap_set.t IO.t
+  (** [uid_store_unchangedsince s set modseq mode att] is like {!uid_store}, but
+      only those messages that have a modification sequence number not greater than
+      [modseq] are affected.  Retruns the set of unique identification numbers that
+      failed the UNCHANGEDSINCE test.
 
-    This command requires the UIDPLUS extension. *)
+      This command requires the CONDSTORE extension. *)
 
-val uid_copy : session -> Imap_set.t -> string -> unit Lwt.t
-(** Like {!copy} but the set elements are assumed to be unique identification numbers. *)
+  val copy : session -> Imap_set.t -> string -> unit IO.t
+  (** Copies the given set of messages from the selected mailbox to the given
+      mailbox.  The set elements are assumed to be sequence numbers. *)
 
-val uidplus_uid_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) Lwt.t
-(** Like {!uidplus_copy}, but the set elements are assumed to be unique
-    identification numbers.
+  val uidplus_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) IO.t
+  (** Like {!copy}, but returns a tuple [(uid, srcuids, dstuids)] where [uid] is
+      the updated UIDVALIDITY of the destination mailbox, [srcuids] is the set of
+      message UIDs that where copied and [dstuids] is the sequence set of message UIDs
+      assigned to the copied messages, in the same order.
 
-    This command requires the UIDPLUS extension. *)
+      This command requires the UIDPLUS extension. *)
 
-(** {2 Session information} *)
+  val uid_copy : session -> Imap_set.t -> string -> unit IO.t
+  (** Like {!copy} but the set elements are assumed to be unique identification numbers. *)
 
-val has_uidplus : session -> bool
-(** Whether the IMAP server supports the UIDPLUS extension. *)
+  val uidplus_uid_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) IO.t
+  (** Like {!uidplus_copy}, but the set elements are assumed to be unique
+      identification numbers.
 
-val has_compress_deflate : session -> bool
-(** Whether the IMAP server supports the COMPRESS=DEFLATE extension. *)
+      This command requires the UIDPLUS extension. *)
 
-val has_id : session -> bool
-(** Whether the IMAP server supports the ID extension. *)
+  (** {2 Session information} *)
 
-val has_condstore : session -> bool
-(** Whether the IMAP server supports the CONDSTORE extension. *)
+  val has_uidplus : session -> bool
+  (** Whether the IMAP server supports the UIDPLUS extension. *)
 
-val has_x_gm_ext_1 : session -> bool
-(** Whether the IMAP server supports the X-GM-EXT-1 extension (probably only
-    Google supports this). *)
+  val has_compress_deflate : session -> bool
+  (** Whether the IMAP server supports the COMPRESS=DEFLATE extension. *)
 
-val has_namespace : session -> bool
-(** Whether the IMAP server supports the NAMESPACE extension. *)
+  val has_id : session -> bool
+  (** Whether the IMAP server supports the ID extension. *)
 
-val has_enable : session -> bool
-(** Whether the IMAP server supports the ENABLE extension. *)
+  val has_condstore : session -> bool
+  (** Whether the IMAP server supports the CONDSTORE extension. *)
 
-val last_response : session -> string
-(** The descriptive text of the last tagged response (or the last BYE
-    (untagged) response from the server. *)
+  val has_x_gm_ext_1 : session -> bool
+  (** Whether the IMAP server supports the X-GM-EXT-1 extension (probably only
+      Google supports this). *)
 
-val response_info : session -> response_info
-(** Returns information about the last server response. *)
+  val has_namespace : session -> bool
+  (** Whether the IMAP server supports the NAMESPACE extension. *)
 
-val selection_info : session -> selection_info
-(** Returns information about the last selected mailbox. *)
+  val has_enable : session -> bool
+  (** Whether the IMAP server supports the ENABLE extension. *)
 
-val capability_info : session -> capability_info
-(** Returns the last known list of server capabilities.  It does not actually
-    contact the server. *)
+  val last_response : session -> string
+  (** The descriptive text of the last tagged response (or the last BYE
+      (untagged) response from the server. *)
 
-val is_busy : session -> bool
-(** Whether some command is in progress. *)
+  val response_info : session -> response_info
+  (** Returns information about the last server response. *)
+
+  val selection_info : session -> selection_info
+  (** Returns information about the last selected mailbox. *)
+
+  val capability_info : session -> capability_info
+  (** Returns the last known list of server capabilities.  It does not actually
+      contact the server. *)
+
+  val is_busy : session -> bool
+  (** Whether some command is in progress. *)
+end
+
+module Make (IO : IO.S) : S with module IO = IO
