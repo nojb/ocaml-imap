@@ -36,10 +36,42 @@ let test_responses =
       test_case (fun ctxt -> test_parser ~ctxt (ex ^ "\r\n") check))
     examples
 
+open Test_live_utils
+
+let test_select_condstore ctxt =
+  set_up_test begin fun imap ->
+    Imap.select_condstore imap "inbox" >>= fun modseq ->
+    assert_bool "modseq is zero" (Uint64.compare modseq Uint64.zero <> 0);
+    Lwt.return ()
+  end
+
+let test_examine_condstore ctxt =
+  set_up_test begin fun imap ->
+    Imap.examine_condstore imap "inbox" >>= fun modseq ->
+    assert_bool "modseq is zero" (Uint64.compare modseq Uint64.zero <> 0);
+    Lwt.return ()
+  end
+
+let test_fetch_changedsince_aux cmd ctxt =
+  set_up_test begin fun imap ->
+    Imap.examine_condstore imap "inbox" >>= fun modseq ->
+    cmd imap (fun _ _ -> assert_bool "fetch_changedsince should be empty" false)
+      (Imap_set.from (Uint32.of_int 1)) modseq [`UID; `FLAGS]
+  end
+
+let test_fetch_changedsince ctxt =
+  test_fetch_changedsince_aux Imap.fetch_changedsince ctxt
+
+let test_uid_fetch_changedsince ctxt =
+  test_fetch_changedsince_aux Imap.uid_fetch_changedsince ctxt
+
 let suite =
   "test_condstore" >:::
   [
-    "test_parser" >::: test_responses
+    "test_parser" >::: test_responses;
+    "test_select_condstore" >:: run test_select_condstore;
+    "test_fetch_changesince" >:: run test_fetch_changedsince;
+    "test_uid_fetch_changesince" >:: run test_uid_fetch_changedsince
   ]
 
 let () =
