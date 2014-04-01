@@ -106,7 +106,7 @@ val enable : session -> capability list -> capability list Lwt.t
 
     This command requires the ENABLE extension. *)
 
-val starttls : session -> Ssl.context -> unit Lwt.t
+val starttls : ?ssl_context:Ssl.context -> session -> unit Lwt.t
 (** Start a TLS session with a given SSL context.  Do not forget to call
     [Ssl.init ()] before using this! *)
 

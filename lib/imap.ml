@@ -503,7 +503,7 @@ let enable s caps =
   in
   Lwt_mutex.with_lock ci.send_lock aux
 
-let starttls s ssl_context =
+let starttls ?ssl_context s =
   let ci = connection_info s in
   let cmd = S.raw "STARTTLS" in
   let aux () =
@@ -515,7 +515,7 @@ let starttls s ssl_context =
         | None -> failwith "starttls: no file descriptor"
         | Some fd -> fd
       in
-      let low, connect = Imap_io_low.open_tls ~ssl_context fd in
+      let low, connect = Imap_io_low.open_tls ?ssl_context fd in
       connect () >|= fun () ->
       Imap_io.set_low ci.chan low;
       ci.cap_info <- fresh_capability_info (* See 6.2.1 in RFC 3501 *)
