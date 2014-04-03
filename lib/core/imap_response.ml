@@ -36,16 +36,16 @@ type resp_text_code =
   | `READ_ONLY
   | `READ_WRITE
   | `TRYCREATE
-  | `UIDNEXT of uint32
-  | `UIDVALIDITY of uint32
-  | `UNSEEN of uint32
-  | `APPENDUID of uint32 * uint32
-  | `COPYUID of uint32 * Imap_set.t * Imap_set.t
+  | `UIDNEXT of Uid.t
+  | `UIDVALIDITY of Uid.t
+  | `UNSEEN of Seq.t
+  | `APPENDUID of Uid.t * Uid.t
+  | `COPYUID of Uid.t * Uid_set.t * Uid_set.t
   | `UIDNOTSTICKY
   | `COMPRESSIONACTIVE
-  | `HIGHESTMODSEQ of uint64
+  | `HIGHESTMODSEQ of Modseq.t
   | `NOMODSEQ
-  | `MODIFIED of Imap_set.t
+  | `MODIFIED of Uint32_set.t
   | `OTHER of string * string
   | `NONE ] with sexp
 
@@ -75,14 +75,14 @@ type response_done =
   | response_fatal ] with sexp
 
 type message_data =
-  [ `EXPUNGE of uint32
-  | `FETCH of (uint32 * msg_att list) ] with sexp
+  [ `EXPUNGE of Seq.t
+  | `FETCH of (Uint32.t * msg_att list) ] with sexp
 
 type mailbox_data =
   [ `FLAGS of flag list
   | `LIST of mailbox_list
   | `LSUB of mailbox_list
-  | `SEARCH of uint32 list * uint64
+  | `SEARCH of Uint32.t list * Modseq.t
   | `STATUS of mailbox_data_status
   | `EXISTS of int
   | `RECENT of int ] with sexp
@@ -214,9 +214,9 @@ uid-set         = (uniqueid / uid-range) *("," uid-set)
 *)
 let uid_set =
   separated_nonempty_list comma
-    ((uniqueid >|= fun id -> Imap_set.single id) <|>
-     (uid_range >|= Imap_set.interval)) >|=
-  List.fold_left Imap_set.union Imap_set.empty
+    ((uniqueid >|= fun id -> Uid_set.single id) <|>
+     (uid_range >|= Uid_set.interval)) >|=
+  List.fold_left Uid_set.union Uid_set.empty
 
 (*
 seq-number      = nz-number / "*"
@@ -251,7 +251,7 @@ seq-range       = seq-number ":" seq-number
 *)
 let seq_range =
   separated_pair seq_number colon seq_number >|= fun r ->
-  Imap_set.interval r
+  Uint32_set.interval r
 
 (*
 sequence-set    = (seq-number / seq-range) *("," sequence-set)
@@ -268,8 +268,8 @@ sequence-set    = (seq-number / seq-range) *("," sequence-set)
 *)
 let sequence_set =
   separated_nonempty_list comma
-    ((seq_number >|= fun x -> Imap_set.single x) <|> seq_range) >|=
-  List.fold_left Imap_set.union Imap_set.empty
+    ((seq_number >|= fun x -> Uint32_set.single x) <|> seq_range) >|=
+  List.fold_left Uint32_set.union Uint32_set.empty
 
 (* [RFC 4551]
 mod-sequence-value  = 1*DIGIT
@@ -279,7 +279,7 @@ mod-sequence-value  = 1*DIGIT
 *)
 let mod_sequence_value =
   let number_re = Str.regexp "[0-9]*" in
-  matches number_re >>= fun s -> try return (Uint64.of_string s) with _ -> fail
+  matches number_re >>= fun s -> try return (Modseq.of_string s) with _ -> fail
 
 (*
 resp-text-code  = "ALERT" /

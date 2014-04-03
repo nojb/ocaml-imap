@@ -52,7 +52,7 @@ type encoding =
 
 type extension =
   | List of extension list
-  | Number of uint32
+  | Number of Uint32.t
   | String of string option with sexp
 
 type exts = {

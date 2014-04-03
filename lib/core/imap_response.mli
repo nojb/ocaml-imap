@@ -48,26 +48,26 @@ type resp_text_code =
   (** READWRITE response *)
   | `TRYCREATE
   (** TRYCREATE response *)
-  | `UIDNEXT of uint32
+  | `UIDNEXT of Uid.t
   (** Probable UID of next message to arrive. *)
-  | `UIDVALIDITY of uint32
+  | `UIDVALIDITY of Uid.t
   (** UID validity value *)
-  | `UNSEEN of uint32
+  | `UNSEEN of Seq.t
   (** Sequence number of the first message without the [\Seen] flag *)
-  | `APPENDUID of uint32 * uint32
+  | `APPENDUID of Uid.t * Uid.t
   (** APPEND response code.  Requires support for the UIDPLUS extension. *)
-  | `COPYUID of uint32 * Imap_set.t * Imap_set.t
+  | `COPYUID of Uid.t * Uid_set.t * Uid_set.t
   (** COPY response code.  Requires support for the UIDPLUS extension. *)
   | `UIDNOTSTICKY
   (** UIDs are not persistent.  Requires support for the UIDPLUS extension. *)
   | `COMPRESSIONACTIVE
   (** Compression is being used.  Requires support for the COMPRESS=DEFLATE extension. *)
-  | `HIGHESTMODSEQ of uint64
+  | `HIGHESTMODSEQ of Modseq.t
   (** Highest modification sequence.  Requires support for the CONDSTORE extension. *)
   | `NOMODSEQ
   (** The server does not support persistent storage of modification sequence
       numbers.  Requires support for the CONDSTORE extension. *)
-  | `MODIFIED of Imap_set.t
+  | `MODIFIED of Uint32_set.t
   (** Set of message numbers or unique identification numbers that failed the
       UNCHANGEDSINCE test in a STORE or UID STORE command. *)
   | `OTHER of string * string
@@ -103,8 +103,8 @@ type resp_cond_state =
 
 (** Message information *)
 type message_data =
-  [ `EXPUNGE of uint32
-  | `FETCH of (uint32 * msg_att list) ] with sexp
+  [ `EXPUNGE of Seq.t
+  | `FETCH of (Uint32.t * msg_att list) ] with sexp
 
 (** Mailbox information *)
 type mailbox_data =
@@ -114,7 +114,7 @@ type mailbox_data =
   (** LIST response, list of matching mailboxes. *)
   | `LSUB of mailbox_list
   (** LSUB response, list of matching mailboxes. *)
-  | `SEARCH of uint32 list * uint64
+  | `SEARCH of Uint32.t list * Modseq.t
   (** SEARCH or UID SEARCH response, list of sequence numbers (or UIDs) of
       matching messages, and, if available, highest modification sequence number
       of the corresponding messages.  This requires support for the CONDSTORE

@@ -55,9 +55,9 @@ module type S = sig
   val login : session -> string -> string -> unit IO.t
   val compress : session -> unit IO.t
   val select : session -> string -> unit IO.t
-  val select_condstore : session -> string -> uint64 IO.t
+  val select_condstore : session -> string -> Modseq.t IO.t
   val examine : session -> string -> unit IO.t
-  val examine_condstore : session -> string -> uint64 IO.t
+  val examine_condstore : session -> string -> Modseq.t IO.t
   val create : session -> string -> unit IO.t
   val delete : session -> string -> unit IO.t
   val rename : session -> string -> string -> unit IO.t
@@ -68,36 +68,36 @@ module type S = sig
   val status : session -> string -> status_att list -> mailbox_data_status IO.t
   val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit IO.t
   val append_uidplus : session -> string -> ?flags:flag list -> ?date:float -> string ->
-    (uint32 * uint32) IO.t
+    (Uid.t * Uid.t) IO.t
   val idle : session -> (unit -> [`Continue | `Stop]) -> unit IO.t * (unit -> unit)
   val namespace : session -> (namespace list * namespace list * namespace list) IO.t
   val check : session -> unit IO.t
   val close : session -> unit IO.t
   val expunge : session -> unit IO.t
-  val uid_expunge : session -> Imap_set.t -> unit IO.t
-  val search : session -> ?charset:string -> search_key -> uint32 list IO.t
-  val uid_search : session -> ?charset:string -> search_key -> uint32 list IO.t
+  val uid_expunge : session -> Uid_set.t -> unit IO.t
+  val search : session -> ?charset:string -> search_key -> Seq.t list IO.t
+  val uid_search : session -> ?charset:string -> search_key -> Uid.t list IO.t
 
-  type msg_att_handler =
-    uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
+  type 'a msg_att_handler =
+    'a -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-  val fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list -> unit IO.t
-  val fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+  val fetch : session -> Seq.t msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
+  val fetch_changedsince : session -> Seq.t msg_att_handler -> Seq_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
-  val uid_fetch : session -> msg_att_handler -> Imap_set.t -> fetch_att list ->
+  val uid_fetch : session -> Uid.t msg_att_handler -> Uid_set.t -> fetch_att list ->
     unit IO.t
-  val uid_fetch_changedsince : session -> msg_att_handler -> Imap_set.t -> uint64 ->
+  val uid_fetch_changedsince : session -> Uid.t msg_att_handler -> Uid_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
-  val store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
-  val store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
-    store_att -> Imap_set.t IO.t
-  val uid_store : session -> Imap_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
-  val uid_store_unchangedsince : session -> Imap_set.t -> uint64 -> [`Add | `Set | `Remove] ->
-    store_att -> Imap_set.t IO.t
-  val copy : session -> Imap_set.t -> string -> unit IO.t
-  val uidplus_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) IO.t
-  val uid_copy : session -> Imap_set.t -> string -> unit IO.t
-  val uidplus_uid_copy : session -> Imap_set.t -> string -> (uint32 * Imap_set.t * Imap_set.t) IO.t
+  val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
+    store_att -> Seq_set.t IO.t
+  val uid_store : session -> Uid_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  val uid_store_unchangedsince : session -> Uid_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
+    store_att -> Uid_set.t IO.t
+  val copy : session -> Seq_set.t -> string -> unit IO.t
+  val uidplus_copy : session -> Seq_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t
+  val uid_copy : session -> Uid_set.t -> string -> unit IO.t
+  val uidplus_uid_copy : session -> Uid_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t
 
   val has_uidplus : session -> bool
   val has_compress_deflate : session -> bool
@@ -124,15 +124,15 @@ module Make (IO : IO.S) = struct
     rsp_mailbox_list = [];
     (* rsp_mailbox_lsub = []; *)
     rsp_search_results = [];
-    rsp_search_results_modseq = Uint64.zero;
+    rsp_search_results_modseq = Modseq.zero;
     rsp_status = {st_mailbox = ""; st_info_list = []};
     rsp_expunged = [];
     rsp_fetch_list = [];
-    rsp_appenduid = (Uint32.zero, Uint32.zero);
-    rsp_copyuid = (Uint32.zero, Imap_set.empty, Imap_set.empty);
+    rsp_appenduid = (Uid.zero, Uid.zero);
+    rsp_copyuid = (Uid.zero, Uid_set.empty, Uid_set.empty);
     rsp_compressionactive = false;
     rsp_id = [];
-    rsp_modified = Imap_set.empty;
+    rsp_modified = Uid_set.empty;
     rsp_namespace = ([], [], []);
     rsp_enabled = [];
     rsp_other = ("", "")
@@ -141,14 +141,14 @@ module Make (IO : IO.S) = struct
   let fresh_selection_info = {
     sel_perm_flags = [];
     sel_perm = `READ_ONLY;
-    sel_uidnext = Uint32.zero;
-    sel_uidvalidity = Uint32.zero;
-    sel_first_unseen = Uint32.zero;
+    sel_uidnext = Uid.zero;
+    sel_uidvalidity = Uid.zero;
+    sel_first_unseen = Seq.zero;
     sel_flags = [];
     sel_exists = None;
     sel_recent = None;
     sel_uidnotsticky = false;
-    sel_highestmodseq = Uint64.zero
+    sel_highestmodseq = Modseq.zero
   }
 
   let fresh_capability_info =
@@ -805,7 +805,7 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux
 
   let uid_expunge s set =
-    assert (not (Imap_set.mem_zero set));
+    assert (not (Uid_set.mem_zero set));
     let ci = connection_info s in
     let cmd = S.(raw "UID EXPUNGE" @> space @> message_set set) in
     let aux () = send_command ci cmd in
@@ -829,8 +829,8 @@ module Make (IO : IO.S) = struct
   let uid_search s ?charset query =
     search_aux s "UID SEARCH" ?charset query
 
-  type msg_att_handler =
-    uint32 -> [ msg_att_static | msg_att_dynamic ] -> unit
+  type 'a msg_att_handler =
+    'a -> [ msg_att_static | msg_att_dynamic ] -> unit
 
   let fetch_aux cmd handler s set changedsince attrs =
     let ci = connection_info s in

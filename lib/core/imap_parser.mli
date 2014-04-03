@@ -111,7 +111,7 @@ val dot : char t
 val quoted_char : char t
 (** Parses an IMAP QUOTED-CHAR, surrounded by double quotes. *)
     
-val number : uint32 t
+val number : Uint32.t t
 (** Parses an unsigned 32-bit integer represented by a sequence of digits.
     Fails if the number cannot be represented with 32-bits. *)
     
@@ -156,7 +156,7 @@ val nstring' : string t
 val astring : string t
 (** Parses the IMAP terminal [astring]. *)
     
-val nz_number : uint32 t
+val nz_number : Uint32.t t
 (** Parses an unsigned 32-bit integers represented by a sequence of digits
     starting with a non-zero digit.  Fails if the number cannot be represented with
     32-bits. *)

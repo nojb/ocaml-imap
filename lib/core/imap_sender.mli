@@ -45,10 +45,10 @@ module Make (IO : IO.S) : sig
   val int : int -> t
   (** Sends an OCaml int. *)
 
-  val uint32 : uint32 -> t
+  val uint32 : Uint32.t -> t
   (** Sends an unsigned 32-bit int. *)
 
-  val uint64 : uint64 -> t
+  val uint64 : Uint64.t -> t
   (** Sends an unsigned 64-bit int. *)
 
   val raw : string -> t
@@ -88,7 +88,7 @@ module Make (IO : IO.S) : sig
   val date_time : float -> t
   (** Sends an IMAP [date-time]. *)
 
-  val message_set : Imap_set.t -> t
+  val message_set : Uint32_set.t -> t
   (** Sends an IMAP [sequence-set]. *)
 
   val flag : Imap_types.flag -> t

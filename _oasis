@@ -33,6 +33,7 @@ Library "imap"
   Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
            Imap, Imap_uint, IO, Imap_parser, Imap_sender, Imap_response,
            Imap_auth, Imap_io
+  InternalModules: Imap_uint_raw
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax, zip
 
 Library "imap-unix"

@@ -24,7 +24,7 @@
 
 open Sexplib.Std
 open Imap_uint
-  
+
 (** {2 Message flags} *)
                 
 type flag =
@@ -140,22 +140,22 @@ type search_key =
   | `SMALLER of int
   (** Messages with an [RFC-2822] size smaller than the specified number of
       bytes. *)
-  | `UID of Imap_set.t
+  | `UID of Uid_set.t
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set. *)
   | `UNDRAFT
   (** Messages that do not have the [\Draft] flag set. *)
-  | `INSET of Imap_set.t
+  | `INSET of Seq_set.t
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
   | `AND of search_key * search_key
   (** Messages that match both search keys. *)
-  | `MODSEQ of (flag * [`Shared | `Priv | `All]) option * uint64
+  | `MODSEQ of (flag * [`Shared | `Priv | `All]) option * Modseq.t
   | `X_GM_RAW of string
   (** Messages that satisfy Gmail search expression. *)
-  | `X_GM_MSGID of uint64
+  | `X_GM_MSGID of Gmsgid.t
   (** Message with given Gmail Message ID. *)
-  | `X_GM_THRID of uint64
+  | `X_GM_THRID of Gthrid.t
   (** Messages with given Gmail Thread ID. *)
   | `X_GM_LABELS of string
   (** Messages with given Gmail labels. *) ]
@@ -254,13 +254,13 @@ type msg_att_static =
   | `BODY of Imap_body.t
   | `BODYSTRUCTURE of Imap_body.t
   | `BODYSECTION of msg_att_section * string
-  | `UID of uint32
-  | `X_GM_MSGID of uint64
-  | `X_GM_THRID of uint64 ] with sexp
+  | `UID of Uid.t
+  | `X_GM_MSGID of Gmsgid.t
+  | `X_GM_THRID of Gthrid.t ] with sexp
 
 type msg_att_dynamic =
   [ `FLAGS of flag list
-  | `MODSEQ of uint64
+  | `MODSEQ of Modseq.t
   | `X_GM_LABELS of string list ] with sexp
   
 type msg_att =
@@ -301,10 +301,10 @@ type status_att =
 type status_info =
   [ `MESSAGES of int
   | `RECENT of int
-  | `UIDNEXT of uint32
-  | `UIDVALIDITY of uint32
+  | `UIDNEXT of Uid.t
+  | `UIDVALIDITY of Uid.t
   | `UNSEEN of int
-  | `HIGHESTMODSEQ of uint64 ] with sexp
+  | `HIGHESTMODSEQ of Modseq.t ] with sexp
 
 (** {2 LIST/LSUB commands} *)
 
@@ -372,16 +372,16 @@ type response_info = {
   rsp_trycreate : bool;
   rsp_mailbox_list : mailbox_list list;
   (* rsp_mailbox_lsub : mailbox_list list; *)
-  rsp_search_results : uint32 list;
-  rsp_search_results_modseq : uint64;
+  rsp_search_results : Uint32.t list;
+  rsp_search_results_modseq : Modseq.t;
   rsp_status : mailbox_data_status;
-  rsp_expunged : uint32 list;
-  rsp_fetch_list : (uint32 * msg_att list) list;
-  rsp_appenduid : uint32 * uint32;
-  rsp_copyuid : uint32 * Imap_set.t * Imap_set.t;
+  rsp_expunged : Uint32.t list;
+  rsp_fetch_list : (Uint32.t * msg_att list) list;
+  rsp_appenduid : Uid.t * Uid.t;
+  rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
   rsp_compressionactive : bool;
   rsp_id : (string * string) list;
-  rsp_modified : Imap_set.t;
+  rsp_modified : Uint32_set.t;
   rsp_namespace : namespace list * namespace list * namespace list;
   rsp_enabled : capability list;
   rsp_other : string * string
@@ -390,14 +390,14 @@ type response_info = {
 type selection_info = {
   sel_perm_flags : flag_perm list;
   sel_perm : [ `READ_ONLY | `READ_WRITE ];
-  sel_uidnext : uint32;
-  sel_uidvalidity : uint32;
-  sel_first_unseen : uint32;
+  sel_uidnext : Uid.t;
+  sel_uidvalidity : Uid.t;
+  sel_first_unseen : Seq.t;
   sel_flags : flag list;
   sel_exists : int option;
   sel_recent : int option;
   sel_uidnotsticky : bool;
-  sel_highestmodseq : uint64
+  sel_highestmodseq : Modseq.t
 }
 
 type capability_info =

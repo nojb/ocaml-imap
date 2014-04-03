@@ -20,44 +20,31 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+(** Unsigned integers *)
+
 open Sexplib
-open Conv
 
-module Uint32 = struct
-  include Uint32
-
-  let sexp_of_t x =
-    Sexplib.Sexp.Atom (to_string x)
-      
-  let t_of_sexp sexp =
-    match sexp with
-    | Sexplib.Sexp.Atom str ->
-      (try of_string str
-       with exc -> of_sexp_error ("Uint32.t_of_sexp: " ^
-                                  (Sexp.to_string_hum (sexp_of_exn exc))) sexp)
-    | _ as sexp ->
-      of_sexp_error "Uint32.t_of_sexp: atom needed" sexp
+module type S = sig
+  type t with sexp
+  val zero : t
+  val of_int : int -> t
+  val of_string : string -> t
+  val to_string : t -> string
+  val max : t -> t -> t
+  val is_zero : t -> bool
+  val compare : t -> t -> int
+  val equal : t -> t -> bool
+  val succ : t -> t
 end
 
-type uint32 = Uint32.t with sexp
+module Uint32 : S with type t = Imap_uint_raw.Uint32.t = Imap_uint_raw.Uint32
+module Uint64 : S with type t = Imap_uint_raw.Uint64.t = Imap_uint_raw.Uint64
+module Uid : S with type t = Imap_uint_raw.Uid.t = Imap_uint_raw.Uid
+module Seq : S with type t = Imap_uint_raw.Seq.t = Imap_uint_raw.Seq
+module Gmsgid : S with type t = Imap_uint_raw.Gmsgid.t = Imap_uint_raw.Gmsgid
+module Gthrid : S with type t = Imap_uint_raw.Gthrid.t = Imap_uint_raw.Gthrid
+module Modseq : S with type t = Imap_uint_raw.Modseq.t = Imap_uint_raw.Modseq
 
-module Uint64 = struct
-  include Uint64
-
-  let sexp_of_t x =
-    Sexplib.Sexp.Atom (to_string x)
-      
-  let t_of_sexp sexp =
-    match sexp with
-    | Sexplib.Sexp.Atom str ->
-      (try of_string str
-       with exc -> of_sexp_error ("Uint64.t_of_sexp: " ^
-                                  (Sexp.to_string_hum (sexp_of_exn exc))) sexp)
-    | _ as sexp ->
-      of_sexp_error "Uint64.t_of_sexp: atom needed" sexp
-        
-  let max x y =
-    if compare x y >= 0 then x else y
-end
-
-type uint64 = Uint64.t with sexp
+module Uid_set = Imap_set.Make (Uid)
+module Seq_set = Imap_set.Make (Seq)
+module Uint32_set = Imap_set.Make (Uint32)

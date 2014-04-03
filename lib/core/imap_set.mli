@@ -35,59 +35,70 @@
     list [[(1, 3); (4, 4); (5, 12); (18, 0)]]. *)
 
 open Sexplib.Std
-open Imap_uint
+(* open Imap_uint *)
 
-(** The type of sets, a formal, ordered, union of intervals. *)
-type t = (uint32 * uint32) list with sexp
+module type S = sig
+  type t with sexp
+  val succ : t -> t
+  val zero : t
+  val is_zero : t -> bool
+  val compare : t -> t -> int
+  val of_int : int -> t
+end
 
-val empty : t
-(** The empty set. *)
+module Make (N : S) : sig
+  (** The type of sets, a formal, ordered, union of intervals. *)
+  type t = (N.t * N.t) list with sexp
 
-val all : t
-(** The interval of all positive numbers. *)
+  val empty : t
+  (** The empty set. *)
 
-val single : uint32 -> t
-(** The interval consisting of a single number. *)
+  val all : t
+  (** The interval of all positive numbers. *)
 
-val single' : int -> t
+  val single : N.t -> t
+  (** The interval consisting of a single number. *)
 
-val interval : uint32 * uint32 -> t
-(** The set consisting of a single interval. *)
+  val single' : int -> t
 
-val from : uint32 -> t
-(** The half-interval starting from [n] (inclusive).  It corresponds to the
-    IMAP expression "n:*". *)
+  val interval : N.t * N.t -> t
+  (** The set consisting of a single interval. *)
 
-val add : uint32 -> t -> t
-(** [add n s] adds a single number [n] to the set [s]. *)
+  val from : N.t -> t
+  (** The half-interval starting from [n] (inclusive).  It corresponds to the
+      IMAP expression "n:*". *)
 
-val add_interval : uint32 * uint32 -> t -> t
-(** [add_interval n m s] adds the whole interval between numbers [n] and [m]
-    (including both [n] and [m]) to the set [s]. *)
+  val add : N.t -> t -> t
+  (** [add n s] adds a single number [n] to the set [s]. *)
 
-val union : t -> t -> t
-(** [union s1 s2] forms the union of the [s1] and [s2]. *)
+  val add_interval : N.t * N.t -> t -> t
+  (** [add_interval n m s] adds the whole interval between numbers [n] and [m]
+      (including both [n] and [m]) to the set [s]. *)
 
-val mem : t -> uint32 -> bool
-(** Whether an element belongs to the set. *)
-  
-val mem_zero : t -> bool
-(** Whether zero belongs to the set. *)
+  val union : t -> t -> t
+  (** [union s1 s2] forms the union of the [s1] and [s2]. *)
 
-val iter : (uint32 -> unit) -> t -> unit
-(** [iter f s] computes [f n1; f n2; ...], where [n1, n2, ...] is an enumeration
-    of the elements of the set [s], in the order that they appear in the
-    underlying list. *)
+  val mem : t -> N.t -> bool
+  (** Whether an element belongs to the set. *)
 
-val iter2 : (uint32 -> uint32 -> unit) -> t -> t -> unit
-(** [iter2 f s1 s2] computes [f n1 m1; f n2 m2; ...], where [n1, n2, ...] and
-    [m1, m2, ...] are enumerations of the elements of the sets [s1] and [s2],
-    in the order that they appear in the underlying lists. *)
+  val mem_zero : t -> bool
+  (** Whether zero belongs to the set. *)
 
-val fold : (uint32 -> 'a -> 'a) -> t -> 'a -> 'a
-(** [fold f s x] computes [... (f n2 (f n1 x))] where [n1, n2, ...] is an
-    anumeration of the elements of [s] in the order that they appear in the
-    underlying list. *)
+  val iter : (N.t -> unit) -> t -> unit
+  (** [iter f s] computes [f n1; f n2; ...], where [n1, n2, ...] is an enumeration
+      of the elements of the set [s], in the order that they appear in the
+      underlying list. *)
 
-val fold_intervals : (uint32 * uint32 -> 'a -> 'a) -> t -> 'a -> 'a
-(** [fold_intervals f s x] is equivalent to [List.fold_right f s x]. *)
+  val iter2 : (N.t -> N.t -> unit) -> t -> t -> unit
+  (** [iter2 f s1 s2] computes [f n1 m1; f n2 m2; ...], where [n1, n2, ...] and
+      [m1, m2, ...] are enumerations of the elements of the sets [s1] and [s2],
+      in the order that they appear in the underlying lists. *)
+
+  val fold : (N.t -> 'a -> 'a) -> t -> 'a -> 'a
+  (** [fold f s x] computes [... (f n2 (f n1 x))] where [n1, n2, ...] is an
+      anumeration of the elements of [s] in the order that they appear in the
+      underlying list. *)
+
+  val fold_intervals : (N.t * N.t -> 'a -> 'a) -> t -> 'a -> 'a
+  (** [fold_intervals f s x] is equivalent to [List.fold_right f s x]. *)
+end
