@@ -70,23 +70,18 @@ let ssl_output sock =
     ~close
     ~flush
 
-let ssl_connect fd context =
-  let sock = Ssl.embed_socket fd context in
-  let rec loop () =
-    try
-      Ssl.connect sock
-    with
-    | Ssl.Connection_error Ssl.Error_want_connect ->
-      loop ()
-  in
-  loop ();
-  sock
+let input_of_file_descr fd =
+  Unix_IO.create_in
+    ?underlying:None
+    ~read:(Unix.read fd)
+    ~close:(fun () -> Unix.close fd)
 
-let default_ssl_context =
-  let () = Ssl.init () in
-  let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-  Ssl.set_verify ctx [Ssl.Verify_peer] None;
-  ctx
+let output_of_file_descr fd =
+  Unix_IO.create_out
+    ?underlying:None
+    ~write:(Unix.write fd)
+    ~close:(fun () -> Unix.close fd)
+    ~flush:(fun () -> ())
 
 include Imap.Make (struct
     include Sync
@@ -111,18 +106,31 @@ include Imap.Make (struct
       let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
       let he = Unix.gethostbyname host in
       Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
-      assert false
+      let ic = Unix_IO.buffered_input (input_of_file_descr fd) in
+      let oc = Unix_IO.buffered_output (output_of_file_descr fd) in
+      (ic, oc)
         
-    let connect_ssl _ ?ca_file port host =
-      (* let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in *)
+    let connect_ssl version ?ca_file port host =
       let he = Unix.gethostbyname host in
-      (* Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)); *)
-      let sock = Ssl.open_connection Ssl.TLSv1 (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) in
-      (* ssl_connect fd default_ssl_context in *)
-      (* let ic = Unix_IO.buffered_input (ssl_input sock) in *)
+      let version = match version with
+        | `TLSv1 -> Ssl.TLSv1
+        | `SSLv23 -> Ssl.SSLv23
+        | `SSLv3 -> Ssl.SSLv3
+      in
+      let ctx = Ssl.create_context version Ssl.Client_context in
+      begin match ca_file with
+        | None -> ()
+        | Some ca_file ->
+          Ssl.load_verify_locations ctx ca_file "";
+          Ssl.set_verify ctx [Ssl.Verify_peer] None
+      end;
+      let sock = Ssl.open_connection_with_context ctx
+          (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port))
+      in
       let ic = ssl_input sock in
       let oc = ssl_output sock in
-      (* let oc = Unix_IO.buffered_output (ssl_output sock) in *)
+      let ic = Unix_IO.buffered_input ic in
+      let oc = Unix_IO.buffered_output oc in
       ic, oc
   end)
 
