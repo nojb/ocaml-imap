@@ -32,40 +32,79 @@ let default_ssl_context =
 
 module Lwtio = struct
   type 'a t = 'a Lwt.t
+
   let bind = Lwt.bind
+
   let return = Lwt.return
+
   let fail = Lwt.fail
+
   let catch = Lwt.catch
+
   type mutex = Lwt_mutex.t
+
   let create_mutex = Lwt_mutex.create
+
   let is_locked = Lwt_mutex.is_locked
+
   let with_lock = Lwt_mutex.with_lock
+
   type input = Lwt_io.input_channel
+
   type output = Lwt_io.output_channel
+
   let read_line ic =
     Lwt_io.read_line ic >>= fun s ->
     if !Imap.debug then Imap_utils.log `Server s;
     Lwt.return s
+
   let read_exactly ic len =
     let buf = String.create len in
     Lwt_io.read_into_exactly ic buf 0 len >>= fun () ->
     if !Imap.debug then Imap_utils.log `Server buf;
     Lwt.return buf
+
   let write oc s = Lwt_io.write oc s >>= fun () ->
     if !Imap.debug then Imap_utils.log `Client s;
     Lwt.return ()
+
   let flush = Lwt_io.flush
+
   let compress _ = assert false
+
   let starttls _ = assert false
 
   let connect port host =
-    assert false
+    Lwt_unix.gethostbyname host >>= fun he ->
+    Lwt_io.open_connection (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port))
 
-  let connect_ssl _ ?ca_file port host =
+  let ssl_context =
+    let h = Hashtbl.create 3 in
+    fun v ca ->
+      if Hashtbl.mem h (v, ca) then
+        Hashtbl.find h (v, ca)
+      else begin
+        let v' = match v with
+          | `TLSv1 -> Ssl.TLSv1
+          | `SSLv23 -> Ssl.SSLv23
+          | `SSLv3 -> Ssl.SSLv3
+        in
+        let ctx = Ssl.create_context v' Ssl.Client_context in
+        begin match ca with
+          | None -> ()
+          | Some ca ->
+            Ssl.load_verify_locations ctx ca "";
+            Ssl.set_verify ctx [Ssl.Verify_peer] None
+        end;
+        Hashtbl.add h (v, ca) ctx;
+        ctx
+      end
+
+  let connect_ssl version ?ca_file port host =
     let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
     Lwt_unix.gethostbyname host >>= fun he ->
     Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
-    Lwt_ssl.ssl_connect fd default_ssl_context >>= fun ssl_sock ->
+    Lwt_ssl.ssl_connect fd (ssl_context version ca_file) >>= fun ssl_sock ->
     let ic = Lwt_ssl.in_channel_of_descr ssl_sock in
     let oc = Lwt_ssl.out_channel_of_descr ssl_sock in
     Lwt.return (ic, oc)
