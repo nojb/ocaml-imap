@@ -109,6 +109,8 @@ include Imap.Make (struct
       let ic = Unix_IO.buffered_input (input_of_file_descr fd) in
       let oc = Unix_IO.buffered_output (output_of_file_descr fd) in
       (ic, oc)
+
+    let _ = Ssl.init ()
         
     let connect_ssl version ?ca_file port host =
       let he = Unix.gethostbyname host in
