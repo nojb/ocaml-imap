@@ -35,40 +35,17 @@ end
 module Unix_IO = Imap_gen_io.Make (Sync)
 
 let ssl_input sock =
-  let unsafe_read buf off len =
-    let rec loop () =
-      try
-        Ssl.read sock buf off len
-      with
-      | Ssl.Read_error Ssl.Error_want_read ->
-        loop ()
-    in
-    loop ()
-  in
-  let close () = Ssl.shutdown sock in
   Unix_IO.create_in
     ?underlying:None
-    ~read:unsafe_read
-    ~close
+    ~read:(Ssl.read sock)
+    ~close:(fun () -> Ssl.shutdown sock)
 
 let ssl_output sock =
-  let unsafe_write buf off len =
-    let rec loop () =
-      try
-        Ssl.write sock buf off len
-      with
-      | Ssl.Write_error Ssl.Error_want_write ->
-        loop ()
-    in
-    loop ()
-  in
-  let close () = Ssl.shutdown sock in
-  let flush () = Ssl.flush sock in
   Unix_IO.create_out
     ?underlying:None
-    ~write:unsafe_write
-    ~close
-    ~flush
+    ~write:(Ssl.write sock)
+    ~close:(fun () -> Ssl.shutdown sock)
+    ~flush:(fun () -> Ssl.flush sock)
 
 let input_of_file_descr fd =
   Unix_IO.create_in
@@ -103,7 +80,7 @@ include Imap.Make (struct
     let starttls _ = assert false
 
     let connect port host =
-      let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+      let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
       let he = Unix.gethostbyname host in
       Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
       let ic = Unix_IO.buffered_input (input_of_file_descr fd) in
@@ -131,9 +108,9 @@ include Imap.Make (struct
       in
       let ic = ssl_input sock in
       let oc = ssl_output sock in
-      let ic = Unix_IO.buffered_input ic in
-      let oc = Unix_IO.buffered_output oc in
-      ic, oc
+      (* let ic = Unix_IO.buffered_input ic in *)
+      (* let oc = Unix_IO.buffered_output oc in *)
+      (ic, oc)
   end)
 
 (* let starttls ?ssl_context s = *)
