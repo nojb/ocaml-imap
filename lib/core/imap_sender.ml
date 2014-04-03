@@ -27,7 +27,7 @@ module Make (IO : IO.S) = struct
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 
   type t =
-      IO.oc * (unit -> unit IO.t) -> unit IO.t
+      IO.output * (unit -> unit IO.t) -> unit IO.t
 
   let rec (@>) (f : t) (g : t) : t =
     fun io -> f io >>= fun () -> g io

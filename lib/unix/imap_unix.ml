@@ -4,22 +4,23 @@ module Sync = struct
   let return x = x
   let fail e = raise e
   let catch f g = try f () with e -> g e
-  module Mutex = struct
-    type mutex = unit
-    let create () = ()
-    let is_locked () = false
-    let with_lock () f = f ()
-  end
+  type mutex = unit
+  let create_mutex () = ()
+  let is_locked () = false
+  let with_lock () f = f ()
 end
 
 module Unix_IO = Imap_io.Make (Sync)
 
 include Imap.Make (struct
     include Sync
-    type ic = Unix_IO.input
-    type oc = unit Unix_IO.output
+    type input = Unix_IO.input
+    type output = unit Unix_IO.output
     let read_line = Unix_IO.read_line
-    let read_into_exactly = Unix_IO.read_into_exactly
+    let read_exactly ic len =
+      let buf = String.create len in
+      Unix_IO.read_into_exactly ic buf 0 len;
+      buf
     let flush = Unix_IO.flush
     let write = Unix_IO.write
   end)

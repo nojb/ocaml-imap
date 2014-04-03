@@ -28,7 +28,7 @@ module Make (IO : IO.S) : sig
   (** The type of senders.  The argument is a pair [(io, get_cont_req)] consisting
       of an IO channel [io] and a function [get_cont_req] that should be called when a
       continuation request is required.  See {!Imap.run_sender}. *)
-  type t = IO.oc * (unit -> unit IO.t) -> unit IO.t
+  type t = IO.output * (unit -> unit IO.t) -> unit IO.t
 
   val (@>) : t -> t -> t
   (** [f @> g] sends with [f], then with [g]. *)

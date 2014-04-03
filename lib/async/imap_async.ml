@@ -72,15 +72,13 @@ module Async_io = struct
 
   (* let (>>=) = bind *)
 
-  module Mutex = struct
-    type mutex = unit
-    let create () = ()
-    let is_locked _ = false
-    let with_lock _ f = f ()
-  end
+  type mutex = unit
+  let create_mutex () = ()
+  let is_locked _ = false
+  let with_lock _ f = f ()
 
-  type ic = Reader.t
-  type oc = Writer.t
+  type input = Reader.t
+  type output = Writer.t
 
   let check_debug f g = f
 
@@ -99,10 +97,10 @@ module Async_io = struct
          |`Eof -> eprintf "<<<EOF\n"; fail End_of_file
       )
 
-  let read_into_exactly ic buf off len =
+  let read_exactly ic len =
     let buf = String.create len in
-    Reader.really_read ic ~pos:off ~len buf >>= function
-    |`Ok -> return ()
+    Reader.really_read ic ~pos:0 ~len buf >>= function
+    |`Ok -> return buf
     |`Eof _ -> fail End_of_file
 
   let write =

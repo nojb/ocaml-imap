@@ -7,20 +7,25 @@
 (*   let prerr_string = Lwt_io.eprint *)
 (* end *)
 
+let (>>=) = Lwt.bind
+
 module Lwtio = struct
   type 'a t = 'a Lwt.t
   let bind = Lwt.bind
   let return = Lwt.return
   let fail = Lwt.fail
   let catch = Lwt.catch
-  module Mutex = struct
-    include Lwt_mutex
-    type mutex = t
-  end
-  type ic = Lwt_io.input_channel
-  type oc = Lwt_io.output_channel
+  type mutex = Lwt_mutex.t
+  let create_mutex = Lwt_mutex.create
+  let is_locked = Lwt_mutex.is_locked
+  let with_lock = Lwt_mutex.with_lock
+  type input = Lwt_io.input_channel
+  type output = Lwt_io.output_channel
   let read_line = Lwt_io.read_line
-  let read_into_exactly = Lwt_io.read_into_exactly
+  let read_exactly ic len =
+    let buf = String.create len in
+    Lwt_io.read_into_exactly ic buf 0 len >>= fun () ->
+    Lwt.return buf
   let write = Lwt_io.write
   let flush = Lwt_io.flush
   (* let close = Lwt_io.close *)
@@ -28,9 +33,6 @@ module Lwtio = struct
 end
 
 include Imap.Make (Lwtio)
-
-let (>>=) = Lwt.bind
-
 
 let default_ssl_context =
   let () = Ssl.init () in

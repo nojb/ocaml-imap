@@ -62,7 +62,7 @@ module type S = sig
   (** Creates a new IMAP session.  The session is initially disconnected and has
       to be connected using {!connect}. *)
 
-  val connect : session -> IO.ic * IO.oc -> [ `Needsauth | `Preauth ] IO.t
+  val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t
   (** Connects to the IMAP server using the given i/o stream.  Returns
       [`Needsauth] if the server requires authentication and [`Preauth] if the
       session has already been authenticated in some other fashion. *)
@@ -109,7 +109,7 @@ module type S = sig
 
       This command requires the ENABLE extension. *)
 
-  val starttls : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  val starttls : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
   (** Start a TLS session with a given SSL context.  Do not forget to call
       [Ssl.init ()] before using this! *)
 
@@ -123,7 +123,7 @@ module type S = sig
 
   (** {2 Commands valid in {b Authenticated} or {b Selected} state} *)
 
-  val compress : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  val compress : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
   (** Enables compression.
 
       This command requires the COMPRESS=DEFLATE extension. *)

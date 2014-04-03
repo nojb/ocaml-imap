@@ -1,4 +1,4 @@
-module type T = sig
+module type S = sig
   type 'a t
       
   val bind : 'a t -> ('a -> 'b t) -> 'b t
@@ -6,24 +6,18 @@ module type T = sig
   val fail : exn -> 'a t
   val catch : (unit -> 'a t) -> (exn -> 'a t) -> 'a t
       
-  module Mutex : sig
-    type mutex
-    val create : unit -> mutex
-    val is_locked : mutex -> bool
-    val with_lock : mutex -> (unit -> 'a t) -> 'a t
-  end
-end
-
-module type S = sig
-  include T
+  type mutex
+  val create_mutex : unit -> mutex
+  val is_locked : mutex -> bool
+  val with_lock : mutex -> (unit -> 'a t) -> 'a t
     
-  type ic
-  type oc
+  type input
+  type output
 
-  val read_line : ic -> string t
-  val read_into_exactly : ic -> string -> int -> int -> unit t
-  val write : oc -> string -> unit t
-  val flush : oc -> unit t
+  val read_line : input -> string t
+  val read_exactly : input -> int -> string t
+  val write : output -> string -> unit t
+  val flush : output -> unit t
 
   (* val starttls : input * output -> input * output *)
   (* val compress : input * output -> input * output *)

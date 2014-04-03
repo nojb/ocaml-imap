@@ -42,17 +42,17 @@ module type S = sig
   exception Auth_error of exn
 
   val make : unit -> session
-  val connect : session -> IO.ic * IO.oc -> [ `Needsauth | `Preauth ] IO.t
+  val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t
   val disconnect : session -> unit
   val capability : session -> capability list IO.t
   val noop : session -> unit IO.t
   val logout : session -> unit IO.t
   val id : session -> (string * string) list -> (string * string) list IO.t
   val enable : session -> capability list -> capability list IO.t
-  val starttls : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  val starttls : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
   val authenticate : session -> Imap_auth.t -> unit IO.t
   val login : session -> string -> string -> unit IO.t
-  val compress : session -> (IO.ic * IO.oc -> (IO.ic * IO.oc) IO.t) -> unit IO.t
+  val compress : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
   val select : session -> string -> unit IO.t
   val select_condstore : session -> string -> uint64 IO.t
   val examine : session -> string -> unit IO.t
@@ -154,14 +154,14 @@ module Make (IO : IO.S) = struct
     []
 
   type connection_info = {
-    mutable chan : IO.ic * IO.oc;
+    mutable chan : IO.input * IO.output;
     mutable next_tag : int;
     mutable imap_response : string;
     mutable rsp_info : response_info;
     mutable sel_info : selection_info;
     mutable cap_info : capability_info;
     mutable compress_deflate : bool;
-    send_lock : IO.Mutex.mutex
+    send_lock : IO.mutex
   }
 
   type connection_state =
@@ -207,8 +207,7 @@ module Make (IO : IO.S) = struct
       Buffer.add_string b "\r\n";
       match is_literal s with
       | Some len ->
-        let buf = String.create len in
-        IO.read_into_exactly ic buf 0 len >>= fun () ->
+        IO.read_exactly ic len >>= fun buf ->
         Buffer.add_string b buf;
         loop ()
       | None ->
@@ -481,7 +480,7 @@ module Make (IO : IO.S) = struct
         sel_info = fresh_selection_info;
         cap_info = fresh_capability_info;
         compress_deflate = false;
-        send_lock = IO.Mutex.create ()
+        send_lock = IO.create_mutex ()
       }
       in
       (* if !debug then Imap_io_low.set_logger low (Some Imap_io_low.default_logger); *)
@@ -544,13 +543,13 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci cmd >|= fun () -> ci.cap_info
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let noop s =
     let ci = connection_info s in
     let cmd = S.raw "NOOP" in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let logout s =
     let ci = connection_info s in
@@ -562,7 +561,7 @@ module Make (IO : IO.S) = struct
           | BYE -> s.conn_state <- Disconnected; IO.return ()
           | exn -> IO.fail exn)
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let id s params =
     let ci = connection_info s in
@@ -574,7 +573,7 @@ module Make (IO : IO.S) = struct
       send_command ci cmd >>= fun () ->
       IO.return ci.rsp_info.rsp_id
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let enable s caps =
     let ci = connection_info s in
@@ -590,7 +589,7 @@ module Make (IO : IO.S) = struct
       send_command ci cmd >>= fun () ->
       IO.return ci.rsp_info.rsp_enabled
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let starttls s f =
     let ci = connection_info s in
@@ -613,7 +612,7 @@ module Make (IO : IO.S) = struct
           IO.return ()
         end
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let authenticate s auth =
     let ci = connection_info s in
@@ -631,13 +630,13 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command' ci cmd >>= get_auth_response step ci
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let login s user pass =
     let ci = connection_info s in
     let cmd = S.(raw "LOGIN" @> space @> string user @> space @> string pass) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let compress s f =
     let ci = connection_info s in
@@ -652,7 +651,7 @@ module Make (IO : IO.S) = struct
       ci.compress_deflate <- true;
       IO.return ()
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let select_aux s cmd ?use_condstore:(use_condstore=false) mbox =
     let ci = connection_info s in
@@ -664,7 +663,7 @@ module Make (IO : IO.S) = struct
       ci.sel_info <- fresh_selection_info;
       send_command ci cmd >|= fun () -> ci.sel_info.sel_highestmodseq
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let select_condstore s mbox =
     select_aux s "SELECT" ~use_condstore:true mbox
@@ -684,31 +683,31 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let cmd = S.(raw "CREATE" @> space @> mailbox mbox) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let delete s mbox =
     let ci = connection_info s in
     let cmd = S.(raw "DELETE" @> space @> mailbox mbox) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let rename s oldbox newbox =
     let ci = connection_info s in
     let cmd = S.(raw "RENAME" @> space @> mailbox oldbox @> space @> mailbox newbox) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let subscribe s mbox =
     let ci = connection_info s in
     let cmd = S.(raw "SUBSCRIBE" @> space @> mailbox mbox) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let unsubscribe s mbox =
     let ci = connection_info s in
     let cmd = S.(raw "UNSUBSCRIBE" @> space @> mailbox mbox) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let list_aux s cmd mbox list_mb =
     let ci = connection_info s in
@@ -716,7 +715,7 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_mailbox_list
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let list s mbox list_mb =
     list_aux s "LIST" mbox list_mb
@@ -732,7 +731,7 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_status
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let append_uidplus s mbox ?flags ?date data =
     let ci = connection_info s in
@@ -751,7 +750,7 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_appenduid
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let append s mbox ?flags ?date data =
     append_uidplus s mbox ?flags ?date data >>= fun _ ->
@@ -775,7 +774,7 @@ module Make (IO : IO.S) = struct
       idling := true;
       get_idle_response ci tag f stop
     in
-    IO.Mutex.with_lock ci.send_lock aux, stop
+    IO.with_lock ci.send_lock aux, stop
 
   let namespace s =
     let ci = connection_info s in
@@ -784,32 +783,32 @@ module Make (IO : IO.S) = struct
       send_command ci cmd >>= fun () ->
       IO.return ci.rsp_info.rsp_namespace
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let check s =
     let ci = connection_info s in
     let cmd = S.raw "CHECK" in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let close s =
     let ci = connection_info s in
     let cmd = S.raw "CLOSE" in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let expunge s =
     let ci = connection_info s in
     let cmd = S.raw "EXPUNGE" in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let uid_expunge s set =
     assert (not (Imap_set.mem_zero set));
     let ci = connection_info s in
     let cmd = S.(raw "UID EXPUNGE" @> space @> message_set set) in
     let aux () = send_command ci cmd in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let search_aux s cmd ?charset query =
     let ci = connection_info s in
@@ -821,7 +820,7 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_search_results
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let search s ?charset query =
     search_aux s "SEARCH" ?charset query
@@ -845,7 +844,7 @@ module Make (IO : IO.S) = struct
     let aux () =
       send_command ci ~handler cmd (* >|= fun () -> ci.rsp_info.rsp_fetch_list *)
     in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let fetch_changedsince s handler set modseq atts =
     fetch_aux "FETCH" handler s set (Some modseq) atts
@@ -875,7 +874,7 @@ module Make (IO : IO.S) = struct
          unchangedsince @> mode @> store_att att)
     in
     let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_modified in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let store s set mode flags =
     store_aux "STORE" s set None mode flags >>= fun _ ->
@@ -895,7 +894,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let cmd = S.(raw cmd @> space @> message_set set @> space @> mailbox destbox) in
     let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_copyuid in
-    IO.Mutex.with_lock ci.send_lock aux
+    IO.with_lock ci.send_lock aux
 
   let copy s set destbox =
     copy_aux "COPY" s set destbox >>= fun _ ->
@@ -956,5 +955,5 @@ module Make (IO : IO.S) = struct
 
   let is_busy s =
     let ci = connection_info s in
-    IO.Mutex.is_locked ci.send_lock
+    IO.is_locked ci.send_lock
 end
