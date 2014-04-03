@@ -25,6 +25,30 @@
 open Sexplib.Std
 open Sexplib.Conv
 open Imap_uint
+
+type address = {
+  addr_name : string;
+  addr_adl : string;
+  addr_mailbox : string;
+  addr_host : string
+} with sexp
+
+(** IMAP message envelope *)
+type envelope = {
+  env_date : string;
+  env_subject : string;
+  env_from : address list;
+  env_sender : address list;
+  env_reply_to : address list;
+  env_to : address list;
+  env_cc : address list;
+  env_bcc : address list;
+  env_in_reply_to : string;
+  env_message_id : string
+} with sexp
+
+val envelope : envelope Imap_parser.t
+(** Parses an IMAP envelope *)
   
 (** MIME media types *)
 type media_basic =
@@ -80,8 +104,8 @@ type text = {
 } with sexp
 
 type message = {
-  message_envelope : Imap_envelope.t;
-  message_body : t;
+  message_envelope : envelope;
+  message_body : body;
   message_lines : int
 }
 
@@ -97,12 +121,12 @@ and 'a single_part = {
 
 and multi_part = {
   bd_subtype : string;
-  bd_parts : t list;
+  bd_parts : body list;
   bd_mexts : mexts
 }
 
 (** The type of MIME body parsed by IMAP server *)
-and t =
+and body =
   | Basic of basic single_part
   | Text of text single_part
   | Message of message single_part
@@ -110,4 +134,4 @@ and t =
   | Multi_part of multi_part with sexp
   (** Multi part *)
 
-val body : t Imap_parser.t
+val body : body Imap_parser.t

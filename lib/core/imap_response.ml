@@ -580,13 +580,13 @@ msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
                     ; MUST NOT change for a message
 *)
 let msg_att_static : [> msg_att_static] Imap_parser.t =
-  let envelope = space >> Imap_envelope.envelope >|= fun e -> `ENVELOPE e in
+  let envelope = space >> Imap_mime.envelope >|= fun e -> `ENVELOPE e in
   let internaldate = space >> date_time >|= fun dt -> `INTERNALDATE dt in
   let rfc822_header = space >> nstring' >|= fun s -> `RFC822_HEADER s in
   let rfc822_text = space >> nstring' >|= fun s -> `RFC822_TEXT s in
   let rfc822_size = space >> number' >|= fun n -> `RFC822_SIZE n in
   let rfc822 = space >> nstring' >|= fun s -> `RFC822 s in
-  let bodystructure = space >> Imap_body.body >|= fun b -> `BODYSTRUCTURE b in
+  let bodystructure = space >> Imap_mime.body >|= fun b -> `BODYSTRUCTURE b in
   let body =
     let body_ b =
       `BODY b
@@ -600,7 +600,7 @@ let msg_att_static : [> msg_att_static] Imap_parser.t =
       `BODYSECTION (sec, s)
     in
     choices [
-      space >> Imap_body.body >|= body_;
+      space >> Imap_mime.body >|= body_;
       section >>= section_
     ]
   in

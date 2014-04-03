@@ -30,7 +30,7 @@ Flag async
 Library "imap"
   Path: lib/core
   FindlibName: imap
-  Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
+  Modules: Imap_mime, Imap_types, Imap_set, Imap_utils,
            Imap, Imap_uint, Imap_response, Imap_auth, Imap_io
   InternalModules: Imap_sender, Imap_parser, Imap_uint_raw
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax, zip

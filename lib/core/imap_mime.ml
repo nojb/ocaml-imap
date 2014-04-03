@@ -24,6 +24,26 @@ open Sexplib.Std
 open Sexplib.Conv
 open Imap_uint
 
+type address = {
+  addr_name : string;
+  addr_adl : string;
+  addr_mailbox : string;
+  addr_host : string
+} with sexp
+
+type envelope = {
+  env_date : string;
+  env_subject : string;
+  env_from : address list;
+  env_sender : address list;
+  env_reply_to : address list;
+  env_to : address list;
+  env_cc : address list;
+  env_bcc : address list;
+  env_in_reply_to : string;
+  env_message_id : string
+} with sexp
+
 type media_basic =
   [ `APPLICATION
   | `AUDIO
@@ -70,8 +90,8 @@ type text = {
 } with sexp
 
 type message = {
-  message_envelope : Imap_envelope.t;
-  message_body : t;
+  message_envelope : envelope;
+  message_body : body;
   message_lines : int
 }
 
@@ -87,17 +107,46 @@ and 'a single_part = {
 
 and multi_part = {
   bd_subtype : string;
-  bd_parts : t list;
+  bd_parts : body list;
   bd_mexts : mexts
 }
 
-and t =
+and body =
   | Basic of basic single_part
   | Text of text single_part
   | Message of message single_part
   | Multi_part of multi_part with sexp
 
 open Imap_parser
+
+let address =
+  delimited lpar
+    (nstring' >>= fun addr_name -> space >>
+     nstring' >>= fun addr_adl -> space >>
+     nstring' >>= fun addr_mailbox -> space >>
+     nstring' >|= fun addr_host ->
+     { addr_name; addr_adl; addr_mailbox; addr_host })
+    rpar
+
+let address_list =
+  delimited lpar (separated_nonempty_list space address) rpar <|> (nil >| [])
+
+let envelope =
+  delimited lpar
+    (nstring' >>= fun env_date -> space >>
+     nstring' >>= fun env_subject -> space >>
+     address_list >>= fun env_from -> space >>
+     address_list >>= fun env_sender -> space >>
+     address_list >>= fun env_reply_to -> space >>
+     address_list >>= fun env_to -> space >>
+     address_list >>= fun env_cc -> space >>
+     address_list >>= fun env_bcc -> space >>
+     nstring' >>= fun env_in_reply_to -> space >>
+     nstring' >|= fun env_message_id ->
+     { env_date; env_subject; env_from; env_sender;
+       env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
+       env_message_id })
+    rpar
 
 let media_subtype =
   imap_string
@@ -305,7 +354,7 @@ body-type-msg   = media-message SP body-fields SP envelope
 and body_type_msg () =
   media_message >> space >> body_fields
   >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
-  space >> Imap_envelope.envelope >>= fun message_envelope ->
+  space >> envelope >>= fun message_envelope ->
   space >> (body ()) >>= fun message_body ->
   number' >>= fun message_lines ->
   body_ext_1part >|= fun bd_ext ->

@@ -245,14 +245,14 @@ type msg_att_section =
   | `PARTIAL of section * int ] with sexp
 
 type msg_att_static =
-  [ `ENVELOPE of Imap_envelope.t
+  [ `ENVELOPE of Imap_mime.envelope
   | `INTERNALDATE of date_time
   | `RFC822 of string
   | `RFC822_HEADER of string
   | `RFC822_TEXT of string
   | `RFC822_SIZE of int
-  | `BODY of Imap_body.t
-  | `BODYSTRUCTURE of Imap_body.t
+  | `BODY of Imap_mime.body
+  | `BODYSTRUCTURE of Imap_mime.body
   | `BODYSECTION of msg_att_section * string
   | `UID of Uid.t
   | `X_GM_MSGID of Gmsgid.t
