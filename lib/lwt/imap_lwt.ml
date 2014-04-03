@@ -55,7 +55,7 @@ module Lwtio = struct
 
   let read_line ic =
     Lwt_io.read_line ic >>= fun s ->
-    if !Imap.debug then Imap_utils.log `Server s;
+    if !Imap.debug then Imap_utils.log `Server (s ^ "\r\n");
     Lwt.return s
 
   let read_exactly ic len =
