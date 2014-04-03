@@ -31,17 +31,10 @@ module type S = sig
 end
 
 module Make (IO : S) : sig
-  type logger = [ `Read | `Write ] -> string Lazy.t -> unit
-
-  val null_logger : logger
-
   type input
     
   type 'a output
 
-  val set_logger_in : input -> logger -> unit
-  val set_logger_out : 'a output -> logger -> unit
-  
   val null : unit output
 
   val close_in : input -> unit IO.t
@@ -79,11 +72,9 @@ module Make (IO : S) : sig
   val unsafe_read : input -> string -> int -> int -> int IO.t
 
   val create_out : ?underlying:'a output ->
-    ?logger:logger -> write:(string -> int -> int -> int IO.t)->
+    write:(string -> int -> int -> int IO.t)->
     close:(unit -> 'a IO.t) -> flush:(unit -> unit IO.t) -> 'a output
                                        
-  val create_in : ?underlying:input -> ?logger:logger ->
+  val create_in : ?underlying:input ->
     read:(string -> int -> int -> int IO.t) -> close:(unit -> unit IO.t) -> input
-
-  val default_logger : logger
 end

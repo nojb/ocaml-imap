@@ -48,7 +48,6 @@ let ssl_input sock =
   let close () = Ssl.shutdown sock in
   Unix_IO.create_in
     ?underlying:None
-    ?logger:None
     ~read:unsafe_read
     ~close
 
@@ -67,7 +66,6 @@ let ssl_output sock =
   let flush () = Ssl.flush sock in
   Unix_IO.create_out
     ?underlying:None
-    ?logger:None
     ~write:unsafe_write
     ~close
     ~flush
@@ -124,8 +122,6 @@ include Imap.Make (struct
       (* let ic = Unix_IO.buffered_input (ssl_input sock) in *)
       let ic = ssl_input sock in
       let oc = ssl_output sock in
-      Unix_IO.set_logger_in ic Unix_IO.default_logger;
-      Unix_IO.set_logger_out oc Unix_IO.default_logger;
       (* let oc = Unix_IO.buffered_output (ssl_output sock) in *)
       ic, oc
   end)

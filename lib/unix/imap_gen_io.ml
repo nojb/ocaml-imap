@@ -32,15 +32,10 @@ module Make (IO : S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 
-  type logger = [ `Read | `Write ] -> string Lazy.t -> unit
-
-  let null_logger _ _ = ()
-
   type input = {
     in_read : string -> int -> int -> int IO.t;
     in_close : unit -> unit IO.t;
     in_underlying : input option;
-    mutable in_logger : logger
   }
   
   type 'a output = {
@@ -48,12 +43,7 @@ module Make (IO : S) = struct
     out_close : unit -> 'a IO.t;
     out_flush : unit -> unit IO.t;
     out_underlying : 'a output option;
-    mutable out_logger : logger
   }
-
-  let set_logger_in inp log = inp.in_logger <- log
-
-  let set_logger_out out log = out.out_logger <- log
 
   let underlying_in inp =
     match inp.in_underlying with
@@ -66,20 +56,10 @@ module Make (IO : S) = struct
     | Some out -> out
 
   let unsafe_read ic buf off len =
-    ic.in_read buf off len >>= fun n ->
-    if n > 0 then begin
-      ic.in_logger `Read (lazy (String.sub buf off n));
-      IO.return n
-    end else
-      IO.return 0
+    ic.in_read buf off len
 
   let unsafe_write oc buf off len =
-    oc.out_write buf off len >>= fun n ->
-    if n > 0 then begin
-      oc.out_logger `Write (lazy (String.sub buf off n));
-      IO.return n
-    end else
-      IO.return 0
+    oc.out_write buf off len
 
   let flush out =
     out.out_flush ()
@@ -90,16 +70,15 @@ module Make (IO : S) = struct
   let close_out out =
     out.out_close ()
 
-  let create_out ?underlying ?(logger=null_logger) ~write ~close ~flush =
-    {out_write=write; out_close=close; out_logger=logger; out_flush=flush; out_underlying=underlying}
+  let create_out ?underlying ~write ~close ~flush =
+    {out_write=write; out_close=close; out_flush=flush; out_underlying=underlying}
 
-  let create_in ?underlying ?(logger=null_logger) ~read ~close =
-    {in_read=read; in_close=close; in_logger=logger; in_underlying=underlying}
+  let create_in ?underlying ~read ~close =
+    {in_read=read; in_close=close; in_underlying=underlying}
 
   let null =
     create_out
       ?underlying:None
-      ?logger:None
       ~write:(fun _ _ len -> IO.return len)
       ~close:(fun () -> IO.return ())
       ~flush:(fun () -> IO.return ())
@@ -238,7 +217,7 @@ module Make (IO : S) = struct
       end
     in
     let close () = close_in ic in
-    create_in ~underlying:ic ?logger:None ~read:unsafe_read ~close
+    create_in ~underlying:ic ~read:unsafe_read ~close
 
   let buffered_output ?(buffer_size=default_buffer_size) oc =
     let data = String.create buffer_size in
@@ -288,7 +267,6 @@ module Make (IO : S) = struct
     in
     create_out
       ~underlying:oc
-      ?logger:None
       ~write:unsafe_write
       ~close
       ~flush
@@ -329,11 +307,8 @@ module Make (IO : S) = struct
       (* XXX should flush the buffer *)
       IO.return ()
     in
-    let log = ic.in_logger in
-    ic.in_logger <- null_logger;
     create_in
       ?underlying:None
-      ~logger:log
       ~read:unsafe_inflate
       ~close:close
 
@@ -360,11 +335,8 @@ module Make (IO : S) = struct
       close_out oc
     in (* XXX close the zstream ? *)
     let flush () = flush oc in
-    let log = oc.out_logger in
-    oc.out_logger <- null_logger;
     create_out
       ?underlying:None
-      ~logger:log
       ~write:unsafe_deflate
       ~close
       ~flush
@@ -380,7 +352,6 @@ module Make (IO : S) = struct
     let close () = IO.return () in
     create_in
       ?underlying:None
-      ?logger:None
       ~read:unsafe_read
       ~close
 
@@ -396,19 +367,7 @@ module Make (IO : S) = struct
     let flush () = IO.return () in
     create_out
       ?underlying:None
-      ?logger:None
       ~write:unsafe_write
       ~close
       ~flush
-
-  (* The default logger echoes both input and output to [stderr].  In order to
-     make them look a little nicer, new lines are preceded by "S: " or "C: "
-     depending on the case.  Here a new line means either "\r\n" or "\n". *)
-  let default_logger =
-    fun direction str ->
-      match direction with
-      | `Write ->
-        Imap_utils.log `Client (Lazy.force str)
-      | `Read ->
-        Imap_utils.log `Server (Lazy.force str)
 end
