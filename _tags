@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 93b216d39e7455285a9e9063ec73a6ac)
+# DO NOT EDIT (digest: 795dfab1a22d5c6af845c162e72f6ee0)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -21,7 +21,6 @@
 <lib/core/*.ml{,i}>: pkg_str
 <lib/core/*.ml{,i}>: pkg_ucorelib
 <lib/core/*.ml{,i}>: pkg_uint
-<lib/core/*.ml{,i}>: pkg_zip
 # Library imap-unix
 "lib/unix/imap-unix.cmxs": use_imap-unix
 <lib/unix/*.ml{,i}>: pkg_cryptokit
@@ -45,7 +44,6 @@
 <lib/lwt/*.ml{,i}>: pkg_str
 <lib/lwt/*.ml{,i}>: pkg_ucorelib
 <lib/lwt/*.ml{,i}>: pkg_uint
-<lib/lwt/*.ml{,i}>: pkg_zip
 <lib/lwt/*.ml{,i}>: use_imap
 # Library imap-gsasl
 "lib/gsasl/imap-gsasl.cmxs": use_imap-gsasl
@@ -57,7 +55,6 @@
 <lib/gsasl/*.ml{,i}>: pkg_str
 <lib/gsasl/*.ml{,i}>: pkg_ucorelib
 <lib/gsasl/*.ml{,i}>: pkg_uint
-<lib/gsasl/*.ml{,i}>: pkg_zip
 <lib/gsasl/*.ml{,i}>: use_imap
 # Library imap-async
 "lib/async/imap-async.cmxs": use_imap-async
@@ -70,7 +67,6 @@
 <lib/async/*.ml{,i}>: pkg_threads
 <lib/async/*.ml{,i}>: pkg_ucorelib
 <lib/async/*.ml{,i}>: pkg_uint
-<lib/async/*.ml{,i}>: pkg_zip
 <lib/async/*.ml{,i}>: use_imap
 # Executable test_parser
 <lib_test/test_parser.{native,byte}>: pkg_cryptokit
@@ -80,7 +76,6 @@
 <lib_test/test_parser.{native,byte}>: pkg_str
 <lib_test/test_parser.{native,byte}>: pkg_ucorelib
 <lib_test/test_parser.{native,byte}>: pkg_uint
-<lib_test/test_parser.{native,byte}>: pkg_zip
 <lib_test/test_parser.{native,byte}>: use_imap
 <lib_test/test_parser.{native,byte}>: custom
 # Executable test_set
@@ -91,7 +86,6 @@
 <lib_test/test_set.{native,byte}>: pkg_str
 <lib_test/test_set.{native,byte}>: pkg_ucorelib
 <lib_test/test_set.{native,byte}>: pkg_uint
-<lib_test/test_set.{native,byte}>: pkg_zip
 <lib_test/test_set.{native,byte}>: use_imap
 <lib_test/test_set.{native,byte}>: custom
 # Executable test_mutf7
@@ -102,7 +96,6 @@
 <lib_test/test_mutf7.{native,byte}>: pkg_str
 <lib_test/test_mutf7.{native,byte}>: pkg_ucorelib
 <lib_test/test_mutf7.{native,byte}>: pkg_uint
-<lib_test/test_mutf7.{native,byte}>: pkg_zip
 <lib_test/test_mutf7.{native,byte}>: use_imap
 <lib_test/test_mutf7.{native,byte}>: custom
 # Executable test_live
@@ -113,7 +106,6 @@
 <lib_test/test_live.{native,byte}>: pkg_str
 <lib_test/test_live.{native,byte}>: pkg_ucorelib
 <lib_test/test_live.{native,byte}>: pkg_uint
-<lib_test/test_live.{native,byte}>: pkg_zip
 <lib_test/test_live.{native,byte}>: use_imap
 <lib_test/test_live.{native,byte}>: custom
 # Executable test_io
@@ -124,7 +116,6 @@
 <lib_test/test_io.{native,byte}>: pkg_str
 <lib_test/test_io.{native,byte}>: pkg_ucorelib
 <lib_test/test_io.{native,byte}>: pkg_uint
-<lib_test/test_io.{native,byte}>: pkg_zip
 <lib_test/test_io.{native,byte}>: use_imap
 <lib_test/test_io.{native,byte}>: custom
 # Executable test_condstore
@@ -135,7 +126,6 @@
 <lib_test/test_condstore.{native,byte}>: pkg_str
 <lib_test/test_condstore.{native,byte}>: pkg_ucorelib
 <lib_test/test_condstore.{native,byte}>: pkg_uint
-<lib_test/test_condstore.{native,byte}>: pkg_zip
 <lib_test/test_condstore.{native,byte}>: use_imap
 <lib_test/test_condstore.{native,byte}>: custom
 # Executable test_id
@@ -146,7 +136,6 @@
 <lib_test/test_id.{native,byte}>: pkg_str
 <lib_test/test_id.{native,byte}>: pkg_ucorelib
 <lib_test/test_id.{native,byte}>: pkg_uint
-<lib_test/test_id.{native,byte}>: pkg_zip
 <lib_test/test_id.{native,byte}>: use_imap
 <lib_test/test_id.{native,byte}>: custom
 # Executable test_namespace
@@ -157,7 +146,6 @@
 <lib_test/test_namespace.{native,byte}>: pkg_str
 <lib_test/test_namespace.{native,byte}>: pkg_ucorelib
 <lib_test/test_namespace.{native,byte}>: pkg_uint
-<lib_test/test_namespace.{native,byte}>: pkg_zip
 <lib_test/test_namespace.{native,byte}>: use_imap
 <lib_test/*.ml{,i}>: pkg_cryptokit
 <lib_test/*.ml{,i}>: pkg_oUnit
@@ -166,7 +154,6 @@
 <lib_test/*.ml{,i}>: pkg_str
 <lib_test/*.ml{,i}>: pkg_ucorelib
 <lib_test/*.ml{,i}>: pkg_uint
-<lib_test/*.ml{,i}>: pkg_zip
 <lib_test/*.ml{,i}>: use_imap
 <lib_test/test_namespace.{native,byte}>: custom
 # OASIS_STOP

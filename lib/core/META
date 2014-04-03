@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: dad3969bc7fb053be00db577da693fad)
+# DO NOT EDIT (digest: 16f2ce415530b0226b4117650b787d31)
 version = "0.9.0"
 description = "IMAP client library for Lwt"
-requires = "uint str cryptokit ucorelib sexplib sexplib.syntax zip"
+requires = "uint str cryptokit ucorelib sexplib sexplib.syntax"
 archive(byte) = "imap.cma"
 archive(byte, plugin) = "imap.cma"
 archive(native) = "imap.cmxa"
@@ -11,7 +11,7 @@ exists_if = "imap.cma"
 package "unix" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
- requires = "imap unix ssl"
+ requires = "imap unix ssl zip"
  archive(byte) = "imap-unix.cma"
  archive(byte, plugin) = "imap-unix.cma"
  archive(native) = "imap-unix.cmxa"

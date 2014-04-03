@@ -33,7 +33,7 @@ Library "imap"
   Modules: Imap_mime, Imap_types, Imap_set, Imap_utils,
            Imap, Imap_uint, Imap_response, Imap_auth, Imap_io
   InternalModules: Imap_sender, Imap_parser, Imap_uint_raw
-  BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax, zip
+  BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax
 
 Library "imap-unix"
   Build$: flag(unix)
@@ -43,7 +43,7 @@ Library "imap-unix"
   FindlibParent: imap
   Modules: Imap_unix
   InternalModules: Imap_gen_io
-  BuildDepends: imap, unix, ssl
+  BuildDepends: imap, unix, ssl, zip
 
 Library "imap-lwt"
   Build$: flag(lwt)
