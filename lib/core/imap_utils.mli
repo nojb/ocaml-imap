@@ -41,3 +41,5 @@ val option_map : ('a -> 'b option) -> 'a list -> 'b list
 
 (** {2 String} *)
 val compare_ci : string -> string -> int
+
+val log : [ `Client | `Server ] -> string -> unit

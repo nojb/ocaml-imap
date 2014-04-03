@@ -401,52 +401,14 @@ module Make (IO : S) = struct
       ~close
       ~flush
 
-  type logger_state =
-    | Last_was_cr
-    | Last_was_nl
-    | Last_was_other
-
   (* The default logger echoes both input and output to [stderr].  In order to
      make them look a little nicer, new lines are preceded by "S: " or "C: "
      depending on the case.  Here a new line means either "\r\n" or "\n". *)
   let default_logger =
-    let rec aux r header str =
-      let len = String.length str in
-      let rec loop st off =
-        if off >= len then
-          st
-        else
-          let header = match st with
-            | Last_was_nl -> header
-            | Last_was_cr -> "\r"
-            | Last_was_other -> ""
-          in
-          try
-            let idx = String.index_from str off '\n' in
-            if idx = off && st = Last_was_cr then begin
-              Printf.eprintf "\n";
-              loop Last_was_nl (off + 1)
-            end else
-              let hascr = idx > 0 && str.[idx-1] = '\r' in
-              let str' = String.sub str off (if hascr then idx-off-1 else idx-off) in
-              Printf.eprintf "%s%s\n" header str';
-              loop Last_was_nl (idx+1)
-          with
-          | Not_found ->
-            let hascr = len > 0 && str.[len-1] = '\r' in
-            let str' = String.sub str off (if hascr then len-off-1 else len-off) in
-            Printf.eprintf "%s%s" header str';
-            if hascr then Last_was_cr else Last_was_other
-      in
-      r := loop !r 0;
-      Printf.eprintf "%!"
-    in
-    let read_st = ref Last_was_nl in
-    let write_st = ref Last_was_nl in
     fun direction str ->
       match direction with
       | `Write ->
-        aux write_st "C: " (Lazy.force str)
+        Imap_utils.log `Client (Lazy.force str)
       | `Read ->
-        aux read_st "S: " (Lazy.force str)
+        Imap_utils.log `Server (Lazy.force str)
 end
