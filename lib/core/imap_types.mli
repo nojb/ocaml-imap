@@ -365,28 +365,6 @@ type namespace = {
 
 (** {2 Untagged information sent by the server} *)
 
-type response_info = {
-  rsp_alert : string;
-  rsp_parse : string;
-  rsp_badcharset : string list;
-  rsp_trycreate : bool;
-  rsp_mailbox_list : mailbox_list list;
-  (* rsp_mailbox_lsub : mailbox_list list; *)
-  rsp_search_results : Uint32.t list;
-  rsp_search_results_modseq : Modseq.t;
-  rsp_status : mailbox_data_status;
-  rsp_expunged : Uint32.t list;
-  rsp_fetch_list : (Uint32.t * msg_att list) list;
-  rsp_appenduid : Uid.t * Uid.t;
-  rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
-  rsp_compressionactive : bool;
-  rsp_id : (string * string) list;
-  rsp_modified : Uint32_set.t;
-  rsp_namespace : namespace list * namespace list * namespace list;
-  rsp_enabled : capability list;
-  rsp_other : string * string
-}
-
 type selection_info = {
   sel_perm_flags : flag_perm list;
   sel_perm : [ `READ_ONLY | `READ_WRITE ];
@@ -399,6 +377,3 @@ type selection_info = {
   sel_uidnotsticky : bool;
   sel_highestmodseq : Modseq.t
 }
-
-type capability_info =
-  capability list

@@ -107,14 +107,36 @@ module type S = sig
   val has_namespace : session -> bool
   val has_enable : session -> bool
   val last_response : session -> string
-  val response_info : session -> response_info
+  (* val response_info : session -> response_info *)
   val selection_info : session -> selection_info
-  val capability_info : session -> capability_info
+  val capabilities : session -> capability list
   val is_busy : session -> bool
 end
 
 module Make (IO : IO.S) = struct
   module IO = IO
+
+  type response_info = {
+    rsp_alert : string;
+    rsp_parse : string;
+    rsp_badcharset : string list;
+    rsp_trycreate : bool;
+    rsp_mailbox_list : mailbox_list list;
+    (* rsp_mailbox_lsub : mailbox_list list; *)
+    rsp_search_results : Uint32.t list;
+    rsp_search_results_modseq : Modseq.t;
+    rsp_status : mailbox_data_status;
+    rsp_expunged : Uint32.t list;
+    rsp_fetch_list : (Uint32.t * msg_att list) list;
+    rsp_appenduid : Uid.t * Uid.t;
+    rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
+    rsp_compressionactive : bool;
+    rsp_id : (string * string) list;
+    rsp_modified : Uint32_set.t;
+    rsp_namespace : namespace list * namespace list * namespace list;
+    rsp_enabled : capability list;
+    rsp_other : string * string
+  }
     
   let fresh_response_info = {
     rsp_alert = "";
@@ -160,7 +182,7 @@ module Make (IO : IO.S) = struct
     mutable imap_response : string;
     mutable rsp_info : response_info;
     mutable sel_info : selection_info;
-    mutable cap_info : capability_info;
+    mutable cap_info : capability list;
     mutable compress_deflate : bool;
     send_lock : IO.mutex
   }
@@ -950,7 +972,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     ci.sel_info
 
-  let capability_info s =
+  let capabilities s =
     let ci = connection_info s in
     ci.cap_info
 

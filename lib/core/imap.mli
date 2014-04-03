@@ -351,13 +351,10 @@ module type S = sig
   (** The descriptive text of the last tagged response (or the last BYE
       (untagged) response from the server. *)
 
-  val response_info : session -> response_info
-  (** Returns information about the last server response. *)
-
   val selection_info : session -> selection_info
   (** Returns information about the last selected mailbox. *)
 
-  val capability_info : session -> capability_info
+  val capabilities : session -> capability list
   (** Returns the last known list of server capabilities.  It does not actually
       contact the server. *)
 
