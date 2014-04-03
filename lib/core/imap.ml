@@ -29,7 +29,7 @@ let debug =
   with Not_found -> ref false
 
 module type S = sig
-  module IO : IO.S
+  module IO : Imap_io.S
 
   type session
 
@@ -113,7 +113,7 @@ module type S = sig
   val is_busy : session -> bool
 end
 
-module Make (IO : IO.S) = struct
+module Make (IO : Imap_io.S) = struct
   module IO = IO
 
   type response_info = {

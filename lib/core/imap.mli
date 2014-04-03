@@ -28,7 +28,7 @@ open Imap_uint
 val debug : bool ref
 
 module type S = sig
-  module IO : IO.S
+  module IO : Imap_io.S
                 
   (** Type of IMAP sessions. *)
   type session
@@ -362,4 +362,4 @@ module type S = sig
   (** Whether some command is in progress. *)
 end
 
-module Make (IO : IO.S) : S with module IO = IO
+module Make (IO : Imap_io.S) : S with module IO = IO

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: e8c0b0d4d8e31bfadaf6a971eba704c3)
+# DO NOT EDIT (digest: 704e76ed9a7320986f39c80af1a42c30)
 Imap_body
 Imap_envelope
 Imap_types
@@ -7,11 +7,10 @@ Imap_set
 Imap_utils
 Imap
 Imap_uint
-IO
-Imap_parser
-Imap_sender
 Imap_response
 Imap_auth
 Imap_io
+Imap_sender
+Imap_parser
 Imap_uint_raw
 # OASIS_STOP

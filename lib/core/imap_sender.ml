@@ -22,7 +22,7 @@
 
 open Imap_uint
 
-module Make (IO : IO.S) = struct
+module Make (IO : Imap_io.S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 

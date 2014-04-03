@@ -32,7 +32,7 @@ module Sync = struct
   let with_lock () f = f ()
 end
 
-module Unix_IO = Imap_io.Make (Sync)
+module Unix_IO = Imap_gen_io.Make (Sync)
 
 include Imap.Make (struct
     include Sync
