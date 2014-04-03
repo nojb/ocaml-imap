@@ -103,19 +103,22 @@ let log =
         try
           let idx = String.index_from str off '\n' in
           if idx = off && (match st with `CR -> true | _ -> false) then begin
-            Printf.eprintf "\n";
+            prerr_newline ();
             loop `NL (off + 1)
           end else begin
             let hascr = idx > 0 && str.[idx-1] = '\r' in
             let str' = String.sub str off (if hascr then idx-off-1 else idx-off) in
-            Printf.eprintf "%s%s\n" header str';
+            prerr_string header;
+            prerr_string str';
+            prerr_newline ();
             loop `NL (idx + 1)
           end
         with
         | Not_found ->
           let hascr = len > 0 && str.[len-1] = '\r' in
           let str' = String.sub str off (if hascr then len-off-1 else len-off) in
-          Printf.eprintf "%s%s" header str';
+          prerr_string header;
+          prerr_string str';
           if hascr then `CR else `Other
     in
     match origin with
