@@ -23,74 +23,26 @@
 open Core.Std
 open Async.Std
 
-module Ivar = Async_kernel.Raw_ivar
+(* module Ivar = Async_kernel.Raw_ivar *)
                 
 module Async_io = struct
   type 'a t = ('a, exn) Result.t Deferred.t
-  type 'a t_repr = ('a, exn) Result.t Ivar.t
-  external thread : 'a t_repr -> 'a t = "%identity"
-  external thread_repr : 'a t -> 'a t_repr = "%identity"
     
   let fail exn =
-    let ivar = Ivar.create_full (Error exn) in
-    thread ivar
+    Deferred.return (Error exn)
 
   let bind t' f =
-    let t = thread_repr t' in
-    match Ivar.peek t with
-    | Some (Ok e)      -> f e
-    | Some (Error exn) -> fail exn
-    | None -> (* Sleep *)
-      let bind_result = Ivar.create () in
-      Ivar.upon t (
-        function
-        | Ok e ->
-          let res = thread_repr (f e) in
-          (try Ivar.connect ~bind_result ~bind_rhs:res (* TODO: monitor *)
-           with e -> Exn.reraise e "Lwt.bind")
-        | Error e ->
-          (* [e] could be [Canceled] and [t] could have been canceled through [ret] *)
-          if Ivar.is_empty bind_result then
-            Ivar.fill bind_result (Error e)
-      ) ;
-      thread bind_result
+    t' >>= function
+    | Error _ as e -> Deferred.return e
+    | Ok x -> f x
   
   let return x =
-    let ivar = Ivar.create_full (Ok x) in
-    thread ivar
+    Deferred.return (Ok x)
 
   let catch t_susp handler =
-    let t = thread_repr (try t_susp () with e -> fail e) in
-    match Ivar.peek t with
-    | Some (Ok _)    -> thread t
-    | Some (Error e) -> handler e
-    | None ->
-      let ivar = Ivar.create () in
-      Ivar.upon t (fun result ->
-          match Ivar.peek ivar with
-          | None ->
-            begin match result with
-              | Ok _ as res -> Ivar.fill ivar res
-              | Error exn ->
-                let res =
-                  thread_repr (
-                    try handler exn
-                    with exn -> fail exn
-                  )
-                in
-                try Ivar.connect ~bind_result:ivar ~bind_rhs:res
-                with e -> Exn.reraise e "Lwt.catch"
-            end
-          | _ ->
-            (* At this point [ivar] is already filled, and it can only be filled by
-               [Error Canceled].
-               To match Lwt's semantic we would like to give [Canceled] to [handler]
-               and then replace the content of the ivar.
-               But we cannot replace the content of a filled ivar, also the other
-               handlers might already have been run so there is no point. *)
-            ()
-        ) ;
-      thread ivar
+    t_susp () >>= function
+    | Error e -> handler e
+    | Ok _ as r -> Deferred.return r
 
   (* let (>>=) = bind *)
 
