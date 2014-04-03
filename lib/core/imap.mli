@@ -109,9 +109,11 @@ module type S = sig
 
       This command requires the ENABLE extension. *)
 
-  val starttls : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
-  (** Start a TLS session with a given SSL context.  Do not forget to call
-      [Ssl.init ()] before using this! *)
+  val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
+    session -> unit IO.t
+  (** Start a TLS session using the given protocol.  If [?ca_file] is given,
+      then it must point to a certificate in PEM format and will be used to
+      validate the server identity. *)
 
   val authenticate : session -> Imap_auth.t -> unit IO.t
   (** [authenticate s auth] authenticates the client using the SASL mechanism
@@ -123,7 +125,7 @@ module type S = sig
 
   (** {2 Commands valid in {b Authenticated} or {b Selected} state} *)
 
-  val compress : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
+  val compress : session -> unit IO.t
   (** Enables compression.
 
       This command requires the COMPRESS=DEFLATE extension. *)

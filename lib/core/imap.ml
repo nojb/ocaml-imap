@@ -49,10 +49,11 @@ module type S = sig
   val logout : session -> unit IO.t
   val id : session -> (string * string) list -> (string * string) list IO.t
   val enable : session -> capability list -> capability list IO.t
-  val starttls : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
+  val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
+    session -> unit IO.t
   val authenticate : session -> Imap_auth.t -> unit IO.t
   val login : session -> string -> string -> unit IO.t
-  val compress : session -> (IO.input * IO.output -> (IO.input * IO.output) IO.t) -> unit IO.t
+  val compress : session -> unit IO.t
   val select : session -> string -> unit IO.t
   val select_condstore : session -> string -> uint64 IO.t
   val examine : session -> string -> unit IO.t
@@ -591,7 +592,7 @@ module Make (IO : IO.S) = struct
     in
     IO.with_lock ci.send_lock aux
 
-  let starttls s f =
+  let starttls ?(version = `TLSv1) ?ca_file s =
     let ci = connection_info s in
     let cmd = S.raw "STARTTLS" in
     let aux () =
@@ -599,7 +600,7 @@ module Make (IO : IO.S) = struct
         IO.fail (Failure "starttls: compression active")
       else
         send_command ci cmd >>= fun () ->
-        f ci.chan >>= begin fun chan ->
+        IO.starttls version ?ca_file ci.chan >>= begin fun chan ->
           ci.chan <- chan;
         (* let fd = match Imap_io_low.get_fd (Imap_io.get_low ci.chan) with *)
         (*   | None -> failwith "starttls: no file descriptor" *)
@@ -638,12 +639,12 @@ module Make (IO : IO.S) = struct
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
-  let compress s f =
+  let compress s =
     let ci = connection_info s in
     let cmd = S.raw "COMPRESS DEFLATE" in
     let aux () =
       send_command ci cmd >>= fun () ->
-      f ci.chan >>= fun chan ->
+      let chan = IO.compress ci.chan in
       ci.chan <- chan;      
       (* let low = Imap_io.get_low ci.chan in *)
       (* let low = Imap_io_low.compress low in *)

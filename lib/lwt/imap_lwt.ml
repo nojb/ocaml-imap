@@ -41,6 +41,8 @@ module Lwtio = struct
     Lwt.return buf
   let write = Lwt_io.write
   let flush = Lwt_io.flush
+  let compress _ = assert false
+  let starttls _ = assert false
 end
 
 include Imap.Make (Lwtio)

@@ -137,6 +137,9 @@ module Async_io = struct
 
   let flush oc = Writer.flushed oc >>= fun () -> return ()
   let close _ = return ()
+
+  let compress _ = assert false
+  let starttls _ = assert false
 end
 
 include Imap.Make (Async_io)

@@ -45,6 +45,13 @@ include Imap.Make (struct
       buf
     let flush = Unix_IO.flush
     let write = Unix_IO.write
+    let compress (ic, oc) =
+        (* let ic = Unix_IO.underlying_in ic in *)
+    (* let oc = Unix_IO.underlying_out oc in *)
+      let ic = (* Unix_IO.buffered_input *) (Unix_IO.inflate_input ic) in
+      let oc = (* Unix_IO.buffered_output *) (Unix_IO.deflate_output oc) in
+      (ic, oc)
+    let starttls _ = assert false
   end)
 
 let ssl_input sock =
@@ -117,15 +124,6 @@ let connect_simple s ?(port=993) host =
   (* let oc = Unix_IO.buffered_output (ssl_output sock) in *)
   connect s (ic, oc)
 
-let compress s =
-  let aux (ic, oc) =
-    (* let ic = Unix_IO.underlying_in ic in *)
-    (* let oc = Unix_IO.underlying_out oc in *)
-    let ic = (* Unix_IO.buffered_input *) (Unix_IO.inflate_input ic) in
-    let oc = (* Unix_IO.buffered_output *) (Unix_IO.deflate_output oc) in
-    (ic, oc)
-  in
-  compress s aux
 
 (* let starttls ?ssl_context s = *)
 (*   let aux (ic, oc) = *)
