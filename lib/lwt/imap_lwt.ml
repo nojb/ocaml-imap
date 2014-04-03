@@ -96,7 +96,7 @@ module Lwtio = struct
     ctx
 
   let connect_ssl version ?ca_file port host =
-    let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+    let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     Lwt_unix.gethostbyname host >>= fun he ->
     Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
     Lwt_ssl.ssl_connect fd (ssl_context version ca_file) >>= fun ssl_sock ->
