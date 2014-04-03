@@ -54,38 +54,27 @@ module Async_io = struct
   type input = Reader.t
   type output = Writer.t
 
-  let check_debug f g = f
-
-  let read_line =
-    check_debug
-      (fun ic ->
-         Reader.read_line ic
-         >>= function
-         |`Ok s -> return s
-         |`Eof -> fail End_of_file
-      )
-      (fun ic ->
-         Reader.read_line ic
-         >>= function
-         |`Ok s -> eprintf "<<< %s\n" s; return s
-         |`Eof -> eprintf "<<<EOF\n"; fail End_of_file
-      )
+  let read_line ic =
+    Reader.read_line ic >>= function
+    | `Ok s ->
+      if !Imap.debug then Imap_utils.log `Server (s ^ "\r\n");
+      return s
+    | `Eof ->
+      fail End_of_file
 
   let read_exactly ic len =
     let buf = String.create len in
     Reader.really_read ic ~pos:0 ~len buf >>= function
-    |`Ok -> return buf
-    |`Eof _ -> fail End_of_file
+    | `Ok ->
+      if !Imap.debug then Imap_utils.log `Server buf;
+      return buf
+    | `Eof _ ->
+      fail End_of_file
 
-  let write =
-    check_debug
-      (fun oc buf ->
-         Writer.write oc buf;
-         return ())
-      (fun oc buf ->
-         eprintf "\n%4d >>> %s" (Pid.to_int (Unix.getpid ())) buf;
-         Writer.write oc buf;
-         return ())
+  let write oc buf =
+    Writer.write oc buf;
+    if !Imap.debug then Imap_utils.log `Client buf;
+    return ()
 
   let flush oc = Writer.flushed oc >>= fun () -> return ()
   let close _ = return ()
