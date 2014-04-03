@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: fcda7adde54d450c7caac6067b9b33d6)
+# DO NOT EDIT (digest: 93b216d39e7455285a9e9063ec73a6ac)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -22,18 +22,6 @@
 <lib/core/*.ml{,i}>: pkg_ucorelib
 <lib/core/*.ml{,i}>: pkg_uint
 <lib/core/*.ml{,i}>: pkg_zip
-# Library imap-common
-"lib/common/imap-common.cmxs": use_imap-common
-<lib/common/*.ml{,i}>: pkg_cryptokit
-<lib/common/*.ml{,i}>: pkg_sexplib
-<lib/common/*.ml{,i}>: pkg_sexplib.syntax
-<lib/common/*.ml{,i}>: pkg_ssl
-<lib/common/*.ml{,i}>: pkg_str
-<lib/common/*.ml{,i}>: pkg_ucorelib
-<lib/common/*.ml{,i}>: pkg_uint
-<lib/common/*.ml{,i}>: pkg_unix
-<lib/common/*.ml{,i}>: pkg_zip
-<lib/common/*.ml{,i}>: use_imap
 # Library imap-unix
 "lib/unix/imap-unix.cmxs": use_imap-unix
 <lib/unix/*.ml{,i}>: pkg_cryptokit
@@ -46,7 +34,6 @@
 <lib/unix/*.ml{,i}>: pkg_unix
 <lib/unix/*.ml{,i}>: pkg_zip
 <lib/unix/*.ml{,i}>: use_imap
-<lib/unix/*.ml{,i}>: use_imap-common
 # Library imap-lwt
 "lib/lwt/imap-lwt.cmxs": use_imap-lwt
 <lib/lwt/*.ml{,i}>: pkg_cryptokit
@@ -55,14 +42,11 @@
 <lib/lwt/*.ml{,i}>: pkg_lwt.unix
 <lib/lwt/*.ml{,i}>: pkg_sexplib
 <lib/lwt/*.ml{,i}>: pkg_sexplib.syntax
-<lib/lwt/*.ml{,i}>: pkg_ssl
 <lib/lwt/*.ml{,i}>: pkg_str
 <lib/lwt/*.ml{,i}>: pkg_ucorelib
 <lib/lwt/*.ml{,i}>: pkg_uint
-<lib/lwt/*.ml{,i}>: pkg_unix
 <lib/lwt/*.ml{,i}>: pkg_zip
 <lib/lwt/*.ml{,i}>: use_imap
-<lib/lwt/*.ml{,i}>: use_imap-common
 # Library imap-gsasl
 "lib/gsasl/imap-gsasl.cmxs": use_imap-gsasl
 <lib/gsasl/imap-gsasl.{cma,cmxa}>: oasis_library_imap_gsasl_cclib

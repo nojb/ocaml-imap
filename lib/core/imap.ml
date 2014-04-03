@@ -488,7 +488,7 @@ module Make (IO : IO.S) = struct
       s.conn_state <- Connected ci;
       read_greeting ci >>= begin function
         | `BYE _ ->
-          IO.close ci.chan >>= fun () ->
+          (* IO.close ci.chan >>= fun () -> *)
           s.conn_state <- Disconnected;
           IO.fail BYE
         | `OK _ ->
@@ -508,7 +508,7 @@ module Make (IO : IO.S) = struct
     match s.conn_state with
     | Disconnected -> ()
     | Connected ci ->
-      ignore (IO.catch (fun () -> IO.close ci.chan) (fun _ -> IO.return ()));
+      ignore (IO.catch (fun () -> IO.return ()) (* IO.close ci.chan) *) (fun _ -> IO.return ()));
       s.conn_state <- Disconnected
 
   let generate_tag s =

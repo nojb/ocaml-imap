@@ -24,11 +24,7 @@ module type S = sig
   val read_into_exactly : ic -> string -> int -> int -> unit t
   val write : oc -> string -> unit t
   val flush : oc -> unit t
-  val close : ic * oc -> unit t
-  (* val compress : ic * oc -> ic * oc *)
-      
-  (* module Ssl : sig *)
-  (*   type context *)
-  (*   val starttls : ?ssl_context:context -> ic * oc -> ic * oc * (unit -> unit t) *)
-  (* end *)
+
+  (* val starttls : input * output -> input * output *)
+  (* val compress : input * output -> input * output *)
 end

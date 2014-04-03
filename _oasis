@@ -32,15 +32,8 @@ Library "imap"
   FindlibName: imap
   Modules: Imap_body, Imap_envelope, Imap_types, Imap_set, Imap_utils,
            Imap, Imap_uint, IO, Imap_parser, Imap_sender, Imap_response,
-           Imap_auth
+           Imap_auth, Imap_io
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax, zip
-
-Library "imap-common"
-  Path: lib/common
-  FindlibName: common
-  FindlibParent: imap
-  InternalModules: Imap_io, Imap_io_low
-  BuildDepends: imap, ssl, unix
 
 Library "imap-unix"
   Build$: flag(unix)
@@ -49,7 +42,7 @@ Library "imap-unix"
   FindlibName: unix
   FindlibParent: imap
   Modules: Imap_unix
-  BuildDepends: imap, imap.common, unix
+  BuildDepends: imap, unix, ssl
 
 Library "imap-lwt"
   Build$: flag(lwt)
@@ -58,7 +51,7 @@ Library "imap-lwt"
   FindlibName: lwt
   FindlibParent: imap
   Modules: Imap_lwt
-  BuildDepends: imap, imap.common, lwt, lwt.ssl, lwt.unix
+  BuildDepends: imap, lwt, lwt.ssl, lwt.unix
 
 Library "imap-gsasl"
   Build$: flag(gsasl)

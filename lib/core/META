@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 0442c59ec855dcb9729cd20e7940b1d4)
+# DO NOT EDIT (digest: dad3969bc7fb053be00db577da693fad)
 version = "0.9.0"
 description = "IMAP client library for Lwt"
 requires = "uint str cryptokit ucorelib sexplib sexplib.syntax zip"
@@ -11,7 +11,7 @@ exists_if = "imap.cma"
 package "unix" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
- requires = "imap imap.common unix"
+ requires = "imap unix ssl"
  archive(byte) = "imap-unix.cma"
  archive(byte, plugin) = "imap-unix.cma"
  archive(native) = "imap-unix.cmxa"
@@ -22,7 +22,7 @@ package "unix" (
 package "lwt" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
- requires = "imap imap.common lwt lwt.ssl lwt.unix"
+ requires = "imap lwt lwt.ssl lwt.unix"
  archive(byte) = "imap-lwt.cma"
  archive(byte, plugin) = "imap-lwt.cma"
  archive(native) = "imap-lwt.cmxa"
@@ -39,17 +39,6 @@ package "gsasl" (
  archive(native) = "imap-gsasl.cmxa"
  archive(native, plugin) = "imap-gsasl.cmxs"
  exists_if = "imap-gsasl.cma"
-)
-
-package "common" (
- version = "0.9.0"
- description = "IMAP client library for Lwt"
- requires = "imap ssl unix"
- archive(byte) = "imap-common.cma"
- archive(byte, plugin) = "imap-common.cma"
- archive(native) = "imap-common.cmxa"
- archive(native, plugin) = "imap-common.cmxs"
- exists_if = "imap-common.cma"
 )
 
 package "async" (
