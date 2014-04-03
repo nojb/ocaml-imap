@@ -34,26 +34,6 @@ end
 
 module Unix_IO = Imap_gen_io.Make (Sync)
 
-include Imap.Make (struct
-    include Sync
-    type input = Unix_IO.input
-    type output = unit Unix_IO.output
-    let read_line = Unix_IO.read_line
-    let read_exactly ic len =
-      let buf = String.create len in
-      Unix_IO.read_into_exactly ic buf 0 len;
-      buf
-    let flush = Unix_IO.flush
-    let write = Unix_IO.write
-    let compress (ic, oc) =
-      (* let ic = Unix_IO.underlying_in ic in *)
-      (* let oc = Unix_IO.underlying_out oc in *)
-      let ic = (* Unix_IO.buffered_input *) (Unix_IO.inflate_input ic) in
-      let oc = (* Unix_IO.buffered_output *) (Unix_IO.deflate_output oc) in
-      (ic, oc)
-    let starttls _ = assert false
-  end)
-
 let ssl_input sock =
   let unsafe_read buf off len =
     let rec loop () =
@@ -110,20 +90,45 @@ let default_ssl_context =
   Ssl.set_verify ctx [Ssl.Verify_peer] None;
   ctx
 
-let connect_simple s ?(port=993) host =
-  (* let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in *)
-  let he = Unix.gethostbyname host in
-  (* Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)); *)
-  let sock = Ssl.open_connection Ssl.TLSv1 (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) in
-  (* ssl_connect fd default_ssl_context in *)
-  (* let ic = Unix_IO.buffered_input (ssl_input sock) in *)
-  let ic = ssl_input sock in
-  let oc = ssl_output sock in
-  Unix_IO.set_logger_in ic Unix_IO.default_logger;
-  Unix_IO.set_logger_out oc Unix_IO.default_logger;
-  (* let oc = Unix_IO.buffered_output (ssl_output sock) in *)
-  connect s (ic, oc)
+include Imap.Make (struct
+    include Sync
+    type input = Unix_IO.input
+    type output = unit Unix_IO.output
+    let read_line = Unix_IO.read_line
+    let read_exactly ic len =
+      let buf = String.create len in
+      Unix_IO.read_into_exactly ic buf 0 len;
+      buf
+    let flush = Unix_IO.flush
+    let write = Unix_IO.write
+    let compress (ic, oc) =
+      (* let ic = Unix_IO.underlying_in ic in *)
+      (* let oc = Unix_IO.underlying_out oc in *)
+      let ic = (* Unix_IO.buffered_input *) (Unix_IO.inflate_input ic) in
+      let oc = (* Unix_IO.buffered_output *) (Unix_IO.deflate_output oc) in
+      (ic, oc)
+    let starttls _ = assert false
 
+    let connect port host =
+      let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+      let he = Unix.gethostbyname host in
+      Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
+      assert false
+        
+    let connect_ssl _ ?ca_file port host =
+      (* let fd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in *)
+      let he = Unix.gethostbyname host in
+      (* Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)); *)
+      let sock = Ssl.open_connection Ssl.TLSv1 (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) in
+      (* ssl_connect fd default_ssl_context in *)
+      (* let ic = Unix_IO.buffered_input (ssl_input sock) in *)
+      let ic = ssl_input sock in
+      let oc = ssl_output sock in
+      Unix_IO.set_logger_in ic Unix_IO.default_logger;
+      Unix_IO.set_logger_out oc Unix_IO.default_logger;
+      (* let oc = Unix_IO.buffered_output (ssl_output sock) in *)
+      ic, oc
+  end)
 
 (* let starttls ?ssl_context s = *)
 (*   let aux (ic, oc) = *)

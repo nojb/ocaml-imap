@@ -140,21 +140,22 @@ module Async_io = struct
 
   let compress _ = assert false
   let starttls _ = assert false
+    
+  open Async_ssl.Std
+
+  let connect port host =
+    assert false
+
+  let connect_ssl _ ?ca_file port host =
+    Tcp.connect (Tcp.to_host_and_port host port) >>= fun (socket, net_to_ssl, ssl_to_net) ->
+    let net_to_ssl = Reader.pipe net_to_ssl in
+    let ssl_to_net = Writer.pipe ssl_to_net in
+    let app_to_ssl, app_wr = Pipe.create () in
+    let app_rd, ssl_to_app = Pipe.create () in
+    don't_wait_for (Ssl.client ~app_to_ssl ~ssl_to_app ~net_to_ssl ~ssl_to_net ());
+    Reader.of_pipe (Info.of_string "imap_client_reader") app_rd >>= fun app_rd ->
+    Writer.of_pipe (Info.of_string "imap_client_writer") app_wr >>= fun (app_wr, _) ->
+    return (app_rd, app_wr)
 end
 
 include Imap.Make (Async_io)
-
-open Async_ssl.Std
-
-let default_ssl_port = 993
-
-let connect_simple s ?(port=default_ssl_port) host =
-  Tcp.connect (Tcp.to_host_and_port host port) >>= fun (socket, net_to_ssl, ssl_to_net) ->
-  let net_to_ssl = Reader.pipe net_to_ssl in
-  let ssl_to_net = Writer.pipe ssl_to_net in
-  let app_to_ssl, app_wr = Pipe.create () in
-  let app_rd, ssl_to_app = Pipe.create () in
-  don't_wait_for (Ssl.client ~app_to_ssl ~ssl_to_app ~net_to_ssl ~ssl_to_net ());
-  Reader.of_pipe (Info.of_string "imap_client_reader") app_rd >>= fun app_rd ->
-  Writer.of_pipe (Info.of_string "imap_client_writer") app_wr >>= fun (app_wr, _) ->
-  connect s (app_rd, app_wr)

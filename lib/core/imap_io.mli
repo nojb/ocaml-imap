@@ -19,7 +19,13 @@ module type S = sig
   val write : output -> string -> unit t
   val flush : output -> unit t
 
+  val connect : int -> string -> (input * output) t
+
+  val connect_ssl : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
+    int -> string -> (input * output) t
+  
   val starttls : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
     input * output -> (input * output) t
+      
   val compress : input * output -> input * output
 end

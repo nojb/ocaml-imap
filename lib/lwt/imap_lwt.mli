@@ -22,4 +22,3 @@
 
 include Imap.S with type 'a IO.t = 'a Lwt.t
 
-val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t

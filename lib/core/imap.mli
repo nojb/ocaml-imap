@@ -62,10 +62,14 @@ module type S = sig
   (** Creates a new IMAP session.  The session is initially disconnected and has
       to be connected using {!connect}. *)
 
-  val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t
+  val connect : session -> ?port:int -> string -> [ `Needsauth | `Preauth ] IO.t
+  (* val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t *)
   (** Connects to the IMAP server using the given i/o stream.  Returns
       [`Needsauth] if the server requires authentication and [`Preauth] if the
       session has already been authenticated in some other fashion. *)
+
+  val connect_ssl : session -> ?version:[`TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
+    ?port : int -> string -> [ `Needsauth | `Preauth ] IO.t
 
   (* val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t *)
   (* (\** Connects to the IMAP server using a SSL connection on port [?port] and given *)

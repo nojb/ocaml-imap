@@ -42,7 +42,10 @@ module type S = sig
   exception Auth_error of exn
 
   val make : unit -> session
-  val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t
+  (* val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t *)
+  val connect : session -> ?port : int -> string -> [`Needsauth | `Preauth] IO.t
+  val connect_ssl : session -> ?version : [`TLSv1 | `SSLv23 | `SSLv3 ] ->
+    ?ca_file : string -> ?port : int -> string -> [ `Needsauth | `Preauth ] IO.t
   val disconnect : session -> unit
   val capability : session -> capability list IO.t
   val noop : session -> unit IO.t
@@ -493,7 +496,7 @@ module Make (IO : Imap_io.S) = struct
   let make () =
     { conn_state = Disconnected }
 
-  let connect s chan =
+  let connect' s chan =
     match s.conn_state with
     | Disconnected ->
       let ci = {
@@ -520,6 +523,12 @@ module Make (IO : Imap_io.S) = struct
       end
     | _ ->
       IO.fail (Failure "Imap.connect: already connected")
+
+  let connect s ?(port=143) host =
+    IO.connect port host >>= connect' s
+
+  let connect_ssl s ?(version=`TLSv1) ?ca_file ?(port=993) host =
+    IO.connect_ssl version ?ca_file port host >>= connect' s
 
   (* let connect_simple s ?port host = *)
   (*   let low, connect_ssl = Imap_io_low.open_ssl () in *)
