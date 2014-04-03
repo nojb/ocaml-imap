@@ -78,27 +78,22 @@ module Lwtio = struct
     Lwt_unix.gethostbyname host >>= fun he ->
     Lwt_io.open_connection (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port))
 
-  let ssl_context =
-    let h = Hashtbl.create 3 in
-    fun v ca ->
-      if Hashtbl.mem h (v, ca) then
-        Hashtbl.find h (v, ca)
-      else begin
-        let v' = match v with
-          | `TLSv1 -> Ssl.TLSv1
-          | `SSLv23 -> Ssl.SSLv23
-          | `SSLv3 -> Ssl.SSLv3
-        in
-        let ctx = Ssl.create_context v' Ssl.Client_context in
-        begin match ca with
-          | None -> ()
-          | Some ca ->
-            Ssl.load_verify_locations ctx ca "";
-            Ssl.set_verify ctx [Ssl.Verify_peer] None
-        end;
-        Hashtbl.add h (v, ca) ctx;
-        ctx
-      end
+  let _ = Ssl.init ()
+
+  let ssl_context v ca =
+    let v = match v with
+      | `TLSv1 -> Ssl.TLSv1
+      | `SSLv23 -> Ssl.SSLv23
+      | `SSLv3 -> Ssl.SSLv3
+    in
+    let ctx = Ssl.create_context v Ssl.Client_context in
+    begin match ca with
+      | None -> ()
+      | Some ca ->
+        Ssl.load_verify_locations ctx ca "";
+        Ssl.set_verify ctx [Ssl.Verify_peer] None
+    end;
+    ctx
 
   let connect_ssl version ?ca_file port host =
     let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
