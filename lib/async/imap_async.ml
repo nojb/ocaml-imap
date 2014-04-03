@@ -85,15 +85,21 @@ module Async_io = struct
   open Async_ssl.Std
 
   let connect port host =
-    assert false
+    Tcp.connect (Tcp.to_host_and_port host port) >>= fun (_, net_to_app, app_to_net) ->
+    return (net_to_app, app_to_net)
 
-  let connect_ssl _ ?ca_file port host =
+  let connect_ssl version ?ca_file port host =
     Tcp.connect (Tcp.to_host_and_port host port) >>= fun (socket, net_to_ssl, ssl_to_net) ->
     let net_to_ssl = Reader.pipe net_to_ssl in
     let ssl_to_net = Writer.pipe ssl_to_net in
     let app_to_ssl, app_wr = Pipe.create () in
     let app_rd, ssl_to_app = Pipe.create () in
-    don't_wait_for (Ssl.client ~app_to_ssl ~ssl_to_app ~net_to_ssl ~ssl_to_net ());
+    let version = match version with
+      | `TLSv1 -> Ssl.Version.Tlsv1
+      | `SSLv23 -> Ssl.Version.Sslv23
+      | `SSLv3 -> Ssl.Version.Sslv3
+    in
+    don't_wait_for (Ssl.client ~version ?ca_file ~app_to_ssl ~ssl_to_app ~net_to_ssl ~ssl_to_net ());
     Reader.of_pipe (Info.of_string "imap_client_reader") app_rd >>= fun app_rd ->
     Writer.of_pipe (Info.of_string "imap_client_writer") app_wr >>= fun (app_wr, _) ->
     return (app_rd, app_wr)
