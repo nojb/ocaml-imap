@@ -64,13 +64,22 @@ include Imap.Make (struct
     include Sync
     type input = Unix_IO.input
     type output = unit Unix_IO.output
-    let read_line = Unix_IO.read_line
+    let read_line ic =
+      let s = Unix_IO.read_line ic in
+      if !Imap.debug then begin
+        Imap_utils.log `Server s;
+        Imap_utils.log `Server "\r\n"
+      end;
+      s
     let read_exactly ic len =
       let buf = String.create len in
       Unix_IO.read_into_exactly ic buf 0 len;
+      if !Imap.debug then Imap_utils.log `Server buf;
       buf
     let flush = Unix_IO.flush
-    let write = Unix_IO.write
+    let write oc s =
+      Unix_IO.write oc s;
+      if !Imap.debug then Imap_utils.log `Client s
     let compress (ic, oc) =
       (* let ic = Unix_IO.underlying_in ic in *)
       (* let oc = Unix_IO.underlying_out oc in *)
