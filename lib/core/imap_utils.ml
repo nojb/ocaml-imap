@@ -79,12 +79,18 @@ let rec option_map f = function
 let compare_ci s1 s2 =
   compare (String.uppercase s1) (String.uppercase s2)
 
-  (* The default logger echoes both input and output to [stderr].  In order to
-     make them look a little nicer, new lines are preceded by "S: " or "C: "
-     depending on the case.  Here a new line means either "\r\n" or "\n". *)
-let log origin str =
-  let rec aux r header str =
+(* The default logger echoes both input and output to [stderr].  In order to
+   make them look a little nicer, new lines are preceded by "S: " or "C: "
+   depending on the case.  Here a new line means either "\r\n" or "\n". *)
+let log =
+  let read_st = ref `NL in
+  let write_st = ref `NL in
+  fun origin str ->
     let len = String.length str in
+    let header = match origin with
+      | `Client -> "C: "
+      | `Server -> "S: "
+    in
     let rec loop st off =
       if off >= len then
         st
@@ -96,14 +102,15 @@ let log origin str =
         in
         try
           let idx = String.index_from str off '\n' in
-          if idx = off && st = `CR then begin
+          if idx = off && (match st with `CR -> true | _ -> false) then begin
             Printf.eprintf "\n";
             loop `NL (off + 1)
-          end else
+          end else begin
             let hascr = idx > 0 && str.[idx-1] = '\r' in
             let str' = String.sub str off (if hascr then idx-off-1 else idx-off) in
             Printf.eprintf "%s%s\n" header str';
-            loop `NL (idx+1)
+            loop `NL (idx + 1)
+          end
         with
         | Not_found ->
           let hascr = len > 0 && str.[len-1] = '\r' in
@@ -111,13 +118,8 @@ let log origin str =
           Printf.eprintf "%s%s" header str';
           if hascr then `CR else `Other
     in
-    r := loop !r 0;
-    Printf.eprintf "%!"
-  in
-  let read_st = ref `NL in
-  let write_st = ref `NL in
-  match origin with
-  | `Client ->
-    aux write_st "C: " str
-  | `Server ->
-    aux read_st "S: " str
+    match origin with
+    | `Client ->
+      write_st := loop !write_st 0
+    | `Server ->
+      read_st := loop !read_st 0

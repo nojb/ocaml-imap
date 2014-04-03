@@ -46,8 +46,8 @@ include Imap.Make (struct
     let flush = Unix_IO.flush
     let write = Unix_IO.write
     let compress (ic, oc) =
-        (* let ic = Unix_IO.underlying_in ic in *)
-    (* let oc = Unix_IO.underlying_out oc in *)
+      (* let ic = Unix_IO.underlying_in ic in *)
+      (* let oc = Unix_IO.underlying_out oc in *)
       let ic = (* Unix_IO.buffered_input *) (Unix_IO.inflate_input ic) in
       let oc = (* Unix_IO.buffered_output *) (Unix_IO.deflate_output oc) in
       (ic, oc)
