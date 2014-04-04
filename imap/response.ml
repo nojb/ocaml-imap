@@ -76,7 +76,7 @@ type response_done =
 
 type message_data =
   [ `EXPUNGE of Seq.t
-  | `FETCH of (Uint32.t * msg_att list) ] with sexp
+  | `FETCH of (Seq.t * msg_att list) ] with sexp
 
 type mailbox_data =
   [ `FLAGS of flag list
@@ -198,7 +198,7 @@ uniqueid        = nz-number
                     ; Strictly ascending
 *)
 let uniqueid =
-  nz_number
+  nz_number >|= Uid.of_uint32
 
 (*
 uid-range       = (uniqueid ":" uniqueid)
@@ -318,15 +318,15 @@ let resp_text_code : resp_text_code Parser.t =
     space >> delimited lpar (separated_list space flag_perm) rpar >|= fun flags ->
     `PERMANENTFLAGS flags
   in
-  let uidnext = space >> nz_number >|= fun n -> `UIDNEXT n in
-  let uidvalidity = space >> nz_number >|= fun n -> `UIDVALIDITY n in
-  let unseen = space >> nz_number >|= fun n -> `UNSEEN n in
+  let uidnext = space >> nz_number >|= Uid.of_uint32 >|= fun n -> `UIDNEXT n in
+  let uidvalidity = space >> nz_number >|= Uid.of_uint32 >|= fun n -> `UIDVALIDITY n in
+  let unseen = space >> nz_number >|= Seq.of_uint32 >|= fun n -> `UNSEEN n in
   let appenduid =
-    space >> nz_number >>= fun uidvalidity -> nz_number >|= fun uid ->
-    `APPENDUID (uidvalidity, uid)
+    space >> nz_number >|= Uid.of_uint32 >>= fun uidvalidity ->
+    nz_number >|= Uid.of_uint32 >|= fun uid -> `APPENDUID (uidvalidity, uid)
   in
   let copyuid =
-    space >> nz_number >>= fun uidvalidity ->
+    space >> nz_number >|= Uid.of_uint32 >>= fun uidvalidity ->
     uid_set >>= fun src_uids ->
     space >> uid_set >|= fun dst_uids ->
     `COPYUID (uidvalidity, src_uids, dst_uids)
@@ -455,8 +455,8 @@ status-att          =/ "HIGHESTMODSEQ"
 let status_att_number : status_info t =
   let messages = space >> number' >|= fun n -> `MESSAGES n in
   let recent = space >> number' >|= fun n -> `RECENT n in
-  let uidnext = space >> nz_number >|= fun n -> `UIDNEXT n in
-  let uidvalidity = space >> nz_number >|= fun n -> `UIDVALIDITY n in
+  let uidnext = space >> nz_number >|= Uid.of_uint32 >|= fun n -> `UIDNEXT n in
+  let uidvalidity = space >> nz_number >|= Uid.of_uint32 >|= fun n -> `UIDVALIDITY n in
   let unseen = space >> number' >|= fun n -> `UNSEEN n in
   let highestmodseq = space >> mod_sequence_value >|= fun n -> `HIGHESTMODSEQ n in
   choices [
@@ -569,6 +569,10 @@ section         = "[" [section-spec] "]"
 *)
 let section : [> section] Parser.t =
   delimited lbra section_spec rbra <|> return `ALL
+
+let uint64 =
+  let number_re = Str.regexp "[0-9]*" in
+  matches number_re >>= fun s -> try return (Uint64.of_string s) with _ -> fail
  
 (*
 msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -604,9 +608,9 @@ let msg_att_static : [> msg_att_static] Parser.t =
       section >>= section_
     ]
   in
-  let uid = space >> nz_number >|= fun uid -> `UID uid in
-  let x_gm_msgid = space >> mod_sequence_value >|= fun n -> `X_GM_MSGID n in
-  let x_gm_thrid = space >> mod_sequence_value >|= fun n -> `X_GM_THRID n in
+  let uid = space >> nz_number >|= Uid.of_uint32 >|= fun uid -> `UID uid in
+  let x_gm_msgid = space >> uint64 >|= Gmsgid.of_uint64 >|= fun n -> `X_GM_MSGID n in
+  let x_gm_thrid = space >> uint64 >|= Gthrid.of_uint64 >|= fun n -> `X_GM_THRID n in
   choices [
     string_ci "ENVELOPE" >> envelope;
     string_ci "INTERNALDATE" >> internaldate;
@@ -681,10 +685,10 @@ let mailbox_data =
   let search =
     list (space >> nz_number) >>= function
     | [] ->
-      return (`SEARCH ([], Uint64.zero))
+      return (`SEARCH ([], Modseq.zero))
     | ns ->
       option (space >> search_sort_mod_seq) >|= function
-      | None -> `SEARCH (ns, Uint64.zero)
+      | None -> `SEARCH (ns, Modseq.zero)
       | Some modseq -> `SEARCH (ns, modseq)
   in
   let status =
@@ -717,7 +721,7 @@ let message_data =
       string_ci "FETCH" >> space >> msg_att >|= fun att -> `FETCH (n, att)
     ]
   in
-  nz_number >>= expunge_or_fetch
+  nz_number >|= Seq.of_uint32 >>= expunge_or_fetch
  
 (*
 tag             = 1*<any ASTRING-CHAR except "+">

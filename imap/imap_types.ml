@@ -22,6 +22,49 @@
 
 open Sexplib.Std
 open Imap_uint
+  
+module type S = sig
+  type t with sexp
+  val zero : t
+  val of_int : int -> t
+  val of_string : string -> t
+  val to_string : t -> string
+  val max : t -> t -> t
+  val is_zero : t -> bool
+  val compare : t -> t -> int
+  val equal : t -> t -> bool
+  val succ : t -> t
+end
+
+module type S32 = sig
+  include S
+  val of_uint32 : Uint32.t -> t
+end
+
+module Uint32_ = struct
+  include Uint32
+  let of_uint32 x = x
+end
+
+module Uid : S32 = Uint32_
+module Seq : S32 = Uint32_
+
+module type S64 = sig
+  include S
+  val of_uint64 : Uint64.t -> t
+end
+
+module Uint64_ = struct
+  include Uint64
+  let of_uint64 x = x
+end
+
+module Gmsgid : S64 = Uint64_
+module Gthrid : S64 = Uint64_
+module Modseq : S64 = Uint64_
+
+module Uid_set = Imap_set.Make (Uid)
+module Seq_set = Imap_set.Make (Seq)
 
 type flag =
   [ `Answered

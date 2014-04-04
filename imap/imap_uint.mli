@@ -22,57 +22,23 @@
 
 (** Unsigned integers *)
 
-open Sexplib
-open Sexplib.Conv
-
-module Uint32 = struct
-  include Uint32
-
-  let max n m =
-    if compare n m <= 0 then m else n
-
-  let equal n m =
-    compare n m = 0
-
-  let is_zero n =
-    equal n zero
-
-  let sexp_of_t x =
-    Sexplib.Sexp.Atom (to_string x)
-
-  let t_of_sexp sexp =
-    match sexp with
-    | Sexplib.Sexp.Atom str ->
-      (try of_string str
-       with exc -> of_sexp_error ("Uint32.t_of_sexp: " ^
-                                  (Sexp.to_string_hum (sexp_of_exn exc))) sexp)
-    | _ as sexp ->
-      of_sexp_error "Uint32.t_of_sexp: atom needed" sexp
+module Uint32 : sig
+  include module type of Uint32
+  val max : t -> t -> t
+  val equal : t -> t -> bool
+  val is_zero : t -> bool
+  val sexp_of_t : t -> Sexplib.Sexp.t
+  val t_of_sexp : Sexplib.Sexp.t -> t
 end
 
-module Uint32_set = Imap_set.Make (Uint32)
+module Uint32_set : module type of Imap_set.Make (Uint32)
 
-module Uint64 = struct
-  include Uint64
-
-  let sexp_of_t x =
-    Sexplib.Sexp.Atom (to_string x)
-
-  let t_of_sexp sexp =
-    match sexp with
-    | Sexplib.Sexp.Atom str ->
-      (try of_string str
-       with exc -> of_sexp_error ("Uint64.t_of_sexp: " ^
-                                  (Sexp.to_string_hum (sexp_of_exn exc))) sexp)
-    | _ as sexp ->
-      of_sexp_error "Uint64.t_of_sexp: atom needed" sexp
-
-  let max x y =
-    if compare x y >= 0 then x else y
-
-  let equal n m =
-    compare n m = 0
-
-  let is_zero n =
-    equal n zero
+module Uint64 : sig
+  include module type of Uint64
+  val max : t -> t -> t
+  val equal : t -> t -> bool
+  val is_zero : t -> bool
+  val sexp_of_t : t -> Sexplib.Sexp.t
+  val t_of_sexp : Sexplib.Sexp.t -> t
 end
+

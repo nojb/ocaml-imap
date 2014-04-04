@@ -20,8 +20,9 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+open Imap_types
 open Imap_uint
-
+  
 module Make (IO : IO.S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
@@ -217,6 +218,9 @@ module Make (IO : IO.S) = struct
     | Some (flg, req) ->
       space @> raw "\"/flags/" @> flag flg @> raw "\" " @> raw (entry_type_req req)
 
+  external seq_set_to_uint32_set : Seq_set.t -> Uint32_set.t = "%identity"
+  external uid_set_to_uint32_set : Uid_set.t -> Uint32_set.t = "%identity"
+
   let rec search_key = function
     | `ALL -> raw "ALL"
     | `ANSWERED -> raw "ANSWERED"
@@ -251,19 +255,19 @@ module Make (IO : IO.S) = struct
     | `SENTON d -> raw "SENTON " @> day_month_year d
     | `SENTSINCE d -> raw "SENTSINCE " @> day_month_year d
     | `SMALLER n -> raw "SMALLER " @> int n
-    | `UID set -> message_set set
+    | `UID set -> message_set (uid_set_to_uint32_set set)
     | `UNDRAFT -> raw "UNDRAFT"
-    | `INSET set -> message_set set
+    | `INSET set -> message_set (seq_set_to_uint32_set set)
     | `AND (q1, q2) ->
       raw "(" @> search_key q1 @> raw " " @> search_key q2 @> raw ")"
     | `MODSEQ (ext, modseq) ->
-      raw "MODSEQ" @> search_modseq_ext ext @> space @> uint64 modseq
+      raw "MODSEQ" @> search_modseq_ext ext @> space @> raw (Modseq.to_string modseq)
     | `X_GM_RAW str ->
       raw "X-GM-RAW " @> quoted_string str
     | `X_GM_MSGID msgid ->
-      raw "X-GM-MSGID " @> raw (Uint64.to_string msgid)
+      raw "X-GM-MSGID " @> raw (Gmsgid.to_string msgid)
     | `X_GM_THRID thrid ->
-      raw "X-GM-THRID " @> raw (Uint64.to_string thrid)
+      raw "X-GM-THRID " @> raw (Gthrid.to_string thrid)
     | `X_GM_LABELS lab ->
       raw "X-GM-LABEL " @> gm_label lab
 

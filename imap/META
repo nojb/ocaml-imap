@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 3eb9975eb52a78a50cdba558fc21dbbf)
+# DO NOT EDIT (digest: 04ece0a78dced56244258f6fa9487fed)
 version = "0.9.0"
 description = "IMAP client library for Lwt"
 requires = "uint str cryptokit ucorelib sexplib sexplib.syntax"
@@ -44,7 +44,7 @@ package "gsasl" (
 package "async" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
- requires = "threads imap async async_ssl"
+ requires = "threads imap async async_ssl ssl unix"
  archive(byte) = "imap_async.cma"
  archive(byte, plugin) = "imap_async.cma"
  archive(native) = "imap_async.cmxa"

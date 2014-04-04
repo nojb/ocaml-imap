@@ -35,7 +35,6 @@
     list [[(1, 3); (4, 4); (5, 12); (18, 0)]]. *)
 
 open Sexplib.Std
-(* open Imap_uint *)
 
 module type S = sig
   type t with sexp

@@ -31,8 +31,8 @@ Library imap
   Path: imap
   FindlibName: imap
   Pack: true
-  Modules: Mime, Imap_types, Imap_set, Client, Imap_uint, Auth, IO
-  InternalModules: Sender, Parser, Imap_uint_raw, Response, Utils
+  Modules: Mime, Imap_types, Imap_set, Client, Auth, IO
+  InternalModules: Sender, Parser, Response, Utils, Imap_uint
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax
 
 Library imap_unix
@@ -73,7 +73,7 @@ Library imap_async
   FindlibParent: imap
   CCLib: -lssl -lcrypto -v
   Modules: Imap_async
-  BuildDepends: threads, imap, async, async_ssl
+  BuildDepends: threads, imap, async, async_ssl, ssl, unix
   
 Document imap
   Title: Imap docs

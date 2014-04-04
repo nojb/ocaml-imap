@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 599aea80b730eae32c12be9e6ec934c9)
+# DO NOT EDIT (digest: fe8022ae35121cc6020b08a723812b1d)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -19,14 +19,13 @@
 "imap/imap_types.cmx": for-pack(Imap)
 "imap/imap_set.cmx": for-pack(Imap)
 "imap/client.cmx": for-pack(Imap)
-"imap/imap_uint.cmx": for-pack(Imap)
 "imap/auth.cmx": for-pack(Imap)
 "imap/IO.cmx": for-pack(Imap)
 "imap/sender.cmx": for-pack(Imap)
 "imap/parser.cmx": for-pack(Imap)
-"imap/imap_uint_raw.cmx": for-pack(Imap)
 "imap/response.cmx": for-pack(Imap)
 "imap/utils.cmx": for-pack(Imap)
+"imap/imap_uint.cmx": for-pack(Imap)
 <imap/*.ml{,i}>: pkg_cryptokit
 <imap/*.ml{,i}>: pkg_sexplib
 <imap/*.ml{,i}>: pkg_sexplib.syntax
@@ -75,10 +74,12 @@
 <async/*.ml{,i}>: pkg_cryptokit
 <async/*.ml{,i}>: pkg_sexplib
 <async/*.ml{,i}>: pkg_sexplib.syntax
+<async/*.ml{,i}>: pkg_ssl
 <async/*.ml{,i}>: pkg_str
 <async/*.ml{,i}>: pkg_threads
 <async/*.ml{,i}>: pkg_ucorelib
 <async/*.ml{,i}>: pkg_uint
+<async/*.ml{,i}>: pkg_unix
 <async/*.ml{,i}>: use_imap
 # Executable test_parser
 <lib_test/test_parser.{native,byte}>: pkg_cryptokit

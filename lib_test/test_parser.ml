@@ -1,7 +1,8 @@
 open OUnit2
-open Sexplib.Std       
+open Sexplib.Std
+open Imap
 open Imap_types
-open Imap_uint
+open Private_types
 
 let example_responses =
   [ ("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI",

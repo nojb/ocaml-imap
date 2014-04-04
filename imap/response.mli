@@ -25,7 +25,7 @@
 open Sexplib.Std
 open Imap_types
 open Imap_uint
-
+  
 (** List of capabilities *)
 type capability_data =
   [ `CAPABILITY of capability list ] with sexp
@@ -104,7 +104,7 @@ type resp_cond_state =
 (** Message information *)
 type message_data =
   [ `EXPUNGE of Seq.t
-  | `FETCH of (Uint32.t * msg_att list) ] with sexp
+  | `FETCH of (Seq.t * msg_att list) ] with sexp
 
 (** Mailbox information *)
 type mailbox_data =

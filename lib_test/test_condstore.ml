@@ -1,7 +1,7 @@
 open OUnit2
 open Imap
 open Imap_types
-open Imap_uint
+open Private_types
 
 let examples = [
   "* OK [HIGHESTMODSEQ 715194045007]", `OK (`HIGHESTMODSEQ (Uint64.of_string "715194045007"), "");

@@ -1,10 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: 4b55f80ab2740feb04d2777c14b36e9a)
+# DO NOT EDIT (digest: 93c2f64a2125977350082ab9c7caf69a)
 Mime
 Imap_types
 Imap_set
 Client
-Imap_uint
 Auth
 IO
 # OASIS_STOP

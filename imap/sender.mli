@@ -45,11 +45,11 @@ module Make (IO : IO.S) : sig
   val int : int -> t
   (** Sends an OCaml int. *)
 
-  val uint32 : Uint32.t -> t
-  (** Sends an unsigned 32-bit int. *)
+  (* val uint32 : Uint32.t -> t *)
+  (* (\** Sends an unsigned 32-bit int. *\) *)
 
-  val uint64 : Uint64.t -> t
-  (** Sends an unsigned 64-bit int. *)
+  (* val uint64 : Uint64.t -> t *)
+  (* (\** Sends an unsigned 64-bit int. *\) *)
 
   val raw : string -> t
   (** [raw s] sends the string [s]. *)

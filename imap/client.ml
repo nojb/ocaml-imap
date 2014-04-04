@@ -23,10 +23,17 @@
 open Utils
 open Imap_types
 open Imap_uint
-
+  
 let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
   with Not_found -> ref false
+
+external uint32_set_to_seq_set : Uint32_set.t -> Seq_set.t = "%identity"
+external seq_set_to_uint32_set : Seq_set.t -> Uint32_set.t = "%identity"
+external uint32_set_to_uid_set : Uint32_set.t -> Uid_set.t = "%identity"
+external uid_set_to_uint32_set : Uid_set.t -> Uint32_set.t = "%identity"
+external uint32_list_to_seq_list : Uint32.t list -> Seq.t list = "%identity"
+external uint32_list_to_uid_list : Uint32.t list -> Uid.t list = "%identity"
 
 module type S = sig
   module IO : IO.S
@@ -80,15 +87,15 @@ module type S = sig
   val search : session -> ?charset:string -> search_key -> Seq.t list IO.t
   val uid_search : session -> ?charset:string -> search_key -> Uid.t list IO.t
 
-  type 'a msg_att_handler =
-    'a -> [ msg_att_static | msg_att_dynamic ] -> unit
+  type msg_att_handler =
+    Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-  val fetch : session -> Seq.t msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
-  val fetch_changedsince : session -> Seq.t msg_att_handler -> Seq_set.t -> Modseq.t ->
+  val fetch : session -> msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
+  val fetch_changedsince : session -> msg_att_handler -> Seq_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
-  val uid_fetch : session -> Uid.t msg_att_handler -> Uid_set.t -> fetch_att list ->
+  val uid_fetch : session -> msg_att_handler -> Uid_set.t -> fetch_att list ->
     unit IO.t
-  val uid_fetch_changedsince : session -> Uid.t msg_att_handler -> Uid_set.t -> Modseq.t ->
+  val uid_fetch_changedsince : session -> msg_att_handler -> Uid_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
   val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
   val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
@@ -128,8 +135,8 @@ module Make (IO : IO.S) = struct
     rsp_search_results : Uint32.t list;
     rsp_search_results_modseq : Modseq.t;
     rsp_status : mailbox_data_status;
-    rsp_expunged : Uint32.t list;
-    rsp_fetch_list : (Uint32.t * msg_att list) list;
+    rsp_expunged : Seq.t list;
+    rsp_fetch_list : (Seq.t * msg_att list) list;
     rsp_appenduid : Uid.t * Uid.t;
     rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
     rsp_compressionactive : bool;
@@ -156,7 +163,7 @@ module Make (IO : IO.S) = struct
     rsp_copyuid = (Uid.zero, Uid_set.empty, Uid_set.empty);
     rsp_compressionactive = false;
     rsp_id = [];
-    rsp_modified = Uid_set.empty;
+    rsp_modified = Uint32_set.empty;
     rsp_namespace = ([], [], []);
     rsp_enabled = [];
     rsp_other = ("", "")
@@ -275,7 +282,7 @@ module Make (IO : IO.S) = struct
     | `HIGHESTMODSEQ modseq ->
       s.sel_info <- {s.sel_info with sel_highestmodseq = modseq}
     | `NOMODSEQ ->
-      s.sel_info <- {s.sel_info with sel_highestmodseq = Uint64.zero}
+      s.sel_info <- {s.sel_info with sel_highestmodseq = Modseq.zero}
     | `MODIFIED set ->
       s.rsp_info <- {s.rsp_info with rsp_modified = set}
     | `OTHER other ->
@@ -297,7 +304,7 @@ module Make (IO : IO.S) = struct
       s.rsp_info <- {s.rsp_info with
                      rsp_search_results = s.rsp_info.rsp_search_results @ results;
                      rsp_search_results_modseq =
-                       Uint64.max modseq s.rsp_info.rsp_search_results_modseq}
+                       Modseq.max modseq s.rsp_info.rsp_search_results_modseq}
     | `STATUS status ->
       s.rsp_info <- {s.rsp_info with rsp_status = status}
     | `EXISTS n ->
@@ -821,7 +828,7 @@ module Make (IO : IO.S) = struct
   let uid_expunge s set =
     assert (not (Uid_set.mem_zero set));
     let ci = connection_info s in
-    let cmd = S.(raw "UID EXPUNGE" @> space @> message_set set) in
+    let cmd = S.(raw "UID EXPUNGE" @> space @> message_set (uid_set_to_uint32_set set)) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
@@ -838,19 +845,21 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux
 
   let search s ?charset query =
-    search_aux s "SEARCH" ?charset query
+    search_aux s "SEARCH" ?charset query >|= uint32_list_to_seq_list
 
   let uid_search s ?charset query =
-    search_aux s "UID SEARCH" ?charset query
+    search_aux s "UID SEARCH" ?charset query >|= uint32_list_to_uid_list
 
-  type 'a msg_att_handler =
-    'a -> [ msg_att_static | msg_att_dynamic ] -> unit
+  type msg_att_handler =
+    Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
   let fetch_aux cmd handler s set changedsince attrs =
     let ci = connection_info s in
     let changedsince = match changedsince with
-      | None -> S.null
-      | Some modseq -> S.(space @> raw "(CHANGEDSINCE " @> uint64 modseq @> raw ")")
+      | None ->
+        S.null
+      | Some modseq ->
+        S.(space @> raw "(CHANGEDSINCE " @> raw (Modseq.to_string modseq) @> raw ")")
     in
     let cmd =
       S.(raw cmd @> space @> message_set set @> space @>
@@ -862,22 +871,22 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux
 
   let fetch_changedsince s handler set modseq atts =
-    fetch_aux "FETCH" handler s set (Some modseq) atts
+    fetch_aux "FETCH" handler s (seq_set_to_uint32_set set) (Some modseq) atts
 
   let fetch s handler set attrs =
-    fetch_aux "FETCH" handler s set None attrs
+    fetch_aux "FETCH" handler s (seq_set_to_uint32_set set) None attrs
 
   let uid_fetch_changedsince s handler set modseq atts =
-    fetch_aux "UID FETCH" handler s set (Some modseq) atts
+    fetch_aux "UID FETCH" handler s (uid_set_to_uint32_set set) (Some modseq) atts
 
   let uid_fetch s handler set attrs =
-    fetch_aux "UID FETCH" handler s set None attrs
+    fetch_aux "UID FETCH" handler s (uid_set_to_uint32_set set) None attrs
 
   let store_aux cmd s set unchangedsince mode att =
     let ci = connection_info s in
     let unchangedsince = match unchangedsince with
       | None -> S.null
-      | Some modseq -> S.(raw "(UNCHANGEDSINCE " @> uint64 modseq @> raw ") ")
+      | Some modseq -> S.(raw "(UNCHANGEDSINCE " @> raw (Modseq.to_string modseq) @> raw ") ")
     in
     let mode = match mode with
       | `Add -> S.raw "+"
@@ -892,18 +901,20 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux
 
   let store s set mode flags =
-    store_aux "STORE" s set None mode flags >>= fun _ ->
+    store_aux "STORE" s (seq_set_to_uint32_set set) None mode flags >>= fun _ ->
     IO.return ()
 
   let uid_store s set mode flags =
-    store_aux "UID STORE" s set None mode flags >>= fun _ ->
+    store_aux "UID STORE" s (uid_set_to_uint32_set set) None mode flags >>= fun _ ->
     IO.return ()
 
   let store_unchangedsince s set unchangedsince mode flags =
-    store_aux "STORE" s set (Some unchangedsince) mode flags
+    store_aux "STORE" s (seq_set_to_uint32_set set) (Some unchangedsince) mode flags >|=
+    uint32_set_to_seq_set
 
   let uid_store_unchangedsince s set unchangedsince mode flags =
-    store_aux "UID STORE" s set (Some unchangedsince) mode flags
+    store_aux "UID STORE" s (uid_set_to_uint32_set set) (Some unchangedsince) mode flags >|=
+    uint32_set_to_uid_set
 
   let copy_aux cmd s set destbox =
     let ci = connection_info s in
@@ -912,18 +923,18 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux
 
   let copy s set destbox =
-    copy_aux "COPY" s set destbox >>= fun _ ->
+    copy_aux "COPY" s (seq_set_to_uint32_set set) destbox >>= fun _ ->
     IO.return ()
 
-  let uidplus_copy s set destbox =
-    copy_aux "COPY" s set destbox
+  let uidplus_copy s (set : Seq_set.t) destbox =
+    copy_aux "COPY" s (seq_set_to_uint32_set set) destbox
 
   let uid_copy s set destbox =
-    copy_aux "UID COPY" s set destbox >>= fun _ ->
+    copy_aux "UID COPY" s (uid_set_to_uint32_set set) destbox >>= fun _ ->
     IO.return ()
 
   let uidplus_uid_copy s set destbox =
-    copy_aux "UID COPY" s set destbox
+    copy_aux "UID COPY" s (uid_set_to_uint32_set set) destbox
 
   let has_capability_name s name =
     let ci = connection_info s in

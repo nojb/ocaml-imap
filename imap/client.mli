@@ -23,7 +23,6 @@
 (** IMAP protocol interface *)
 
 open Imap_types
-open Imap_uint
 
 val debug : bool ref
 
@@ -239,10 +238,10 @@ module type S = sig
   (** Like {!search}, but returns the unique identification numbers of the
       matching messages. *)
 
-  type 'a msg_att_handler =
-     'a -> [ msg_att_static | msg_att_dynamic ] -> unit
+  type msg_att_handler =
+     Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-  val fetch : session -> Seq.t msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
+  val fetch : session -> msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
   (** [fetch s set atts] retrieve flags and/or other attributes [att] for those
       messages whose message sequence numbers belong to [set].  The most common
       attribytes are:
@@ -257,7 +256,7 @@ module type S = sig
       - [`FLAGS] - the flags in the message,
       - [`UID] - the unique identifier of the message. *)
 
-  val fetch_changedsince : session -> Seq.t msg_att_handler -> Seq_set.t -> Modseq.t ->
+  val fetch_changedsince : session -> msg_att_handler -> Seq_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
   (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
       messages that have a modification sequence number at least [modseq] are
@@ -265,12 +264,12 @@ module type S = sig
 
       This command requires the CONDSTORE extension. *)
 
-  val uid_fetch : session -> Uid.t msg_att_handler -> Uid_set.t -> fetch_att list ->
+  val uid_fetch : session -> msg_att_handler -> Uid_set.t -> fetch_att list ->
     unit IO.t
   (** Like {!fetch}, but the elements of the set are taken to be unique
       identification numbers. *)
 
-  val uid_fetch_changedsince : session -> Uid.t msg_att_handler -> Uid_set.t -> Modseq.t ->
+  val uid_fetch_changedsince : session -> msg_att_handler -> Uid_set.t -> Modseq.t ->
     fetch_att list -> unit IO.t
   (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
       unique identification numbers.
@@ -309,7 +308,7 @@ module type S = sig
   (** Copies the given set of messages from the selected mailbox to the given
       mailbox.  The set elements are assumed to be sequence numbers. *)
 
-  val uidplus_copy : session -> Uid_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t
+  val uidplus_copy : session -> Seq_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t
   (** Like {!copy}, but returns a tuple [(uid, srcuids, dstuids)] where [uid] is
       the updated UIDVALIDITY of the destination mailbox, [srcuids] is the set of
       message UIDs that where copied and [dstuids] is the sequence set of message UIDs
