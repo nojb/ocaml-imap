@@ -42,8 +42,8 @@ Library "imap-unix"
   FindlibName: unix
   FindlibParent: imap
   Modules: Imap_unix
-  InternalModules: Imap_gen_io
-  BuildDepends: imap, unix, ssl, zip
+  # InternalModules: Imap_gen_io
+  BuildDepends: imap, unix, ssl, cryptokit
 
 Library "imap-lwt"
   Build$: flag(lwt)
@@ -122,7 +122,7 @@ Executable test_live
 Executable test_io
   Path: lib_test
   MainIs: test_io.ml
-  Build$: flag(tests)
+  Build$: false # flag(tests)
   Custom: true
   CompiledObject: best
   Install: false

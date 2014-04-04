@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: c3af19c61b945f043644ae9ff4420f6f)
+# DO NOT EDIT (digest: 8826471418acabee186439666e428006)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -31,7 +31,6 @@
 <lib/unix/*.ml{,i}>: pkg_ucorelib
 <lib/unix/*.ml{,i}>: pkg_uint
 <lib/unix/*.ml{,i}>: pkg_unix
-<lib/unix/*.ml{,i}>: pkg_zip
 <lib/unix/*.ml{,i}>: use_imap
 # Library imap-lwt
 "lib/lwt/imap-lwt.cmxs": use_imap-lwt
@@ -123,12 +122,10 @@
 <lib_test/test_io.{native,byte}>: pkg_ucorelib
 <lib_test/test_io.{native,byte}>: pkg_uint
 <lib_test/test_io.{native,byte}>: pkg_unix
-<lib_test/test_io.{native,byte}>: pkg_zip
 <lib_test/test_io.{native,byte}>: use_imap
 <lib_test/test_io.{native,byte}>: use_imap-unix
 <lib_test/*.ml{,i}>: pkg_ssl
 <lib_test/*.ml{,i}>: pkg_unix
-<lib_test/*.ml{,i}>: pkg_zip
 <lib_test/*.ml{,i}>: use_imap-unix
 <lib_test/test_io.{native,byte}>: custom
 # Executable test_condstore
