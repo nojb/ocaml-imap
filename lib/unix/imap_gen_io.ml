@@ -34,26 +34,14 @@ module Make (IO : S) = struct
 
   type input = {
     in_read : string -> int -> int -> int IO.t;
-    in_close : unit -> unit IO.t;
-    in_underlying : input option;
+    in_close : unit -> unit IO.t
   }
   
   type 'a output = {
     out_write : string -> int -> int -> int IO.t;
     out_close : unit -> 'a IO.t;
-    out_flush : unit -> unit IO.t;
-    out_underlying : 'a output option;
+    out_flush : unit -> unit IO.t
   }
-
-  let underlying_in inp =
-    match inp.in_underlying with
-    | None -> inp
-    | Some inp -> inp
-
-  let underlying_out out =
-    match out.out_underlying with
-    | None -> out
-    | Some out -> out
 
   let unsafe_read ic buf off len =
     ic.in_read buf off len
@@ -70,15 +58,14 @@ module Make (IO : S) = struct
   let close_out out =
     out.out_close ()
 
-  let create_out ?underlying ~write ~close ~flush =
-    {out_write=write; out_close=close; out_flush=flush; out_underlying=underlying}
+  let create_out ~write ~close ~flush =
+    {out_write=write; out_close=close; out_flush=flush}
 
-  let create_in ?underlying ~read ~close =
-    {in_read=read; in_close=close; in_underlying=underlying}
+  let create_in ~read ~close =
+    {in_read=read; in_close=close}
 
   let null =
     create_out
-      ?underlying:None
       ~write:(fun _ _ len -> IO.return len)
       ~close:(fun () -> IO.return ())
       ~flush:(fun () -> IO.return ())
@@ -217,7 +204,7 @@ module Make (IO : S) = struct
       end
     in
     let close () = close_in ic in
-    create_in ~underlying:ic ~read:unsafe_read ~close
+    create_in ~read:unsafe_read ~close
 
   let buffered_output ?(buffer_size=default_buffer_size) oc =
     let data = String.create buffer_size in
@@ -266,7 +253,6 @@ module Make (IO : S) = struct
       IO.catch flush (fun _ -> IO.return ()) >>= fun () -> close_out oc
     in
     create_out
-      ~underlying:oc
       ~write:unsafe_write
       ~close
       ~flush
@@ -308,7 +294,6 @@ module Make (IO : S) = struct
       IO.return ()
     in
     create_in
-      ?underlying:None
       ~read:unsafe_inflate
       ~close:close
 
@@ -336,7 +321,6 @@ module Make (IO : S) = struct
     in (* XXX close the zstream ? *)
     let flush () = flush oc in
     create_out
-      ?underlying:None
       ~write:unsafe_deflate
       ~close
       ~flush
@@ -351,7 +335,6 @@ module Make (IO : S) = struct
     in
     let close () = IO.return () in
     create_in
-      ?underlying:None
       ~read:unsafe_read
       ~close
 
@@ -366,7 +349,6 @@ module Make (IO : S) = struct
     in
     let flush () = IO.return () in
     create_out
-      ?underlying:None
       ~write:unsafe_write
       ~close
       ~flush

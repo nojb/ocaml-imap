@@ -19,13 +19,11 @@ open IO
 
 let input_of_file_descr fd =
   IO.create_in
-    ?underlying:None
     ~read:(Unix.read fd)
     ~close:(fun () -> Unix.close fd)
 
 let output_of_file_descr fd =
   IO.create_out
-    ?underlying:None
     ~write:(Unix.write fd)
     ~close:(fun () -> Unix.close fd)
     ~flush:(fun () -> ())

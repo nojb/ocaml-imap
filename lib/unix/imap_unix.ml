@@ -36,26 +36,22 @@ module Unix_IO = Imap_gen_io.Make (Sync)
 
 let ssl_input sock =
   Unix_IO.create_in
-    ?underlying:None
     ~read:(Ssl.read sock)
     ~close:(fun () -> Ssl.shutdown sock)
 
 let ssl_output sock =
   Unix_IO.create_out
-    ?underlying:None
     ~write:(Ssl.write sock)
     ~close:(fun () -> Ssl.shutdown sock)
     ~flush:(fun () -> Ssl.flush sock)
 
 let input_of_file_descr fd =
   Unix_IO.create_in
-    ?underlying:None
     ~read:(Unix.read fd)
     ~close:(fun () -> Unix.close fd)
 
 let output_of_file_descr fd =
   Unix_IO.create_out
-    ?underlying:None
     ~write:(Unix.write fd)
     ~close:(fun () -> Unix.close fd)
     ~flush:(fun () -> ())

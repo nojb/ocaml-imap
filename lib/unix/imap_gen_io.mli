@@ -61,10 +61,6 @@ module Make (IO : S) : sig
 
   val deflate_output : ?buffer_size : int -> 'a output -> 'a output
 
-  val underlying_in : input -> input
-    
-  val underlying_out : 'a output -> 'a output
-
   val string_input : string -> input
     
   val string_output : unit -> string output
@@ -73,10 +69,10 @@ module Make (IO : S) : sig
       
   val unsafe_read : input -> string -> int -> int -> int IO.t
 
-  val create_out : ?underlying:'a output ->
+  val create_out :
     write:(string -> int -> int -> int IO.t)->
     close:(unit -> 'a IO.t) -> flush:(unit -> unit IO.t) -> 'a output
                                        
-  val create_in : ?underlying:input ->
+  val create_in :
     read:(string -> int -> int -> int IO.t) -> close:(unit -> unit IO.t) -> input
 end
