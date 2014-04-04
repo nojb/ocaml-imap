@@ -17,6 +17,8 @@ let test_folder = "ocaml-imap-test"
 
 open Imap_types
 
+module Imap = Imap_lwt
+
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
@@ -28,7 +30,7 @@ let delete_if_exists imap mbox =
 
 let set_up_test f =
   let imap = Imap.make () in
-  Imap.connect_simple imap test_host
+  Imap.connect_ssl imap test_host
   >>= begin function
     | `Needsauth -> Imap.login imap test_user test_password
     | `Preauth -> Lwt.return ()

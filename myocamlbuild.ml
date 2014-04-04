@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: b4a6e45e534a57f318180aea5fa8d370) *)
+(* DO NOT EDIT (digest: 42b0163787ae6211674066c031909ba4) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -615,11 +615,26 @@ let package_default =
             [
                (OASISExpr.EBool true,
                  S [A "-L/usr/local/Cellar/libffi/3.0.13/lib"])
-            ])
+            ]);
+          (["oasis_library_imap_async_cclib"; "link"],
+            [
+               (OASISExpr.EBool true,
+                 S
+                   [
+                      A "-cclib";
+                      A "-lssl";
+                      A "-cclib";
+                      A "-lcrypto";
+                      A "-cclib";
+                      A "-v"
+                   ])
+            ]);
+          (["oasis_library_imap_async_cclib"; "ocamlmklib"; "c"],
+            [(OASISExpr.EBool true, S [A "-lssl"; A "-lcrypto"; A "-v"])])
        ];
      includes =
        [
-          ("lib_test", ["lib/core"]);
+          ("lib_test", ["lib/core"; "lib/lwt"; "lib/unix"]);
           ("lib/unix", ["lib/core"]);
           ("lib/lwt", ["lib/core"]);
           ("lib/gsasl", ["lib/core"]);
@@ -630,6 +645,6 @@ let package_default =
 
 let dispatch_default = MyOCamlbuildBase.dispatch_default package_default;;
 
-# 634 "myocamlbuild.ml"
+# 649 "myocamlbuild.ml"
 (* OASIS_STOP *)
 Ocamlbuild_plugin.dispatch dispatch_default;;

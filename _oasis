@@ -71,6 +71,7 @@ Library "imap-async"
   Path: lib/async
   FindlibName: async
   FindlibParent: imap
+  CCLib: -lssl -lcrypto -v
   Modules: Imap_async
   BuildDepends: threads, imap, async, async_ssl
   
@@ -116,7 +117,7 @@ Executable test_live
   Custom: true
   CompiledObject: best
   Install: false
-  BuildDepends: imap, oUnit (>= 2.0.0)
+  BuildDepends: imap.lwt, oUnit (>= 2.0.0)
 
 Executable test_io
   Path: lib_test
@@ -125,7 +126,7 @@ Executable test_io
   Custom: true
   CompiledObject: best
   Install: false
-  BuildDepends: imap, oUnit (>= 2.0.0)
+  BuildDepends: imap.unix, oUnit (>= 2.0.0)
 
 Executable test_condstore
   Path: lib_test
@@ -134,7 +135,7 @@ Executable test_condstore
   Custom: true
   CompiledObject: best
   Install: false
-  BuildDepends: imap, oUnit (>= 2.0.0)
+  BuildDepends: imap.lwt, oUnit (>= 2.0.0)
 
 Executable test_id
   Path: lib_test
@@ -143,7 +144,7 @@ Executable test_id
   Custom: true
   CompiledObject: best
   Install: false
-  BuildDepends: imap, oUnit (>= 2.0.0)
+  BuildDepends: imap.lwt, oUnit (>= 2.0.0)
 
 Executable test_namespace
   Path: lib_test

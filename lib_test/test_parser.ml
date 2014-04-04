@@ -122,7 +122,7 @@ let test_responses =
     example_responses
 
 let test_envelope ctxt =
-  let open Imap_envelope in
+  let open Imap_mime in
   let ex =
     "(\"Wed, 17 Jul 1996 02:23:25 -0700 (PDT)\" \
      \"IMAP4rev1 WG mtg summary and minutes\" \
@@ -165,10 +165,10 @@ let test_envelope ctxt =
       env_to = [imap]; env_cc = [minutes; jklensin]; env_bcc = [];
       env_in_reply_to = ""; env_message_id = "<B27397-0100000@cac.washington.edu>" }
   in
-  test_parser ~ctxt envelope sexp_of_t ex check
+  test_parser ~ctxt envelope sexp_of_envelope ex check
     
 let test_body ctxt =
-  let open Imap_body in
+  let open Imap_mime in
   let ex =
     "(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"US-ASCII\") NIL NIL \"7BIT\" 3028 92)"
   in
@@ -182,7 +182,7 @@ let test_body ctxt =
         bd_other = { text_subtype = "PLAIN"; text_lines = 92 };
         bd_ext = { ext_md5 = None; ext_dsp = None; ext_lang = []; ext_exts = [] } }
   in
-  test_parser ~ctxt body sexp_of_t ex check
+  test_parser ~ctxt body sexp_of_body ex check
 
 let suite =
   "test_parser" >:::

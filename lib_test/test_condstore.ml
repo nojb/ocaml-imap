@@ -9,7 +9,7 @@ let examples = [
   "* 4 FETCH (UID 8 MODSEQ (12121130956))",
   `FETCH (Uint32.of_int 4, [`UID (Uint32.of_int 8); `MODSEQ (Uint64.of_string "12121130956")]);
   "d105 OK [MODIFIED 7,9] Conditional STORE failed",
-  `TAGGED ("d105", `OK (`MODIFIED (Imap_set.(union (single' 7) (single' 9))),
+  `TAGGED ("d105", `OK (`MODIFIED (Uint32_set.(union (single' 7) (single' 9))),
                         "Conditional STORE failed"));
   "* SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)",
   `SEARCH (List.map Uint32.of_int [2; 5; 6; 7; 11; 12; 18; 19; 20; 23],
@@ -56,7 +56,7 @@ let test_fetch_changedsince_aux cmd ctxt =
   set_up_test begin fun imap ->
     Imap.examine_condstore imap "inbox" >>= fun modseq ->
     cmd imap (fun _ _ -> assert_bool "fetch_changedsince should be empty" false)
-      (Imap_set.from (Uint32.of_int 1)) modseq [`UID; `FLAGS]
+      (Uint32_set.from (Uint32.of_int 1)) modseq [`UID; `FLAGS]
   end
 
 let test_fetch_changedsince ctxt =

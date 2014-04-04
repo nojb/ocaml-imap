@@ -1,6 +1,8 @@
 open OUnit2
 open Test_live_utils
 
+module Imap = Imap_lwt
+
 let test_id ctxt =
   set_up_test (fun imap ->
       if not (Imap.has_id imap) then Lwt.fail (Skip "server does not support ID")

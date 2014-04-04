@@ -43,6 +43,8 @@ module Make (IO : S) : sig
 
   val flush : 'a output -> unit IO.t
 
+  val read_char_opt : input -> char option IO.t
+
   val read_line : input -> string IO.t
 
   val read_into_exactly : input -> string -> int -> int -> unit IO.t
