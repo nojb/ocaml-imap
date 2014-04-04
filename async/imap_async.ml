@@ -168,14 +168,14 @@ let expunge s = ignore (expunge s)
 
 let uid_expunge s uids = ignore (uid_expunge s uids)
 
-let fetch s h seqs atts = ignore (fetch s h seqs atts)
+let fetch s seqs atts h = ignore (fetch s seqs atts h)
 
-let fetch_changedsince s h seqs modseq atts = ignore (fetch_changedsince s h seqs modseq atts)
+let fetch_changedsince s seqs modseq atts h = ignore (fetch_changedsince s seqs modseq atts h)
 
-let uid_fetch s h uids atts = ignore (uid_fetch s h uids atts)
+let uid_fetch s uids atts h = ignore (uid_fetch s uids atts h)
 
-let uid_fetch_changedsince s h uids modseq atts =
-  ignore (uid_fetch_changedsince s h uids modseq atts)
+let uid_fetch_changedsince s uids modseq atts h =
+  ignore (uid_fetch_changedsince s uids modseq atts h)
 
 let store s seqs mode atts = ignore (store s seqs mode atts)
 

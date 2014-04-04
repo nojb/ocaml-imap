@@ -90,13 +90,12 @@ module type S = sig
   type msg_att_handler =
     Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-  val fetch : session -> msg_att_handler -> Seq_set.t -> fetch_att list -> unit IO.t
-  val fetch_changedsince : session -> msg_att_handler -> Seq_set.t -> Modseq.t ->
-    fetch_att list -> unit IO.t
-  val uid_fetch : session -> msg_att_handler -> Uid_set.t -> fetch_att list ->
-    unit IO.t
-  val uid_fetch_changedsince : session -> msg_att_handler -> Uid_set.t -> Modseq.t ->
-    fetch_att list -> unit IO.t
+  val fetch : session -> Seq_set.t -> fetch_att list -> msg_att_handler -> unit IO.t
+  val fetch_changedsince : session -> Seq_set.t -> Modseq.t ->
+    fetch_att list -> msg_att_handler -> unit IO.t
+  val uid_fetch : session -> Uid_set.t -> fetch_att list -> msg_att_handler -> unit IO.t
+  val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t ->
+    fetch_att list -> msg_att_handler -> unit IO.t
   val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
   val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
     store_att -> Seq_set.t IO.t
@@ -853,7 +852,7 @@ module Make (IO : IO.S) = struct
   type msg_att_handler =
     Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-  let fetch_aux cmd handler s set changedsince attrs =
+  let fetch_aux cmd s set changedsince attrs handler =
     let ci = connection_info s in
     let changedsince = match changedsince with
       | None ->
@@ -870,17 +869,17 @@ module Make (IO : IO.S) = struct
     in
     IO.with_lock ci.send_lock aux
 
-  let fetch_changedsince s handler set modseq atts =
-    fetch_aux "FETCH" handler s (seq_set_to_uint32_set set) (Some modseq) atts
+  let fetch_changedsince s set modseq atts handler =
+    fetch_aux "FETCH" s (seq_set_to_uint32_set set) (Some modseq) atts handler
 
-  let fetch s handler set attrs =
-    fetch_aux "FETCH" handler s (seq_set_to_uint32_set set) None attrs
+  let fetch s set attrs handler =
+    fetch_aux "FETCH" s (seq_set_to_uint32_set set) None attrs handler
 
-  let uid_fetch_changedsince s handler set modseq atts =
-    fetch_aux "UID FETCH" handler s (uid_set_to_uint32_set set) (Some modseq) atts
+  let uid_fetch_changedsince s set modseq atts handler =
+    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) (Some modseq) atts handler
 
-  let uid_fetch s handler set attrs =
-    fetch_aux "UID FETCH" handler s (uid_set_to_uint32_set set) None attrs
+  let uid_fetch s set attrs handler =
+    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) None attrs handler
 
   let store_aux cmd s set unchangedsince mode att =
     let ci = connection_info s in

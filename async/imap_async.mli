@@ -239,8 +239,8 @@ val uid_search : session -> ?charset:string -> search_key -> Uid.t list Deferred
 type msg_att_handler =
     Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
 
-val fetch : session -> msg_att_handler -> Seq_set.t -> fetch_att list -> unit
-(** [fetch s set atts] retrieve flags and/or other attributes [att] for those
+val fetch : session -> Seq_set.t -> fetch_att list -> msg_att_handler -> unit
+(** [fetch s set atts h] retrieve flags and/or other attributes [att] for those
     messages whose message sequence numbers belong to [set].  The most common
     attribytes are:
 
@@ -252,23 +252,25 @@ val fetch : session -> msg_att_handler -> Seq_set.t -> fetch_att list -> unit
     - [`ENVELOPE] - this parses the header and returns a {!Imap_envelope.t} with this
       information,
     - [`FLAGS] - the flags in the message,
-    - [`UID] - the unique identifier of the message. *)
+    - [`UID] - the unique identifier of the message.
 
-val fetch_changedsince : session -> msg_att_handler -> Seq_set.t -> Modseq.t ->
-  fetch_att list -> unit
+    The function [h] is called with each pair [(n, att)] consisting of a sequence
+    number [n] and a message attribute [att]. *)
+
+val fetch_changedsince : session -> Seq_set.t -> Modseq.t ->
+  fetch_att list -> msg_att_handler -> unit
 (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
     messages that have a modification sequence number at least [modseq] are
     fetched.
 
     This command requires the CONDSTORE extension. *)
 
-val uid_fetch : session -> msg_att_handler -> Uid_set.t -> fetch_att list ->
-  unit
+val uid_fetch : session -> Uid_set.t -> fetch_att list -> msg_att_handler -> unit
 (** Like {!fetch}, but the elements of the set are taken to be unique
     identification numbers. *)
 
-val uid_fetch_changedsince : session -> msg_att_handler -> Uid_set.t -> Modseq.t ->
-  fetch_att list -> unit
+val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t ->
+  fetch_att list -> msg_att_handler -> unit
 (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
     unique identification numbers.
 
