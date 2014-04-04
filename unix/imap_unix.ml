@@ -129,11 +129,11 @@ module M = struct
       method read buf off len =
         let avail = tr#available_output in
         if avail > 0 then
-          if avail <= len then
+          if avail <= len then begin
             let zbuf, zoff, zlen = tr#get_substring in
             String.unsafe_blit zbuf zoff buf off zlen;
             zlen
-          else
+          end else
             let rec loop n off len =
               if len <= 0 then n
               else begin

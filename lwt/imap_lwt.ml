@@ -69,8 +69,60 @@ module Lwtio = struct
 
   let flush (_, oc) = Lwt_io.flush oc
 
-  let compress _ = assert false
+  let inflate_input ic =
+    let tr = Cryptokit.Zlib.uncompress () in
+    let tmp_buf = ref "" in
+    let tmp_idx = ref 0 in
+    let chunk_size = 1024 in
+    let rec read bytes off len =
+      if !tmp_idx < String.length !tmp_buf then begin
+        let len = min len (String.length !tmp_buf - !tmp_idx) in
+        Lwt_bytes.unsafe_blit_string_bytes !tmp_buf !tmp_idx bytes off len;
+        tmp_idx := !tmp_idx + len;
+        Lwt.return len
+      end else
+        let avail = tr#available_output in
+        if avail > 0 then
+          if avail <= len then begin
+            let zbuf, zoff, zlen = tr#get_substring in
+            Lwt_bytes.unsafe_blit_string_bytes zbuf zoff bytes off zlen;
+            Lwt.return zlen
+          end else begin
+            let zbuf, zoff, zlen = tr#get_substring in
+            Lwt_bytes.unsafe_blit_string_bytes zbuf zoff bytes off len;
+            tmp_buf := String.sub zbuf (zoff + len) (zlen - zoff - len);
+            Lwt.return len
+          end
+        else begin
+          Lwt_io.read ~count:chunk_size ic >>= fun s ->
+          tr#put_string s;
+          read bytes off len
+        end
+    in
+    Lwt_io.make
+      ~close:(fun () -> tr#finish; Lwt_io.close ic)
+      ~mode:Lwt_io.Input
+      read
 
+  let deflate_output oc =
+    let tr = Cryptokit.Zlib.compress () in
+    let write bytes off len =
+      tr#put_string (Lwt_bytes.to_string (Lwt_bytes.extract bytes off len));
+      tr#flush;
+      Lwt_io.write oc tr#get_string >>= fun () ->
+      Lwt.return len
+    in
+    Lwt_io.make
+      ~close:(fun () ->
+          tr#finish; tr#flush; Lwt_io.write oc tr#get_string >>= fun () -> Lwt_io.close oc)
+      ~mode:Lwt_io.Output
+      write
+
+  let compress (ic, (fd, oc)) =
+    let ic = inflate_input ic in
+    let oc = deflate_output oc in
+    (ic, (fd, oc))
+          
   let connect port host =
     let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     Lwt_unix.gethostbyname host >>= fun he ->
