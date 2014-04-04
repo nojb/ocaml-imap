@@ -48,8 +48,6 @@ module Uint32 = struct
       of_sexp_error "Uint32.t_of_sexp: atom needed" sexp
 end
 
-(* type uint32 = Uint32.t with sexp *)
-
 module Uint64 = struct
   include Uint64
 
@@ -74,8 +72,6 @@ module Uint64 = struct
   let is_zero n =
     equal n zero
 end
-
-(* type uint64 = Uint64.t with sexp *)
 
 module Uid = Uint32
 

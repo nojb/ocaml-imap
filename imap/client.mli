@@ -63,19 +63,18 @@ module type S = sig
       to be connected using {!connect}. *)
 
   val connect : session -> ?port:int -> string -> [ `Needsauth | `Preauth ] IO.t
-  (* val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t *)
-  (** Connects to the IMAP server using the given i/o stream.  Returns
+  (** Connects to the IMAP server on the given port and hostname.  Returns
       [`Needsauth] if the server requires authentication and [`Preauth] if the
       session has already been authenticated in some other fashion. *)
 
   val connect_ssl : session -> ?version:[`TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
     ?port : int -> string -> [ `Needsauth | `Preauth ] IO.t
-
-  (* val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] Lwt.t *)
-  (* (\** Connects to the IMAP server using a SSL connection on port [?port] and given *)
-  (*     hostname.  Returns [`Needsauth] if the server requires authentication and *)
-  (*     [`Preauth] if the session has already been authenticated in some other *)
-  (*     fashion. *\) *)
+  (** Connects to the IMAP server using a SSL connection on the given port and
+      hostname. [?version] is the version of the SSL protocol to use (default is
+      TLSv1).  If [?ca_file] is not omitted, then it should point to a file in
+      PEM format used to verify the server certificate.  Returns [`Needsauth] if
+      the server requires authentication and [`Preauth] if the session has
+      already been authenticated in some other fashion. *)
 
   val disconnect : session -> unit
   (** Disconnects from the server forcefully.  For a graceful exit, {!logout} is

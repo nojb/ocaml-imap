@@ -42,7 +42,6 @@ module type S = sig
   exception Auth_error of exn
 
   val make : unit -> session
-  (* val connect : session -> IO.input * IO.output -> [ `Needsauth | `Preauth ] IO.t *)
   val connect : session -> ?port : int -> string -> [`Needsauth | `Preauth] IO.t
   val connect_ssl : session -> ?version : [`TLSv1 | `SSLv23 | `SSLv3 ] ->
     ?ca_file : string -> ?port : int -> string -> [ `Needsauth | `Preauth ] IO.t
@@ -509,7 +508,6 @@ module Make (IO : IO.S) = struct
         send_lock = IO.create_mutex ()
       }
       in
-      (* if !debug then Imap_io_low.set_logger low (Some Imap_io_low.default_logger); *)
       s.conn_state <- Connected ci;
       read_greeting ci >>= begin function
         | `BYE _ ->
@@ -529,11 +527,6 @@ module Make (IO : IO.S) = struct
 
   let connect_ssl s ?(version=`TLSv1) ?ca_file ?(port=993) host =
     IO.connect_ssl version ?ca_file port host >>= connect' s
-
-  (* let connect_simple s ?port host = *)
-  (*   let low, connect_ssl = Imap_io_low.open_ssl () in *)
-  (*   connect_ssl ?port host >>= fun () -> *)
-  (*   connect s low *)
 
   let disconnect s =
     match s.conn_state with
@@ -633,13 +626,6 @@ module Make (IO : IO.S) = struct
         send_command ci cmd >>= fun () ->
         IO.starttls version ?ca_file ci.chan >>= begin fun chan ->
           ci.chan <- chan;
-        (* let fd = match Imap_io_low.get_fd (Imap_io.get_low ci.chan) with *)
-        (*   | None -> failwith "starttls: no file descriptor" *)
-        (*   | Some fd -> fd *)
-        (* in *)
-        (* let low, connect = Imap_io_low.open_tls ?ssl_context fd in *)
-        (* connect () >|= fun () -> *)
-        (* Imap_io.set_low ci.chan low; *)
           ci.cap_info <- fresh_capability_info; (* See 6.2.1 in RFC 3501 *)
           IO.return ()
         end
@@ -677,9 +663,6 @@ module Make (IO : IO.S) = struct
       send_command ci cmd >>= fun () ->
       let chan = IO.compress ci.chan in
       ci.chan <- chan;      
-      (* let low = Imap_io.get_low ci.chan in *)
-      (* let low = Imap_io_low.compress low in *)
-      (* Imap_io.set_low ci.chan low; *)
       ci.compress_deflate <- true;
       IO.return ()
     in
