@@ -129,3 +129,58 @@ module Async_io = struct
 end
 
 include Client.Make (Async_io)
+
+let noop s = ignore (noop s)
+
+let logout s = ignore (logout s)
+
+let starttls ?version ?ca_file s = ignore (starttls ?version ?ca_file s)
+
+let authenticate s a = ignore (authenticate s a)
+
+let login s p l = ignore (login s p l)
+
+let compress s = ignore (compress s)
+
+let select s m = ignore (select s m)
+
+let examine s m = ignore (examine s m)
+
+let create s m = ignore (create s m)
+
+let delete s m = ignore (delete s m)
+
+let rename s m1 m2 = ignore (rename s m1 m2)
+
+let subscribe s m = ignore (subscribe s m)
+
+let unsubscribe s m = ignore (unsubscribe s m)
+
+let append s m ?flags ?date d = ignore (append s m ?flags ?date d)
+
+let idle s f = let _, stop = idle s f in stop
+
+let check s = ignore (check s)
+
+let close s = ignore (close s)
+
+let expunge s = ignore (expunge s)
+
+let uid_expunge s uids = ignore (uid_expunge s uids)
+
+let fetch s h seqs atts = ignore (fetch s h seqs atts)
+
+let fetch_changedsince s h seqs modseq atts = ignore (fetch_changedsince s h seqs modseq atts)
+
+let uid_fetch s h uids atts = ignore (uid_fetch s h uids atts)
+
+let uid_fetch_changedsince s h uids modseq atts =
+  ignore (uid_fetch_changedsince s h uids modseq atts)
+
+let store s seqs mode atts = ignore (store s seqs mode atts)
+
+let uid_store s uids mode atts = ignore (uid_store s uids mode atts)
+
+let copy s seqs m = ignore (copy s seqs m)
+
+let uid_copy s uids m = ignore (uid_copy s uids m)
