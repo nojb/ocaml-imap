@@ -24,7 +24,7 @@
 
 open Imap_uint
 
-module Make (IO : Imap_io.S) : sig
+module Make (IO : IO.S) : sig
   (** The type of senders.  The argument is a pair [(io, get_cont_req)] consisting
       of an IO channel [io] and a function [get_cont_req] that should be called when a
       continuation request is required.  See {!Imap.run_sender}. *)

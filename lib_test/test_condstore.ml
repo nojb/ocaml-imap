@@ -1,4 +1,5 @@
 open OUnit2
+open Imap
 open Imap_types
 open Imap_uint
 
@@ -20,10 +21,10 @@ let examples = [
 ]
 
 let test_parser ~ctxt s check =
-  match Imap_parser.parse Imap_response.cont_req_or_resp_data_or_resp_done s with
+  match Parser.parse Response.cont_req_or_resp_data_or_resp_done s with
   | `Ok x ->
     let pp fmt x =
-      Sexplib.Sexp.pp_hum fmt (Imap_response.sexp_of_cont_req_or_resp_data_or_resp_done x)
+      Sexplib.Sexp.pp_hum fmt (Response.sexp_of_cont_req_or_resp_data_or_resp_done x)
     in
     assert_equal ~ctxt ~msg:s ~pp_diff:(fun fmt (x, check) ->
         Format.fprintf fmt "@[EXPECTED: @[%a@]@\nGOT: @[%a@]@]@."

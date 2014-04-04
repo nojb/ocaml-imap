@@ -103,7 +103,7 @@ let example_responses =
   ]
 
 let test_parser ~ctxt p sexp_of_t s check =
-  match Imap_parser.parse p s with
+  match Parser.parse p s with
   | `Ok x ->
     let pp fmt x =
       Sexplib.Sexp.pp_hum fmt (sexp_of_t x)
@@ -117,12 +117,12 @@ let test_parser ~ctxt p sexp_of_t s check =
 let test_responses =
   List.map (fun (ex, check) ->
       test_case (fun ctxt ->
-          test_parser ~ctxt Imap_response.cont_req_or_resp_data_or_resp_done
-            Imap_response.sexp_of_cont_req_or_resp_data_or_resp_done (ex ^ "\r\n") check))
+          test_parser ~ctxt Response.cont_req_or_resp_data_or_resp_done
+            Response.sexp_of_cont_req_or_resp_data_or_resp_done (ex ^ "\r\n") check))
     example_responses
 
 let test_envelope ctxt =
-  let open Imap_mime in
+  let open Mime in
   let ex =
     "(\"Wed, 17 Jul 1996 02:23:25 -0700 (PDT)\" \
      \"IMAP4rev1 WG mtg summary and minutes\" \
@@ -168,7 +168,7 @@ let test_envelope ctxt =
   test_parser ~ctxt envelope sexp_of_envelope ex check
     
 let test_body ctxt =
-  let open Imap_mime in
+  let open Mime in
   let ex =
     "(\"TEXT\" \"PLAIN\" (\"CHARSET\" \"US-ASCII\") NIL NIL \"7BIT\" 3028 92)"
   in

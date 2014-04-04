@@ -20,6 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-include Client.S with type 'a IO.t = 'a
+include Imap.Client.S with type 'a IO.t = 'a
 
 (* val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] *)

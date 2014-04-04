@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 2465286516148388adf81faea0fff09c)
+# DO NOT EDIT (digest: 3eb9975eb52a78a50cdba558fc21dbbf)
 version = "0.9.0"
 description = "IMAP client library for Lwt"
 requires = "uint str cryptokit ucorelib sexplib sexplib.syntax"
@@ -12,44 +12,44 @@ package "unix" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
  requires = "imap unix ssl cryptokit"
- archive(byte) = "imap-unix.cma"
- archive(byte, plugin) = "imap-unix.cma"
- archive(native) = "imap-unix.cmxa"
- archive(native, plugin) = "imap-unix.cmxs"
- exists_if = "imap-unix.cma"
+ archive(byte) = "imap_unix.cma"
+ archive(byte, plugin) = "imap_unix.cma"
+ archive(native) = "imap_unix.cmxa"
+ archive(native, plugin) = "imap_unix.cmxs"
+ exists_if = "imap_unix.cma"
 )
 
 package "lwt" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
  requires = "imap lwt lwt.ssl lwt.unix"
- archive(byte) = "imap-lwt.cma"
- archive(byte, plugin) = "imap-lwt.cma"
- archive(native) = "imap-lwt.cmxa"
- archive(native, plugin) = "imap-lwt.cmxs"
- exists_if = "imap-lwt.cma"
+ archive(byte) = "imap_lwt.cma"
+ archive(byte, plugin) = "imap_lwt.cma"
+ archive(native) = "imap_lwt.cmxa"
+ archive(native, plugin) = "imap_lwt.cmxs"
+ exists_if = "imap_lwt.cma"
 )
 
 package "gsasl" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
  requires = "imap gsasl"
- archive(byte) = "imap-gsasl.cma"
- archive(byte, plugin) = "imap-gsasl.cma"
- archive(native) = "imap-gsasl.cmxa"
- archive(native, plugin) = "imap-gsasl.cmxs"
- exists_if = "imap-gsasl.cma"
+ archive(byte) = "imap_gsasl.cma"
+ archive(byte, plugin) = "imap_gsasl.cma"
+ archive(native) = "imap_gsasl.cmxa"
+ archive(native, plugin) = "imap_gsasl.cmxs"
+ exists_if = "imap_gsasl.cma"
 )
 
 package "async" (
  version = "0.9.0"
  description = "IMAP client library for Lwt"
  requires = "threads imap async async_ssl"
- archive(byte) = "imap-async.cma"
- archive(byte, plugin) = "imap-async.cma"
- archive(native) = "imap-async.cmxa"
- archive(native, plugin) = "imap-async.cmxs"
- exists_if = "imap-async.cma"
+ archive(byte) = "imap_async.cma"
+ archive(byte, plugin) = "imap_async.cma"
+ archive(native) = "imap_async.cmxa"
+ archive(native, plugin) = "imap_async.cmxs"
+ exists_if = "imap_async.cma"
 )
 # OASIS_STOP
 

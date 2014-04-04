@@ -1,5 +1,5 @@
 open OUnit2
-open Imap_utils
+open Utils
 
 let utf8_mutf7_pairs =
   [

@@ -20,7 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap_auth
+open Auth
   
 let gsasl name props =
   let ctx = Gsasl.init () in

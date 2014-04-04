@@ -20,7 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap_utils
+open Utils
 open Imap_types
 open Imap_uint
 
@@ -29,7 +29,7 @@ let debug =
   with Not_found -> ref false
 
 module type S = sig
-  module IO : Imap_io.S
+  module IO : IO.S
 
   type session
 
@@ -54,7 +54,7 @@ module type S = sig
   val enable : session -> capability list -> capability list IO.t
   val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
     session -> unit IO.t
-  val authenticate : session -> Imap_auth.t -> unit IO.t
+  val authenticate : session -> Auth.t -> unit IO.t
   val login : session -> string -> string -> unit IO.t
   val compress : session -> unit IO.t
   val select : session -> string -> unit IO.t
@@ -116,7 +116,7 @@ module type S = sig
   val is_busy : session -> bool
 end
 
-module Make (IO : Imap_io.S) = struct
+module Make (IO : IO.S) = struct
   module IO = IO
 
   type response_info = {
@@ -334,13 +334,13 @@ module Make (IO : Imap_io.S) = struct
       resp_text_store s rt
 
   let response_data_store s ?handler = function
-    | #Imap_response.resp_cond_state as resp ->
+    | #Response.resp_cond_state as resp ->
       resp_cond_state_store s resp
-    | #Imap_response.resp_cond_bye as resp ->
+    | #Response.resp_cond_bye as resp ->
       resp_cond_bye_store s resp
-    | #Imap_response.mailbox_data as resp ->
+    | #Response.mailbox_data as resp ->
       mailbox_data_store s resp
-    | #Imap_response.message_data as resp ->
+    | #Response.message_data as resp ->
       message_data_store s ?handler resp
     | `CAPABILITY caps ->
       s.cap_info <- caps
@@ -369,14 +369,14 @@ module Make (IO : Imap_io.S) = struct
     match resp with
     | `TAGGED tagged ->
       response_tagged_store s tagged
-    | #Imap_response.response_fatal as resp ->
+    | #Response.response_fatal as resp ->
       response_fatal_store s resp
 
   let resp_data_or_resp_done_store s ?handler resp =
     match resp with
-    | #Imap_response.response_data as resp ->
+    | #Response.response_data as resp ->
       response_data_store s ?handler resp
-    | #Imap_response.response_done as resp ->
+    | #Response.response_done as resp ->
       response_done_store s resp
 
   let resp_cond_auth_store s = function
@@ -385,45 +385,45 @@ module Make (IO : Imap_io.S) = struct
       resp_text_store s rt
 
   let greetings_store s = function
-    | #Imap_response.resp_cond_auth as resp ->
+    | #Response.resp_cond_auth as resp ->
       resp_cond_auth_store s resp
-    | #Imap_response.resp_cond_bye as resp ->
+    | #Response.resp_cond_bye as resp ->
       resp_cond_bye_store s resp
 
   let cont_req_or_resp_data_or_resp_done_store s ?handler = function
     | `CONT_REQ _ ->
       ()
-    | #Imap_response.response_data
-    | #Imap_response.response_done as resp ->
+    | #Response.response_data
+    | #Response.response_done as resp ->
       resp_data_or_resp_done_store s ?handler resp
 
   let read ci p store =
     read_line ci.chan >>= fun s ->
-    match Imap_parser.parse p s with
+    match Parser.parse p s with
     | `Ok x -> store ci x; IO.return x
     | `Fail i -> IO.fail (Parse_error (s, i))
     | `Exn exn -> IO.fail exn
 
   let read_greeting ci =
-    read ci Imap_response.greeting greetings_store
+    read ci Response.greeting greetings_store
 
   let read_resp_data_or_resp_done ?handler ci =
     read ci
-      Imap_response.resp_data_or_resp_done
+      Response.resp_data_or_resp_done
       (resp_data_or_resp_done_store ?handler)
 
   let read_cont_req_or_resp_data_or_resp_done ?handler ci =
     read ci
-      Imap_response.cont_req_or_resp_data_or_resp_done
+      Response.cont_req_or_resp_data_or_resp_done
       (cont_req_or_resp_data_or_resp_done_store ?handler)
 
-  let get_response ci ?handler tag : Imap_response.resp_text IO.t =
+  let get_response ci ?handler tag : Response.resp_text IO.t =
     ci.rsp_info <- fresh_response_info;
     let rec loop () =
       read_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ -> (* FIXME change mode *)
         IO.fail BYE
-      | #Imap_response.response_data ->
+      | #Response.response_data ->
         loop ()
       | `TAGGED (tag', `OK rt) ->
         if tag <> tag' then IO.fail Bad_tag
@@ -441,7 +441,7 @@ module Make (IO : Imap_io.S) = struct
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ -> (* FIXME change mode *)
         IO.fail BYE
-      | #Imap_response.response_data ->
+      | #Response.response_data ->
         begin match f () with
           | `Continue -> loop ()
           | `Stop -> stop (); loop ()
@@ -464,7 +464,7 @@ module Make (IO : Imap_io.S) = struct
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ -> (* FIXME change mode *)
         IO.fail BYE
-      | #Imap_response.response_data ->
+      | #Response.response_data ->
         loop needs_more
       | `TAGGED (tag', `OK _) ->
         begin if needs_more then step "" else IO.return `OK end >>=
@@ -491,7 +491,7 @@ module Make (IO : Imap_io.S) = struct
     loop true
 
   let get_continuation_request ci =
-    read ci Imap_response.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
+    read ci Response.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
 
   let make () =
     { conn_state = Disconnected }
@@ -547,7 +547,7 @@ module Make (IO : Imap_io.S) = struct
     s.next_tag <- s.next_tag + 1;
     string_of_int tag
 
-  module S = Imap_sender.Make (IO)
+  module S = Sender.Make (IO)
 
   let run_sender ci (f : S.t) =
     let _, oc = ci.chan in
@@ -648,14 +648,14 @@ module Make (IO : Imap_io.S) = struct
 
   let authenticate s auth =
     let ci = connection_info s in
-    let cmd = S.(raw "AUTHENTICATE" @> space @> string auth.Imap_auth.name) in
+    let cmd = S.(raw "AUTHENTICATE" @> space @> string auth.Auth.name) in
     let step data =
-      let data = Imap_utils.base64_decode data in
+      let data = Utils.base64_decode data in
       begin
-        try IO.return (auth.Imap_auth.step data)
+        try IO.return (auth.Auth.step data)
         with e -> IO.fail (Auth_error e)
       end >>= fun (rc, data) ->
-      let data = Imap_utils.base64_encode data in
+      let data = Utils.base64_encode data in
       run_sender ci S.(raw data @> crlf) >>= fun () ->
       IO.return rc
     in
@@ -945,7 +945,7 @@ module Make (IO : Imap_io.S) = struct
   let has_capability_name s name =
     let ci = connection_info s in
     List.exists (function
-        | `NAME x -> Imap_utils.compare_ci x name = 0
+        | `NAME x -> Utils.compare_ci x name = 0
         | `AUTH_TYPE _ -> false) ci.cap_info
 
   let has_uidplus s =

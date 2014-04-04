@@ -20,7 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-val gsasl : string -> (Gsasl.property * string) list -> Imap_auth.t
+val gsasl : string -> (Gsasl.property * string) list -> Auth.t
 (** [gsasl name props] performs authentication using the GNU SASL library.
     [name] is the gsasl method name, and [props] is a list of properties and
     values used to authenticate with that method.  See the

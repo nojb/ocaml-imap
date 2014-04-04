@@ -15,7 +15,7 @@ Hello Joe, do you think we can meet at 3:30 tomorrow?\r\n"
 
 let test_folder = "ocaml-imap-test"
 
-open Imap_types
+open Imap.Imap_types
 
 module Imap = Imap_lwt
 

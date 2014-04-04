@@ -1,6 +1,6 @@
 open OUnit2
 
-open Imap_types
+open Imap.Imap_types
 
 open Test_live_utils
 

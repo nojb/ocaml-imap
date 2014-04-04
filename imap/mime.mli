@@ -47,7 +47,7 @@ type envelope = {
   env_message_id : string
 } with sexp
 
-val envelope : envelope Imap_parser.t
+val envelope : envelope Parser.t
 (** Parses an IMAP envelope *)
   
 (** MIME media types *)
@@ -134,4 +134,4 @@ and body =
   | Multi_part of multi_part with sexp
   (** Multi part *)
 
-val body : body Imap_parser.t
+val body : body Parser.t

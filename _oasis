@@ -27,16 +27,15 @@ Flag async
   Description: Async support
   Default$: flag(all)
 
-Library "imap"
+Library imap
   Path: imap
   FindlibName: imap
   Pack: true
-  Modules: Imap_mime, Imap_types, Imap_set,
-           Client, Imap_uint, Imap_auth, Imap_io
-  InternalModules: Imap_sender, Imap_parser, Imap_uint_raw, Imap_response, Imap_utils
+  Modules: Mime, Imap_types, Imap_set, Client, Imap_uint, Auth, IO
+  InternalModules: Sender, Parser, Imap_uint_raw, Response, Utils
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax
 
-Library "imap-unix"
+Library imap_unix
   Build$: flag(unix)
   Install$: flag(unix)
   Path: unix
@@ -46,7 +45,7 @@ Library "imap-unix"
   # InternalModules: Imap_gen_io
   BuildDepends: imap, unix, ssl, cryptokit
 
-Library "imap-lwt"
+Library imap_lwt
   Build$: flag(lwt)
   Install$: flag(lwt)
   Path: lwt
@@ -55,7 +54,7 @@ Library "imap-lwt"
   Modules: Imap_lwt
   BuildDepends: imap, lwt, lwt.ssl, lwt.unix
 
-Library "imap-gsasl"
+Library imap_gsasl
   Build$: flag(gsasl)
   Install$: flag(gsasl)
   Path: gsasl
@@ -66,7 +65,7 @@ Library "imap-gsasl"
   Modules: Imap_gsasl
   BuildDepends: imap, gsasl
 
-Library "imap-async"
+Library imap_async
   Build$: flag(async)
   Install$: flag(async)
   Path: async
@@ -81,7 +80,7 @@ Document imap
   Type: ocamlbuild (0.4)
   BuildTools+: ocamldoc
   Install: true
-  XOCamlbuildPath: lib
+  XOCamlbuildPath: imap
   XOCamlbuildLibraries: imap
 
 Executable test_parser

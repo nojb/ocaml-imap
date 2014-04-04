@@ -22,7 +22,7 @@
 
 open Imap_uint
 
-module Make (IO : Imap_io.S) = struct
+module Make (IO : IO.S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 
@@ -116,7 +116,7 @@ module Make (IO : Imap_io.S) = struct
     | None -> nil
 
   let mailbox box =
-    string (Imap_utils.encode_mutf7 box)
+    string (Utils.encode_mutf7 box)
 
   let months =
     [|"Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; "Jul"; "Aug"; "Sep";
@@ -205,7 +205,7 @@ module Make (IO : Imap_io.S) = struct
     | `Extension s -> char '\\' @> raw s (* FIXME: encode in MUTF7 ? *)
 
   let gm_label s =
-    raw (Imap_utils.encode_mutf7 s)
+    raw (Utils.encode_mutf7 s)
 
   let entry_type_req = function
     | `All -> "all"

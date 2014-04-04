@@ -20,6 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+open Imap
+
 module M = struct
   class virtual input_chan =
     object (self)
@@ -187,14 +189,14 @@ module M = struct
   let read_line ic =
     let s = ic#read_line in
     if !Client.debug then begin
-      Imap_utils.log `Server s;
-      Imap_utils.log `Server "\r\n"
+      Utils.log `Server s;
+      Utils.log `Server "\r\n"
     end;
     s
 
   let read_exactly ic n =
     let s = ic#read_exactly n in
-    if !Client.debug then Imap_utils.log `Server s;
+    if !Client.debug then Utils.log `Server s;
     s   
 
   let close_in ic =
@@ -202,7 +204,7 @@ module M = struct
 
   let write (_, oc) s =
     oc#write_string s;
-    if !Client.debug then Imap_utils.log `Client s
+    if !Client.debug then Utils.log `Client s
 
   let flush (_, oc) =
     oc#flush

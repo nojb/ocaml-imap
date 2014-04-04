@@ -117,7 +117,7 @@ and body =
   | Message of message single_part
   | Multi_part of multi_part with sexp
 
-open Imap_parser
+open Parser
 
 let address =
   delimited lpar
@@ -184,7 +184,7 @@ let body_fld_param : (string * string) list t =
 body-fld-enc    = (DQUOTE ("7BIT" / "8BIT" / "BINARY" / "BASE64"/
                   "QUOTED-PRINTABLE") DQUOTE) / string
 *)
-let body_fld_enc : encoding Imap_parser.t =
+let body_fld_enc : encoding Parser.t =
   let table = [
     "7BIT", `BIT7;
     "8BIT", `BIT8;
