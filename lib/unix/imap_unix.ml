@@ -21,7 +21,7 @@
    SOFTWARE. *)
 
 module M = struct
-  class virtual input =
+  class virtual input_chan =
     object (self)
       method virtual read : string -> int -> int -> int
       method virtual close : unit
@@ -69,7 +69,7 @@ module M = struct
         loop 0 0 n
     end
 
-  class virtual output =
+  class virtual output_chan =
     object (self)
       method virtual write : string -> int -> int -> int
 
@@ -90,14 +90,14 @@ module M = struct
 
   let input_of_in_channel ic =
     object
-      inherit input
+      inherit input_chan
       method read = Pervasives.input ic
       method close = Pervasives.close_in ic
     end
 
   let output_of_out_channel oc =
     object
-      inherit output
+      inherit output_chan
       method write buf off len = Pervasives.output oc buf off len; len
       method close = Pervasives.close_out oc
       method flush = Pervasives.flush oc
@@ -105,14 +105,14 @@ module M = struct
 
   let input_of_ssl sock =
     object
-      inherit input
+      inherit input_chan
       method read = Ssl.read sock
       method close = Ssl.shutdown sock
     end
 
   let output_of_ssl sock =
     object
-      inherit output
+      inherit output_chan
       method write = Ssl.write sock
       method close = Ssl.shutdown sock
       method flush = Ssl.flush sock
@@ -123,7 +123,7 @@ module M = struct
     let read_buf = String.create chunk_size in
     let tr = Cryptokit.Zlib.uncompress () in
     object (self)
-      inherit input
+      inherit input_chan
       method read buf off len =
         let avail = tr#available_output in
         if avail > 0 then
@@ -152,7 +152,7 @@ module M = struct
   let deflate_output oc =
     let tr = Cryptokit.Zlib.compress () in
     object
-      inherit output
+      inherit output_chan
       method write buf off len =
         tr#put_substring buf off len;
         (* if tr#available_output > 0 then oc#write_string tr#get_string; *)
@@ -181,6 +181,9 @@ module M = struct
   let with_lock () f = f ()
   let is_locked () = false
 
+  type input = input_chan
+  type output = Unix.file_descr * output_chan
+
   let read_line ic =
     let s = ic#read_line in
     if !Imap.debug then begin
@@ -197,67 +200,62 @@ module M = struct
   let close_in ic =
     ic#close
 
-  let write oc s =
+  let write (_, oc) s =
     oc#write_string s;
     if !Imap.debug then Imap_utils.log `Client s
 
-  let flush oc =
+  let flush (_, oc) =
     oc#flush
 
-  let close_out oc =
+  let close_out (_, oc) =
     oc#close
 
   let connect port host =
     let he = Unix.gethostbyname host in
     let ic, oc = Unix.open_connection (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) in
+    let fd = Unix.descr_of_in_channel ic in
     let ic = input_of_in_channel ic in
     let oc = output_of_out_channel oc in
-    (ic, oc)
+    (ic, (fd, oc))
 
   let _ = Ssl.init ()
 
-  let connect_ssl version ?ca_file port host =
-    let he = Unix.gethostbyname host in
+  let ssl_context version ca_file =
     let version = match version with
       | `TLSv1 -> Ssl.TLSv1
       | `SSLv23 -> Ssl.SSLv23
       | `SSLv3 -> Ssl.SSLv3
     in
     let ctx = Ssl.create_context version Ssl.Client_context in
-    begin match ca_file with
-      | None -> ()
-      | Some ca_file ->
-        Ssl.load_verify_locations ctx ca_file "";
-        Ssl.set_verify ctx [Ssl.Verify_peer] None
-    end;
-    let sock = Ssl.open_connection_with_context ctx
+    match ca_file with
+    | None ->
+      ctx
+    | Some ca_file ->
+      Ssl.load_verify_locations ctx ca_file "";
+      Ssl.set_verify ctx [Ssl.Verify_peer] None;
+      ctx
+
+  let connect_ssl version ?ca_file port host =
+    let he = Unix.gethostbyname host in
+    let sock = Ssl.open_connection_with_context (ssl_context version ca_file)
         (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port))
     in
+    let fd = Ssl.file_descr_of_socket sock in
     let ic = input_of_ssl sock in
     let oc = output_of_ssl sock in
-    (ic, oc)
+    (ic, (fd, oc))
 
-(* let starttls ?ssl_context s = *)
-(*   let aux (ic, oc) = *)
-(*     let fd = match Unix_io.Low.get_fd (Unix_io.get_low ic) with *)
-(*       | None -> failwith "starttls: no file descriptor" *)
-(*       | Some fd -> fd *)
-(*     in *)
-(*     let low, connect = Unix_io.Low.open_tls ?ssl_context fd in *)
-(*     connect (); *)
-(*     Unix_io.set_low ic low; *)
-(*     Unix_io.set_low oc low; *)
-(*     (ic, oc) *)
-(*   in *)
-(*   starttls s aux *)
-  
-  let starttls version ?ca_file (ic, oc) =
-    assert false
+  let starttls version ?ca_file (_, (fd, _)) =
+    let sock = Ssl.embed_socket fd (ssl_context version ca_file) in
+    Ssl.connect sock;
+    let ic = input_of_ssl sock in
+    let oc = output_of_ssl sock in
+    (ic, (fd, oc))
 
-  let compress (ic, oc) =
+  let compress (ic, (fd, oc)) =
     let ic = inflate_input ic in
     let oc = deflate_output oc in
-    (ic, oc)
+    (ic, (fd, oc))
 end
 
 include Imap.Make (M)
