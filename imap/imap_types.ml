@@ -34,6 +34,7 @@ module type S = sig
   val compare : t -> t -> int
   val equal : t -> t -> bool
   val succ : t -> t
+  val printer : Format.formatter -> t -> unit
 end
 
 module type S32 = sig

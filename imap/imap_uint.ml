@@ -48,6 +48,9 @@ module Uint32 = struct
                                   (Sexp.to_string_hum (sexp_of_exn exc))) sexp)
     | _ as sexp ->
       of_sexp_error "Uint32.t_of_sexp: atom needed" sexp
+
+  let printer fmt n =
+    Format.fprintf fmt "%s" (to_string n)
 end
 
 module Uint32_set = Imap_set.Make (Uint32)
@@ -75,4 +78,7 @@ module Uint64 = struct
 
   let is_zero n =
     equal n zero
+
+  let printer fmt n =
+    Format.fprintf fmt "%s" (to_string n)
 end
