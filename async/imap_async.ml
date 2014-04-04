@@ -52,11 +52,11 @@ module Async_io = struct
   }
   let is_locked m = m.locked
   let lock m =
-    if m.locked then
-      let iv = Ivar.create () in begin
-        Queue.enqueue m.waiters iv;
-        Ivar.read iv
-      end
+    if m.locked then begin
+      let iv = Ivar.create () in
+      Queue.enqueue m.waiters iv;
+      Ivar.read iv
+    end
     else begin
       m.locked <- true;
       return ()
@@ -69,7 +69,7 @@ module Async_io = struct
     end      
   let with_lock m f =
     lock m >>= fun () ->
-    protect ~f ~finally:(fun () -> unlock m)
+    Monitor.protect f ~finally:(fun () -> unlock m; return ())
 
   type input = Reader.t
   type output = Writer.t
