@@ -38,7 +38,7 @@ module Async_io = struct
   let return = Deferred.return
 
   let catch f handler =
-    try_with f >>= function
+    try_with ~extract_exn:true f >>= function
     | Ok x -> return x
     | Error e -> handler e
 
