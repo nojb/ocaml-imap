@@ -23,4 +23,4 @@
 open Core.Std
 open Async.Std
 
-include Imap.S with type 'a IO.t = ('a, exn) Result.t Deferred.t
+include Imap.S with type 'a IO.t = 'a Deferred.t

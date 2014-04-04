@@ -26,25 +26,19 @@ open Async.Std
 (* module Ivar = Async_kernel.Raw_ivar *)
                 
 module Async_io = struct
-  type 'a t = ('a, exn) Result.t Deferred.t
+  type 'a t = 'a Deferred.t
     
   let fail exn =
-    Deferred.return (Error exn)
+    raise exn
 
-  let bind t' f =
-    t' >>= function
-    | Error _ as e -> Deferred.return e
-    | Ok x -> f x
+  let bind = Deferred.bind
   
-  let return x =
-    Deferred.return (Ok x)
+  let return = Deferred.return
 
-  let catch t_susp handler =
-    t_susp () >>= function
+  let catch f handler =
+    try_with f >>= function
+    | Ok x -> return x
     | Error e -> handler e
-    | Ok _ as r -> Deferred.return r
-
-  (* let (>>=) = bind *)
 
   type mutex = unit
   let create_mutex () = ()
@@ -57,7 +51,10 @@ module Async_io = struct
   let read_line ic =
     Reader.read_line ic >>= function
     | `Ok s ->
-      if !Imap.debug then Imap_utils.log `Server (s ^ "\r\n");
+      if !Imap.debug then begin
+        Imap_utils.log `Server s;
+        Imap_utils.log `Server "\r\n"
+      end;
       return s
     | `Eof ->
       fail End_of_file
