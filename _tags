@@ -182,4 +182,3 @@
 <lib_test/*.ml{,i}>: use_imap
 <lib_test/test_namespace.{native,byte}>: custom
 # OASIS_STOP
-# <lib/imap_client.ml{,i}>: syntax_camlp4o, pkg_lwt.syntax, pkg_sexplib.syntax
