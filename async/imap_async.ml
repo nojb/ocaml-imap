@@ -51,7 +51,7 @@ module Async_io = struct
   let read_line ic =
     Reader.read_line ic >>= function
     | `Ok s ->
-      if !Imap.debug then begin
+      if !Client.debug then begin
         Imap_utils.log `Server s;
         Imap_utils.log `Server "\r\n"
       end;
@@ -63,14 +63,14 @@ module Async_io = struct
     let buf = String.create len in
     Reader.really_read ic ~pos:0 ~len buf >>= function
     | `Ok ->
-      if !Imap.debug then Imap_utils.log `Server buf;
+      if !Client.debug then Imap_utils.log `Server buf;
       return buf
     | `Eof _ ->
       fail End_of_file
 
   let write oc buf =
     Writer.write oc buf;
-    if !Imap.debug then Imap_utils.log `Client buf;
+    if !Client.debug then Imap_utils.log `Client buf;
     return ()
 
   let flush oc = Writer.flushed oc >>= fun () -> return ()
@@ -102,4 +102,4 @@ module Async_io = struct
     return (app_rd, app_wr)
 end
 
-include Imap.Make (Async_io)
+include Client.Make (Async_io)

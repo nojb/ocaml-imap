@@ -1,5 +1,5 @@
 (* OASIS_START *)
-(* DO NOT EDIT (digest: 42b0163787ae6211674066c031909ba4) *)
+(* DO NOT EDIT (digest: f50bd45219b9b34d27dfaed76fcea274) *)
 module OASISGettext = struct
 (* # 22 "src/oasis/OASISGettext.ml" *)
 
@@ -597,11 +597,11 @@ let package_default =
   {
      MyOCamlbuildBase.lib_ocaml =
        [
-          ("imap", ["lib/core"], []);
-          ("imap-unix", ["lib/unix"], []);
-          ("imap-lwt", ["lib/lwt"], []);
-          ("imap-gsasl", ["lib/gsasl"], []);
-          ("imap-async", ["lib/async"], [])
+          ("imap", ["imap"], []);
+          ("imap-unix", ["unix"], []);
+          ("imap-lwt", ["lwt"], []);
+          ("imap-gsasl", ["gsasl"], []);
+          ("imap-async", ["async"], [])
        ];
      lib_c = [];
      flags =
@@ -634,11 +634,11 @@ let package_default =
        ];
      includes =
        [
-          ("lib_test", ["lib/core"; "lib/lwt"; "lib/unix"]);
-          ("lib/unix", ["lib/core"]);
-          ("lib/lwt", ["lib/core"]);
-          ("lib/gsasl", ["lib/core"]);
-          ("lib/async", ["lib/core"])
+          ("unix", ["imap"]);
+          ("lwt", ["imap"]);
+          ("lib_test", ["imap"; "lwt"; "unix"]);
+          ("gsasl", ["imap"]);
+          ("async", ["imap"])
        ]
   }
   ;;

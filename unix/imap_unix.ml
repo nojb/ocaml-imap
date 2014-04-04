@@ -186,7 +186,7 @@ module M = struct
 
   let read_line ic =
     let s = ic#read_line in
-    if !Imap.debug then begin
+    if !Client.debug then begin
       Imap_utils.log `Server s;
       Imap_utils.log `Server "\r\n"
     end;
@@ -194,7 +194,7 @@ module M = struct
 
   let read_exactly ic n =
     let s = ic#read_exactly n in
-    if !Imap.debug then Imap_utils.log `Server s;
+    if !Client.debug then Imap_utils.log `Server s;
     s   
 
   let close_in ic =
@@ -202,7 +202,7 @@ module M = struct
 
   let write (_, oc) s =
     oc#write_string s;
-    if !Imap.debug then Imap_utils.log `Client s
+    if !Client.debug then Imap_utils.log `Client s
 
   let flush (_, oc) =
     oc#flush
@@ -258,5 +258,5 @@ module M = struct
     (ic, (fd, oc))
 end
 
-include Imap.Make (M)
+include Client.Make (M)
 

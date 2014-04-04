@@ -28,17 +28,18 @@ Flag async
   Default$: flag(all)
 
 Library "imap"
-  Path: lib/core
+  Path: imap
   FindlibName: imap
+  Pack: true
   Modules: Imap_mime, Imap_types, Imap_set,
-           Imap, Imap_uint, Imap_auth, Imap_io
+           Client, Imap_uint, Imap_auth, Imap_io
   InternalModules: Imap_sender, Imap_parser, Imap_uint_raw, Imap_response, Imap_utils
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax
 
 Library "imap-unix"
   Build$: flag(unix)
   Install$: flag(unix)
-  Path: lib/unix
+  Path: unix
   FindlibName: unix
   FindlibParent: imap
   Modules: Imap_unix
@@ -48,7 +49,7 @@ Library "imap-unix"
 Library "imap-lwt"
   Build$: flag(lwt)
   Install$: flag(lwt)
-  Path: lib/lwt
+  Path: lwt
   FindlibName: lwt
   FindlibParent: imap
   Modules: Imap_lwt
@@ -57,7 +58,7 @@ Library "imap-lwt"
 Library "imap-gsasl"
   Build$: flag(gsasl)
   Install$: flag(gsasl)
-  Path: lib/gsasl
+  Path: gsasl
   FindlibName: gsasl
   FindlibParent: imap
   # XXX
@@ -68,7 +69,7 @@ Library "imap-gsasl"
 Library "imap-async"
   Build$: flag(async)
   Install$: flag(async)
-  Path: lib/async
+  Path: async
   FindlibName: async
   FindlibParent: imap
   CCLib: -lssl -lcrypto -v

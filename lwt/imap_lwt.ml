@@ -49,7 +49,7 @@ module Lwtio = struct
 
   let read_line ic =
     Lwt_io.read_line ic >>= fun s ->
-    if !Imap.debug then begin
+    if !Client.debug then begin
       Imap_utils.log `Server s;
       Imap_utils.log `Server "\r\n"
     end;
@@ -58,11 +58,11 @@ module Lwtio = struct
   let read_exactly ic len =
     let buf = String.create len in
     Lwt_io.read_into_exactly ic buf 0 len >>= fun () ->
-    if !Imap.debug then Imap_utils.log `Server buf;
+    if !Client.debug then Imap_utils.log `Server buf;
     Lwt.return buf
 
   let write (_, oc) s = Lwt_io.write oc s >>= fun () ->
-    if !Imap.debug then Imap_utils.log `Client s;
+    if !Client.debug then Imap_utils.log `Client s;
     Lwt.return ()
 
   let flush (_, oc) = Lwt_io.flush oc
@@ -110,7 +110,7 @@ module Lwtio = struct
     Lwt.return (ic, (fd, oc))
 end
 
-include Imap.Make (Lwtio)
+include Client.Make (Lwtio)
 
 (* let compress s = *)
 (*   let aux (ic, oc) = *)

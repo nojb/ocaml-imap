@@ -20,7 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Core.Std
-open Async.Std
+include Client.S with type 'a IO.t = 'a
 
-include Imap.S with type 'a IO.t = 'a Deferred.t
+(* val connect_simple : session -> ?port : int -> string -> [ `Needsauth | `Preauth ] *)

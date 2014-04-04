@@ -20,5 +20,5 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-include Imap.S with type 'a IO.t = 'a Lwt.t
+include Client.S with type 'a IO.t = 'a Lwt.t
 
