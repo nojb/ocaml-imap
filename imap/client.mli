@@ -28,7 +28,7 @@ open Imap_uint
 val debug : bool ref
 
 module type S = sig
-  module IO : Imap_io.S
+  module IO : IO.S
                 
   (** Type of IMAP sessions. *)
   type session
@@ -119,7 +119,7 @@ module type S = sig
       then it must point to a certificate in PEM format and will be used to
       validate the server identity. *)
 
-  val authenticate : session -> Imap_auth.t -> unit IO.t
+  val authenticate : session -> Auth.t -> unit IO.t
   (** [authenticate s auth] authenticates the client using the SASL mechanism
       [auth]. *)
 
@@ -366,4 +366,4 @@ module type S = sig
   (** Whether some command is in progress. *)
 end
 
-module Make (IO : Imap_io.S) : S with module IO = IO
+module Make (IO : IO.S) : S with module IO = IO
