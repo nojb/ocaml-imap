@@ -42,10 +42,34 @@ module Async_io = struct
     | Ok x -> return x
     | Error e -> handler e
 
-  type mutex = unit
-  let create_mutex () = ()
-  let is_locked _ = false
-  let with_lock _ f = f ()
+  type mutex = {
+    mutable locked : bool;
+    mutable waiters : unit Ivar.t Queue.t
+  }
+  let create_mutex () = {
+    locked = false;
+    waiters = Queue.create ()
+  }
+  let is_locked m = m.locked
+  let lock m =
+    if m.locked then
+      let iv = Ivar.create () in begin
+        Queue.enqueue m.waiters iv;
+        Ivar.read iv
+      end
+    else begin
+      m.locked <- true;
+      return ()
+    end
+  let unlock m =
+    if m.locked then begin
+      match Queue.dequeue m.waiters with
+      | Some iv -> Ivar.fill iv ()
+      | None -> m.locked <- false
+    end      
+  let with_lock m f =
+    lock m >>= fun () ->
+    protect ~f ~finally:(fun () -> unlock m)
 
   type input = Reader.t
   type output = Writer.t
