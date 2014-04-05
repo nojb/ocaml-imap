@@ -26,9 +26,7 @@ open Imap_types
 
 val debug : bool ref
 
-module type S = sig
-  module IO : IO.S
-                
+module Make (IO : IO.S) : sig
   (** Type of IMAP sessions. *)
   type session
 
@@ -365,5 +363,3 @@ module type S = sig
   val is_busy : session -> bool
   (** Whether some command is in progress. *)
 end
-
-module Make (IO : IO.S) : S with module IO = IO
