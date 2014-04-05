@@ -23,9 +23,8 @@
 open Imap
 
 let (>>=) = Lwt.bind
-
-let _ = Ssl.init ()
-
+let (>|=) = Lwt.(>|=)
+              
 module Lwtio = struct
   type 'a t = 'a Lwt.t
 
@@ -166,13 +165,26 @@ end
 
 include Client.Make (Lwtio)
 
-(* let compress s = *)
-(*   let aux (ic, oc) = *)
-(*     let low = Lwtio.get_low ic in *)
-(*     let low = Lwtio.Low.compress low in *)
-(*     Lwtio.set_low ic low; *)
-(*     Lwtio.set_low oc low; *)
-(*     Lwt.return (ic, oc) *)
-(*   in *)
-(*   compress s aux *)
+let fetch s set atts =
+  let strm, push = Lwt_stream.create () in
+  ignore (fetch s set atts (fun n x -> push (Some (n, x))) >|= fun () -> push None);
+  strm
 
+let fetch_changedsince s set modseq atts =
+  let strm, push = Lwt_stream.create () in
+  ignore (fetch_changedsince s set modseq atts (fun n x -> push (Some (n, x))) >|= fun () ->
+          push None);
+  strm
+
+let uid_fetch s set atts =
+  let strm, push = Lwt_stream.create () in
+  ignore (uid_fetch s set atts (fun n x -> push (Some (n, x))) >|= fun () -> push None);
+  strm
+
+let uid_fetch_changedsince s set modseq atts =
+  let strm, push = Lwt_stream.create () in
+  ignore (uid_fetch_changedsince s set modseq atts (fun n x -> push (Some (n, x))) >|= fun () ->
+          push None);
+  strm
+
+  
