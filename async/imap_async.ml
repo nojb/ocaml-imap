@@ -170,30 +170,34 @@ let uid_expunge s uids = ignore (uid_expunge s uids)
 
 let fetch s seqs atts =
   let rd, wr = Pipe.create () in
-  upon
-    (fetch s seqs atts (fun n att -> Pipe.write_without_pushback wr (n, att)))
-    (fun () -> Pipe.close wr);
+  ignore (Monitor.protect
+            (fun () -> fetch s seqs atts
+                (fun n att -> Pipe.write_without_pushback wr (n, att)))
+            (fun () -> Pipe.close wr; return ()));
   rd
 
 let fetch_changedsince s seqs modseq atts =
   let rd, wr = Pipe.create () in
-  upon
-    (fetch_changedsince s seqs modseq atts (fun n att -> Pipe.write_without_pushback wr (n, att)))
-    (fun () -> Pipe.close wr);
+  ignore (Monitor.protect
+            (fun () -> fetch_changedsince s seqs modseq atts
+                (fun n att -> Pipe.write_without_pushback wr (n, att)))
+            (fun () -> Pipe.close wr; return ()));
   rd
 
 let uid_fetch s uids atts =
   let rd, wr = Pipe.create () in
-  upon
-    (uid_fetch s uids atts (fun n att -> Pipe.write_without_pushback wr (n, att)))
-    (fun () -> Pipe.close wr);
+  ignore (Monitor.protect
+            (fun () -> uid_fetch s uids atts
+                (fun n att -> Pipe.write_without_pushback wr (n, att)))
+            (fun () -> Pipe.close wr; return ()));
   rd
 
 let uid_fetch_changedsince s uids modseq atts =
   let rd, wr = Pipe.create () in
-  upon
-    (uid_fetch_changedsince s uids modseq atts (fun n att -> Pipe.write_without_pushback wr (n, att)))
-    (fun () -> Pipe.close wr);
+  ignore (Monitor.protect
+            (fun () -> uid_fetch_changedsince s uids modseq atts
+                (fun n att -> Pipe.write_without_pushback wr (n, att)))
+            (fun () -> Pipe.close wr; return ()));
   rd
 
 let store s seqs mode atts = ignore (store s seqs mode atts)
