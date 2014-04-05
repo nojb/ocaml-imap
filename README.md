@@ -146,14 +146,26 @@ auto-evaluation of Lwt threads.  All the examples below are done using the
 
 3. Get MIME body structure
    ```ocaml
-   # Imap_lwt.uid_fetch (Uid_set.single' 2) [`BODYSTRUCTURE] begin fun _ att -> Sexplib.Sexp.pp_hum Format.std_formatter att end;;
-   (UID 2)(ENVELOPE
-           ((env_date "Tue, 4 Feb 2014 07:52:19 -0800") (env_subject "The best of Gmail, wherever you are")
-            (env_from (((addr_name "Gmail Team") (addr_adl "") (addr_mailbox mail-noreply) (addr_host google.com))))
-            (env_sender (((addr_name "Gmail Team") (addr_adl "") (addr_mailbox mail-noreply) (addr_host google.com))))
-            (env_reply_to (((addr_name "Gmail Team") (addr_adl "") (addr_mailbox mail-noreply) (addr_host google.com))))
-            (env_to (((addr_name "imaplib test") (addr_adl "") (addr_mailbox imaplibtest) (addr_host gmail.com)))) 
-            (env_cc ()) (env_bcc ()) (env_in_reply_to "") (env_message_id <CAFo37G3POBokcVK2ZDKMXi35iOnXH5XKyAztFFFeUVy2J1QrgA@mail.gmail.com>)))- : unit = ()
+   # let s = Imap_lwt.uid_fetch (Uid_set.single' 2) [`BODYSTRUCTURE];;
+   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
+   # Lwt_stream.to_list s;;
+   [(2, `UID 2);
+    (2,
+     `BODYSTRUCTURE
+       (Imap.Mime.Multi_part
+         {Imap.Mime.bd_subtype = "ALTERNATIVE";
+          bd_parts =
+           [Imap.Mime.Text
+             {Imap.Mime.bd_param = [("CHARSET", "ISO-8859-1")]; bd_id = None; 
+              bd_desc = None; bd_enc = `QUOTED_PRINTABLE; bd_octets = 656; 
+              bd_other = {Imap.Mime.text_subtype = "PLAIN"; text_lines = 23}; 
+              bd_ext = {Imap.Mime.ext_md5 = None; ext_dsp = None; ext_lang = []; ext_exts = []}};
+            Imap.Mime.Text
+             {Imap.Mime.bd_param = [("CHARSET", "ISO-8859-1")]; bd_id = None; 
+              bd_desc = None; bd_enc = `QUOTED_PRINTABLE; bd_octets = 3374; 
+              bd_other = {Imap.Mime.text_subtype = "HTML"; text_lines = 46}; 
+              bd_ext = {Imap.Mime.ext_md5 = None; ext_dsp = None; ext_lang = []; ext_exts = []}}];
+          bd_mexts = {Imap.Mime.mext_param = [("BOUNDARY", "089e0122f720083c1b04f196a0a7")]; mext_dsp = None; mext_lang = []; mext_exts = []}}))]
    ```
             
 ### Inspect and change flags and labels
