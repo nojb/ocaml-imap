@@ -2,8 +2,8 @@ open OUnit2
 open Sexplib.Std
 open Imap
 open Imap_types
-open Private_types
-
+open Imap_uint
+  
 let example_responses =
   [ ("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI",
      `CAPABILITY [`NAME "IMAP4rev1"; `NAME "STARTTLS"; `AUTH_TYPE "GSSAPI"]);
@@ -11,22 +11,22 @@ let example_responses =
      `TAGGED ("abcd", `OK (`NONE, "CAPABILITY completed")));
     ("* CAPABILITY IMAP4rev1 AUTH=GSSAPI AUTH=PLAIN",
      `CAPABILITY [`NAME "IMAP4rev1"; `AUTH_TYPE "GSSAPI"; `AUTH_TYPE "PLAIN"]);
-    ("* 22 EXPUNGE", `EXPUNGE (Uint32.of_int 22));
+    ("* 22 EXPUNGE", `EXPUNGE (Seq.of_int 22));
     ("* 23 EXISTS", `EXISTS 23);
     ("* 3 RECENT", `RECENT 3);
     ("* 14 FETCH (FLAGS (\\Seen \\Deleted))",
-     `FETCH (Uint32.of_int 14, [`FLAGS [`Seen; `Deleted]]));
+     `FETCH (Seq.of_int 14, [`FLAGS [`Seen; `Deleted]]));
     ("* BYE IMAP4rev1 Server logging out",
      `BYE (`NONE, "IMAP4rev1 Server logging out"));
     ("* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED",
      `CAPABILITY [`NAME "IMAP4rev1"; `NAME "STARTTLS"; `NAME "LOGINDISABLED"]);
     ("+ ", `CONT_REQ (`BASE64 ""));
     ("* OK [UNSEEN 12] Message 12 is first unseen",
-     `OK (`UNSEEN (Uint32.of_int 12), "Message 12 is first unseen"));
+     `OK (`UNSEEN (Seq.of_int 12), "Message 12 is first unseen"));
     ("* OK [UIDVALIDITY 3857529045] UIDs valid",
-     `OK (`UIDVALIDITY (Uint32.of_int 3857529045), "UIDs valid"));
+     `OK (`UIDVALIDITY (Uid.of_int 3857529045), "UIDs valid"));
     ("* OK [UIDNEXT 4392] Predicted next UID",
-     `OK (`UIDNEXT (Uint32.of_int 4392), "Predicted next UID"));
+     `OK (`UIDNEXT (Uid.of_int 4392), "Predicted next UID"));
     ("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)",
      `FLAGS [`Answered; `Flagged; `Deleted; `Seen; `Draft]);
     ("* OK [PERMANENTFLAGS (\\Deleted \\Seen \\*)] Limited",
@@ -89,18 +89,18 @@ let example_responses =
             mb_name = "#news.comp.mail"});
     ("* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)",
      `STATUS {st_mailbox = "blurdybloop";
-              st_info_list = [`MESSAGES 231; `UIDNEXT (Uint32.of_int 44292)]});
+              st_info_list = [`MESSAGES 231; `UIDNEXT (Uid.of_int 44292)]});
     ("+ Ready for literal data",
      `CONT_REQ (`TEXT (`NONE, "Ready for literal data")));
     ("* SEARCH 2 84 882",
-     `SEARCH (List.map Uint32.of_int [2; 84; 882], Uint64.zero));
-    ("* SEARCH", `SEARCH ([], Uint64.zero));
+     `SEARCH (List.map Uint32.of_int [2; 84; 882], Modseq.zero));
+    ("* SEARCH", `SEARCH ([], Modseq.zero));
     ("* 2 FETCH (FLAGS (\\Deleted \\Seen))",
-     `FETCH (Uint32.of_int 2, [`FLAGS [`Deleted; `Seen]]));
+     `FETCH (Seq.of_int 2, [`FLAGS [`Deleted; `Seen]]));
     ("* 23 FETCH (FLAGS (\\Seen) UID 4827313)",
-     `FETCH (Uint32.of_int 23, [`FLAGS [`Seen]; `UID (Uint32.of_int 4827313)]));
+     `FETCH (Seq.of_int 23, [`FLAGS [`Seen]; `UID (Uid.of_int 4827313)]));
     ("* 23 FETCH (FLAGS (\\Seen) RFC822.SIZE 44827)",
-     `FETCH (Uint32.of_int 23, [`FLAGS [`Seen]; `RFC822_SIZE 44827]))
+     `FETCH (Seq.of_int 23, [`FLAGS [`Seen]; `RFC822_SIZE 44827]))
   ]
 
 let test_parser ~ctxt p sexp_of_t s check =
