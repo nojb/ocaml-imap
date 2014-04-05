@@ -262,3 +262,5 @@ end
 
 include Client.Make (M)
 
+let idle s f =
+  ignore (idle s f)
