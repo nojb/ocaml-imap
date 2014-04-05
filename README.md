@@ -198,7 +198,7 @@ auto-evaluation of Lwt threads.  All the examples below are done using the
 
 ### Debug trace
 
-One can turn on debug output by setting the variable `Imap.debug` to true:
+One can turn on debug output by setting the variable `Imap.Client.debug` to true:
 ```ocaml
 # Imap.Client.debug := true;;
 - : unit = ()
@@ -207,7 +207,7 @@ The same effect is achieved by setting the environment variable `IMAP_DEBUG`
 to anything other than `0`.  This makes it very easy to see what is going on
 behind the scenes:
 ```ocaml
-# Imap_lwt.connect imap;;
+# Imap_lwt.connect_ssl imap "imap.gmail.com";;
 S: * OK Gimap ready for requests from 131.111.16.20 u46mb29270479wec
 - : [ `Needsauth | `Preauth ] = `Needsauth
 # Imap_lwt.login imap "<login>" "<password>";;

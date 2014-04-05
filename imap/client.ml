@@ -95,9 +95,6 @@ module Make (IO : IO.S) = struct
     sel_highestmodseq = Modseq.zero
   }
 
-  let fresh_capability_info =
-    []
-
   type connection_info = {
     mutable chan : IO.input * IO.output;
     mutable next_tag : int;
@@ -423,7 +420,7 @@ module Make (IO : IO.S) = struct
         imap_response = "";
         rsp_info = fresh_response_info;
         sel_info = fresh_selection_info;
-        cap_info = fresh_capability_info;
+        cap_info = [];
         compress_deflate = false;
         send_lock = IO.create_mutex ()
       }
@@ -546,7 +543,7 @@ module Make (IO : IO.S) = struct
         send_command ci cmd >>= fun () ->
         IO.starttls version ?ca_file ci.chan >>= begin fun chan ->
           ci.chan <- chan;
-          ci.cap_info <- fresh_capability_info; (* See 6.2.1 in RFC 3501 *)
+          ci.cap_info <- []; (* See 6.2.1 in RFC 3501 *)
           IO.return ()
         end
     in

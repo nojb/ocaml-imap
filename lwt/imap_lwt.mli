@@ -234,9 +234,6 @@ val uid_search : session -> ?charset:string -> search_key -> Uid.t list Lwt.t
 (** Like {!search}, but returns the unique identification numbers of the
     matching messages. *)
 
-type msg_att_handler =
-    Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
-
 val fetch : session -> Seq_set.t -> fetch_att list -> (Seq.t * msg_att) Lwt_stream.t
 (** [fetch s set atts] retrieves flags and/or other attributes [att] for those
     messages whose message sequence numbers belong to [set].  The most common
