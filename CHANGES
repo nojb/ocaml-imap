@@ -1,4 +1,4 @@
-0.9.1 (NEXT RELEASE):
+0.9.1 (2014-04-05):
 * Functorialize over Lwt, Unix, Async
 * Split in different Findlib packages:
   imap, imap.gsasl, imap.async, imap.unix, imap.lwt
