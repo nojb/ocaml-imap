@@ -234,8 +234,7 @@ module Make (IO : IO.S) = struct
     | `FETCH att ->
       match handler with
       | Some h ->
-        let n, atts = att in
-        List.iter (h n) atts
+        h att
       | None ->
         s.rsp_info <- {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}
 
@@ -761,7 +760,7 @@ module Make (IO : IO.S) = struct
     search_aux s "UID SEARCH" ?charset query >|= uint32_list_to_uid_list
 
   type msg_att_handler =
-    Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
+    Seq.t * msg_att list -> unit
 
   let fetch_aux cmd s set changedsince attrs handler =
     let ci = connection_info s in

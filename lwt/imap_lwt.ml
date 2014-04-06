@@ -168,29 +168,28 @@ include Client.Make (Lwtio)
 let fetch s set atts =
   let strm, push = Lwt_stream.create () in
   ignore (Lwt.finalize
-            (fun () -> fetch s set atts (fun n x -> push (Some (n, x))))
+            (fun () -> fetch s set atts (fun x -> push (Some x)))
             (fun () -> push None; Lwt.return ()));
   strm
 
 let fetch_changedsince s set modseq atts =
   let strm, push = Lwt_stream.create () in
   ignore (Lwt.finalize
-            (fun () -> fetch_changedsince s set modseq atts (fun n x -> push (Some (n, x))))
+            (fun () -> fetch_changedsince s set modseq atts (fun x -> push (Some x)))
             (fun () -> push None; Lwt.return ()));
   strm
 
 let uid_fetch s set atts =
   let strm, push = Lwt_stream.create () in
   ignore (Lwt.finalize
-            (fun () -> uid_fetch s set atts (fun n x -> push (Some (n, x))))
+            (fun () -> uid_fetch s set atts (fun x -> push (Some x)))
             (fun () -> push None; Lwt.return ()));
   strm
 
 let uid_fetch_changedsince s set modseq atts =
   let strm, push = Lwt_stream.create () in
   ignore (Lwt.finalize
-            (fun () -> uid_fetch_changedsince s set modseq atts
-                (fun n x -> push (Some (n, x))))
+            (fun () -> uid_fetch_changedsince s set modseq atts (fun x -> push (Some x)))
             (fun () -> push None; Lwt.return ()));
   strm
 

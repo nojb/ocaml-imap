@@ -237,7 +237,7 @@ module Make (IO : IO.S) : sig
       matching messages. *)
 
   type msg_att_handler =
-     Seq.t -> [ msg_att_static | msg_att_dynamic ] -> unit
+     Seq.t * msg_att list -> unit
 
   val fetch : session -> Seq_set.t -> fetch_att list -> msg_att_handler -> unit IO.t
   (** [fetch s set atts h] retrieve flags and/or other attributes [att] for those
