@@ -199,18 +199,12 @@ module M = struct
     if !Client.debug then Utils.log `Server s;
     s   
 
-  let close_in ic =
-    ic#close
-
   let write (_, oc) s =
     oc#write_string s;
     if !Client.debug then Utils.log `Client s
 
   let flush (_, oc) =
     oc#flush
-
-  let close_out (_, oc) =
-    oc#close
 
   let connect port host =
     let he = Unix.gethostbyname host in
@@ -220,6 +214,11 @@ module M = struct
     let oc = output_of_out_channel oc in
     (ic, (fd, oc))
 
+  let disconnect (ic, (_, oc)) =
+    ic#close;
+    oc#close
+  (* FIXME This closes the underlying file descr twice. *)
+    
   let _ = Ssl.init ()
 
   let ssl_context version ca_file =

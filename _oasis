@@ -1,7 +1,7 @@
 OASISFormat: 0.4
 Name: imap
 Version: 0.9.0
-Synopsis: IMAP client library for Lwt
+Synopsis: IMAP client library for Lwt/Async/Unix
 Authors: Nicolas Ojeda Bar
 License: MIT
 Plugins: DevFiles (0.4), META (0.4)
@@ -42,7 +42,6 @@ Library imap_unix
   FindlibName: unix
   FindlibParent: imap
   Modules: Imap_unix
-  # InternalModules: Imap_gen_io
   BuildDepends: imap, unix, ssl, cryptokit
 
 Library imap_lwt
@@ -60,8 +59,6 @@ Library imap_gsasl
   Path: gsasl
   FindlibName: gsasl
   FindlibParent: imap
-  # XXX
-  CCLib: -L/usr/local/Cellar/libffi/3.0.13/lib
   Modules: Imap_gsasl
   BuildDepends: imap, gsasl
 

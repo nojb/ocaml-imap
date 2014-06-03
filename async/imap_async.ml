@@ -100,8 +100,7 @@ module Async_io = struct
     return ()
 
   let flush oc = Writer.flushed oc >>= fun () -> return ()
-  let close _ = return ()
-
+  
   let compress _ = assert false
   let starttls _ = assert false
     
@@ -110,6 +109,10 @@ module Async_io = struct
   let connect port host =
     Tcp.connect (Tcp.to_host_and_port host port) >>= fun (_, net_to_app, app_to_net) ->
     return (net_to_app, app_to_net)
+
+  let disconnect (rd, wr) =
+    Deferred.all_ignore [Writer.close wr; Reader.close rd]
+      (* FIXME This closes the underlying file descr twice. *)
 
   let connect_ssl version ?ca_file port host =
     Tcp.connect (Tcp.to_host_and_port host port) >>= fun (socket, net_to_ssl, ssl_to_net) ->

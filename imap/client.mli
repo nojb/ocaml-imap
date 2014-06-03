@@ -44,9 +44,6 @@ module Make (IO : IO.S) : sig
   (** Raised when a server response cannot be parsed. *)
   exception Parse_error of string * int
 
-  (** Raised if the session is not connected. *)
-  exception Not_connected
-
   (** I/O error *)
   exception Io_error of exn
 

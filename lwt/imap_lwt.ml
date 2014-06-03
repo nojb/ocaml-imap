@@ -130,6 +130,10 @@ module Lwtio = struct
     let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
     Lwt.return (ic, (fd, oc))
 
+  let disconnect (ic, (_, oc)) =
+    Lwt.join [Lwt_io.close ic; Lwt_io.close oc]
+      (* FIXME This closes the underlying file descr twice. *)
+
   let _ = Ssl.init ()
 
   let ssl_context v ca =

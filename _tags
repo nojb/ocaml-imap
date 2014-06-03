@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: fe8022ae35121cc6020b08a723812b1d)
+# DO NOT EDIT (digest: c1ff8008108cffb58017e2fecd290e4f)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -57,7 +57,6 @@
 <lwt/*.ml{,i}>: use_imap
 # Library imap_gsasl
 "gsasl/imap_gsasl.cmxs": use_imap_gsasl
-<gsasl/imap_gsasl.{cma,cmxa}>: oasis_library_imap_gsasl_cclib
 <gsasl/*.ml{,i}>: pkg_cryptokit
 <gsasl/*.ml{,i}>: pkg_gsasl
 <gsasl/*.ml{,i}>: pkg_sexplib
@@ -68,7 +67,6 @@
 <gsasl/*.ml{,i}>: use_imap
 # Library imap_async
 "async/imap_async.cmxs": use_imap_async
-<async/imap_async.{cma,cmxa}>: oasis_library_imap_async_cclib
 <async/*.ml{,i}>: pkg_async
 <async/*.ml{,i}>: pkg_async_ssl
 <async/*.ml{,i}>: pkg_cryptokit

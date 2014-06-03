@@ -103,7 +103,8 @@ module Make (IO : IO.S) = struct
     mutable sel_info : selection_info;
     mutable cap_info : capability list;
     mutable compress_deflate : bool;
-    send_lock : IO.mutex
+    send_lock : IO.mutex;
+    disconnect : unit -> unit IO.t
   }
 
   type connection_state =
@@ -119,14 +120,13 @@ module Make (IO : IO.S) = struct
   exception BYE
   exception Parse_error of string * int
   exception Bad_tag
-  exception Not_connected
   exception Io_error of exn
   exception Auth_error of exn
 
   let connection_info s =
     match s.conn_state with
     | Connected ci -> ci
-    | Disconnected -> raise Not_connected
+    | Disconnected -> failwith "Imap.Client: not connected"
 
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
@@ -336,7 +336,8 @@ module Make (IO : IO.S) = struct
     ci.rsp_info <- fresh_response_info;
     let rec loop () =
       read_resp_data_or_resp_done ?handler ci >>= function
-      | `BYE _ -> (* FIXME change mode *)
+      | `BYE _ ->
+        ci.disconnect () >>= fun () ->
         IO.fail BYE
       | #Response.response_data ->
         loop ()
@@ -354,7 +355,8 @@ module Make (IO : IO.S) = struct
     ci.rsp_info <- fresh_response_info;
     let rec loop () =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
-      | `BYE _ -> (* FIXME change mode *)
+      | `BYE _ ->
+        ci.disconnect () >>= fun () ->
         IO.fail BYE
       | #Response.response_data ->
         begin match f () with
@@ -377,7 +379,8 @@ module Make (IO : IO.S) = struct
     ci.rsp_info <- fresh_response_info;
     let rec loop needs_more =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
-      | `BYE _ -> (* FIXME change mode *)
+      | `BYE _ ->
+        ci.disconnect () >>= fun () ->
         IO.fail BYE
       | #Response.response_data ->
         loop needs_more
@@ -412,6 +415,10 @@ module Make (IO : IO.S) = struct
     { conn_state = Disconnected }
 
   let connect' s chan =
+    let disconnect' chan =
+      s.conn_state <- Disconnected;
+      IO.catch (fun () -> IO.disconnect chan) (fun _ -> IO.return ())
+    in
     match s.conn_state with
     | Disconnected ->
       let ci = {
@@ -421,14 +428,14 @@ module Make (IO : IO.S) = struct
         sel_info = fresh_selection_info;
         cap_info = [];
         compress_deflate = false;
-        send_lock = IO.create_mutex ()
+        send_lock = IO.create_mutex ();
+        disconnect = (fun () -> disconnect' chan)
       }
       in
       s.conn_state <- Connected ci;
       read_greeting ci >>= begin function
         | `BYE _ ->
-          (* IO.close ci.chan >>= fun () -> *)
-          s.conn_state <- Disconnected;
+          ci.disconnect () >>= fun () ->
           IO.fail BYE
         | `OK _ ->
           IO.return `Needsauth
@@ -448,8 +455,8 @@ module Make (IO : IO.S) = struct
     match s.conn_state with
     | Disconnected -> ()
     | Connected ci ->
-      ignore (IO.catch (fun () -> IO.return ()) (* IO.close ci.chan) *) (fun _ -> IO.return ()));
-      s.conn_state <- Disconnected
+      let (_ : unit IO.t) = ci.disconnect () in
+      ()
 
   let generate_tag s =
     let tag = s.next_tag in
@@ -467,7 +474,7 @@ module Make (IO : IO.S) = struct
     in
     IO.catch
       (fun () -> f (oc, get_cont_req) >>= fun () -> IO.flush oc)
-      (fun e -> IO.fail (Io_error e))
+      (fun e -> ci.disconnect () >>= fun () -> IO.fail (Io_error e))
 
   let send_command' ci f =
     let tag = generate_tag ci in
@@ -499,7 +506,7 @@ module Make (IO : IO.S) = struct
       IO.catch
         (fun () -> send_command ci cmd)
         (function
-          | BYE -> s.conn_state <- Disconnected; IO.return ()
+          | BYE -> ci.disconnect ()
           | exn -> IO.fail exn)
     in
     IO.with_lock ci.send_lock aux
