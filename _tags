@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: c1ff8008108cffb58017e2fecd290e4f)
+# DO NOT EDIT (digest: fd4e38647e602c46c4798f0751501aae)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -72,12 +72,10 @@
 <async/*.ml{,i}>: pkg_cryptokit
 <async/*.ml{,i}>: pkg_sexplib
 <async/*.ml{,i}>: pkg_sexplib.syntax
-<async/*.ml{,i}>: pkg_ssl
 <async/*.ml{,i}>: pkg_str
 <async/*.ml{,i}>: pkg_threads
 <async/*.ml{,i}>: pkg_ucorelib
 <async/*.ml{,i}>: pkg_uint
-<async/*.ml{,i}>: pkg_unix
 <async/*.ml{,i}>: use_imap
 # Executable test_parser
 <lib_test/test_parser.{native,byte}>: pkg_cryptokit

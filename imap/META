@@ -1,7 +1,7 @@
 # OASIS_START
-# DO NOT EDIT (digest: 04ece0a78dced56244258f6fa9487fed)
-version = "0.9.0"
-description = "IMAP client library for Lwt"
+# DO NOT EDIT (digest: a6042cfee4bde08d23615bdb03f6fad8)
+version = "0.10.0"
+description = "IMAP client library for Lwt/Async/Unix"
 requires = "uint str cryptokit ucorelib sexplib sexplib.syntax"
 archive(byte) = "imap.cma"
 archive(byte, plugin) = "imap.cma"
@@ -9,8 +9,8 @@ archive(native) = "imap.cmxa"
 archive(native, plugin) = "imap.cmxs"
 exists_if = "imap.cma"
 package "unix" (
- version = "0.9.0"
- description = "IMAP client library for Lwt"
+ version = "0.10.0"
+ description = "IMAP client library for Lwt/Async/Unix"
  requires = "imap unix ssl cryptokit"
  archive(byte) = "imap_unix.cma"
  archive(byte, plugin) = "imap_unix.cma"
@@ -20,8 +20,8 @@ package "unix" (
 )
 
 package "lwt" (
- version = "0.9.0"
- description = "IMAP client library for Lwt"
+ version = "0.10.0"
+ description = "IMAP client library for Lwt/Async/Unix"
  requires = "imap lwt lwt.ssl lwt.unix"
  archive(byte) = "imap_lwt.cma"
  archive(byte, plugin) = "imap_lwt.cma"
@@ -31,8 +31,8 @@ package "lwt" (
 )
 
 package "gsasl" (
- version = "0.9.0"
- description = "IMAP client library for Lwt"
+ version = "0.10.0"
+ description = "IMAP client library for Lwt/Async/Unix"
  requires = "imap gsasl"
  archive(byte) = "imap_gsasl.cma"
  archive(byte, plugin) = "imap_gsasl.cma"
@@ -42,9 +42,9 @@ package "gsasl" (
 )
 
 package "async" (
- version = "0.9.0"
- description = "IMAP client library for Lwt"
- requires = "threads imap async async_ssl ssl unix"
+ version = "0.10.0"
+ description = "IMAP client library for Lwt/Async/Unix"
+ requires = "threads imap async async_ssl"
  archive(byte) = "imap_async.cma"
  archive(byte, plugin) = "imap_async.cma"
  archive(native) = "imap_async.cmxa"

@@ -1,6 +1,6 @@
 OASISFormat: 0.4
 Name: imap
-Version: 0.9.0
+Version: 0.10.0
 Synopsis: IMAP client library for Lwt/Async/Unix
 Authors: Nicolas Ojeda Bar
 License: MIT
@@ -9,7 +9,7 @@ BuildTools: ocamlbuild
 
 Flag all
   Description: build and install everything
-  Default$: true
+  Default$: false
 
 Flag gsasl
   Description: GNU SASL support
@@ -21,7 +21,7 @@ Flag lwt
 
 Flag unix
   Description: Unix support
-  Default$: flag(all)
+  Default$: true
 
 Flag async
   Description: Async support
@@ -68,9 +68,8 @@ Library imap_async
   Path: async
   FindlibName: async
   FindlibParent: imap
-  CCLib: -lssl -lcrypto -v
   Modules: Imap_async
-  BuildDepends: threads, imap, async, async_ssl, ssl, unix
+  BuildDepends: threads, imap, async, async_ssl
   
 Document imap
   Title: Imap docs

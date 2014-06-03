@@ -1,3 +1,8 @@
+LWT ?= $(shell if ocamlfind query lwt.ssl >/dev/null 2>&1; then echo --enable-lwt; fi)
+ASYNC ?= $(shell if ocamlfind query async_ssl >/dev/null 2>&1; then echo --enable-async; fi)
+GSASL ?= $(shell if ocamlfind query gsasl >/dev/null 2>&1; then echo --enable-gsasl; fi)
+CONFIGUREFLAGS = $(LWT) $(ASYNC) $(GSASL)
+
 # OASIS_START
 # DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
 
