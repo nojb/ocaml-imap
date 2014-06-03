@@ -37,6 +37,11 @@ is to use [OPAM](http://opam.ocaml.org).
    opam install imap
    ```
    will install only the `unix` (synchronous) backend.
+
+   Optionally, if you would like to use GNU SASL library to authenticate
+   with the server, you should include in each case the dependency `gsasl`:
+   `opam install gsasl imap`, or `opam install ssl lwt gsasl imap`, or
+   `opam install async_ssl gsasl imap`. See `gsasl/imap_gsasl.mli` for the interface.
    
 2. Read the documentation in `imap/client.mli`, `imap/response.mli`, and
    `imap/imap_types.mli`.
