@@ -463,22 +463,26 @@ module Make (IO : IO.S) = struct
     s.next_tag <- s.next_tag + 1;
     string_of_int tag
 
-  module S = Sender.Make (IO)
+  module S = Sender
 
   let run_sender ci (f : S.t) =
     let _, oc = ci.chan in
-    let get_cont_req () =
-      IO.flush oc >>= fun () ->
-      get_continuation_request ci >>= fun _ ->
-      IO.return ()
-    in
     IO.catch
-      (fun () -> f (oc, get_cont_req) >>= fun () -> IO.flush oc)
+      (fun () ->
+         S.fold (fun io a ->
+             match a with
+             | `Raw s ->
+               io >>= fun () -> IO.write oc s
+             | `Cont_req ->
+               io >>= fun () -> IO.flush oc >>= fun () ->
+               get_continuation_request ci >>= fun _ ->
+               IO.return ()) (IO.return ()) f >>= fun () ->
+         IO.flush oc)
       (fun e -> ci.disconnect () >>= fun () -> IO.fail (Io_error e))
 
   let send_command' ci f =
     let tag = generate_tag ci in
-    let f = S.(raw tag @> space @> f @> crlf) in
+    let f = S.(raw tag ++ space ++ f ++ crlf) in
     run_sender ci f >|= fun () -> tag
 
   let send_command ci ?handler f =
@@ -514,8 +518,8 @@ module Make (IO : IO.S) = struct
   let id s params =
     let ci = connection_info s in
     let cmd = match params with
-      | [] -> S.(raw "ID" @> space @> nil)
-      | _ -> S.(raw "ID" @> space @> list (separated_pair string space string) params)
+      | [] -> S.(raw "ID" ++ space ++ nil)
+      | _ -> S.(raw "ID" ++ space ++ list (separated_pair string space string) params)
     in
     let aux () =
       send_command ci cmd >>= fun () ->
@@ -530,8 +534,8 @@ module Make (IO : IO.S) = struct
       | `NAME s -> s
     in
     let cmd =
-      S.(raw "ENABLE " @> List.fold_right
-           (fun cap rest -> raw (string_of_capability cap) @> rest) caps null)
+      S.(raw "ENABLE " ++ List.fold_right
+           (fun cap rest -> raw (string_of_capability cap) ++ rest) caps null)
     in
     let aux () =
       send_command ci cmd >>= fun () ->
@@ -557,7 +561,7 @@ module Make (IO : IO.S) = struct
 
   let authenticate s auth =
     let ci = connection_info s in
-    let cmd = S.(raw "AUTHENTICATE" @> space @> string auth.Auth.name) in
+    let cmd = S.(raw "AUTHENTICATE" ++ space ++ string auth.Auth.name) in
     let step data =
       let data = Utils.base64_decode data in
       begin
@@ -565,7 +569,7 @@ module Make (IO : IO.S) = struct
         with e -> IO.fail (Auth_error e)
       end >>= fun (rc, data) ->
       let data = Utils.base64_encode data in
-      run_sender ci S.(raw data @> crlf) >>= fun () ->
+      run_sender ci S.(raw data ++ crlf) >>= fun () ->
       IO.return rc
     in
     let aux () =
@@ -575,7 +579,7 @@ module Make (IO : IO.S) = struct
 
   let login s user pass =
     let ci = connection_info s in
-    let cmd = S.(raw "LOGIN" @> space @> string user @> space @> string pass) in
+    let cmd = S.(raw "LOGIN" ++ space ++ string user ++ space ++ string pass) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
@@ -594,9 +598,9 @@ module Make (IO : IO.S) = struct
   let select_aux s cmd ?use_condstore:(use_condstore=false) mbox =
     let ci = connection_info s in
     let send_condstore =
-      if use_condstore then S.(space @> raw "(CONDSTORE)") else S.null
+      if use_condstore then S.(space ++ raw "(CONDSTORE)") else S.null
     in
-    let cmd = S.(raw cmd @> space @> mailbox mbox @> send_condstore) in
+    let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ send_condstore) in
     let aux () =
       ci.sel_info <- fresh_selection_info;
       send_command ci cmd >|= fun () -> ci.sel_info.sel_highestmodseq
@@ -619,37 +623,37 @@ module Make (IO : IO.S) = struct
 
   let create s mbox =
     let ci = connection_info s in
-    let cmd = S.(raw "CREATE" @> space @> mailbox mbox) in
+    let cmd = S.(raw "CREATE" ++ space ++ mailbox mbox) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
   let delete s mbox =
     let ci = connection_info s in
-    let cmd = S.(raw "DELETE" @> space @> mailbox mbox) in
+    let cmd = S.(raw "DELETE" ++ space ++ mailbox mbox) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
   let rename s oldbox newbox =
     let ci = connection_info s in
-    let cmd = S.(raw "RENAME" @> space @> mailbox oldbox @> space @> mailbox newbox) in
+    let cmd = S.(raw "RENAME" ++ space ++ mailbox oldbox ++ space ++ mailbox newbox) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
   let subscribe s mbox =
     let ci = connection_info s in
-    let cmd = S.(raw "SUBSCRIBE" @> space @> mailbox mbox) in
+    let cmd = S.(raw "SUBSCRIBE" ++ space ++ mailbox mbox) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
   let unsubscribe s mbox =
     let ci = connection_info s in
-    let cmd = S.(raw "UNSUBSCRIBE" @> space @> mailbox mbox) in
+    let cmd = S.(raw "UNSUBSCRIBE" ++ space ++ mailbox mbox) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
   let list_aux s cmd mbox list_mb =
     let ci = connection_info s in
-    let cmd = S.(raw cmd @> space @> mailbox mbox @> space @> mailbox list_mb) in
+    let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ space ++ mailbox list_mb) in
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_mailbox_list
     in
@@ -664,7 +668,7 @@ module Make (IO : IO.S) = struct
   let status s mbox attrs =
     let ci = connection_info s in
     let cmd =
-      S.(raw "STATUS" @> space @> mailbox mbox @> space @> list status_att attrs)
+      S.(raw "STATUS" ++ space ++ mailbox mbox ++ space ++ list status_att attrs)
     in
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_status
@@ -675,15 +679,14 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let flags = match flags with
       | None | Some [] -> S.null
-      | Some flags -> S.(list flag flags @> space)
+      | Some flags -> S.(list flag flags ++ space)
     in
     let date = match date with
       | None -> S.null
-      | Some dt -> S.(date_time dt @> space)
+      | Some dt -> S.(date_time dt ++ space)
     in
     let cmd =
-      S.(raw "APPEND" @> space @> mailbox mbox @> space @>
-         flags @> date @> literal data)
+      S.(raw "APPEND" ++ space ++ mailbox mbox ++ space ++ flags ++ date ++ literal data)
     in
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_appenduid
@@ -702,7 +705,7 @@ module Make (IO : IO.S) = struct
       if !idling then begin
         idling := false;
         ignore (IO.catch
-                  (fun () -> run_sender ci S.(raw "DONE" @> crlf))
+                  (fun () -> run_sender ci S.(raw "DONE" ++ crlf))
                   (fun _ -> IO.return ()))
       end
     in
@@ -744,7 +747,7 @@ module Make (IO : IO.S) = struct
   let uid_expunge s set =
     assert (not (Uid_set.mem_zero set));
     let ci = connection_info s in
-    let cmd = S.(raw "UID EXPUNGE" @> space @> message_set (uid_set_to_uint32_set set)) in
+    let cmd = S.(raw "UID EXPUNGE" ++ space ++ message_set (uid_set_to_uint32_set set)) in
     let aux () = send_command ci cmd in
     IO.with_lock ci.send_lock aux
 
@@ -752,9 +755,9 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let charset_opt = match charset with
       | None -> S.null
-      | Some charset -> S.(string charset @> space)
+      | Some charset -> S.(string charset ++ space)
     in
-    let cmd = S.(raw cmd @> space @> charset_opt @> search_key query) in
+    let cmd = S.(raw cmd ++ space ++ charset_opt ++ search_key query) in
     let aux () =
       send_command ci cmd >|= fun () -> ci.rsp_info.rsp_search_results
     in
@@ -775,11 +778,10 @@ module Make (IO : IO.S) = struct
       | None ->
         S.null
       | Some modseq ->
-        S.(space @> raw "(CHANGEDSINCE " @> raw (Modseq.to_string modseq) @> raw ")")
+        S.(space ++ raw "(CHANGEDSINCE " ++ raw (Modseq.to_string modseq) ++ raw ")")
     in
     let cmd =
-      S.(raw cmd @> space @> message_set set @> space @>
-         list fetch_att attrs @> changedsince)
+      S.(raw cmd ++ space ++ message_set set ++ space ++ list fetch_att attrs ++ changedsince)
     in
     let aux () =
       send_command ci ~handler cmd (* >|= fun () -> ci.rsp_info.rsp_fetch_list *)
@@ -802,7 +804,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let unchangedsince = match unchangedsince with
       | None -> S.null
-      | Some modseq -> S.(raw "(UNCHANGEDSINCE " @> raw (Modseq.to_string modseq) @> raw ") ")
+      | Some modseq -> S.(raw "(UNCHANGEDSINCE " ++ raw (Modseq.to_string modseq) ++ raw ") ")
     in
     let mode = match mode with
       | `Add -> S.raw "+"
@@ -810,8 +812,7 @@ module Make (IO : IO.S) = struct
       | `Remove -> S.raw "-"
     in
     let cmd =
-      S.(raw cmd @> space @> message_set set @> space @>
-         unchangedsince @> mode @> store_att att)
+      S.(raw cmd ++ space ++ message_set set ++ space ++ unchangedsince ++ mode ++ store_att att)
     in
     let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_modified in
     IO.with_lock ci.send_lock aux
@@ -834,7 +835,7 @@ module Make (IO : IO.S) = struct
 
   let copy_aux cmd s set destbox =
     let ci = connection_info s in
-    let cmd = S.(raw cmd @> space @> message_set set @> space @> mailbox destbox) in
+    let cmd = S.(raw cmd ++ space ++ message_set set ++ space ++ mailbox destbox) in
     let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_copyuid in
     IO.with_lock ci.send_lock aux
 

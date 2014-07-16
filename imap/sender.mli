@@ -24,85 +24,78 @@
 
 open Imap_uint
 
-module Make (IO : IO.S) : sig
-  (** The type of senders.  The argument is a pair [(io, get_cont_req)] consisting
-      of an IO channel [io] and a function [get_cont_req] that should be called when a
-      continuation request is required.  See {!Imap.run_sender}. *)
-  type t = IO.output * (unit -> unit IO.t) -> unit IO.t
+(** The type of output buffers *)
+type atom = [ `Raw of string | `Cont_req ]
 
-  val (@>) : t -> t -> t
-  (** [f @> g] sends with [f], then with [g]. *)
+type t
 
-  val space : t
-  (** Sends [' ']. *)
+val (++) : t -> t -> t
 
-  val crlf : t
-  (** Sends ["\r\n"]. *)
+val fold : ('a -> atom -> 'a) -> 'a -> t -> 'a
 
-  val char : char -> t
-  (** Sends a character. *)
+val space : t
+(** Sends [' ']. *)
 
-  val int : int -> t
-  (** Sends an OCaml int. *)
+val crlf : t
+(** Sends ["\r\n"]. *)
 
-  (* val uint32 : Uint32.t -> t *)
-  (* (\** Sends an unsigned 32-bit int. *\) *)
+val char : char -> t
+(** Sends a character. *)
 
-  (* val uint64 : Uint64.t -> t *)
-  (* (\** Sends an unsigned 64-bit int. *\) *)
+val int : int -> t
+(** Sends an OCaml int. *)
 
-  val raw : string -> t
-  (** [raw s] sends the string [s]. *)
+val raw : string -> t
+(** [raw s] sends the string [s]. *)
 
-  val null : t
-  (** Does not send anything. *)
+val null : t
+(** Does not send anything. *)
 
-  val separated : t -> ('a -> t) -> 'a list -> t
-  (** [separated sep f xs] is equivalent to [f x1 @> sep @> f x2 @> ... @> f xn]
-      if [xs] is the list [[x1; ...; xn]]. *)
+val nil : t
+(** Sends ["NIL"]. *)
 
-  val list : ('a -> t) -> 'a list -> t
-  (** [list f xs] is equivalent to [f x1 @> f x2 @> ... @> f xn] if [xs] is the
-      list [[x1; ...; xn]]. *)
+val separated : t -> ('a -> t) -> 'a list -> t
+(** [separated sep f xs] is equivalent to [f x1 @> sep @> f x2 @> ... @> f xn]
+    if [xs] is the list [[x1; ...; xn]]. *)
 
-  val separated_pair : ('a -> t) -> t -> ('b -> t) -> ('a * 'b) -> t
-  (** [separated_pair f sep g (x, y)] is equivalent to [f x @> sep @> g y]. *)
+val list : ('a -> t) -> 'a list -> t
+(** [list f xs] outputs "(a1 a2 ... an)" if [ai = f xi] and [xs] is the list
+    [[x1; ...; xn]]. *)
 
-  val string : string -> t
-  (** Sends an IMAP [string] terminal. *)
+val separated_pair : ('a -> t) -> t -> ('b -> t) -> ('a * 'b) -> t
+(** [separated_pair f sep g (x, y)] is equivalent to [f x @> sep @> g y]. *)
 
-  val nil : t
-  (** Sends ["NIL"]. *)
+val string : string -> t
+(** Sends an IMAP [string] terminal. *)
 
-  val nstring : string option -> t
-  (** [nstring (Some s)] sends an IMAP [string] terminal [s].  [nstring None]
-      sends ["NIL"]. *)
+val nstring : string option -> t
+(** [nstring (Some s)] sends an IMAP [string] terminal [s].  [nstring None]
+    sends ["NIL"]. *)
 
-  val literal : string -> t
-  (** Sends an IMAP literal. *)
+val literal : string -> t
+(** Sends an IMAP literal. *)
 
-  val mailbox : string -> t
-  (** Sends an IMAP mailbox name.  It assumes the argument is encoded with UTF8
-      and translates it to modified UTF-7. *)
+val mailbox : string -> t
+(** Sends an IMAP mailbox name.  It assumes the argument is encoded with UTF8
+    and translates it to modified UTF-7. *)
 
-  val date_time : float -> t
-  (** Sends an IMAP [date-time]. *)
+val date_time : float -> t
+(** Sends an IMAP [date-time]. *)
 
-  val message_set : Uint32_set.t -> t
-  (** Sends an IMAP [sequence-set]. *)
+val message_set : Uint32_set.t -> t
+(** Sends an IMAP [sequence-set]. *)
 
-  val flag : Imap_types.flag -> t
-  (** Sends an IMAP flag. *)
+val flag : Imap_types.flag -> t
+(** Sends an IMAP flag. *)
 
-  val fetch_att : Imap_types.fetch_att -> t
-  (** Sends an IMAP fetch attribute. *)
+val fetch_att : Imap_types.fetch_att -> t
+(** Sends an IMAP fetch attribute. *)
 
-  val search_key : Imap_types.search_key -> t
-  (** Sends an IMAP fetch query. *)
+val search_key : Imap_types.search_key -> t
+(** Sends an IMAP fetch query. *)
 
-  val status_att : Imap_types.status_att -> t
-  (** Sends an IMAP status attribute. *)
+val status_att : Imap_types.status_att -> t
+(** Sends an IMAP status attribute. *)
 
-  val store_att : Imap_types.store_att -> t
-  (** Sends an IMAP store attribute. *)
-end
+val store_att : Imap_types.store_att -> t
+(** Sends an IMAP store attribute. *)
