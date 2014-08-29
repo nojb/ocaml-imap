@@ -1,5 +1,5 @@
-open Imap_types
-open Imap_uint
+open ImapTypes
+open ImapUint
 
 type selection_info = {
   sel_perm_flags : flag_perm list;
@@ -166,13 +166,13 @@ let resp_cond_bye_store s = function
     resp_text_store s rt
 
 let response_data_store s = function
-  | #Response.resp_cond_state as resp ->
+  | #ImapResponse.resp_cond_state as resp ->
     resp_cond_state_store s resp
-  | #Response.resp_cond_bye as resp ->
+  | #ImapResponse.resp_cond_bye as resp ->
     resp_cond_bye_store s resp
-  | #Response.mailbox_data as resp ->
+  | #ImapResponse.mailbox_data as resp ->
     mailbox_data_store s resp
-  | #Response.message_data as resp ->
+  | #ImapResponse.message_data as resp ->
     message_data_store s resp
   | `CAPABILITY caps ->
     {s with cap_info = caps}
@@ -201,14 +201,14 @@ let response_done_store s resp =
   match resp with
   | `TAGGED tagged ->
     response_tagged_store s tagged
-  | #Response.response_fatal as resp ->
+  | #ImapResponse.response_fatal as resp ->
     response_fatal_store s resp
 
 let resp_data_or_resp_done_store s =
   function
-  | #Response.response_data as resp ->
+  | #ImapResponse.response_data as resp ->
     response_data_store s resp
-  | #Response.response_done as resp ->
+  | #ImapResponse.response_done as resp ->
     response_done_store s resp
 
 let resp_cond_auth_store s = function
@@ -216,19 +216,19 @@ let resp_cond_auth_store s = function
     resp_text_store s rt
 
 let greetings_store s = function
-  | #Response.resp_cond_auth as resp ->
+  | #ImapResponse.resp_cond_auth as resp ->
     resp_cond_auth_store s resp
-  | #Response.resp_cond_bye as resp ->
+  | #ImapResponse.resp_cond_bye as resp ->
     resp_cond_bye_store s resp
 
 let cont_req_or_resp_data_or_resp_done_store s = function
   | `CONT_REQ _ -> s
-  | #Response.response_data | #Response.response_done as resp ->
+  | #ImapResponse.response_data | #ImapResponse.response_done as resp ->
     resp_data_or_resp_done_store s resp
 
 let has_capability_name s name =
   List.exists (function
-      | `NAME x -> Utils.compare_ci x name = 0
+      | `NAME x -> ImapUtils.compare_ci x name = 0
       | `AUTH_TYPE _ -> false) s.cap_info
 
 let has_uidplus s =

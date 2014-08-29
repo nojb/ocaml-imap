@@ -20,9 +20,9 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Utils
-open Imap_types
-open Imap_uint
+open ImapUtils
+open ImapTypes
+open ImapUint
   
 let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
@@ -101,32 +101,32 @@ module Make (IO : IO.S) = struct
 
   let read ci p store =
     read_line ci.chan >>= fun s ->
-    match Parser.parse p s with
+    match ImapParser.parse p s with
     | `Ok x -> store ci.state x; IO.return x
     | `Fail i -> IO.fail (Parse_error (s, i))
     | `Exn exn -> IO.fail exn
 
   let read_greeting ci =
-    read ci Response.greeting greetings_store
+    read ci ImapResponse.greeting greetings_store
 
   let read_resp_data_or_resp_done ci =
     read ci
-      Response.resp_data_or_resp_done
+      ImapResponse.resp_data_or_resp_done
       resp_data_or_resp_done_store
 
   let read_cont_req_or_resp_data_or_resp_done ci =
     read ci
-      Response.cont_req_or_resp_data_or_resp_done
+      ImapResponse.cont_req_or_resp_data_or_resp_done
       cont_req_or_resp_data_or_resp_done_store
 
-  let get_response ci tag : Response.resp_text IO.t =
+  let get_response ci tag : ImapResponse.resp_text IO.t =
     ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop () =
       read_resp_data_or_resp_done ci >>= function
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
-      | #Response.response_data ->
+      | #ImapResponse.response_data ->
         loop ()
       | `TAGGED (tag', `OK rt) ->
         if tag <> tag' then IO.fail Bad_tag
@@ -145,7 +145,7 @@ module Make (IO : IO.S) = struct
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
-      | #Response.response_data ->
+      | #ImapResponse.response_data ->
         begin match f () with
           | `Continue -> loop ()
           | `Stop -> stop (); loop ()
@@ -169,7 +169,7 @@ module Make (IO : IO.S) = struct
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
-      | #Response.response_data ->
+      | #ImapResponse.response_data ->
         loop needs_more
       | `TAGGED (tag', `OK _) ->
         begin if needs_more then step "" else IO.return `OK end >>=
@@ -196,7 +196,7 @@ module Make (IO : IO.S) = struct
     loop true
 
   let get_continuation_request ci =
-    read ci Response.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
+    read ci ImapResponse.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
 
   let make () =
     { conn_state = Disconnected }
@@ -252,7 +252,7 @@ module Make (IO : IO.S) = struct
     s.next_tag <- s.next_tag + 1;
     string_of_int tag
 
-  module S = Sender
+  module S = ImapWriter
 
   let run_sender ci (f : S.t) =
     let _, oc = ci.chan in
@@ -350,14 +350,14 @@ module Make (IO : IO.S) = struct
 
   let authenticate s auth =
     let ci = connection_info s in
-    let cmd = S.(raw "AUTHENTICATE" ++ space ++ string auth.Auth.name) in
+    let cmd = S.(raw "AUTHENTICATE" ++ space ++ string auth.ImapAuth.name) in
     let step data =
-      let data = Utils.base64_decode data in
+      let data = ImapUtils.base64_decode data in
       begin
-        try IO.return (auth.Auth.step data)
+        try IO.return (auth.ImapAuth.step data)
         with e -> IO.fail (Auth_error e)
       end >>= fun (rc, data) ->
-      let data = Utils.base64_encode data in
+      let data = ImapUtils.base64_encode data in
       run_sender ci S.(raw data ++ crlf) >>= fun () ->
       IO.return rc
     in

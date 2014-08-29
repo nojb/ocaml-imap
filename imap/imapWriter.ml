@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap_types
-open Imap_uint
+open ImapTypes
+open ImapUint
 
 type atom =
   [ `Raw of string
@@ -134,7 +134,7 @@ let nstring = function
   | None -> nil
 
 let mailbox box =
-  string (Utils.encode_mutf7 box)
+  string (ImapUtils.encode_mutf7 box)
 
 let months =
   [|"Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; "Jul"; "Aug"; "Sep";
@@ -171,19 +171,19 @@ let section_msgtext = function
   | `TEXT -> raw "TEXT"
   | `ALL -> null
 
-let rec section_spec : Imap_types.section_spec -> t = function
-  | #Imap_types.section_msgtext as sec -> section_msgtext sec
+let rec section_spec : ImapTypes.section_spec -> t = function
+  | #ImapTypes.section_msgtext as sec -> section_msgtext sec
   | `MIME -> raw "MIME"
   | `PART (n, `ALL) -> int n
   | `PART (n, sec) -> int n ++ char '.' ++ section_spec sec
 
 and section = function
-  | #Imap_types.section_msgtext as sec -> section_msgtext sec
+  | #ImapTypes.section_msgtext as sec -> section_msgtext sec
   | `PART (n, `ALL) -> int n
   | `PART (n, sec) -> int n ++ char '.' ++ section_spec sec
 
 let fetch_att_section kind = function
-  | #Imap_types.section as sec ->
+  | #ImapTypes.section as sec ->
     raw kind ++ raw "[" ++ section sec ++ raw "]"
   | `PARTIAL (sec, n, m) ->
     raw kind ++ raw "[" ++ section sec ++ raw "]<" ++ int n ++ char '.' ++ int m ++ char '>'
@@ -223,7 +223,7 @@ let flag = function
   | `Extension s -> char '\\' ++ raw s (* FIXME: encode in MUTF7 ? *)
 
 let gm_label s =
-  raw (Utils.encode_mutf7 s)
+  raw (ImapUtils.encode_mutf7 s)
 
 let entry_type_req = function
   | `All -> "all"

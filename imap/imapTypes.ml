@@ -21,7 +21,7 @@
    SOFTWARE. *)
 
 open Sexplib.Std
-open Imap_uint
+open ImapUint
   
 module type S = sig
   type t with sexp
@@ -64,8 +64,8 @@ module Gmsgid : S64 = Uint64_
 module Gthrid : S64 = Uint64_
 module Modseq : S64 = Uint64_
 
-module Uid_set = Imap_set.Make (Uid)
-module Seq_set = Imap_set.Make (Seq)
+module Uid_set = ImapSet.Make (Uid)
+module Seq_set = ImapSet.Make (Seq)
 
 type flag =
   [ `Answered
@@ -181,14 +181,14 @@ type msg_att_section =
   | `PARTIAL of section * int ] with sexp
 
 type msg_att_static =
-  [ `ENVELOPE of Mime.envelope
+  [ `ENVELOPE of ImapMime.envelope
   | `INTERNALDATE of date_time
   | `RFC822 of string
   | `RFC822_HEADER of string
   | `RFC822_TEXT of string
   | `RFC822_SIZE of int
-  | `BODY of Mime.body
-  | `BODYSTRUCTURE of Mime.body
+  | `BODY of ImapMime.body
+  | `BODYSTRUCTURE of ImapMime.body
   | `BODYSECTION of msg_att_section * string
   | `UID of Uid.t
   | `X_GM_MSGID of Gmsgid.t

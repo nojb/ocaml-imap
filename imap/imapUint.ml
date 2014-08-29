@@ -53,7 +53,7 @@ module Uint32 = struct
     Format.fprintf fmt "%s" (to_string n)
 end
 
-module Uint32_set = Imap_set.Make (Uint32)
+module Uint32_set = ImapSet.Make (Uint32)
 
 module Uint64 = struct
   include Uint64

@@ -1,5 +1,5 @@
-open Imap_types
-open Imap_uint
+open ImapTypes
+open ImapUint
   
 type selection_info = {
   sel_perm_flags : flag_perm list;
@@ -47,11 +47,11 @@ val fresh_selection_info : selection_info
   
 val fresh_response_info : response_info
 
-val greetings_store : state -> Response.greeting -> state
+val greetings_store : state -> ImapResponse.greeting -> state
   
-val resp_data_or_resp_done_store : state -> [Response.response_data | Response.response_done] -> state
+val resp_data_or_resp_done_store : state -> [ImapResponse.response_data | ImapResponse.response_done] -> state
 
-val cont_req_or_resp_data_or_resp_done_store : state -> Response.cont_req_or_resp_data_or_resp_done -> state
+val cont_req_or_resp_data_or_resp_done_store : state -> ImapResponse.cont_req_or_resp_data_or_resp_done -> state
 
 val has_uidplus : state -> bool
 (** Whether the IMAP server supports the UIDPLUS extension. *)

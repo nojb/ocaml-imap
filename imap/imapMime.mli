@@ -24,7 +24,7 @@
 
 open Sexplib.Std
 open Sexplib.Conv
-open Imap_uint
+open ImapUint
   
 type address = {
   addr_name : string;
@@ -47,7 +47,7 @@ type envelope = {
   env_message_id : string
 } with sexp
 
-val envelope : envelope Parser.t
+val envelope : envelope ImapParser.t
 (** Parses an IMAP envelope *)
   
 (** MIME media types *)
@@ -134,4 +134,4 @@ and body =
   | Multi_part of multi_part with sexp
   (** Multi part *)
 
-val body : body Parser.t
+val body : body ImapParser.t

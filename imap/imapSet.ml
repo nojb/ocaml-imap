@@ -81,7 +81,7 @@ module Make (N : S) = struct
   let rec iter f = function
     | [] -> ()
     | (l, r) :: set ->
-      if N.is_zero r then failwith "Imap_set.iter";
+      if N.is_zero r then failwith "ImapSet.iter";
       let rec loop l =
         if N.compare l r > 0 then iter f set
         else begin
@@ -96,7 +96,7 @@ module Make (N : S) = struct
     | [], [] -> ()
     | (l1, r1) :: s1, (l2, r2) :: s2 ->
       if N.compare r1 N.zero = 0 || N.compare r2 N.zero = 0 then
-        failwith "Imap_set.iter2";
+        failwith "ImapSet.iter2";
       let rec loop l1 l2 =
         if N.compare l1 r1 > 0 then
           if N.compare l2 r2 > 0 then
@@ -113,13 +113,13 @@ module Make (N : S) = struct
       in
       loop l1 l2
     | _ ->
-      failwith "Imap_set.iter2"
+      failwith "ImapSet.iter2"
 
   let rec fold f s x =
     let rec loop = function
       | [] -> x
       | (l, r) :: s ->
-        if N.is_zero l then failwith "Imap_set.fold";
+        if N.is_zero l then failwith "ImapSet.fold";
         let rec loop l x =
           if N.compare l r > 0 then
             fold f s x

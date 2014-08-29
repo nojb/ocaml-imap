@@ -21,8 +21,8 @@
    SOFTWARE. *)
 
 open Sexplib.Std
-open Imap_types
-open Imap_uint
+open ImapTypes
+open ImapUint
 
 type capability_data =
   [ `CAPABILITY of capability list ] with sexp
@@ -118,7 +118,7 @@ type cont_req_or_resp_data_or_resp_done =
   | response_data
   | response_done ] with sexp
 
-open Parser
+open ImapParser
 
 (*
 auth-type       = atom
@@ -305,7 +305,7 @@ resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value /
                     "NOMODSEQ" /
                     "MODIFIED" SP set
 *)
-let resp_text_code : resp_text_code Parser.t =
+let resp_text_code : resp_text_code ImapParser.t =
   let other_re =
     (* same as [text_re] but also exclude ']' *)
     Str.regexp "[^]\r\n\x80-\xff]+"
@@ -363,7 +363,7 @@ let resp_text_code : resp_text_code Parser.t =
 (*
 resp-text       = ["[" resp-text-code "]" SP] text
 *)
-let resp_text : resp_text Parser.t =
+let resp_text : resp_text ImapParser.t =
   option (delimited lbra resp_text_code rbra) >>= function
   | None ->
     soption text >|= fun resp -> (`NONE, resp)
@@ -430,7 +430,7 @@ let mbx_list_flags =
   {mbf_sflag = None; mbf_oflags = oflags})
 
 let mailbox =
-  let decode_mailbox_name s = try Utils.decode_mutf7 s with _ -> s in
+  let decode_mailbox_name s = try ImapUtils.decode_mutf7 s with _ -> s in
   astring >|= decode_mailbox_name
 
 (*
@@ -567,7 +567,7 @@ let section_spec =
 (*
 section         = "[" [section-spec] "]"
 *)
-let section : [> section] Parser.t =
+let section : [> section] ImapParser.t =
   delimited lbra section_spec rbra <|> return `ALL
 
 let uint64 =
@@ -583,14 +583,14 @@ msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
                   "UID" SP uniqueid
                     ; MUST NOT change for a message
 *)
-let msg_att_static : [> msg_att_static] Parser.t =
-  let envelope = space >> Mime.envelope >|= fun e -> `ENVELOPE e in
+let msg_att_static : [> msg_att_static] ImapParser.t =
+  let envelope = space >> ImapMime.envelope >|= fun e -> `ENVELOPE e in
   let internaldate = space >> date_time >|= fun dt -> `INTERNALDATE dt in
   let rfc822_header = space >> nstring' >|= fun s -> `RFC822_HEADER s in
   let rfc822_text = space >> nstring' >|= fun s -> `RFC822_TEXT s in
   let rfc822_size = space >> number' >|= fun n -> `RFC822_SIZE n in
   let rfc822 = space >> nstring' >|= fun s -> `RFC822 s in
-  let bodystructure = space >> Mime.body >|= fun b -> `BODYSTRUCTURE b in
+  let bodystructure = space >> ImapMime.body >|= fun b -> `BODYSTRUCTURE b in
   let body =
     let body_ b =
       `BODY b
@@ -604,7 +604,7 @@ let msg_att_static : [> msg_att_static] Parser.t =
       `BODYSECTION (sec, s)
     in
     choices [
-      space >> Mime.body >|= body_;
+      space >> ImapMime.body >|= body_;
       section >>= section_
     ]
   in
@@ -641,12 +641,12 @@ fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")"
 msg-att-dynamic     =/ fetch-mod-resp
 
 *)
-let msg_att_dynamic : [> msg_att_dynamic] Parser.t =
+let msg_att_dynamic : [> msg_att_dynamic] ImapParser.t =
   let flags = space >> flag_list >|= fun flags -> `FLAGS flags in
   let modseq = space >> delimited lpar permsg_modsequence rpar >|= fun n -> `MODSEQ n in
   let x_gm_labels =
     space >> delimited lpar (separated_list space astring) rpar >|= fun labs ->
-    `X_GM_LABELS (List.map Utils.decode_mutf7 labs)
+    `X_GM_LABELS (List.map ImapUtils.decode_mutf7 labs)
   in
   choices [
     string_ci "FLAGS" >> flags;
@@ -775,7 +775,7 @@ let id_params_list =
   loption (delimited lpar
              (separated_list space
                 (separated_pair imap_string space (noption imap_string))) rpar) >|=
-  Utils.option_map (function (k, Some v) -> Some (k, v) | (_, None) -> None)
+  ImapUtils.option_map (function (k, Some v) -> Some (k, v) | (_, None) -> None)
   
 (*
 id_response ::= "ID" SPACE id_params_list
@@ -804,7 +804,7 @@ let namespace =
   (delimited lpar
      (nonempty_list
         (delimited lpar
-           (imap_string >|= Utils.decode_mutf7 >>= fun prefix ->
+           (imap_string >|= ImapUtils.decode_mutf7 >>= fun prefix ->
             space >> (quoted_char <|> (nil >| '\000')) >>= fun delim ->
             list namespace_response_extension >|= fun exts ->
             {ns_prefix = prefix; ns_delimiter = delim; ns_extensions = exts})

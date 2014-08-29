@@ -22,7 +22,7 @@
 
 (** Combinator parsers on strings *)
 
-open Imap_uint
+open ImapUint
 
 type +'a t
 

@@ -31,7 +31,7 @@ module Uint32 : sig
   val t_of_sexp : Sexplib.Sexp.t -> t
 end
 
-module Uint32_set : module type of Imap_set.Make (Uint32)
+module Uint32_set : module type of ImapSet.Make (Uint32)
 
 module Uint64 : sig
   include module type of Uint64

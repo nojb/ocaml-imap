@@ -23,8 +23,8 @@
 (** IMAP responses *)
 
 open Sexplib.Std
-open Imap_types
-open Imap_uint
+open ImapTypes
+open ImapUint
   
 (** List of capabilities *)
 type capability_data =
@@ -184,14 +184,14 @@ type cont_req_or_resp_data_or_resp_done =
 
 (** {2 Response parsers} *)
 
-val greeting : greeting Parser.t
+val greeting : greeting ImapParser.t
 
-val continue_req : [> continue_req] Parser.t
+val continue_req : [> continue_req] ImapParser.t
 
-val response_data : [> response_data] Parser.t
+val response_data : [> response_data] ImapParser.t
 
-val response_done : [> response_done] Parser.t
+val response_done : [> response_done] ImapParser.t
 
-val resp_data_or_resp_done : [response_data | response_done] Parser.t
+val resp_data_or_resp_done : [response_data | response_done] ImapParser.t
 
-val cont_req_or_resp_data_or_resp_done : cont_req_or_resp_data_or_resp_done Parser.t
+val cont_req_or_resp_data_or_resp_done : cont_req_or_resp_data_or_resp_done ImapParser.t
