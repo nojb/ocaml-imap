@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: fd4e38647e602c46c4798f0751501aae)
+# DO NOT EDIT (digest: b91d55c40ee6726685b2c2c88b3dc9a3)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -21,6 +21,7 @@
 "imap/client.cmx": for-pack(Imap)
 "imap/auth.cmx": for-pack(Imap)
 "imap/IO.cmx": for-pack(Imap)
+"imap/imapState.cmx": for-pack(Imap)
 "imap/sender.cmx": for-pack(Imap)
 "imap/parser.cmx": for-pack(Imap)
 "imap/response.cmx": for-pack(Imap)
@@ -188,3 +189,4 @@
 <lib_test/*.ml{,i}>: use_imap
 <lib_test/test_namespace.{native,byte}>: custom
 # OASIS_STOP
+true: debug

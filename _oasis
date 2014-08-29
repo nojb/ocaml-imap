@@ -31,7 +31,7 @@ Library imap
   Path: imap
   FindlibName: imap
   Pack: true
-  Modules: Mime, Imap_types, Imap_set, Client, Auth, IO
+  Modules: Mime, Imap_types, Imap_set, Client, Auth, IO, ImapState
   InternalModules: Sender, Parser, Response, Utils, Imap_uint
   BuildDepends: uint, str, cryptokit, ucorelib, sexplib, sexplib.syntax
 

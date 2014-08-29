@@ -258,16 +258,3 @@ type namespace = {
   ns_delimiter : char;
   ns_extensions : (string * string list) list
 } with sexp
-
-type selection_info = {
-  sel_perm_flags : flag_perm list;
-  sel_perm : [ `READ_ONLY | `READ_WRITE ];
-  sel_uidnext : Uid.t;
-  sel_uidvalidity : Uid.t;
-  sel_first_unseen : Seq.t;
-  sel_flags : flag list;
-  sel_exists : int option;
-  sel_recent : int option;
-  sel_uidnotsticky : bool;
-  sel_highestmodseq : Modseq.t
-}

@@ -22,7 +22,7 @@
 
 open Imap
 open Imap_types
-
+open ImapState
 (** Type of IMAP sessions. *)
 type session
 
@@ -342,7 +342,7 @@ val last_response : session -> string
 (** The descriptive text of the last tagged response (or the last BYE
     (untagged) response from the server. *)
 
-val selection_info : session -> selection_info
+val selection_info : session -> ImapState.selection_info
 (** Returns information about the last selected mailbox. *)
 
 val capabilities : session -> capability list

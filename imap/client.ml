@@ -38,71 +38,13 @@ external uint32_list_to_uid_list : Uint32.t list -> Uid.t list = "%identity"
 module Make (IO : IO.S) = struct
   module IO = IO
 
-  type response_info = {
-    rsp_alert : string;
-    rsp_parse : string;
-    rsp_badcharset : string list;
-    rsp_trycreate : bool;
-    rsp_mailbox_list : mailbox_list list;
-    (* rsp_mailbox_lsub : mailbox_list list; *)
-    rsp_search_results : Uint32.t list;
-    rsp_search_results_modseq : Modseq.t;
-    rsp_status : mailbox_data_status;
-    rsp_expunged : Seq.t list;
-    rsp_fetch_list : (Seq.t * msg_att list) list;
-    rsp_appenduid : Uid.t * Uid.t;
-    rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
-    rsp_compressionactive : bool;
-    rsp_id : (string * string) list;
-    rsp_modified : Uint32_set.t;
-    rsp_namespace : namespace list * namespace list * namespace list;
-    rsp_enabled : capability list;
-    rsp_other : string * string
-  }
-    
-  let fresh_response_info = {
-    rsp_alert = "";
-    rsp_parse = "";
-    rsp_badcharset = [];
-    rsp_trycreate = false;
-    rsp_mailbox_list = [];
-    (* rsp_mailbox_lsub = []; *)
-    rsp_search_results = [];
-    rsp_search_results_modseq = Modseq.zero;
-    rsp_status = {st_mailbox = ""; st_info_list = []};
-    rsp_expunged = [];
-    rsp_fetch_list = [];
-    rsp_appenduid = (Uid.zero, Uid.zero);
-    rsp_copyuid = (Uid.zero, Uid_set.empty, Uid_set.empty);
-    rsp_compressionactive = false;
-    rsp_id = [];
-    rsp_modified = Uint32_set.empty;
-    rsp_namespace = ([], [], []);
-    rsp_enabled = [];
-    rsp_other = ("", "")
-  }
-
-  let fresh_selection_info = {
-    sel_perm_flags = [];
-    sel_perm = `READ_ONLY;
-    sel_uidnext = Uid.zero;
-    sel_uidvalidity = Uid.zero;
-    sel_first_unseen = Seq.zero;
-    sel_flags = [];
-    sel_exists = None;
-    sel_recent = None;
-    sel_uidnotsticky = false;
-    sel_highestmodseq = Modseq.zero
-  }
+  open ImapState
 
   type connection_info = {
     mutable chan : IO.input * IO.output;
     mutable next_tag : int;
-    mutable imap_response : string;
-    mutable rsp_info : response_info;
-    mutable sel_info : selection_info;
-    mutable cap_info : capability list;
     mutable compress_deflate : bool;
+    state : state;
     send_lock : IO.mutex;
     disconnect : unit -> unit IO.t
   }
@@ -157,165 +99,10 @@ module Make (IO : IO.S) = struct
     in
     IO.catch loop (fun exn -> IO.fail (Io_error exn))
 
-  let resp_text_store s (c, text) =
-    match c with
-    | `ALERT ->
-      s.rsp_info <- {s.rsp_info with rsp_alert = text}
-    | `BADCHARSET csets ->
-      s.rsp_info <- {s.rsp_info with rsp_badcharset = csets}
-    | `CAPABILITY caps ->
-      s.cap_info <- caps
-    | `PARSE ->
-      s.rsp_info <- {s.rsp_info with rsp_parse = text}
-    | `PERMANENTFLAGS flags ->
-      s.sel_info <- {s.sel_info with sel_perm_flags = flags}
-    | `READ_ONLY ->
-      s.sel_info <- {s.sel_info with sel_perm = `READ_ONLY}
-    | `READ_WRITE ->
-      s.sel_info <- {s.sel_info with sel_perm = `READ_WRITE}
-    | `TRYCREATE ->
-      s.rsp_info <- {s.rsp_info with rsp_trycreate = true}
-    | `UIDNEXT uid ->
-      s.sel_info <- {s.sel_info with sel_uidnext = uid}
-    | `UIDVALIDITY uid ->
-      s.sel_info <- {s.sel_info with sel_uidvalidity = uid}
-    | `UNSEEN unseen ->
-      s.sel_info <- {s.sel_info with sel_first_unseen = unseen}
-    | `APPENDUID (uidvalidity, uid) ->
-      s.rsp_info <- {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}
-    | `COPYUID (uidvalidity, src_uids, dst_uids) ->
-      s.rsp_info <- {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}
-    | `UIDNOTSTICKY ->
-      s.sel_info <- {s.sel_info with sel_uidnotsticky = true}
-    | `COMPRESSIONACTIVE ->
-      s.rsp_info <- {s.rsp_info with rsp_compressionactive = true}
-    | `HIGHESTMODSEQ modseq ->
-      s.sel_info <- {s.sel_info with sel_highestmodseq = modseq}
-    | `NOMODSEQ ->
-      s.sel_info <- {s.sel_info with sel_highestmodseq = Modseq.zero}
-    | `MODIFIED set ->
-      s.rsp_info <- {s.rsp_info with rsp_modified = set}
-    | `OTHER other ->
-      s.rsp_info <- {s.rsp_info with rsp_other = other}
-    | `NONE ->
-      ()
-
-  let mailbox_data_store s = function
-    | `FLAGS flags ->
-      s.sel_info <- {s.sel_info with sel_flags = flags}
-    | `LIST mb ->
-      s.rsp_info <- {s.rsp_info with
-                     rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}
-    | `LSUB mb ->
-      s.rsp_info <- {s.rsp_info with
-                     rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}
-    (* rsp_mailbox_lsub = s.rsp_info.rsp_mailbox_lsub @ [mb] } *)
-    | `SEARCH (results, modseq) ->
-      s.rsp_info <- {s.rsp_info with
-                     rsp_search_results = s.rsp_info.rsp_search_results @ results;
-                     rsp_search_results_modseq =
-                       Modseq.max modseq s.rsp_info.rsp_search_results_modseq}
-    | `STATUS status ->
-      s.rsp_info <- {s.rsp_info with rsp_status = status}
-    | `EXISTS n ->
-      s.sel_info <- {s.sel_info with sel_exists = Some n}
-    | `RECENT n ->
-      s.sel_info <- {s.sel_info with sel_recent = Some n}
-
-  let message_data_store s ?handler = function
-    | `EXPUNGE n ->
-      s.rsp_info <- {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]};
-      begin match s.sel_info.sel_exists with
-        | Some n ->
-          s.sel_info <- {s.sel_info with sel_exists = Some (n-1)}
-        | None ->
-          ()
-      end
-    | `FETCH att ->
-      match handler with
-      | Some h ->
-        h att
-      | None ->
-        s.rsp_info <- {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}
-
-  let resp_cond_state_store s = function
-    | `OK rt
-    | `NO rt
-    | `BAD rt ->
-      resp_text_store s rt
-
-  let resp_cond_bye_store s = function
-    | `BYE rt ->
-      resp_text_store s rt
-
-  let response_data_store s ?handler = function
-    | #Response.resp_cond_state as resp ->
-      resp_cond_state_store s resp
-    | #Response.resp_cond_bye as resp ->
-      resp_cond_bye_store s resp
-    | #Response.mailbox_data as resp ->
-      mailbox_data_store s resp
-    | #Response.message_data as resp ->
-      message_data_store s ?handler resp
-    | `CAPABILITY caps ->
-      s.cap_info <- caps
-    | `ID params ->
-      s.rsp_info <- {s.rsp_info with rsp_id = params}
-    | `NAMESPACE (pers, other, shared) ->
-      s.rsp_info <- {s.rsp_info with rsp_namespace = pers, other, shared}
-    | `ENABLED caps ->
-      s.rsp_info <- {s.rsp_info with rsp_enabled = caps}
-
-  let response_tagged_store s (_, rcs) =
-    resp_cond_state_store s rcs
-
-  let response_fatal_store s r =
-    resp_cond_bye_store s r
-
-  let text_of_response_done = function
-    | `TAGGED (_, `OK (_, txt))
-    | `TAGGED (_, `BAD (_, txt))
-    | `TAGGED (_, `NO (_, txt))
-    | `BYE (_, txt) ->
-      txt
-
-  let response_done_store s resp =
-    s.imap_response <- text_of_response_done resp;
-    match resp with
-    | `TAGGED tagged ->
-      response_tagged_store s tagged
-    | #Response.response_fatal as resp ->
-      response_fatal_store s resp
-
-  let resp_data_or_resp_done_store s ?handler resp =
-    match resp with
-    | #Response.response_data as resp ->
-      response_data_store s ?handler resp
-    | #Response.response_done as resp ->
-      response_done_store s resp
-
-  let resp_cond_auth_store s = function
-    | `OK rt
-    | `PREAUTH rt ->
-      resp_text_store s rt
-
-  let greetings_store s = function
-    | #Response.resp_cond_auth as resp ->
-      resp_cond_auth_store s resp
-    | #Response.resp_cond_bye as resp ->
-      resp_cond_bye_store s resp
-
-  let cont_req_or_resp_data_or_resp_done_store s ?handler = function
-    | `CONT_REQ _ ->
-      ()
-    | #Response.response_data
-    | #Response.response_done as resp ->
-      resp_data_or_resp_done_store s ?handler resp
-
   let read ci p store =
     read_line ci.chan >>= fun s ->
     match Parser.parse p s with
-    | `Ok x -> store ci x; IO.return x
+    | `Ok x -> store ci.state x; IO.return x
     | `Fail i -> IO.fail (Parse_error (s, i))
     | `Exn exn -> IO.fail exn
 
@@ -333,7 +120,7 @@ module Make (IO : IO.S) = struct
       (cont_req_or_resp_data_or_resp_done_store ?handler)
 
   let get_response ci ?handler tag : Response.resp_text IO.t =
-    ci.rsp_info <- fresh_response_info;
+    ci.state.rsp_info <- fresh_response_info;
     let rec loop () =
       read_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -352,7 +139,7 @@ module Make (IO : IO.S) = struct
     loop ()
 
   let get_idle_response ci ?handler tag f stop =
-    ci.rsp_info <- fresh_response_info;
+    ci.state.rsp_info <- fresh_response_info;
     let rec loop () =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -376,7 +163,7 @@ module Make (IO : IO.S) = struct
     loop ()
 
   let get_auth_response step ?handler ci tag =
-    ci.rsp_info <- fresh_response_info;
+    ci.state.rsp_info <- fresh_response_info;
     let rec loop needs_more =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -423,10 +210,12 @@ module Make (IO : IO.S) = struct
     | Disconnected ->
       let ci = {
         chan; next_tag = 1;
-        imap_response = "";
-        rsp_info = fresh_response_info;
-        sel_info = fresh_selection_info;
-        cap_info = [];
+        state = {
+          imap_response = "";
+          rsp_info = fresh_response_info;
+          sel_info = fresh_selection_info;
+          cap_info = []
+        };
         compress_deflate = false;
         send_lock = IO.create_mutex ();
         disconnect = (fun () -> disconnect' chan)
@@ -493,7 +282,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let cmd = S.raw "CAPABILITY" in
     let aux () =
-      send_command ci cmd >|= fun () -> ci.cap_info
+      send_command ci cmd >|= fun () -> ci.state.cap_info
     in
     IO.with_lock ci.send_lock aux
 
@@ -523,7 +312,7 @@ module Make (IO : IO.S) = struct
     in
     let aux () =
       send_command ci cmd >>= fun () ->
-      IO.return ci.rsp_info.rsp_id
+      IO.return ci.state.rsp_info.rsp_id
     in
     IO.with_lock ci.send_lock aux
 
@@ -539,7 +328,7 @@ module Make (IO : IO.S) = struct
     in
     let aux () =
       send_command ci cmd >>= fun () ->
-      IO.return ci.rsp_info.rsp_enabled
+      IO.return ci.state.rsp_info.rsp_enabled
     in
     IO.with_lock ci.send_lock aux
 
@@ -553,7 +342,7 @@ module Make (IO : IO.S) = struct
         send_command ci cmd >>= fun () ->
         IO.starttls version ?ca_file ci.chan >>= begin fun chan ->
           ci.chan <- chan;
-          ci.cap_info <- []; (* See 6.2.1 in RFC 3501 *)
+          ci.state.cap_info <- []; (* See 6.2.1 in RFC 3501 *)
           IO.return ()
         end
     in
@@ -602,8 +391,8 @@ module Make (IO : IO.S) = struct
     in
     let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ send_condstore) in
     let aux () =
-      ci.sel_info <- fresh_selection_info;
-      send_command ci cmd >|= fun () -> ci.sel_info.sel_highestmodseq
+      ci.state.sel_info <- fresh_selection_info;
+      send_command ci cmd >|= fun () -> ci.state.sel_info.sel_highestmodseq
     in
     IO.with_lock ci.send_lock aux
 
@@ -655,7 +444,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ space ++ mailbox list_mb) in
     let aux () =
-      send_command ci cmd >|= fun () -> ci.rsp_info.rsp_mailbox_list
+      send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_mailbox_list
     in
     IO.with_lock ci.send_lock aux
 
@@ -671,7 +460,7 @@ module Make (IO : IO.S) = struct
       S.(raw "STATUS" ++ space ++ mailbox mbox ++ space ++ list status_att attrs)
     in
     let aux () =
-      send_command ci cmd >|= fun () -> ci.rsp_info.rsp_status
+      send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_status
     in
     IO.with_lock ci.send_lock aux
 
@@ -689,7 +478,7 @@ module Make (IO : IO.S) = struct
       S.(raw "APPEND" ++ space ++ mailbox mbox ++ space ++ flags ++ date ++ literal data)
     in
     let aux () =
-      send_command ci cmd >|= fun () -> ci.rsp_info.rsp_appenduid
+      send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_appenduid
     in
     IO.with_lock ci.send_lock aux
 
@@ -710,7 +499,7 @@ module Make (IO : IO.S) = struct
       end
     in
     let aux () =
-      ci.sel_info <- {ci.sel_info with sel_exists = None; sel_recent = None};
+      ci.state.sel_info <- {ci.state.sel_info with sel_exists = None; sel_recent = None};
       send_command' ci cmd >>= fun tag ->
       idling := true;
       get_idle_response ci tag f stop
@@ -722,7 +511,7 @@ module Make (IO : IO.S) = struct
     let cmd = S.raw "NAMESPACE" in
     let aux () =
       send_command ci cmd >>= fun () ->
-      IO.return ci.rsp_info.rsp_namespace
+      IO.return ci.state.rsp_info.rsp_namespace
     in
     IO.with_lock ci.send_lock aux
 
@@ -759,7 +548,7 @@ module Make (IO : IO.S) = struct
     in
     let cmd = S.(raw cmd ++ space ++ charset_opt ++ search_key query) in
     let aux () =
-      send_command ci cmd >|= fun () -> ci.rsp_info.rsp_search_results
+      send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_search_results
     in
     IO.with_lock ci.send_lock aux
 
@@ -814,7 +603,7 @@ module Make (IO : IO.S) = struct
     let cmd =
       S.(raw cmd ++ space ++ message_set set ++ space ++ unchangedsince ++ mode ++ store_att att)
     in
-    let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_modified in
+    let aux () = send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_modified in
     IO.with_lock ci.send_lock aux
 
   let store s set mode flags =
@@ -836,7 +625,7 @@ module Make (IO : IO.S) = struct
   let copy_aux cmd s set destbox =
     let ci = connection_info s in
     let cmd = S.(raw cmd ++ space ++ message_set set ++ space ++ mailbox destbox) in
-    let aux () = send_command ci cmd >|= fun () -> ci.rsp_info.rsp_copyuid in
+    let aux () = send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_copyuid in
     IO.with_lock ci.send_lock aux
 
   let copy s set destbox =
@@ -857,7 +646,7 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     List.exists (function
         | `NAME x -> Utils.compare_ci x name = 0
-        | `AUTH_TYPE _ -> false) ci.cap_info
+        | `AUTH_TYPE _ -> false) ci.state.cap_info
 
   let has_uidplus s =
     has_capability_name s "UIDPLUS"
@@ -882,19 +671,19 @@ module Make (IO : IO.S) = struct
 
   let last_response s =
     let ci = connection_info s in
-    ci.imap_response
+    ci.state.imap_response
 
   let response_info s =
     let ci = connection_info s in
-    ci.rsp_info
+    ci.state.rsp_info
 
   let selection_info s =
     let ci = connection_info s in
-    ci.sel_info
+    ci.state.sel_info
 
   let capabilities s =
     let ci = connection_info s in
-    ci.cap_info
+    ci.state.cap_info
 
   let is_busy s =
     let ci = connection_info s in
