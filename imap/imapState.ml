@@ -225,3 +225,32 @@ let cont_req_or_resp_data_or_resp_done_store s ?handler = function
   | `CONT_REQ _ -> s
   | #Response.response_data | #Response.response_done as resp ->
     resp_data_or_resp_done_store s ?handler resp
+
+let has_capability_name s name =
+  List.exists (function
+      | `NAME x -> Utils.compare_ci x name = 0
+      | `AUTH_TYPE _ -> false) s.cap_info
+
+let has_uidplus s =
+  has_capability_name s "UIDPLUS"
+
+let has_compress_deflate s =
+  has_capability_name s "COMPRESS=DEFLATE"
+
+let has_id s =
+  has_capability_name s "ID"
+
+let has_condstore s =
+  has_capability_name s "CONDSTORE"
+
+let has_x_gm_ext_1 s =
+  has_capability_name s "X-GM-EXT-1"
+
+let has_namespace s =
+  has_capability_name s "NAMESPACE"
+
+let has_enable s =
+  has_capability_name s "ENABLE"
+
+let last_response s =
+  s.imap_response

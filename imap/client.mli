@@ -324,32 +324,6 @@ module Make (IO : IO.S) : sig
 
   (** {2 Session information} *)
 
-  val has_uidplus : session -> bool
-  (** Whether the IMAP server supports the UIDPLUS extension. *)
-
-  val has_compress_deflate : session -> bool
-  (** Whether the IMAP server supports the COMPRESS=DEFLATE extension. *)
-
-  val has_id : session -> bool
-  (** Whether the IMAP server supports the ID extension. *)
-
-  val has_condstore : session -> bool
-  (** Whether the IMAP server supports the CONDSTORE extension. *)
-
-  val has_x_gm_ext_1 : session -> bool
-  (** Whether the IMAP server supports the X-GM-EXT-1 extension (probably only
-      Google supports this). *)
-
-  val has_namespace : session -> bool
-  (** Whether the IMAP server supports the NAMESPACE extension. *)
-
-  val has_enable : session -> bool
-  (** Whether the IMAP server supports the ENABLE extension. *)
-
-  val last_response : session -> string
-  (** The descriptive text of the last tagged response (or the last BYE
-      (untagged) response from the server. *)
-
   val state : session -> ImapState.state
   (** Returns the current known imap information. *)
 

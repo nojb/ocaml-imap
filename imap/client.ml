@@ -642,41 +642,6 @@ module Make (IO : IO.S) = struct
   let uidplus_uid_copy s set destbox =
     copy_aux "UID COPY" s (uid_set_to_uint32_set set) destbox
 
-  let has_capability_name s name =
-    let ci = connection_info s in
-    List.exists (function
-        | `NAME x -> Utils.compare_ci x name = 0
-        | `AUTH_TYPE _ -> false) ci.state.cap_info
-
-  let has_uidplus s =
-    has_capability_name s "UIDPLUS"
-
-  let has_compress_deflate s =
-    has_capability_name s "COMPRESS=DEFLATE"
-
-  let has_id s =
-    has_capability_name s "ID"
-
-  let has_condstore s =
-    has_capability_name s "CONDSTORE"
-
-  let has_x_gm_ext_1 s =
-    has_capability_name s "X-GM-EXT-1"
-
-  let has_namespace s =
-    has_capability_name s "NAMESPACE"
-
-  let has_enable s =
-    has_capability_name s "ENABLE"
-
-  let last_response s =
-    let ci = connection_info s in
-    ci.state.imap_response
-
-  let response_info s =
-    let ci = connection_info s in
-    ci.state.rsp_info
-
   let state s =
     let ci = connection_info s in
     ci.state
