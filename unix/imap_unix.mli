@@ -342,12 +342,8 @@ val last_response : session -> string
 (** The descriptive text of the last tagged response (or the last BYE
     (untagged) response from the server. *)
 
-val selection_info : session -> ImapState.selection_info
+val state : session -> ImapState.state
 (** Returns information about the last selected mailbox. *)
-
-val capabilities : session -> capability list
-(** Returns the last known list of server capabilities.  It does not actually
-    contact the server. *)
 
 val is_busy : session -> bool
 (** Whether some command is in progress. *)

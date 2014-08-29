@@ -37,10 +37,10 @@ type response_info = {
 }
 
 type state = {
-  mutable imap_response : string;
-  mutable rsp_info : response_info;
-  mutable sel_info : selection_info;
-  mutable cap_info : capability list
+  imap_response : string;
+  rsp_info : response_info;
+  sel_info : selection_info;
+  cap_info : capability list
 }
 
 let fresh_response_info = {
@@ -81,88 +81,84 @@ let fresh_selection_info = {
 let resp_text_store s (c, text) =
   match c with
   | `ALERT ->
-    s.rsp_info <- {s.rsp_info with rsp_alert = text}
+    {s with rsp_info = {s.rsp_info with rsp_alert = text}}
   | `BADCHARSET csets ->
-    s.rsp_info <- {s.rsp_info with rsp_badcharset = csets}
+    {s with rsp_info = {s.rsp_info with rsp_badcharset = csets}}
   | `CAPABILITY caps ->
-    s.cap_info <- caps
+    {s with cap_info = caps}
   | `PARSE ->
-    s.rsp_info <- {s.rsp_info with rsp_parse = text}
+    {s with rsp_info = {s.rsp_info with rsp_parse = text}}
   | `PERMANENTFLAGS flags ->
-    s.sel_info <- {s.sel_info with sel_perm_flags = flags}
+    {s with sel_info = {s.sel_info with sel_perm_flags = flags}}
   | `READ_ONLY ->
-    s.sel_info <- {s.sel_info with sel_perm = `READ_ONLY}
+    {s with sel_info = {s.sel_info with sel_perm = `READ_ONLY}}
   | `READ_WRITE ->
-    s.sel_info <- {s.sel_info with sel_perm = `READ_WRITE}
+    {s with sel_info = {s.sel_info with sel_perm = `READ_WRITE}}
   | `TRYCREATE ->
-    s.rsp_info <- {s.rsp_info with rsp_trycreate = true}
+    {s with rsp_info = {s.rsp_info with rsp_trycreate = true}}
   | `UIDNEXT uid ->
-    s.sel_info <- {s.sel_info with sel_uidnext = uid}
+    {s with sel_info = {s.sel_info with sel_uidnext = uid}}
   | `UIDVALIDITY uid ->
-    s.sel_info <- {s.sel_info with sel_uidvalidity = uid}
+    {s with sel_info = {s.sel_info with sel_uidvalidity = uid}}
   | `UNSEEN unseen ->
-    s.sel_info <- {s.sel_info with sel_first_unseen = unseen}
+    {s with sel_info = {s.sel_info with sel_first_unseen = unseen}}
   | `APPENDUID (uidvalidity, uid) ->
-    s.rsp_info <- {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}
+    {s with rsp_info = {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}}
   | `COPYUID (uidvalidity, src_uids, dst_uids) ->
-    s.rsp_info <- {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}
+    {s with rsp_info = {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}}
   | `UIDNOTSTICKY ->
-    s.sel_info <- {s.sel_info with sel_uidnotsticky = true}
+    {s with sel_info = {s.sel_info with sel_uidnotsticky = true}}
   | `COMPRESSIONACTIVE ->
-    s.rsp_info <- {s.rsp_info with rsp_compressionactive = true}
+    {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}}
   | `HIGHESTMODSEQ modseq ->
-    s.sel_info <- {s.sel_info with sel_highestmodseq = modseq}
+    {s with sel_info = {s.sel_info with sel_highestmodseq = modseq}}
   | `NOMODSEQ ->
-    s.sel_info <- {s.sel_info with sel_highestmodseq = Modseq.zero}
+    {s with sel_info = {s.sel_info with sel_highestmodseq = Modseq.zero}}
   | `MODIFIED set ->
-    s.rsp_info <- {s.rsp_info with rsp_modified = set}
+    {s with rsp_info = {s.rsp_info with rsp_modified = set}}
   | `OTHER other ->
-    s.rsp_info <- {s.rsp_info with rsp_other = other}
+    {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | `NONE ->
-    ()
+    s
 
 let mailbox_data_store s = function
   | `FLAGS flags ->
-    s.sel_info <- {s.sel_info with sel_flags = flags}
+    {s with sel_info = {s.sel_info with sel_flags = flags}}
   | `LIST mb ->
-    s.rsp_info <- {s.rsp_info with
-                   rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}
+    {s with rsp_info = {s.rsp_info with
+                        rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}}
   | `LSUB mb ->
-    s.rsp_info <- {s.rsp_info with
-                   rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}
+    {s with rsp_info = {s.rsp_info with
+                        rsp_mailbox_list = s.rsp_info.rsp_mailbox_list @ [mb]}}
   (* rsp_mailbox_lsub = s.rsp_info.rsp_mailbox_lsub @ [mb] } *)
   | `SEARCH (results, modseq) ->
-    s.rsp_info <- {s.rsp_info with
-                   rsp_search_results = s.rsp_info.rsp_search_results @ results;
-                   rsp_search_results_modseq =
-                     Modseq.max modseq s.rsp_info.rsp_search_results_modseq}
+    {s with rsp_info = {s.rsp_info with
+                        rsp_search_results = s.rsp_info.rsp_search_results @ results;
+                        rsp_search_results_modseq =
+                          Modseq.max modseq s.rsp_info.rsp_search_results_modseq}}
   | `STATUS status ->
-    s.rsp_info <- {s.rsp_info with rsp_status = status}
+    {s with rsp_info = {s.rsp_info with rsp_status = status}}
   | `EXISTS n ->
-    s.sel_info <- {s.sel_info with sel_exists = Some n}
+    {s with sel_info = {s.sel_info with sel_exists = Some n}}
   | `RECENT n ->
-    s.sel_info <- {s.sel_info with sel_recent = Some n}
+    {s with sel_info = {s.sel_info with sel_recent = Some n}}
 
 let message_data_store s ?handler = function
   | `EXPUNGE n ->
-    s.rsp_info <- {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]};
+    let s =
+      {s with rsp_info = {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]}}
+    in
     begin match s.sel_info.sel_exists with
       | Some n ->
-        s.sel_info <- {s.sel_info with sel_exists = Some (n-1)}
+        {s with sel_info = {s.sel_info with sel_exists = Some (n-1)}}
       | None ->
-        ()
+        s
     end
   | `FETCH att ->
-    match handler with
-    | Some h ->
-      h att
-    | None ->
-      s.rsp_info <- {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}
+    {s with rsp_info = {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}}
 
 let resp_cond_state_store s = function
-  | `OK rt
-  | `NO rt
-  | `BAD rt ->
+  | `OK rt | `NO rt | `BAD rt ->
     resp_text_store s rt
 
 let resp_cond_bye_store s = function
@@ -179,13 +175,13 @@ let response_data_store s ?handler = function
   | #Response.message_data as resp ->
     message_data_store s ?handler resp
   | `CAPABILITY caps ->
-    s.cap_info <- caps
+    {s with cap_info = caps}
   | `ID params ->
-    s.rsp_info <- {s.rsp_info with rsp_id = params}
+    {s with rsp_info = {s.rsp_info with rsp_id = params}}
   | `NAMESPACE (pers, other, shared) ->
-    s.rsp_info <- {s.rsp_info with rsp_namespace = pers, other, shared}
+    {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}}
   | `ENABLED caps ->
-    s.rsp_info <- {s.rsp_info with rsp_enabled = caps}
+    {s with rsp_info = {s.rsp_info with rsp_enabled = caps}}
 
 let response_tagged_store s (_, rcs) =
   resp_cond_state_store s rcs
@@ -201,7 +197,7 @@ let text_of_response_done = function
     txt
 
 let response_done_store s resp =
-  s.imap_response <- text_of_response_done resp;
+  let s = {s with imap_response = text_of_response_done resp} in
   match resp with
   | `TAGGED tagged ->
     response_tagged_store s tagged
@@ -216,8 +212,7 @@ let resp_data_or_resp_done_store s ?handler resp =
     response_done_store s resp
 
 let resp_cond_auth_store s = function
-  | `OK rt
-  | `PREAUTH rt ->
+  | `OK rt | `PREAUTH rt ->
     resp_text_store s rt
 
 let greetings_store s = function
@@ -227,8 +222,6 @@ let greetings_store s = function
     resp_cond_bye_store s resp
 
 let cont_req_or_resp_data_or_resp_done_store s ?handler = function
-  | `CONT_REQ _ ->
-    ()
-  | #Response.response_data
-  | #Response.response_done as resp ->
+  | `CONT_REQ _ -> s
+  | #Response.response_data | #Response.response_done as resp ->
     resp_data_or_resp_done_store s ?handler resp

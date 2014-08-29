@@ -44,7 +44,7 @@ module Make (IO : IO.S) = struct
     mutable chan : IO.input * IO.output;
     mutable next_tag : int;
     mutable compress_deflate : bool;
-    state : state;
+    mutable state : state;
     send_lock : IO.mutex;
     disconnect : unit -> unit IO.t
   }
@@ -120,7 +120,7 @@ module Make (IO : IO.S) = struct
       (cont_req_or_resp_data_or_resp_done_store ?handler)
 
   let get_response ci ?handler tag : Response.resp_text IO.t =
-    ci.state.rsp_info <- fresh_response_info;
+    ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop () =
       read_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -139,7 +139,7 @@ module Make (IO : IO.S) = struct
     loop ()
 
   let get_idle_response ci ?handler tag f stop =
-    ci.state.rsp_info <- fresh_response_info;
+    ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop () =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -163,7 +163,7 @@ module Make (IO : IO.S) = struct
     loop ()
 
   let get_auth_response step ?handler ci tag =
-    ci.state.rsp_info <- fresh_response_info;
+    ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop needs_more =
       read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
       | `BYE _ ->
@@ -342,7 +342,7 @@ module Make (IO : IO.S) = struct
         send_command ci cmd >>= fun () ->
         IO.starttls version ?ca_file ci.chan >>= begin fun chan ->
           ci.chan <- chan;
-          ci.state.cap_info <- []; (* See 6.2.1 in RFC 3501 *)
+          ci.state <- {ci.state with cap_info = []}; (* See 6.2.1 in RFC 3501 *)
           IO.return ()
         end
     in
@@ -391,7 +391,7 @@ module Make (IO : IO.S) = struct
     in
     let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ send_condstore) in
     let aux () =
-      ci.state.sel_info <- fresh_selection_info;
+      ci.state <- {ci.state with sel_info = fresh_selection_info};
       send_command ci cmd >|= fun () -> ci.state.sel_info.sel_highestmodseq
     in
     IO.with_lock ci.send_lock aux
@@ -499,7 +499,7 @@ module Make (IO : IO.S) = struct
       end
     in
     let aux () =
-      ci.state.sel_info <- {ci.state.sel_info with sel_exists = None; sel_recent = None};
+      ci.state <- {ci.state with sel_info = {ci.state.sel_info with sel_exists = None; sel_recent = None}};
       send_command' ci cmd >>= fun tag ->
       idling := true;
       get_idle_response ci tag f stop
@@ -677,13 +677,9 @@ module Make (IO : IO.S) = struct
     let ci = connection_info s in
     ci.state.rsp_info
 
-  let selection_info s =
+  let state s =
     let ci = connection_info s in
-    ci.state.sel_info
-
-  let capabilities s =
-    let ci = connection_info s in
-    ci.state.cap_info
+    ci.state
 
   let is_busy s =
     let ci = connection_info s in
