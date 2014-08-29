@@ -109,20 +109,20 @@ module Make (IO : IO.S) = struct
   let read_greeting ci =
     read ci Response.greeting greetings_store
 
-  let read_resp_data_or_resp_done ?handler ci =
+  let read_resp_data_or_resp_done ci =
     read ci
       Response.resp_data_or_resp_done
-      (resp_data_or_resp_done_store ?handler)
+      resp_data_or_resp_done_store
 
-  let read_cont_req_or_resp_data_or_resp_done ?handler ci =
+  let read_cont_req_or_resp_data_or_resp_done ci =
     read ci
       Response.cont_req_or_resp_data_or_resp_done
-      (cont_req_or_resp_data_or_resp_done_store ?handler)
+      cont_req_or_resp_data_or_resp_done_store
 
-  let get_response ci ?handler tag : Response.resp_text IO.t =
+  let get_response ci tag : Response.resp_text IO.t =
     ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop () =
-      read_resp_data_or_resp_done ?handler ci >>= function
+      read_resp_data_or_resp_done ci >>= function
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
@@ -138,10 +138,10 @@ module Make (IO : IO.S) = struct
     in
     loop ()
 
-  let get_idle_response ci ?handler tag f stop =
+  let get_idle_response ci tag f stop =
     ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop () =
-      read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
+      read_cont_req_or_resp_data_or_resp_done ci >>= function
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
@@ -162,10 +162,10 @@ module Make (IO : IO.S) = struct
     in
     loop ()
 
-  let get_auth_response step ?handler ci tag =
+  let get_auth_response step ci tag =
     ci.state <- {ci.state with rsp_info = fresh_response_info};
     let rec loop needs_more =
-      read_cont_req_or_resp_data_or_resp_done ?handler ci >>= function
+      read_cont_req_or_resp_data_or_resp_done ci >>= function
       | `BYE _ ->
         ci.disconnect () >>= fun () ->
         IO.fail BYE
@@ -274,9 +274,9 @@ module Make (IO : IO.S) = struct
     let f = S.(raw tag ++ space ++ f ++ crlf) in
     run_sender ci f >|= fun () -> tag
 
-  let send_command ci ?handler f =
+  let send_command ci f =
     send_command' ci f >>= fun tag ->
-    get_response ci ?handler tag >|= fun _ -> ()
+    get_response ci tag >|= fun _ -> ()
 
   let capability s =
     let ci = connection_info s in
@@ -561,7 +561,7 @@ module Make (IO : IO.S) = struct
   type msg_att_handler =
     Seq.t * msg_att list -> unit
 
-  let fetch_aux cmd s set changedsince attrs handler =
+  let fetch_aux cmd s set changedsince attrs =
     let ci = connection_info s in
     let changedsince = match changedsince with
       | None ->
@@ -573,21 +573,21 @@ module Make (IO : IO.S) = struct
       S.(raw cmd ++ space ++ message_set set ++ space ++ list fetch_att attrs ++ changedsince)
     in
     let aux () =
-      send_command ci ~handler cmd (* >|= fun () -> ci.rsp_info.rsp_fetch_list *)
+      send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_fetch_list
     in
     IO.with_lock ci.send_lock aux
 
-  let fetch_changedsince s set modseq atts handler =
-    fetch_aux "FETCH" s (seq_set_to_uint32_set set) (Some modseq) atts handler
+  let fetch_changedsince s set modseq atts =
+    fetch_aux "FETCH" s (seq_set_to_uint32_set set) (Some modseq) atts
 
-  let fetch s set attrs handler =
-    fetch_aux "FETCH" s (seq_set_to_uint32_set set) None attrs handler
+  let fetch s set attrs =
+    fetch_aux "FETCH" s (seq_set_to_uint32_set set) None attrs
 
-  let uid_fetch_changedsince s set modseq atts handler =
-    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) (Some modseq) atts handler
+  let uid_fetch_changedsince s set modseq atts =
+    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) (Some modseq) atts
 
-  let uid_fetch s set attrs handler =
-    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) None attrs handler
+  let uid_fetch s set attrs =
+    fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) None attrs
 
   let store_aux cmd s set unchangedsince mode att =
     let ci = connection_info s in

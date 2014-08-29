@@ -143,7 +143,7 @@ let mailbox_data_store s = function
   | `RECENT n ->
     {s with sel_info = {s.sel_info with sel_recent = Some n}}
 
-let message_data_store s ?handler = function
+let message_data_store s = function
   | `EXPUNGE n ->
     let s =
       {s with rsp_info = {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]}}
@@ -165,7 +165,7 @@ let resp_cond_bye_store s = function
   | `BYE rt ->
     resp_text_store s rt
 
-let response_data_store s ?handler = function
+let response_data_store s = function
   | #Response.resp_cond_state as resp ->
     resp_cond_state_store s resp
   | #Response.resp_cond_bye as resp ->
@@ -173,7 +173,7 @@ let response_data_store s ?handler = function
   | #Response.mailbox_data as resp ->
     mailbox_data_store s resp
   | #Response.message_data as resp ->
-    message_data_store s ?handler resp
+    message_data_store s resp
   | `CAPABILITY caps ->
     {s with cap_info = caps}
   | `ID params ->
@@ -204,10 +204,10 @@ let response_done_store s resp =
   | #Response.response_fatal as resp ->
     response_fatal_store s resp
 
-let resp_data_or_resp_done_store s ?handler resp =
-  match resp with
+let resp_data_or_resp_done_store s =
+  function
   | #Response.response_data as resp ->
-    response_data_store s ?handler resp
+    response_data_store s resp
   | #Response.response_done as resp ->
     response_done_store s resp
 
@@ -221,10 +221,10 @@ let greetings_store s = function
   | #Response.resp_cond_bye as resp ->
     resp_cond_bye_store s resp
 
-let cont_req_or_resp_data_or_resp_done_store s ?handler = function
+let cont_req_or_resp_data_or_resp_done_store s = function
   | `CONT_REQ _ -> s
   | #Response.response_data | #Response.response_done as resp ->
-    resp_data_or_resp_done_store s ?handler resp
+    resp_data_or_resp_done_store s resp
 
 let has_capability_name s name =
   List.exists (function

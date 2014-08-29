@@ -233,10 +233,7 @@ module Make (IO : IO.S) : sig
   (** Like {!search}, but returns the unique identification numbers of the
       matching messages. *)
 
-  type msg_att_handler =
-     Seq.t * msg_att list -> unit
-
-  val fetch : session -> Seq_set.t -> fetch_att list -> msg_att_handler -> unit IO.t
+  val fetch : session -> Seq_set.t -> fetch_att list -> (Seq.t * msg_att list) list IO.t
   (** [fetch s set atts h] retrieve flags and/or other attributes [att] for those
       messages whose message sequence numbers belong to [set].  The most common
       attribytes are:
@@ -255,19 +252,19 @@ module Make (IO : IO.S) : sig
       number [n] and a message attribute [att]. *)
 
   val fetch_changedsince : session -> Seq_set.t -> Modseq.t ->
-    fetch_att list -> msg_att_handler -> unit IO.t
+    fetch_att list -> (Seq.t * msg_att list) list IO.t
   (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
       messages that have a modification sequence number at least [modseq] are
       fetched.
 
       This command requires the CONDSTORE extension. *)
 
-  val uid_fetch : session -> Uid_set.t -> fetch_att list -> msg_att_handler -> unit IO.t
+  val uid_fetch : session -> Uid_set.t -> fetch_att list -> (Seq.t * msg_att list) list IO.t
   (** Like {!fetch}, but the elements of the set are taken to be unique
       identification numbers. *)
 
   val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t ->
-    fetch_att list -> msg_att_handler -> unit IO.t
+    fetch_att list -> (Seq.t * msg_att list) list IO.t
   (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
       unique identification numbers.
 

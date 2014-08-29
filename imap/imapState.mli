@@ -49,9 +49,9 @@ val fresh_response_info : response_info
 
 val greetings_store : state -> Response.greeting -> state
   
-val resp_data_or_resp_done_store : state -> ?handler:'a -> [Response.response_data | Response.response_done] -> state
+val resp_data_or_resp_done_store : state -> [Response.response_data | Response.response_done] -> state
 
-val cont_req_or_resp_data_or_resp_done_store : state -> ?handler:'a -> Response.cont_req_or_resp_data_or_resp_done -> state
+val cont_req_or_resp_data_or_resp_done_store : state -> Response.cont_req_or_resp_data_or_resp_done -> state
 
 val has_uidplus : state -> bool
 (** Whether the IMAP server supports the UIDPLUS extension. *)
