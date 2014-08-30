@@ -184,14 +184,14 @@ type cont_req_or_resp_data_or_resp_done =
 
 (** {2 Response parsers} *)
 
-val greeting : greeting ImapParser.t
+val greeting : (greeting, string list) ImapParser.t
 
-val continue_req : [> continue_req] ImapParser.t
+val continue_req : ([> continue_req], string list) ImapParser.t
 
-val response_data : [> response_data] ImapParser.t
+val response_data : ([> response_data], string list) ImapParser.t
 
-val response_done : [> response_done] ImapParser.t
+val response_done : ([> response_done], string list) ImapParser.t
 
-val resp_data_or_resp_done : [response_data | response_done] ImapParser.t
+val resp_data_or_resp_done : ([response_data | response_done], string list) ImapParser.t
 
-val cont_req_or_resp_data_or_resp_done : cont_req_or_resp_data_or_resp_done ImapParser.t
+val cont_req_or_resp_data_or_resp_done : (cont_req_or_resp_data_or_resp_done, string list) ImapParser.t

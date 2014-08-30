@@ -22,146 +22,112 @@
 
 open ImapUint
 
-type 'a result =
-  | Ok of 'a * int
+type ('a, 'state) result =
+  | Ok of 'a * 'state * int
   | Fail of int
 
-type 'a t =
-  string -> int -> 'a result
+type ('a, 'state) t =
+  string -> 'state -> int -> ('a, 'state) result
 
-let bind p f =
-  fun s i ->
-    match p s i with
-    | Ok (x, j) -> (f x) s j
-    | Fail i -> Fail i
+let bind p f s st i =
+  match p s st i with
+  | Ok (x, st, j) -> (f x) s st j
+  | Fail i -> Fail i
 
-let return x = fun _ i -> Ok (x, i)
+let return x _ st i =
+  Ok (x, st, i)
 
-let fail = fun _ i -> Fail i
+let fail _ _ i =
+  Fail i
+
+let update f _ st i =
+  let x, st = f st in Ok (x, st, i)
 
 let (>>=) = bind
 
-let (>|=) p f =
-  fun s i ->
-    match p s i with
-    | Ok (x, j) -> Ok (f x, j)
-    | Fail i -> Fail i
-
 let (>>) p q =
-  fun s i ->
-    match p s i with
-    | Ok (_, j) -> q s j
+  fun s st i ->
+    match p s st i with
+    | Ok (_, st, j) -> q s st j
     | Fail i -> Fail i
 
-let (>|) p x =
-  fun s i ->
-    match p s i with
-    | Ok (_, j) -> Ok (x, j)
-    | Fail i -> Fail i
-
-let choice p q =
-  fun s i ->
-    match p s i with
-    | Ok (x, j) -> Ok (x, j)
-    | Fail j ->
-      match q s i with
-      | Ok (x, j) -> Ok (x, j)
-      | Fail k -> Fail (max j k)
-
-let (<|>) = choice
-
-let choices ps =
-  fun s i ->
+let alt ps =
+  fun s st i ->
     let rec loop m = function
       | [] -> Fail m
       | p :: ps ->
-        match p s i with
-        | Ok (x, j) -> Ok (x, j)
+        match p s st i with
+        | Ok (x, st, j) -> Ok (x, st, j)
         | Fail i -> loop (max i m) ps
     in
     loop i ps
 
-let fix f =
-  fun s i ->
-    (f ()) s i
+let fix f s st i =
+  (f ()) s st i
 
-let char c =
-  fun s i ->
-    if i >= String.length s || s.[i] <> c then Fail i
-    else Ok (c, i+1)
+let char c s st i =
+  if i >= String.length s || s.[i] <> c then
+    Fail i
+  else
+    Ok (c, st, i+1)
 
-let any_char =
-  fun s i ->
-    if i >= String.length s then Fail i
-    else Ok (s.[i], i+1)
+let any_char s st i =
+  if i >= String.length s then
+    Fail i
+  else
+    Ok (s.[i], st, i+1)
 
-let string_of_length n =
-  fun s i ->
-    if i + n > String.length s then Fail (String.length s)
-    else Ok (String.sub s i n, i+n)
-
-let string u s i =
-  if i + String.length u > String.length s then Fail (String.length s)
+let string u s st i =
+  if i + String.length u > String.length s then
+    Fail (String.length s)
   else
     let rec loop j =
-      if j >= String.length u then Ok (u, i+j)
-      else if u.[j] = s.[i+j] then loop (j+1)
-      else Fail (i+j)
+      if j >= String.length u then
+        Ok (u, st, i+j)
+      else if u.[j] = s.[i+j] then
+        loop (j+1)
+      else
+        Fail (i+j)
     in
     loop 0
 
-let string_ci u =
-  fun s i ->
-    if i + String.length u > String.length s then Fail (String.length s)
-    else
-      let rec loop j =
-        if j >= String.length u then Ok (u, i+j)
-        else if Char.uppercase u.[j] = Char.uppercase s.[i+j] then loop (j+1)
-        else Fail (i+j)
-      in
-      loop 0
+let string_ci u s st i =
+  if i + String.length u > String.length s then
+    Fail (String.length s)
+  else
+    let rec loop j =
+      if j >= String.length u then
+        Ok (u, st, i+j)
+      else if Char.uppercase u.[j] = Char.uppercase s.[i+j] then
+        loop (j+1)
+      else
+        Fail (i+j)
+    in
+    loop 0
 
-let option p =
-  (p >|= fun x -> Some x) <|> return None
+let opt p =
+  alt [(p >>= fun x -> return (Some x)); return None]
 
-let loption p =
-  p <|> return []
+let lopt p =
+  alt [p; return []]
 
-let boption p =
-  (p >| true) <|> return false
+let rec rep p =
+  alt [rep1 p;return []]
 
-let delimited l p r =
-  l >> p >>= fun x -> r >| x
+and rep1 p =
+  p >>= fun x -> rep p >>= fun xs -> return (x :: xs)
 
-let terminated p r =
-  p >>= fun x -> r >| x
+let sep1 s p =
+  p >>= fun x -> rep (s >> p) >>= fun xs -> return (x :: xs)
 
-let preceded l p =
-  l >> p
-
-let rec list p =
-  nonempty_list p <|> return []
-
-and nonempty_list p =
-  p >>= fun x -> list p >|= fun xs -> x :: xs
-
-let rec separated_nonempty_list sep p =
-  p >>= fun x -> loption (sep >> separated_nonempty_list sep p) >|= fun xs -> (x :: xs)
-
-let separated_list sep p =
-  separated_nonempty_list sep p <|> return []
-
-let separated_pair p sep q =
-  p >>= fun x -> sep >> q >|= fun y -> (x, y)
-
-let pair p q =
-  p >>= fun x -> q >|= fun y -> (x, y)
+let sep s p =
+  alt [sep1 s p; return []]
 
 let matches re =
-  fun s i ->
+  fun s st i ->
     if Str.string_match re s i then
       let ms = Str.matched_string s in
-      Ok (ms, i + String.length ms)
+      Ok (ms, st, i + String.length ms)
     else
       Fail i
 
@@ -170,51 +136,18 @@ let digit =
   | '0' .. '9' as c -> return (Char.code c - Char.code '0')
   | _ -> fail
 
-let space = char ' '
-
-let lpar = char '('
-
-let rpar = char ')'
-
-let bslash = char '\\'
-
-let dquote = char '"'
-
-let star = char '*'
-
-let plus = char '+'
-
-let dash = char '-'
-
-let minus = char '-'
-
-let lcbra = char '{'
-
-let rcbra = char '}'
-
-let lbra = char '['
-
-let rbra = char ']'
-
-let labra = char '<'
-
-let rabra = char '>'
-
 let crlf = string "\r\n"
 
 let nil = string_ci "NIL"
 
-let dot = char '.'
+let dot s st i = char '.' s st i
 
 let colon = char ':'
 
 let comma = char ','
 
-let noption p =
-  (p >|= fun x -> Some x) <|> (nil >| None)
-
-let soption p =
-  p <|> return ""
+let sopt p =
+  alt [p; return ""]
 
 (*
 number          = 1*DIGIT
@@ -223,46 +156,61 @@ number          = 1*DIGIT
 *)
 let number =
   let number_re = Str.regexp "[0-9]+" in
-  matches number_re >>= fun s -> try return (Uint32.of_string s) with _ -> fail
+  matches number_re >>= fun s ->
+  try return (Uint32.of_string s) with _ -> fail
 
 let number' =
   let number_re = Str.regexp "[0-9]+" in
-  matches number_re >>= fun s -> try return (int_of_string s) with _ -> fail
+  matches number_re >>= fun s ->
+  try return (int_of_string s) with _ -> fail
 
-let quoted =
-  fun s i ->
-    let b = Buffer.create 16 in
-    let l = String.length s in
-    if i >= l || s.[i] <> '"' then Fail i
-    else
-      let rec loop j =
-        if j >= l then Fail j
-        else if s.[j] = '"' then Ok (Buffer.contents b, j+1)
-        else match s.[j] with
-          | '\r' | '\n' | '"' -> Fail j
-          | '\\' ->
-            if j+1 >= l then Fail l
-            else begin match s.[j+1] with
-              | '\\' | '"' as c -> Buffer.add_char b c; loop (j+2)
-              | _ -> Fail (j+1)
-            end
-          | '\x01' .. '\x7f' as c -> Buffer.add_char b c; loop (j+1)
-          | _ -> Fail j
-      in
-      loop (i+1)
+let quoted s st i =
+  let b = Buffer.create 16 in
+  let l = String.length s in
+  if i >= l || s.[i] <> '\"' then
+    Fail i
+  else
+    let rec loop j =
+      if j >= l then
+        Fail j
+      else if s.[j] = '\"' then
+        Ok (Buffer.contents b, st, j+1)
+      else match s.[j] with
+        | '\r' | '\n' | '\"' ->
+            Fail j
+        | '\\' ->
+            if j+1 >= l then
+              Fail l
+            else
+              begin
+                match s.[j+1] with
+                | '\\' | '\"' as c ->
+                    Buffer.add_char b c; loop (j+2)
+                | _ ->
+                    Fail (j+1)
+              end
+        | '\x01' .. '\x7f' as c ->
+            Buffer.add_char b c; loop (j+1)
+        | _ ->
+            Fail j
+    in
+    loop (i+1)
 
 (*
 literal         = "{" number "}" CRLF *CHAR8
                     ; Number represents the number of CHAR8s
 *)
 let literal =
-  delimited lcbra number' (rcbra >> crlf) >>= string_of_length
+  char '{' >> number' >>= fun len -> char '}' >> string "\r\n" >>
+  update (fun st -> List.hd st, List.tl st) >>= fun lit ->
+  assert (len = String.length lit);
+  return lit
 
 (*
 string          = quoted / literal
 *)
-let imap_string : string t =
-  quoted <|> literal
+let imap_string =
+  alt [quoted; literal]
 
 (*
 astring         = 1*ASTRING-CHAR / string
@@ -271,7 +219,7 @@ let astring =
   let astring_re =
     Str.regexp "[^\x80-\xff(){ \x00-\x1f\x7f%*\\\"]+"
   in
-  matches astring_re <|> imap_string
+  alt [matches astring_re; imap_string]
 
 (*
 atom            = 1*ATOM-CHAR
@@ -318,41 +266,47 @@ let nz_number' =
   matches nz_number_re >>= fun s -> try return (int_of_string s) with _ -> fail
 
 let nstring =
-  (imap_string >|= fun s -> Some s) <|> (nil >| None)
+  alt [(imap_string >>= fun s -> return (Some s)); (nil >> return None)]
 
 let nstring' =
-  nstring >|= function
-  | None -> ""
-  | Some s -> s
+  nstring >>= function
+  | None -> return ""
+  | Some s -> return s
 
 let digits2 =
   let digits2_re = Str.regexp "[0-9][0-9]" in
-  matches digits2_re >|= int_of_string
+  matches digits2_re >>= fun s -> return (int_of_string s)
 
 let digits4 =
   let digits4_re = Str.regexp "[0-9][0-9][0-9][0-9]" in
-  matches digits4_re >|= int_of_string
+  matches digits4_re >>= fun s -> return (int_of_string s)
 
 let quoted_char =
-  fun s i ->
+  fun s st i ->
     let l = String.length s in
-    if i + 2 >= l || s.[i] <> '"' then Fail i
+    if i + 2 >= l || s.[i] <> '\"' then Fail i
     else match s.[i+1] with
-      | '\r' | '\n' | '"' -> Fail (i+1)
+      | '\r' | '\n' | '\"' -> Fail (i+1)
       | '\\' ->
-        if i+3 >= l || s.[i+3] <> '"' then Fail (min l (i+3))
+        if i+3 >= l || s.[i+3] <> '\"' then Fail (min l (i+3))
         else begin match s.[i+2] with
-          | '\\' | '"' as c -> Ok (c, i+4)
+          | '\\' | '\"' as c -> Ok (c, st, i+4)
           | _ -> Fail (i+2)
         end
       | '\x01' .. '\x7f' as c ->
-        if s.[i+2] = '"' then Ok (c, i+3) else Fail (i+2)
+        if s.[i+2] = '\"' then Ok (c, st, i+3) else Fail (i+2)
       | _ -> Fail (i+1)
 
-let parse p s =
+let string_of_length n s st i =
+  if i + n > String.length s then
+    Fail (String.length s)
+  else
+    Ok (String.sub s i n, st, i+n)
+
+let parse p s st =
   try
-    match p s 0 with
-    | Ok (x, j) ->
+    match p s st 0 with
+    | Ok (x, _, j) ->
       if j < String.length s then
         Printf.eprintf "warning: incomplete parse: len: %d off: %d s: %S\n%!"
           (String.length s) j s;

@@ -120,33 +120,45 @@ and body =
 open ImapParser
 
 let address =
-  delimited lpar
-    (nstring' >>= fun addr_name -> space >>
-     nstring' >>= fun addr_adl -> space >>
-     nstring' >>= fun addr_mailbox -> space >>
-     nstring' >|= fun addr_host ->
-     { addr_name; addr_adl; addr_mailbox; addr_host })
-    rpar
+  char '(' >>
+  nstring' >>= fun addr_name -> char ' ' >>
+  nstring' >>= fun addr_adl -> char ' ' >>
+  nstring' >>= fun addr_mailbox -> char ' ' >>
+  nstring' >>= fun addr_host ->
+  char ')' >>
+  return { addr_name; addr_adl; addr_mailbox; addr_host }
 
 let address_list =
-  delimited lpar (separated_nonempty_list space address) rpar <|> (nil >| [])
+  alt [
+    begin
+      char '(' >>
+      sep1 (char ' ') address >>= fun xs ->
+      char ')' >>
+      return xs
+    end;
+    begin
+      string_ci "NIL" >> return []
+    end
+  ]
 
 let envelope =
-  delimited lpar
-    (nstring' >>= fun env_date -> space >>
-     nstring' >>= fun env_subject -> space >>
-     address_list >>= fun env_from -> space >>
-     address_list >>= fun env_sender -> space >>
-     address_list >>= fun env_reply_to -> space >>
-     address_list >>= fun env_to -> space >>
-     address_list >>= fun env_cc -> space >>
-     address_list >>= fun env_bcc -> space >>
-     nstring' >>= fun env_in_reply_to -> space >>
-     nstring' >|= fun env_message_id ->
-     { env_date; env_subject; env_from; env_sender;
-       env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
-       env_message_id })
-    rpar
+  char '(' >>
+  nstring' >>= fun env_date -> char ' ' >>
+  nstring' >>= fun env_subject -> char ' ' >>
+  address_list >>= fun env_from -> char ' ' >>
+  address_list >>= fun env_sender -> char ' ' >>
+  address_list >>= fun env_reply_to -> char ' ' >>
+  address_list >>= fun env_to -> char ' ' >>
+  address_list >>= fun env_cc -> char ' ' >>
+  address_list >>= fun env_bcc -> char ' ' >>
+  nstring' >>= fun env_in_reply_to -> char ' ' >>
+  nstring' >>= fun env_message_id ->
+  char ')' >>
+  return {
+    env_date; env_subject; env_from; env_sender;
+    env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
+    env_message_id
+  }
 
 let media_subtype =
   imap_string
@@ -157,7 +169,7 @@ media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
                   media-subtype
                     ; Defined in [MIME-IMT]
 *)
-let media_basic : (media_basic * string) t =
+let media_basic : (media_basic * string, _) t =
   let table = [
     "APPLICATION", `APPLICATION;
     "AUDIO", `AUDIO;
@@ -167,24 +179,33 @@ let media_basic : (media_basic * string) t =
   ]
   in
   let media_basic' =
-    imap_string >|= fun s ->
-    try List.assoc (String.uppercase s) table with Not_found -> `OTHER s
+    imap_string >>= fun s ->
+    return (try List.assoc (String.uppercase s) table with Not_found -> `OTHER s)
   in
-  separated_pair media_basic' space media_subtype
+  media_basic' >>= fun mb -> char ' ' >> media_subtype >>= fun mst -> return (mb, mst)
 
 (*
 body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
 *)
-let body_fld_param : (string * string) list t =
-  (delimited lpar
-     (separated_nonempty_list space (separated_pair imap_string space imap_string)) rpar) <|>
-  (nil >| [])
+let body_fld_param : ((string * string) list, _) t =
+  let param = imap_string >>= fun k -> char ' ' >> imap_string >>= fun v -> return (k, v) in
+  alt [
+    begin
+      char '(' >>
+      sep1 (char ' ') param >>= fun xs ->
+      char ')' >>
+      return xs
+    end;
+    begin
+      string_ci "nil" >> return []
+    end
+  ]
 
 (*
 body-fld-enc    = (DQUOTE ("7BIT" / "8BIT" / "BINARY" / "BASE64"/
                   "QUOTED-PRINTABLE") DQUOTE) / string
 *)
-let body_fld_enc : encoding ImapParser.t =
+let body_fld_enc : (encoding, _) ImapParser.t =
   let table = [
     "7BIT", `BIT7;
     "8BIT", `BIT8;
@@ -193,8 +214,8 @@ let body_fld_enc : encoding ImapParser.t =
     "QUOTED-PRINTABLE", `QUOTED_PRINTABLE
   ]
   in
-  imap_string >|= fun s ->
-  try List.assoc (String.uppercase s) table with Not_found -> `OTHER s
+  imap_string >>= fun s ->
+  return (try List.assoc (String.uppercase s) table with Not_found -> `OTHER s)
 
 (*
 body-fld-id     = nstring
@@ -220,46 +241,66 @@ body-fields     = body-fld-param SP body-fld-id SP body-fld-desc SP
 *)
 let body_fields =
   body_fld_param >>= fun param ->
-  space >> body_fld_id >>= fun id ->
-  space >> body_fld_desc >>= fun desc ->
-  space >> body_fld_enc >>= fun enc ->
-  space >> body_fld_octets >|= fun octets ->
-  (param, id, desc, enc, octets)
+  char ' ' >> body_fld_id >>= fun id ->
+  char ' ' >> body_fld_desc >>= fun desc ->
+  char ' ' >> body_fld_enc >>= fun enc ->
+  char ' ' >> body_fld_octets >>= fun octets ->
+  return (param, id, desc, enc, octets)
 
 (*
 media-message   = DQUOTE "MESSAGE" DQUOTE SP DQUOTE "RFC822" DQUOTE
                     ; Defined in [MIME-IMT]
 *)
 let media_message =
-  delimited dquote (string_ci "MESSAGE") dquote >> space >>
-  delimited dquote (string_ci "RFC822") dquote
+  char '\"' >> string_ci "MESSAGE" >> char '\"' >> char ' ' >>
+  char '\"' >> string_ci "RFC822" >> char '\"'
 
 (*
 media-text      = DQUOTE "TEXT" DQUOTE SP media-subtype
                     ; Defined in [MIME-IMT]
 *)
 let media_text =
-  delimited dquote (string_ci "TEXT") dquote >> space >> media_subtype
+  char '\"' >> string_ci "TEXT" >> char '\"' >> char ' ' >> media_subtype
 
 (*
 body-fld-md5    = nstring
 *)
 let body_fld_md5 =
-  (imap_string >|= fun s -> Some s) <|> (nil >| None)
+  nstring
 
 (*
 body-fld-dsp    = "(" string SP body-fld-param ")" / nil
 *)
 let body_fld_dsp =
-  (delimited lpar (separated_pair imap_string space body_fld_param) rpar >|= fun dsp -> Some dsp) <|>
-  (nil >| None)
+  alt [
+    begin
+      char '(' >>
+      imap_string >>= fun k ->
+      char ' ' >>
+      body_fld_param >>= fun p ->
+      char ')' >>
+      return (Some (k, p))
+    end;
+    begin
+      string_ci "nil" >> return None
+    end
+  ]
 
 (*
 body-fld-lang   = nstring / "(" string *(SP string) ")"
 *)
 let body_fld_lang =
-  (delimited lpar (separated_nonempty_list space imap_string) rpar) <|>
-  (nstring >|= function None -> [] | Some s -> [s])
+  alt [
+    begin
+      char '(' >>
+      sep1 (char ' ') imap_string >>= fun xs ->
+      char ')' >>
+      return xs
+    end;
+    begin
+      nstring >>= function None -> return [] | Some s -> return [s]
+    end
+  ]
 
 (*
 body-extension  = nstring / number /
@@ -272,9 +313,20 @@ body-extension  = nstring / number /
                     ; revisions of this specification.
 *)
 let rec body_extension () =
-  (delimited lpar (separated_nonempty_list space (fix body_extension)) rpar >|= fun l -> List l) <|>
-  (number >|= fun n -> Number n) <|>
-  (nstring >|= fun s -> String s)
+  alt [
+    begin
+      char '(' >>
+      sep1 (char ' ') (fix body_extension) >>= fun xs ->
+      char ')' >>
+      return (List xs)
+    end;
+    begin
+      number >>= fun n -> return (Number n)
+    end;
+    begin
+      nstring >>= fun s -> return (String s)
+    end
+  ]
 
 (*
 body-ext-1part  = body-fld-md5 [SP body-fld-dsp [SP body-fld-lang
@@ -283,13 +335,13 @@ body-ext-1part  = body-fld-md5 [SP body-fld-dsp [SP body-fld-lang
                     ; "BODY" fetch
 *)
 let body_ext_1part' =
-  option (space >> body_fld_md5) >>= begin function
+  opt (char ' ' >> body_fld_md5) >>= begin function
     | Some md5 ->
-      option (space >> body_fld_dsp) >>= begin function
+      opt (char ' ' >> body_fld_dsp) >>= begin function
         | Some dsp ->
-          option (space >> body_fld_lang) >>= begin function
+          opt (char ' ' >> body_fld_lang) >>= begin function
             | Some lang ->
-              list (space >> fix body_extension) >>= fun ext ->
+              rep (char ' ' >> fix body_extension) >>= fun ext ->
               return (md5, dsp, lang, ext)
             | None ->
               return (md5, dsp, [], [])
@@ -302,8 +354,8 @@ let body_ext_1part' =
   end
 
 let body_ext_1part =
-  body_ext_1part' >|= fun (md5, dsp, lang, ext) ->
-  { ext_md5 = md5; ext_dsp = dsp; ext_lang = lang; ext_exts = ext }
+  body_ext_1part' >>= fun (ext_md5, ext_dsp, ext_lang, ext_exts) ->
+  return { ext_md5; ext_dsp; ext_lang; ext_exts }
 
 (*
 body-ext-mpart  = body-fld-param [SP body-fld-dsp [SP body-fld-lang
@@ -312,13 +364,13 @@ body-ext-mpart  = body-fld-param [SP body-fld-dsp [SP body-fld-lang
                     ; "BODY" fetch
 *)
 let body_ext_mpart' =
-  option (space >> body_fld_param) >>= begin function
+  opt (char ' ' >> body_fld_param) >>= begin function
     | Some param ->
-      option (space >> body_fld_dsp) >>= begin function
+      opt (char ' ' >> body_fld_dsp) >>= begin function
         | Some dsp ->
-          option (space >> body_fld_lang) >>= begin function
+          opt (char ' ' >> body_fld_lang) >>= begin function
             | Some lang ->
-              list (space >> fix body_extension) >>= fun ext ->
+              rep (char ' ' >> fix body_extension) >>= fun ext ->
               return (param, dsp, lang, ext)
             | None ->
               return (param, dsp, [], [])
@@ -331,9 +383,8 @@ let body_ext_mpart' =
   end
 
 let body_ext_mpart =
-  body_ext_mpart' >|= fun (param, dsp, lang, ext) ->
-  { mext_param = param; mext_dsp = dsp;
-    mext_lang = lang; mext_exts = ext }
+  body_ext_mpart' >>= fun (mext_param, mext_dsp, mext_lang, mext_exts) ->
+  return { mext_param; mext_dsp; mext_lang; mext_exts }
 
 (*
 body-type-basic = media-basic SP body-fields
@@ -341,62 +392,62 @@ body-type-basic = media-basic SP body-fields
 *)
 let rec body_type_basic () =
   media_basic >>= fun (basic_type, basic_subtype) ->
-  space >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
-  body_ext_1part >|= fun bd_ext ->
-  Basic
-    { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
-      bd_other = { basic_type; basic_subtype }; bd_ext }
+  char ' ' >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
+  body_ext_1part >>= fun bd_ext ->
+  return (Basic {bd_param; bd_id; bd_desc; bd_enc; bd_octets;
+                 bd_other = { basic_type; basic_subtype }; bd_ext})
 
 (*
 body-type-msg   = media-message SP body-fields SP envelope
                   SP body SP body-fld-lines
 *)
 and body_type_msg () =
-  media_message >> space >> body_fields
-  >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
-  space >> envelope >>= fun message_envelope ->
-  space >> (body ()) >>= fun message_body ->
+  media_message >> char ' ' >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
+  char ' ' >> envelope >>= fun message_envelope ->
+  char ' ' >> body () >>= fun message_body ->
   number' >>= fun message_lines ->
-  body_ext_1part >|= fun bd_ext ->
-  Message
-    { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
-      bd_other = { message_envelope; message_body; message_lines };
-      bd_ext }
+  body_ext_1part >>= fun bd_ext ->
+  return (Message
+            { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
+              bd_other = { message_envelope; message_body; message_lines };
+              bd_ext })
 
 (*
 body-type-text  = media-text SP body-fields SP body-fld-lines
 *)
 and body_type_text () =
   media_text >>= fun text_subtype ->
-  space >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
-  space >> number' >>= fun text_lines ->
-  body_ext_1part >|= fun bd_ext ->
-  Text
-    { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
-      bd_other = { text_subtype; text_lines }; bd_ext }
+  char ' ' >> body_fields >>= fun (bd_param, bd_id, bd_desc, bd_enc, bd_octets) ->
+  char ' ' >> number' >>= fun text_lines ->
+  body_ext_1part >>= fun bd_ext ->
+  return (Text
+            { bd_param; bd_id; bd_desc; bd_enc; bd_octets;
+              bd_other = { text_subtype; text_lines }; bd_ext })
 
 (*
 body-type-1part = (body-type-basic / body-type-msg / body-type-text)
                   [SP body-ext-1part]
 *)
 and body_type_1part () =
-  fix body_type_msg <|> fix body_type_text <|> fix body_type_basic
+  alt [fix body_type_msg; fix body_type_text; fix body_type_basic]
 
 (*
 body-type-mpart = 1*body SP media-subtype
                   [SP body-ext-mpart]
 *)
 and body_type_mpart () =
-  nonempty_list (fix body) >>= fun bs ->
-  space >> media_subtype >>= fun media_subtype ->
-  body_ext_mpart >|= fun ext ->
-  Multi_part
-    { bd_subtype = media_subtype; bd_parts = bs; bd_mexts = ext }
+  rep1 (fix body) >>= fun bs ->
+  char ' ' >> media_subtype >>= fun media_subtype ->
+  body_ext_mpart >>= fun ext ->
+  return (Multi_part { bd_subtype = media_subtype; bd_parts = bs; bd_mexts = ext })
 
 (*
 body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 and body () =
-  delimited lpar (fix body_type_1part <|> fix body_type_mpart) rpar
+  char '(' >>
+  alt [fix body_type_1part; fix body_type_mpart] >>= fun b ->
+  char ')' >>
+  return b
 
 let body = fix body

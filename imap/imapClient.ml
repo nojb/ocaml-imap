@@ -42,6 +42,7 @@ module Make (IO : IO.S) = struct
 
   type connection_info = {
     mutable chan : IO.input * IO.output;
+    reader : ImapReader.reader;
     mutable next_tag : int;
     mutable compress_deflate : bool;
     mutable state : state;
@@ -73,35 +74,26 @@ module Make (IO : IO.S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 
-  let literal_re = Str.regexp "{\\([0-9]+\\)}$"
-
-  let is_literal s =
-    try
-      Str.search_backward literal_re s (String.length s - 1) |> ignore;
-      Some (Str.matched_group 1 s |> int_of_string)
-    with
-    | Not_found -> None
-
-  let read_line io =
-    let b = Buffer.create 64 in
+  let read_line r io =
     let ic, _ = io in
     let rec loop () =
-      IO.read_line ic >>= fun s ->
-      Buffer.add_string b s;
-      Buffer.add_string b "\r\n";
-      match is_literal s with
-      | Some len ->
-        IO.read_exactly ic len >>= fun buf ->
-        Buffer.add_string b buf;
-        loop ()
-      | None ->
-        IO.return (Buffer.contents b)
+      match ImapReader.read r with
+      | `Await ->
+          begin
+            IO.read 65536 ic >>= function
+            | "" -> ImapReader.src r `End; loop ()
+            | _ as data -> ImapReader.src r (`Data data); loop ()
+          end
+      | `Ok (resp, lits) ->
+          IO.return (resp, lits)
+      | `End ->
+          IO.fail (Failure "unexpected eof")
     in
-    IO.catch loop (fun exn -> IO.fail (Io_error exn))
+    loop ()
 
   let read ci p store =
-    read_line ci.chan >>= fun s ->
-    match ImapParser.parse p s with
+    read_line ci.reader ci.chan >>= fun (s, lit) ->
+    match ImapParser.parse p s lit with
     | `Ok x -> store ci.state x; IO.return x
     | `Fail i -> IO.fail (Parse_error (s, i))
     | `Exn exn -> IO.fail exn
@@ -210,6 +202,7 @@ module Make (IO : IO.S) = struct
     | Disconnected ->
       let ci = {
         chan; next_tag = 1;
+        reader = ImapReader.create ();
         state = {
           imap_response = "";
           rsp_info = fresh_response_info;

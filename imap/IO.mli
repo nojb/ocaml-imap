@@ -36,8 +36,7 @@ module type S = sig
   type input
   type output
 
-  val read_line : input -> string t
-  val read_exactly : input -> int -> string t
+  val read : int -> input -> string t
   val write : output -> string -> unit t
   val flush : output -> unit t
       

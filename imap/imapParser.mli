@@ -24,202 +24,119 @@
 
 open ImapUint
 
-type +'a t
+type (+'a, 'state) t
 
 (** {2 Monadic operations} *)
   
-val bind : 'a t -> ('a -> 'b t) -> 'b t
-val return : 'a -> 'a t
-val fail : 'a t
+val bind : ('a, 'state) t -> ('a -> ('b, 'state) t) -> ('b, 'state) t
+val return : 'a -> ('a, _) t
+val fail : ('a, _) t
+val update : ('state -> 'a * 'state) -> ('a, 'state) t
 
 (** {2 Infix operators} *)
 
-val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
-val (>|=) : 'a t -> ('a -> 'b) -> 'b t
-val (>|) : 'a t -> 'b -> 'b t
-val (>>) : 'a t -> 'b t -> 'b t
-val (<|>) : 'a t -> 'a t -> 'a t
+val (>>=) : ('a, 'state) t -> ('a -> ('b, 'state) t) -> ('b, 'state) t
+val (>>) : (_, 'state) t -> ('b, 'state) t -> ('b, 'state) t
 
 (** {2 Combinators} *)
 
-val choice : 'a t -> 'a t -> 'a t
-(** [choice p q] applies [p].  If it fails, it applies [q]. *)
-    
-val choices : 'a t list -> 'a t
+val alt : ('a, 'state) t list -> ('a, 'state) t
 (** [choices ps] applies all the parsers in the list [ps] until one succeeds, or
     fails if none succeeds. *)
 
-val option : 'a t -> 'a option t
+val opt : ('a, 'state) t -> ('a option, 'state) t
 (** [option p] tries to apply the parser [p].  If [p] fails, then it returns
     [None], otherwise it returns [Some x], where [x] is the value returned by
     [p]. *)
     
-val loption : 'a list t -> 'a list t
+val lopt : ('a list, 'state) t -> ('a list, 'state) t
 (** [loption p] tries to apply the parser [p].  If [p] fails, then it
     returns [[]], otherwise it returns the value returned by [p]. *)
     
-val delimited : 'a t -> 'b t -> 'c t -> 'b t
-(** [delimited l p r] applies parsers [l], [p], [r] (in that order) and returns
-    the value returned by [p]. *)
-    
-val separated_nonempty_list : 'a t -> 'b t -> 'b list t
-(** [separated_nonempty_list sep p] parses one or more occurences of [p],
-    separated by [sep].  Returns the list of values returned by [p]. *)
-    
-val separated_pair : 'a t -> 'b t -> 'c t -> ('a * 'c) t
-(** [separated_pair l sep r] parses [l], [sep], [r] (in that order). Returns the
-    pair of values returned by [l] and [r]. *)
-    
-val separated_list : 'a t -> 'b t -> 'b list t
-(** [separated_list sep p] parses zero or more occurences of [p], separated by
-    [sep].  Retruns the list of values returned by [p]. *)
-    
-val nonempty_list : 'a t -> 'a list t
+val rep1 : ('a, 'state) t -> ('a list, 'state) t
 (** [nonempty_list p] parses one or more occurences of [p], and returns the list
     of returned values. *)
     
-val list : 'a t -> 'a list t
+val rep : ('a, 'state) t -> ('a list, 'state) t
 (** [list p] parses zero or more occurences of [p], and returns the list of
     returned values. *)
+
+val sep : (_, 'state) t -> ('a, 'state) t -> ('a list, 'state) t
+
+val sep1 : (_, 'state) t -> ('a, 'state) t -> ('a list, 'state) t
     
-val terminated : 'a t -> 'b t -> 'a t
-(** [terminated p r] parses [p], then [r] and returns the value returned
-    by [p]. *)
-    
-val noption : 'a t -> 'a option t
-(** [noption p] tries to apply [p] or [nil].  If [p] succeeds, then it returns
-    [Some x], where [x] is the value returned by [p].  If [nil] succeeds,
-    returns [None]. *)
-    
-val soption : string t -> string t
+val sopt : (string, 'state) t -> (string, 'state) t
 (** [soption p] tries to apply [p].  If [p] fails, it returns [""].  Otherwise,
     it returns the value returned by [p]. *)
     
-val boption : 'a t -> bool t
-(** [boption p] tries to apply [p].  If [p] succeeds then it returns [true],
-    otherwise [false]. *)
-
-val fix : (unit -> 'a t) -> 'a t
-(** [fix f] is equivalent to the parser [f ()].  It is used to define mutually
-    recursive parsers. *)
+val fix : (unit -> ('a, 'state) t) -> ('a, 'state) t
 
 (** {2 Token parsers} *)
 
-val dot : char t
-(** Parses '.' *)
+val char : char -> (char, _) t
     
-val quoted_char : char t
+val quoted_char : (char, string list) t
 (** Parses an IMAP QUOTED-CHAR, surrounded by double quotes. *)
     
-val number : Uint32.t t
-(** Parses an unsigned 32-bit integer represented by a sequence of digits.
-    Fails if the number cannot be represented with 32-bits. *)
+val number : (Uint32.t, string list) t
+(* (\** Parses an unsigned 32-bit integer represented by a sequence of digits. *)
+(*     Fails if the number cannot be represented with 32-bits. *\) *)
     
-val number' : int t
+val number' : (int, string list) t
 (** Like {!number}, but with OCaml [int]'s instead of [uint32]. *)
     
-val string : string -> string t
+val string : string -> (string, _) t
 (** [string s] parses exactly the string [s]. *)
     
-val string_ci : string -> string t
+val string_ci : string -> (string, _) t
 (** [string s] parses exactly the string [s] in a case-insensitive manner. *)
     
-val space : char t
-(** Parses [' ']. *)
-    
-val imap_string : string t
+val imap_string : (string, string list) t
 (** Parses an IMAP [string] terminal. *)
-    
-val dquote : char t
-(** Parses ['"']. *)
-    
-val lpar : char t
-(** Parses ['(']. *)
-    
-val rpar : char t
-(** Parses [')']. *)
-    
-val bslash : char t
-(** Parses ['\\']. *)
-    
-val nil : string t
-(** [nil] is equivalent to [string_ci "NIL"]. *)
-    
-val nstring : string option t
+        
+val nstring : (string option, string list) t
 (** Tries to apply [imap_string] or [nil].  If [imap_string] returns [x], then
     it returns [Some x].  If [nil] succeeds, then it returns [None]. *)
 
-val nstring' : string t
+val nstring' : (string, string list) t
 (** Like {!nstring} but returns [x] if [imap_string] returns [x] and [""] if
     [nil] suceeds. *)
     
-val astring : string t
+val astring : (string, string list) t
 (** Parses the IMAP terminal [astring]. *)
     
-val nz_number : Uint32.t t
+val nz_number : (Uint32.t, string list) t
 (** Parses an unsigned 32-bit integers represented by a sequence of digits
     starting with a non-zero digit.  Fails if the number cannot be represented with
     32-bits. *)
     
-val nz_number' : int t
+val nz_number' : (int, string list) t
 (** Like {!nz_number} but with OCaml [int]'s instead of [uint32]. *)
     
-val matches : Str.regexp -> string t
+val matches : Str.regexp -> (string, _) t
 (** [matches re] parses the longest string that matches the regular expression
     [re] and returns this string. *)
     
-val labra : char t
-(** Parses ['<']. *)
-    
-val rabra : char t
-(** Parses ['>']. *)
-    
-val lbra : char t
-(** Parses ['\[']. *)
-    
-val rbra : char t
-(** Parses ['\]']. *)
-    
-val text : string t
+val text : (string, string list) t
 (** Parses IMAP terminal [text]. *)
     
-val atom : string t
+val atom : (string, string list) t
 (** Parses IMAP terminal [atom]. *)
+
+val nil : (string, string list) t
     
-val digit : int t
+val digit : (int, string list) t
 (** Parses a decimal digit. *)
     
-val digits2 : int t
+val digits2 : (int, string list) t
 (** Parses two decimal digits. *)
     
-val digits4 : int t
+val digits4 : (int, string list) t
 (** Parses four decimal digits. *)
-    
-val string_of_length : int -> string t
-(** Parses an string of exactly a given length. *)
-    
-val colon : char t
-(** Parses [':']. *)
-    
-val comma : char t
-(** Parses [',']. *)
-    
-val plus : char t
-(** Parses ['+']. *)
-    
-val minus : char t
-(** Parses ['-']. *)
-    
-val dash : char t
-(** Parses ['-']. *)
-    
-val crlf : string t
-(** Parses ["\r\n"]. *)
-    
-val star : char t
-(** Parses ['*']. *)
-    
-val parse : 'a t -> string -> [ `Ok of 'a | `Fail of int | `Exn of exn ]
+
+val string_of_length : int -> (string, 'state) t
+
+val parse : ('a, 'state) t -> string -> 'state -> [ `Ok of 'a | `Fail of int | `Exn of exn ]
 (** [parse p s] tries to parse [s] with [p].  If [p] succeeds and returns [x],
     [parse p s] returns [`Ok x].  If [p] fails, it returns [Fail i], where [i] is
     the approximate location in [s] where the failure occurred.  If an exception
