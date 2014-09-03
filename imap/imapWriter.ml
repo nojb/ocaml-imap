@@ -233,7 +233,6 @@ let flag =
   | FLAG_DELETED -> raw "\\Deleted"
   | FLAG_SEEN -> raw "\\Seen"
   | FLAG_DRAFT -> raw "\\Draft"
-  | FLAG_RECENT -> raw "\\Recent"
   | FLAG_KEYWORD s -> raw s
   | FLAG_EXTENSION s -> char '\\' ++ raw s (* FIXME: encode in MUTF7 ? *)
 

@@ -67,8 +67,6 @@ type flag =
   (** [\Seen] flag *)
   | FLAG_DRAFT
   (** [\Draft] flag *)
-  | FLAG_RECENT
-  (** [\Recent] flag *)
   | FLAG_KEYWORD of string
   (** keyword flag *)
   | FLAG_EXTENSION of string
@@ -76,7 +74,7 @@ type flag =
 
 type flag_fetch =
     FLAG_FETCH_RECENT
-  | FLAG_FETCH_OTHER of string
+  | FLAG_FETCH_OTHER of flag
 
 (** Flags returned with a PERMANENTFLAG response code *)
 type flag_perm =

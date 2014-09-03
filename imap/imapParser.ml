@@ -448,10 +448,12 @@ let flag =
          | "Deleted" -> FLAG_DELETED
          | "Seen" -> FLAG_SEEN
          | "Draft" -> FLAG_DRAFT
-         | "Recent" -> FLAG_RECENT
          | _ -> FLAG_EXTENSION s)
     end
     flag_keyword
+
+let flag_fetch =
+  alt (flag >>= fun flag -> ret (FLAG_FETCH_OTHER flag)) (str "\\Recent" >> ret FLAG_FETCH_RECENT)
 
 (*
 flag-perm       = flag / "\*"
@@ -460,10 +462,7 @@ let flag_perm =
   alt (app (fun f -> FLAG_PERM_FLAG f) flag) (str "\\*" >> ret FLAG_PERM_ALL)
 
 let flag_list =
-  char '(' >>
-  sep (char ' ') flag >>= fun xs ->
-  char ')' >>
-  ret xs
+  char '(' >> sep (char ' ') flag >>= fun xs -> char ')' >> ret xs
 
 (*
 uniqueid        = nz-number
@@ -1210,6 +1209,10 @@ msg-att-dynamic     =/ fetch-mod-resp
 
 *)
 let msg_att_dynamic =
+  str "FLAGS" >> char ' ' >> char '(' >>
+  sep (char ' ') flag_fetch >>= fun flags ->
+  char ')' >>
+  ret flags
   (* let flags = char ' ' >> flag_list >>= fun flags -> ret (`FLAGS flags) in *)
   (* let modseq = char ' ' >> char '(' >> permsg_modsequence >>= fun n -> char ')' >> ret (`MODSEQ n) in *)
   (* let x_gm_labels = *)
@@ -1223,7 +1226,6 @@ let msg_att_dynamic =
   (*   str "MODSEQ" >> modseq; *)
   (*   str "X-GM-LABELS" >> x_gm_labels *)
   (* ] *)
-  assert false (* FIXME *)
 
 (*
 msg-att         = "(" (msg-att-dynamic / msg-att-static)
