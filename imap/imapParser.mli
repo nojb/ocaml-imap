@@ -73,3 +73,11 @@ val eof : unit t
 val quoted_char : char t
 val base64 : string t
 val test : 'a t -> string -> 'a
+
+val greeting : ImapTypes.greeting t
+
+val response_done : ImapTypes.response_done t
+
+val cont_req_or_resp_data : ImapTypes.cont_req_or_resp_data t
+
+val response : ImapTypes.response t

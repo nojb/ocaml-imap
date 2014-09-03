@@ -1,5 +1,4 @@
 open ImapTypes
-open ImapResponse
 
 type selection_info = {
   sel_perm_flags : flag_perm list;

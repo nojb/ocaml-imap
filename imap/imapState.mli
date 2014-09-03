@@ -46,11 +46,11 @@ val fresh_selection_info : selection_info
   
 val fresh_response_info : response_info
 
-val greetings_store : state -> ImapResponse.greeting -> state
+val greetings_store : state -> greeting -> state
 
-val cont_req_or_resp_data_store : state -> ImapResponse.cont_req_or_resp_data -> state
+val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
-val response_store : state -> ImapResponse.response -> state
+val response_store : state -> response -> state
   
 (* val resp_data_or_resp_done_store : state -> [ImapResponse.response_data | ImapResponse.response_done] -> state *)
 

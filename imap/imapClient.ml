@@ -137,7 +137,7 @@ module Make (IO : IO.S) = struct
     assert false
   (*   read ci ImapResponse.greeting greetings_store *)
 
-  let get_response ci tag : ImapResponse.resp_text IO.t =
+  let get_response ci tag : resp_text IO.t =
     assert false
   (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
   (*   let rec loop () = *)
