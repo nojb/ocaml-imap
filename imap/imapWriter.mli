@@ -22,7 +22,7 @@
 
 (** Output routines *)
 
-open ImapUint
+open ImapTypes
 
 (** The type of output buffers *)
 type atom = [ `Raw of string | `Cont_req ]
@@ -85,17 +85,17 @@ val date_time : float -> t
 val message_set : Uint32_set.t -> t
 (** Sends an IMAP [sequence-set]. *)
 
-val flag : ImapTypes.flag -> t
+val flag : flag -> t
 (** Sends an IMAP flag. *)
 
-val fetch_att : ImapTypes.fetch_att -> t
+val fetch_att : fetch_att -> t
 (** Sends an IMAP fetch attribute. *)
 
-val search_key : ImapTypes.search_key -> t
+val search_key : search_key -> t
 (** Sends an IMAP fetch query. *)
 
-val status_att : ImapTypes.status_att -> t
+val status_att : status_att -> t
 (** Sends an IMAP status attribute. *)
 
-val store_att : ImapTypes.store_att -> t
+(* val store_att : ImapTypes.store_att -> t *)
 (** Sends an IMAP store attribute. *)

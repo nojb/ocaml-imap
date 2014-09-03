@@ -34,20 +34,17 @@
     Briefly, an expression such as 1:3,4,5:12,18:* will be represented by the OCaml
     list [[(1, 3); (4, 4); (5, 12); (18, 0)]]. *)
 
-open Sexplib.Std
-
 module type S = sig
-  type t with sexp
+  type t
   val succ : t -> t
   val zero : t
-  val is_zero : t -> bool
   val compare : t -> t -> int
   val of_int : int -> t
 end
 
 module Make (N : S) : sig
   (** The type of sets, a formal, ordered, union of intervals. *)
-  type t = (N.t * N.t) list with sexp
+  type t = (N.t * N.t) list
 
   val empty : t
   (** The empty set. *)

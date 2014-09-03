@@ -1,4 +1,2 @@
 true: package(str), package(uint)
 true: package(cryptokit), package(ucorelib)
-true: package(sexplib)
-true: syntax(camlp4o), package(sexplib.syntax)

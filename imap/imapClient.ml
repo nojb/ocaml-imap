@@ -22,7 +22,6 @@
 
 open ImapUtils
 open ImapTypes
-open ImapUint
   
 let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
@@ -42,12 +41,14 @@ module Make (IO : IO.S) = struct
 
   type connection_info = {
     mutable chan : IO.input * IO.output;
-    reader : ImapReader.reader;
+    (* reader : ImapReader.reader; *)
     mutable next_tag : int;
     mutable compress_deflate : bool;
     mutable state : state;
     send_lock : IO.mutex;
-    disconnect : unit -> unit IO.t
+    disconnect : unit -> unit IO.t;
+    buffer : Buffer.t;
+    mutable i : int
   }
 
   type connection_state =
@@ -74,121 +75,157 @@ module Make (IO : IO.S) = struct
   let (>>=) = IO.bind
   let (>|=) t f = IO.bind t (fun x -> IO.return (f x))
 
-  let read_line r io =
-    let ic, _ = io in
-    let rec loop () =
-      match ImapReader.read r with
-      | `Await ->
-          begin
-            IO.read 65536 ic >>= function
-            | "" -> ImapReader.src r `End; loop ()
-            | _ as data -> ImapReader.src r (`Data data); loop ()
-          end
-      | `Ok (resp, lits) ->
-          IO.return (resp, lits)
-      | `End ->
-          IO.fail (Failure "unexpected eof")
-    in
-    loop ()
+  (* let parse_response ci = *)
+  (*   let rec loop = *)
+  (*     function *)
+  (*       ImapParser.Ok (r, i) -> *)
+  (*         ci.i <- i; *)
+  (*         IO.return r *)
+  (*     | ImapParser.Fail i -> *)
+  (*         IO.fail (Parse_error (Buffer.contents ci.buffer, i)) *)
+  (*     | ImapParser.Need (len, k) -> *)
+  (*         let ic, _  = ci.chan in *)
+  (*         IO.read 65536 ic >>= *)
+  (*         begin *)
+  (*           function *)
+  (*             "" -> *)
+  (*               loop (k ImapParser.End) *)
+  (*           | _ as data -> *)
+  (*               Buffer.add_string ci.buffer data; *)
+  (*               loop (k ImapParser.More) *)
+  (*         end *)
+  (*   in *)
+  (*   loop (ImapParser.response ci.buffer ci.i) >>= fun r -> *)
+  (*   ci.state <- ImapState.response_store ci.state r; *)
+  (*   let t = *)
+  (*     match r.rsp_resp_done with *)
+  (*       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = t}} *)
+  (*     | RESP_DONE_FATAL t -> t *)
+  (*   in *)
+  (*   ci.imap_response <- t; *)
+  (*   match r.rsp_resp_done with *)
+  (*     RESP_DONE_TAGGED {rsp_tag = tag} -> *)
+  (*       if tag = ci.imap_tag then failwith "bad tag"; *)
+  (*       Lwt.return r *)
+  (*   | RESP_DONE_FATAL _ -> *)
+  (*       failwith "fatal!" *)
 
   let read ci p store =
-    read_line ci.reader ci.chan >>= fun (s, lit) ->
-    match ImapParser.parse p s lit with
-    | `Ok x -> store ci.state x; IO.return x
-    | `Fail i -> IO.fail (Parse_error (s, i))
-    | `Exn exn -> IO.fail exn
+    let rec loop =
+      function
+        ImapParser.Ok (x, i) ->
+          ci.i <- i;
+          store ci.state x;
+          IO.return x
+      | ImapParser.Fail i ->
+          IO.fail (Parse_error (Buffer.contents ci.buffer, i))
+      | ImapParser.Need (len, k) ->
+          let ic, _  = ci.chan in
+          IO.read 65536 ic >>=
+          begin
+            function
+              "" ->
+                loop (k ImapParser.End)
+            | _ as data ->
+                Buffer.add_string ci.buffer data;
+                loop (k ImapParser.More)
+          end
+    in
+    loop (p ci.buffer ci.i)
 
   let read_greeting ci =
-    read ci ImapResponse.greeting greetings_store
-
-  let read_resp_data_or_resp_done ci =
-    read ci
-      ImapResponse.resp_data_or_resp_done
-      resp_data_or_resp_done_store
-
-  let read_cont_req_or_resp_data_or_resp_done ci =
-    read ci
-      ImapResponse.cont_req_or_resp_data_or_resp_done
-      cont_req_or_resp_data_or_resp_done_store
+    assert false
+  (*   read ci ImapResponse.greeting greetings_store *)
 
   let get_response ci tag : ImapResponse.resp_text IO.t =
-    ci.state <- {ci.state with rsp_info = fresh_response_info};
-    let rec loop () =
-      read_resp_data_or_resp_done ci >>= function
-      | `BYE _ ->
-        ci.disconnect () >>= fun () ->
-        IO.fail BYE
-      | #ImapResponse.response_data ->
-        loop ()
-      | `TAGGED (tag', `OK rt) ->
-        if tag <> tag' then IO.fail Bad_tag
-        else IO.return rt
-      | `TAGGED (_, `BAD rt) ->
-        IO.fail BAD
-      | `TAGGED (_, `NO rt) ->
-        IO.fail NO
-    in
-    loop ()
+    assert false
+  (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
+  (*   let rec loop () = *)
+  (*     read_resp_data_or_resp_done ci >>= *)
+  (*     function *)
+  (*       `BYE _ -> *)
+  (*         ci.disconnect () >>= fun () -> *)
+  (*         IO.fail BYE *)
+  (*     | #ImapResponse.response_data -> *)
+  (*         loop () *)
+  (*     | `TAGGED (tag', `OK rt) -> *)
+  (*         if tag <> tag' then IO.fail Bad_tag *)
+  (*         else IO.return rt *)
+  (*     | `TAGGED (_, `BAD rt) -> *)
+  (*         IO.fail BAD *)
+  (*     | `TAGGED (_, `NO rt) -> *)
+  (*         IO.fail NO *)
+  (*   in *)
+  (*   loop () *)
 
   let get_idle_response ci tag f stop =
-    ci.state <- {ci.state with rsp_info = fresh_response_info};
-    let rec loop () =
-      read_cont_req_or_resp_data_or_resp_done ci >>= function
-      | `BYE _ ->
-        ci.disconnect () >>= fun () ->
-        IO.fail BYE
-      | #ImapResponse.response_data ->
-        begin match f () with
-          | `Continue -> loop ()
-          | `Stop -> stop (); loop ()
-        end
-      | `TAGGED (tag', `OK _) ->
-        if tag <> tag' then IO.fail Bad_tag
-        else IO.return ()
-      | `TAGGED (_, `BAD rt) ->
-        IO.fail BAD
-      | `TAGGED (_, `NO rt) ->
-        IO.fail NO
-      | `CONT_REQ _ ->
-        loop ()
-    in
-    loop ()
+    assert false
+  (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
+  (*   let rec loop () = *)
+  (*     read_cont_req_or_resp_data_or_resp_done ci >>= *)
+  (*     function *)
+  (*       `BYE _ -> *)
+  (*         ci.disconnect () >>= fun () -> *)
+  (*         IO.fail BYE *)
+  (*     | #ImapResponse.response_data -> *)
+  (*         begin *)
+  (*           match f () with *)
+  (*             `Continue -> loop () *)
+  (*           | `Stop -> stop (); loop () *)
+  (*         end *)
+  (*     | `TAGGED (tag', `OK _) -> *)
+  (*         if tag <> tag' then IO.fail Bad_tag *)
+  (*         else IO.return () *)
+  (*     | `TAGGED (_, `BAD rt) -> *)
+  (*         IO.fail BAD *)
+  (*     | `TAGGED (_, `NO rt) -> *)
+  (*         IO.fail NO *)
+  (*     | `CONT_REQ _ -> *)
+  (*         loop () *)
+  (*   in *)
+  (*   loop () *)
 
   let get_auth_response step ci tag =
-    ci.state <- {ci.state with rsp_info = fresh_response_info};
-    let rec loop needs_more =
-      read_cont_req_or_resp_data_or_resp_done ci >>= function
-      | `BYE _ ->
-        ci.disconnect () >>= fun () ->
-        IO.fail BYE
-      | #ImapResponse.response_data ->
-        loop needs_more
-      | `TAGGED (tag', `OK _) ->
-        begin if needs_more then step "" else IO.return `OK end >>=
-        begin function
-          | `OK ->
-            if tag <> tag' then IO.fail Bad_tag
-            else IO.return ()
-          | `NEEDS_MORE ->
-            IO.fail (Auth_error (Failure "Insufficient data for SASL authentication"))
-        end
-      | `TAGGED (_, `BAD rt) ->
-        IO.fail BAD
-      | `TAGGED (_, `NO rt) ->
-        IO.fail NO
-      | `CONT_REQ data ->
-        let data = match data with
-          | `BASE64 data -> data
-          | `TEXT _ -> ""
-        in
-        step data >>= function
-        | `OK -> loop false
-        | `NEEDS_MORE -> loop true
-    in
-    loop true
+    assert false
+  (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
+  (*   let rec loop needs_more = *)
+  (*     read_cont_req_or_resp_data_or_resp_done ci >>= *)
+  (*     function *)
+  (*       `BYE _ -> *)
+  (*         ci.disconnect () >>= fun () -> *)
+  (*         IO.fail BYE *)
+  (*     | #ImapResponse.response_data -> *)
+  (*         loop needs_more *)
+  (*     | `TAGGED (tag', `OK _) -> *)
+  (*         begin *)
+  (*           if needs_more then step "" else IO.return `OK end >>= begin *)
+  (*           function *)
+  (*             `OK -> *)
+  (*               if tag <> tag' then IO.fail Bad_tag *)
+  (*               else IO.return () *)
+  (*           | `NEEDS_MORE -> *)
+  (*               IO.fail (Auth_error (Failure "Insufficient data for SASL authentication")) *)
+  (*         end *)
+  (*     | `TAGGED (_, `BAD rt) -> *)
+  (*         IO.fail BAD *)
+  (*     | `TAGGED (_, `NO rt) -> *)
+  (*         IO.fail NO *)
+  (*     | `CONT_REQ data -> *)
+  (*         let data = *)
+  (*           match data with *)
+  (*             `BASE64 data -> data *)
+  (*           | `TEXT _ -> "" *)
+  (*         in *)
+  (*         step data >>= *)
+  (*         function *)
+  (*           `OK -> loop false *)
+  (*         | `NEEDS_MORE -> loop true *)
+  (*   in *)
+  (*   loop true *)
 
   let get_continuation_request ci =
-    read ci ImapResponse.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x
+    assert false
+    (* read ci ImapResponse.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x *)
 
   let make () =
     { conn_state = Disconnected }
@@ -202,7 +239,9 @@ module Make (IO : IO.S) = struct
     | Disconnected ->
       let ci = {
         chan; next_tag = 1;
-        reader = ImapReader.create ();
+        buffer = Buffer.create 0;
+        i = 0;
+        (* reader = ImapReader.create (); *)
         state = {
           imap_response = "";
           rsp_info = fresh_response_info;
@@ -311,9 +350,10 @@ module Make (IO : IO.S) = struct
 
   let enable s caps =
     let ci = connection_info s in
-    let string_of_capability = function
-      | `AUTH_TYPE s -> "AUTH=" ^ s
-      | `NAME s -> s
+    let string_of_capability =
+      function
+        CAPABILITY_AUTH_TYPE s -> "AUTH=" ^ s
+      | CAPABILITY_NAME s -> s
     in
     let cmd =
       S.(raw "ENABLE " ++ List.fold_right
@@ -500,13 +540,14 @@ module Make (IO : IO.S) = struct
     IO.with_lock ci.send_lock aux, stop
 
   let namespace s =
-    let ci = connection_info s in
-    let cmd = S.raw "NAMESPACE" in
-    let aux () =
-      send_command ci cmd >>= fun () ->
-      IO.return ci.state.rsp_info.rsp_namespace
-    in
-    IO.with_lock ci.send_lock aux
+    assert false
+    (* let ci = connection_info s in *)
+    (* let cmd = S.raw "NAMESPACE" in *)
+    (* let aux () = *)
+    (*   send_command ci cmd >>= fun () -> *)
+    (*   IO.return ci.state.rsp_info.rsp_namespace *)
+    (* in *)
+    (* IO.with_lock ci.send_lock aux *)
 
   let check s =
     let ci = connection_info s in
@@ -556,8 +597,9 @@ module Make (IO : IO.S) = struct
 
   let fetch_aux cmd s set changedsince attrs =
     let ci = connection_info s in
-    let changedsince = match changedsince with
-      | None ->
+    let changedsince =
+      match changedsince with
+        None ->
         S.null
       | Some modseq ->
         S.(space ++ raw "(CHANGEDSINCE " ++ raw (Modseq.to_string modseq) ++ raw ")")
@@ -583,21 +625,22 @@ module Make (IO : IO.S) = struct
     fetch_aux "UID FETCH" s (uid_set_to_uint32_set set) None attrs
 
   let store_aux cmd s set unchangedsince mode att =
-    let ci = connection_info s in
-    let unchangedsince = match unchangedsince with
-      | None -> S.null
-      | Some modseq -> S.(raw "(UNCHANGEDSINCE " ++ raw (Modseq.to_string modseq) ++ raw ") ")
-    in
-    let mode = match mode with
-      | `Add -> S.raw "+"
-      | `Set -> S.null
-      | `Remove -> S.raw "-"
-    in
-    let cmd =
-      S.(raw cmd ++ space ++ message_set set ++ space ++ unchangedsince ++ mode ++ store_att att)
-    in
-    let aux () = send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_modified in
-    IO.with_lock ci.send_lock aux
+    assert false
+    (* let ci = connection_info s in *)
+    (* let unchangedsince = match unchangedsince with *)
+    (*   | None -> S.null *)
+    (*   | Some modseq -> S.(raw "(UNCHANGEDSINCE " ++ raw (Modseq.to_string modseq) ++ raw ") ") *)
+    (* in *)
+    (* let mode = match mode with *)
+    (*   | `Add -> S.raw "+" *)
+    (*   | `Set -> S.null *)
+    (*   | `Remove -> S.raw "-" *)
+    (* in *)
+    (* let cmd = *)
+    (*   S.(raw cmd ++ space ++ message_set set ++ space ++ unchangedsince ++ mode ++ store_att att) *)
+    (* in *)
+    (* let aux () = send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_modified in *)
+    (* IO.with_lock ci.send_lock aux *)
 
   let store s set mode flags =
     store_aux "STORE" s (seq_set_to_uint32_set set) None mode flags >>= fun _ ->

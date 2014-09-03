@@ -20,19 +20,16 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 module type S = sig
-  type t with sexp
+  type t
   val succ : t -> t
   val zero : t
-  val is_zero : t -> bool
   val compare : t -> t -> int
   val of_int : int -> t
 end
 
 module Make (N : S) = struct
-  type t = (N.t * N.t) list with sexp
+  type t = (N.t * N.t) list
 
   let empty =
     []
@@ -56,11 +53,15 @@ module Make (N : S) = struct
     (n, n) :: set
 
   let compare_elt x y =
-    if N.is_zero x then
-      if N.is_zero y then 0 else 1
+    if N.compare N.zero x = 0 then
+      if N.compare N.zero y = 0 then
+        0
+      else
+        1
+    else if N.compare N.zero y = 0 then
+      -1
     else
-    if N.is_zero y then -1
-    else N.compare x y
+      N.compare x y
 
   let add_interval (n, m) set =
     let n, m =
@@ -81,15 +82,17 @@ module Make (N : S) = struct
   let rec iter f = function
     | [] -> ()
     | (l, r) :: set ->
-      if N.is_zero r then failwith "ImapSet.iter";
-      let rec loop l =
-        if N.compare l r > 0 then iter f set
-        else begin
-          f l;
-          loop (N.succ l)
-        end
-      in
-      loop l
+        if N.compare N.zero r = 0 then failwith "ImapSet.iter";
+        let rec loop l =
+          if N.compare l r > 0 then
+            iter f set
+          else
+            begin
+              f l;
+              loop (N.succ l)
+            end
+        in
+        loop l
 
   let rec iter2 f s1 s2 =
     match s1, s2 with
@@ -116,17 +119,18 @@ module Make (N : S) = struct
       failwith "ImapSet.iter2"
 
   let rec fold f s x =
-    let rec loop = function
-      | [] -> x
+    let rec loop =
+      function
+        [] -> x
       | (l, r) :: s ->
-        if N.is_zero l then failwith "ImapSet.fold";
-        let rec loop l x =
-          if N.compare l r > 0 then
-            fold f s x
-          else
-            loop (N.succ l) (f l x)
-        in
-        loop l x
+          if N.compare N.zero l = 0 then failwith "ImapSet.fold";
+          let rec loop l x =
+            if N.compare l r > 0 then
+              fold f s x
+            else
+              loop (N.succ l) (f l x)
+          in
+          loop l x
     in
     loop s
 

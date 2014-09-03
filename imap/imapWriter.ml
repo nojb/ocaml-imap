@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapUint
 
 type atom =
   [ `Raw of string
@@ -164,47 +163,62 @@ let message_interval (n, m) =
 let message_set set =
   separated (raw ",") message_interval set
 
-let section_msgtext = function
-  | `HEADER  -> raw "HEADER"
-  | `HEADER_FIELDS xs -> raw "HEADER.FIELDS" ++ space ++ list string xs
-  | `HEADER_FIELDS_NOT xs -> raw "HEADER.FIELDS.NOT" ++ space ++ list string xs
-  | `TEXT -> raw "TEXT"
-  | `ALL -> null
+let section_msgtext =
+  function
+    SECTION_MSGTEXT_HEADER  -> raw "HEADER"
+  | SECTION_MSGTEXT_HEADER_FIELDS xs -> raw "HEADER.FIELDS" ++ space ++ list string xs
+  | SECTION_MSGTEXT_HEADER_FIELDS_NOT xs -> raw "HEADER.FIELDS.NOT" ++ space ++ list string xs
+  | SECTION_MSGTEXT_TEXT -> raw "TEXT"
+(* | `ALL -> null *)
 
-let rec section_spec : ImapTypes.section_spec -> t = function
-  | #ImapTypes.section_msgtext as sec -> section_msgtext sec
-  | `MIME -> raw "MIME"
-  | `PART (n, `ALL) -> int n
-  | `PART (n, sec) -> int n ++ char '.' ++ section_spec sec
+let section_part l =
+  separated (char '.') int l
 
-and section = function
-  | #ImapTypes.section_msgtext as sec -> section_msgtext sec
-  | `PART (n, `ALL) -> int n
-  | `PART (n, sec) -> int n ++ char '.' ++ section_spec sec
+let section_text =
+  function
+    SECTION_TEXT_MSGTEXT t ->
+      section_msgtext t
+  | SECTION_TEXT_MIME ->
+      raw "MIME"
 
-let fetch_att_section kind = function
-  | #ImapTypes.section as sec ->
-    raw kind ++ raw "[" ++ section sec ++ raw "]"
-  | `PARTIAL (sec, n, m) ->
-    raw kind ++ raw "[" ++ section sec ++ raw "]<" ++ int n ++ char '.' ++ int m ++ char '>'
+let rec section_spec =
+  function
+    SECTION_SPEC_SECTION_MSGTEXT sec ->
+      section_msgtext sec
+  | SECTION_SPEC_SECTION_PART (part, None) ->
+      section_part part
+  | SECTION_SPEC_SECTION_PART (part, Some t) ->
+      section_part part ++ char '.' ++ section_text t
 
-let fetch_att = function
-  | `ENVELOPE -> raw "ENVELOPE"
-  | `INTERNALDATE -> raw "INTERNALDATE"
-  | `RFC822 -> raw "RFC822"
-  | `RFC822_HEADER -> raw "RFC822.HEADER"
-  | `RFC822_TEXT -> raw "RFC822.TEXT"
-  | `RFC822_SIZE -> raw "RFC822.SIZE"
-  | `BODY -> raw "BODY"
-  | `BODYSECTION sec -> fetch_att_section "BODY" sec
-  | `BODYPEEK sec -> fetch_att_section "BODY.PEEK" sec
-  | `BODYSTRUCTURE -> raw "BODYSTRUCTURE"
-  | `UID -> raw "UID"
-  | `FLAGS -> raw "FLAGS"
-  | `MODSEQ -> raw "MODSEQ"
-  | `X_GM_MSGID -> raw "X-GM-MSGID"
-  | `X_GM_THRID -> raw "X-GM-THRID"
-  | `X_GM_LABELS -> raw "X-GM-LABELS"
+and section =
+  function
+    None ->
+      raw "[]"
+  | Some spec ->
+      char '[' ++ section_spec spec ++ char ']'
+
+let fetch_att =
+  function
+    FETCH_ATT_ENVELOPE -> raw "ENVELOPE"
+  | FETCH_ATT_INTERNALDATE -> raw "INTERNALDATE"
+  | FETCH_ATT_RFC822 -> raw "RFC822"
+  | FETCH_ATT_RFC822_HEADER -> raw "RFC822.HEADER"
+  | FETCH_ATT_RFC822_TEXT -> raw "RFC822.TEXT"
+  | FETCH_ATT_RFC822_SIZE -> raw "RFC822.SIZE"
+  | FETCH_ATT_BODY -> raw "BODY"
+  | FETCH_ATT_BODY_SECTION (sec, None) -> raw "BODY" ++ space ++ section sec
+  | FETCH_ATT_BODY_SECTION (sec, Some (ofs, len)) ->
+      raw "BODY" ++ space ++ section sec ++ char '<' ++ int ofs ++ char '.' ++ int len ++ char '>'
+  | FETCH_ATT_BODY_PEEK_SECTION (sec, None) -> raw "BODY.PEEK" ++ space ++ section sec
+  | FETCH_ATT_BODY_PEEK_SECTION (sec, Some (ofs, len)) ->
+      raw "BODY.PEEK" ++ space ++ section sec ++ char '<' ++ int ofs ++ char '.' ++ int len ++ char '>'
+  | FETCH_ATT_BODYSTRUCTURE -> raw "BODYSTRUCTURE"
+  | FETCH_ATT_UID -> raw "UID"
+  | FETCH_ATT_FLAGS -> raw "FLAGS"
+  (* | `MODSEQ -> raw "MODSEQ" *)
+  (* | `X_GM_MSGID -> raw "X-GM-MSGID" *)
+  (* | `X_GM_THRID -> raw "X-GM-THRID" *)
+(* | `X_GM_LABELS -> raw "X-GM-LABELS" *)
 
 let day_month_year (dd, mmm, yyyy) =
   let month_names =
@@ -212,95 +226,100 @@ let day_month_year (dd, mmm, yyyy) =
   in
   raw (Printf.sprintf "%d-%3s-%4d" dd month_names.(mmm) yyyy)
 
-let flag = function
-  | `Answered -> raw "\\Answered"
-  | `Flagged -> raw "\\Flagged"
-  | `Deleted -> raw "\\Deleted"
-  | `Seen -> raw "\\Seen"
-  | `Draft -> raw "\\Draft"
-  | `Recent -> raw "\\Recent"
-  | `Keyword s -> raw s
-  | `Extension s -> char '\\' ++ raw s (* FIXME: encode in MUTF7 ? *)
+let flag =
+  function
+    FLAG_ANSWERED -> raw "\\Answered"
+  | FLAG_FLAGGED -> raw "\\Flagged"
+  | FLAG_DELETED -> raw "\\Deleted"
+  | FLAG_SEEN -> raw "\\Seen"
+  | FLAG_DRAFT -> raw "\\Draft"
+  | FLAG_RECENT -> raw "\\Recent"
+  | FLAG_KEYWORD s -> raw s
+  | FLAG_EXTENSION s -> char '\\' ++ raw s (* FIXME: encode in MUTF7 ? *)
 
 let gm_label s =
   raw (ImapUtils.encode_mutf7 s)
 
-let entry_type_req = function
-  | `All -> "all"
+let entry_type_req =
+  function
+    `All -> "all"
   | `Shared -> "shared"
   | `Priv -> "priv"
 
-let search_modseq_ext = function
-  | None -> null
+let search_modseq_ext =
+  function
+    None -> null
   | Some (flg, req) ->
     space ++ raw "\"/flags/" ++ flag flg ++ raw "\" " ++ raw (entry_type_req req)
 
 external seq_set_to_uint32_set : Seq_set.t -> Uint32_set.t = "%identity"
 external uid_set_to_uint32_set : Uid_set.t -> Uint32_set.t = "%identity"
 
-let rec search_key = function
-  | `ALL -> raw "ALL"
-  | `ANSWERED -> raw "ANSWERED"
-  | `BCC s -> raw "BCC " ++ string s
-  | `BEFORE d -> raw "BEFORE " ++ day_month_year d
-  | `BODY s -> raw "BODY " ++ string s
-  | `CC s -> raw "CC " ++ string s
-  | `DELETED -> raw "DELETED"
-  | `FLAGGED -> raw "FLAGGED"
-  | `FROM s -> raw "FROM " ++ string s
-  | `KEYWORD s -> raw "KEYWORD " ++ string s
-  | `NEW -> raw "NEW"
-  | `OLD -> raw "OLD"
-  | `ON d -> raw "ON " ++ day_month_year d
-  | `RECENT -> raw "RECENT"
-  | `SEEN -> raw "SEEN"
-  | `SINCE d -> raw "SINCE " ++ day_month_year d
-  | `SUBJECT s -> raw "SUBJECT " ++ string s
-  | `TEXT s -> raw "TEXT " ++ string s
-  | `TO s -> raw "TO " ++ string s
-  | `UNANSWERED -> raw "UNANSWERED"
-  | `UNDELETED -> raw "UNDELETED"
-  | `UNFLAGGED -> raw "UNDELETED"
-  | `UNKEYWORD s -> raw "UNKEYWORD " ++ string s
-  | `UNSEEN -> raw "UNSEEN"
-  | `DRAFT -> raw "DRAFT"
-  | `HEADER (s1, s2) -> raw "HEADER " ++ string s1 ++ raw " " ++ string s2
-  | `LARGER n -> raw "LARGER " ++ int n
-  | `NOT q -> raw "NOT " ++ search_key q
-  | `OR (q1, q2) -> raw "OR " ++ search_key q1 ++ raw " " ++ search_key q2
-  | `SENTBEFORE d -> raw "SENTBEFORE " ++ day_month_year d
-  | `SENTON d -> raw "SENTON " ++ day_month_year d
-  | `SENTSINCE d -> raw "SENTSINCE " ++ day_month_year d
-  | `SMALLER n -> raw "SMALLER " ++ int n
-  | `UID set -> message_set (uid_set_to_uint32_set set)
-  | `UNDRAFT -> raw "UNDRAFT"
-  | `INSET set -> message_set (seq_set_to_uint32_set set)
-  | `AND (q1, q2) ->
+let rec search_key =
+  function
+    SEARCH_KEY_ALL -> raw "ALL"
+  | SEARCH_KEY_ANSWERED -> raw "ANSWERED"
+  | SEARCH_KEY_BCC s -> raw "BCC " ++ string s
+  | SEARCH_KEY_BEFORE d -> raw "BEFORE " ++ day_month_year d
+  | SEARCH_KEY_BODY s -> raw "BODY " ++ string s
+  | SEARCH_KEY_CC s -> raw "CC " ++ string s
+  | SEARCH_KEY_DELETED -> raw "DELETED"
+  | SEARCH_KEY_FLAGGED -> raw "FLAGGED"
+  | SEARCH_KEY_FROM s -> raw "FROM " ++ string s
+  | SEARCH_KEY_KEYWORD s -> raw "KEYWORD " ++ string s
+  | SEARCH_KEY_NEW -> raw "NEW"
+  | SEARCH_KEY_OLD -> raw "OLD"
+  | SEARCH_KEY_ON d -> raw "ON " ++ day_month_year d
+  | SEARCH_KEY_RECENT -> raw "RECENT"
+  | SEARCH_KEY_SEEN -> raw "SEEN"
+  | SEARCH_KEY_SINCE d -> raw "SINCE " ++ day_month_year d
+  | SEARCH_KEY_SUBJECT s -> raw "SUBJECT " ++ string s
+  | SEARCH_KEY_TEXT s -> raw "TEXT " ++ string s
+  | SEARCH_KEY_TO s -> raw "TO " ++ string s
+  | SEARCH_KEY_UNANSWERED -> raw "UNANSWERED"
+  | SEARCH_KEY_UNDELETED -> raw "UNDELETED"
+  | SEARCH_KEY_UNFLAGGED -> raw "UNDELETED"
+  | SEARCH_KEY_UNKEYWORD s -> raw "UNKEYWORD " ++ string s
+  | SEARCH_KEY_UNSEEN -> raw "UNSEEN"
+  | SEARCH_KEY_DRAFT -> raw "DRAFT"
+  | SEARCH_KEY_HEADER (s1, s2) -> raw "HEADER " ++ string s1 ++ raw " " ++ string s2
+  | SEARCH_KEY_LARGER n -> raw "LARGER " ++ int n
+  | SEARCH_KEY_NOT q -> raw "NOT " ++ search_key q
+  | SEARCH_KEY_OR (q1, q2) -> raw "OR " ++ search_key q1 ++ raw " " ++ search_key q2
+  | SEARCH_KEY_SENTBEFORE d -> raw "SENTBEFORE " ++ day_month_year d
+  | SEARCH_KEY_SENTON d -> raw "SENTON " ++ day_month_year d
+  | SEARCH_KEY_SENTSINCE d -> raw "SENTSINCE " ++ day_month_year d
+  | SEARCH_KEY_SMALLER n -> raw "SMALLER " ++ int n
+  | SEARCH_KEY_UID set -> message_set (uid_set_to_uint32_set set)
+  | SEARCH_KEY_UNDRAFT -> raw "UNDRAFT"
+  | SEARCH_KEY_INSET set -> message_set (seq_set_to_uint32_set set)
+  | SEARCH_KEY_AND (q1, q2) ->
     raw "(" ++ search_key q1 ++ raw " " ++ search_key q2 ++ raw ")"
-  | `MODSEQ (ext, modseq) ->
+  | SEARCH_KEY_MODSEQ (ext, modseq) ->
     raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Modseq.to_string modseq)
-  | `X_GM_RAW str ->
+  | SEARCH_KEY_XGMRAW str ->
     raw "X-GM-RAW " ++ quoted_string str
-  | `X_GM_MSGID msgid ->
+  | SEARCH_KEY_XGMMSGID msgid ->
     raw "X-GM-MSGID " ++ raw (Gmsgid.to_string msgid)
-  | `X_GM_THRID thrid ->
+  | SEARCH_KEY_XGMTHRID thrid ->
     raw "X-GM-THRID " ++ raw (Gthrid.to_string thrid)
-  | `X_GM_LABELS lab ->
-    raw "X-GM-LABEL " ++ gm_label lab
+  (* | SEARCH_KEY_XGMLABELS lab -> *)
+  (*   raw "X-GM-LABEL " ++ gm_label lab *)
 
-let status_att att =
-  let to_string = function
-    | `MESSAGES -> "MESSAGES"
-    | `RECENT -> "RECENT"
-    | `UIDNEXT -> "UIDNEXT"
-    | `UIDVALIDITY -> "UIDVALIDITY"
-    | `UNSEEN -> "UNSEEN"
-    | `HIGHESTMODSEQ -> "HIGHESTMODSEQ"
+let status_att (att : status_att) =
+  let to_string : status_att -> string =
+    function
+      STATUS_ATT_MESSAGES -> "MESSAGES"
+    | STATUS_ATT_RECENT -> "RECENT"
+    | STATUS_ATT_UIDNEXT -> "UIDNEXT"
+    | STATUS_ATT_UIDVALIDITY -> "UIDVALIDITY"
+    | STATUS_ATT_UNSEEN -> "UNSEEN"
+    | STATUS_ATT_HIGHESTMODSEQ -> "HIGHESTMODSEQ"
   in
   raw (to_string att)
 
-let store_att = function
-  | `FLAGS flags -> raw "FLAGS" ++ space ++ list flag flags
-  | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" ++ space ++ list flag flags
-  | `X_GM_LABELS labels -> raw "X-GM-LABELS" ++ space ++ list gm_label labels
-  | `X_GM_LABELS_SILENT labels -> raw "X-GM-LABELS.SILENT" ++ space ++ list gm_label labels
+(* let store_att = function *)
+(*   | `FLAGS flags -> raw "FLAGS" ++ space ++ list flag flags *)
+(*   | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" ++ space ++ list flag flags *)
+(*   | `X_GM_LABELS labels -> raw "X-GM-LABELS" ++ space ++ list gm_label labels *)
+(*   | `X_GM_LABELS_SILENT labels -> raw "X-GM-LABELS.SILENT" ++ space ++ list gm_label labels *)

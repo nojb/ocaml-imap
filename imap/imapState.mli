@@ -1,5 +1,4 @@
 open ImapTypes
-open ImapUint
   
 type selection_info = {
   sel_perm_flags : flag_perm list;
@@ -25,13 +24,13 @@ type response_info = {
   rsp_search_results_modseq : Modseq.t;
   rsp_status : mailbox_data_status;
   rsp_expunged : Seq.t list;
-  rsp_fetch_list : (Seq.t * msg_att list) list;
+  rsp_fetch_list : msg_att list;
   rsp_appenduid : Uid.t * Uid.t;
   rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
   rsp_compressionactive : bool;
   rsp_id : (string * string) list;
   rsp_modified : Uint32_set.t;
-  rsp_namespace : namespace list * namespace list * namespace list;
+  (* rsp_namespace : namespace list * namespace list * namespace list; *)
   rsp_enabled : capability list;
   rsp_other : string * string
 }
@@ -48,10 +47,14 @@ val fresh_selection_info : selection_info
 val fresh_response_info : response_info
 
 val greetings_store : state -> ImapResponse.greeting -> state
-  
-val resp_data_or_resp_done_store : state -> [ImapResponse.response_data | ImapResponse.response_done] -> state
 
-val cont_req_or_resp_data_or_resp_done_store : state -> ImapResponse.cont_req_or_resp_data_or_resp_done -> state
+val cont_req_or_resp_data_store : state -> ImapResponse.cont_req_or_resp_data -> state
+
+val response_store : state -> ImapResponse.response -> state
+  
+(* val resp_data_or_resp_done_store : state -> [ImapResponse.response_data | ImapResponse.response_done] -> state *)
+
+(* val cont_req_or_resp_data_or_resp_done_store : state -> ImapResponse.cont_req_or_resp_data_or_resp_done -> state *)
 
 val has_uidplus : state -> bool
 (** Whether the IMAP server supports the UIDPLUS extension. *)

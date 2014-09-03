@@ -22,176 +22,156 @@
 
 (** IMAP responses *)
 
-open Sexplib.Std
 open ImapTypes
-open ImapUint
-  
+
 (** List of capabilities *)
 type capability_data =
-  [ `CAPABILITY of capability list ] with sexp
+  capability list
 
 (** {2 Response codes} *)
   
 type resp_text_code =
-  [ `ALERT
-  | `BADCHARSET of string list
-  (** SEARCH response, list of character sets supported by the server *)
-  | capability_data
-  (** List of capabilities *)
-  | `PARSE
-  | `PERMANENTFLAGS of flag_perm list
-  (** List of flags that can be changed permanently on the messages of the
-      mailbox *)
-  | `READ_ONLY
-  (** READONLY response *)
-  | `READ_WRITE
-  (** READWRITE response *)
-  | `TRYCREATE
-  (** TRYCREATE response *)
-  | `UIDNEXT of Uid.t
-  (** Probable UID of next message to arrive. *)
-  | `UIDVALIDITY of Uid.t
-  (** UID validity value *)
-  | `UNSEEN of Seq.t
-  (** Sequence number of the first message without the [\Seen] flag *)
-  | `APPENDUID of Uid.t * Uid.t
-  (** APPEND response code.  Requires support for the UIDPLUS extension. *)
-  | `COPYUID of Uid.t * Uid_set.t * Uid_set.t
-  (** COPY response code.  Requires support for the UIDPLUS extension. *)
-  | `UIDNOTSTICKY
-  (** UIDs are not persistent.  Requires support for the UIDPLUS extension. *)
-  | `COMPRESSIONACTIVE
-  (** Compression is being used.  Requires support for the COMPRESS=DEFLATE extension. *)
-  | `HIGHESTMODSEQ of Modseq.t
-  (** Highest modification sequence.  Requires support for the CONDSTORE extension. *)
-  | `NOMODSEQ
-  (** The server does not support persistent storage of modification sequence
-      numbers.  Requires support for the CONDSTORE extension. *)
-  | `MODIFIED of Uint32_set.t
-  (** Set of message numbers or unique identification numbers that failed the
-      UNCHANGEDSINCE test in a STORE or UID STORE command. *)
-  | `OTHER of string * string
-  (** other type of response *)
-  | `NONE
-  (** No response code *) ] with sexp
-
+    RESP_TEXT_CODE_ALERT
+  | RESP_TEXT_CODE_BADCHARSET of string list
+  | RESP_TEXT_CODE_CAPABILITY_DATA of capability_data
+  | RESP_TEXT_CODE_PARSE
+  | RESP_TEXT_CODE_PERMANENTFLAGS of flag_perm list
+  | RESP_TEXT_CODE_READ_ONLY
+  | RESP_TEXT_CODE_READ_WRITE
+  | RESP_TEXT_CODE_TRYCREATE
+  | RESP_TEXT_CODE_UIDNEXT of Uid.t
+  | RESP_TEXT_CODE_UIDVALIDITY of Uid.t
+  | RESP_TEXT_CODE_UNSEEN of Seq.t
+  | RESP_TEXT_CODE_APPENDUID of Uid.t * Uid.t
+  | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t
+  | RESP_TEXT_CODE_UIDNOTSTICKY
+  | RESP_TEXT_CODE_COMPRESSIONACTIVE
+  | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t
+  | RESP_TEXT_CODE_NOMODSEQ
+  | RESP_TEXT_CODE_MODIFIED of Uint32_set.t
+  | RESP_TEXT_CODE_OTHER of (string * string)
+  | RESP_TEXT_CODE_NONE
+  
 (** response code, human readable text *)
-type resp_text =
-  resp_text_code * string with sexp
+type resp_text = {
+  rsp_code : resp_text_code;
+  rsp_text : string
+}
 
 (** {2 Untagged responses} *)
 
 (** Authentication condition responses *)
 type resp_cond_auth =
-  [ `OK of resp_text
-  (** Authentication is needed *)
-  | `PREAUTH of resp_text
-  (** Authentication is not needed *) ] with sexp
+    RESP_COND_AUTH_OK of resp_text
+  | RESP_COND_AUTH_PREAUTH of resp_text
 
 (** BYE response *)
 type resp_cond_bye =
-  [ `BYE of resp_text ] with sexp
+  resp_text
 
 type response_fatal =
-  resp_cond_bye with sexp
+  resp_cond_bye
 
 (** Condition state responses *)
-type resp_cond_state =
-  [ `OK of resp_text
-  | `NO of resp_text
-  | `BAD of resp_text ] with sexp
+type resp_cond_state_type =
+    RESP_COND_STATE_OK
+  | RESP_COND_STATE_NO
+  | RESP_COND_STATE_BAD
+
+type resp_cond_state = {
+  rsp_type : resp_cond_state_type;
+  rsp_text : resp_text
+}
 
 (** Message information *)
 type message_data =
-  [ `EXPUNGE of Seq.t
-  | `FETCH of (Seq.t * msg_att list) ] with sexp
-
+    MESSAGE_DATA_EXPUNGE of Seq.t
+  | MESSAGE_DATA_FETCH of msg_att
+                            
 (** Mailbox information *)
 type mailbox_data =
-  [ `FLAGS of flag list
-  (** Flags that are applicable to this mailbox. *)
-  | `LIST of mailbox_list
-  (** LIST response, list of matching mailboxes. *)
-  | `LSUB of mailbox_list
-  (** LSUB response, list of matching mailboxes. *)
-  | `SEARCH of Uint32.t list * Modseq.t
-  (** SEARCH or UID SEARCH response, list of sequence numbers (or UIDs) of
-      matching messages, and, if available, highest modification sequence number
-      of the corresponding messages.  This requires support for the CONDSTORE
-      extension. *)
-  | `STATUS of mailbox_data_status
-  (** STATUS response, list of attribytes requested. *)
-  | `EXISTS of int
-  (** Number of messages in the mailbox *)
-  | `RECENT of int
-  (** Number of new messages in the mailbox *) ] with sexp
+    MAILBOX_DATA_FLAGS of flag list
+  | MAILBOX_DATA_LIST of mailbox_list
+  | MAILBOX_DATA_LSUB of mailbox_list
+  | MAILBOX_DATA_SEARCH of Uint32.t list * Modseq.t
+  | MAILBOX_DATA_STATUS of mailbox_data_status
+  | MAILBOX_DATA_EXISTS of int
+  | MAILBOX_DATA_RECENT of int
 
-type id_response =
-  [ `ID of (string * string) list ] with sexp
+(* type id_response = *)
+(*   [ `ID of (string * string) list ] with sexp *)
 
-type namespace_response =
-  [ `NAMESPACE of namespace list * namespace list * namespace list ] with sexp
+(* type namespace_response = *)
+(*   [ `NAMESPACE of namespace list * namespace list * namespace list ] with sexp *)
 
-type enable_response =
-  [ `ENABLED of capability list ] with sexp
+(* type enable_response = *)
+(*   [ `ENABLED of capability list ] with sexp *)
 
 (** Untagged response *)
 type response_data =
-  [ resp_cond_state
-  (** Condition state response *)
-  | resp_cond_bye
-  (** BYE response (server is about to close the connection) *)
-  | mailbox_data
-  (** Mailbox information *)
-  | message_data
-  (** Message information *)
-  | capability_data
-  (** Capability information *)
-  | id_response
-  (** ID response *)
-  | namespace_response
-  (** NAMESPACE response *)
-  | enable_response
-  (** ENABLE response *) ] with sexp
+    RESP_DATA_COND_STATE of resp_cond_state
+  | RESP_DATA_COND_BYE of resp_cond_bye
+  | RESP_DATA_MAILBOX_DATA of mailbox_data
+  | RESP_DATA_MESSAGE_DATA of message_data
+  | RESP_DATA_CAPABILITY_DATA of capability_data
+  (* | RESP_DATA_EXTENSION_DATA of extension_data *)
+  (* [ resp_cond_state *)
+  (* (\** Condition state response *\) *)
+  (* | resp_cond_bye *)
+  (* (\** BYE response (server is about to close the connection) *\) *)
+  (* | mailbox_data *)
+  (* (\** Mailbox information *\) *)
+  (* | message_data *)
+  (* (\** Message information *\) *)
+  (* | capability_data *)
+  (* (\** Capability information *\) *)
+  (* | id_response *)
+  (* (\** ID response *\) *)
+  (* | namespace_response *)
+  (* (\** NAMESPACE response *\) *)
+  (* | enable_response *)
+  (* (\** ENABLE response *\) ] with sexp *)
 
 (** {2 Tagged responses} *)
   
-type response_tagged =
-  string * resp_cond_state with sexp
+type response_tagged = {
+  rsp_tag : string;
+  rsp_cond_state : resp_cond_state
+}
 
 (** Ending response *)
 type response_done =
-  [ `TAGGED of response_tagged
-  (** Tagged response *)
-  | response_fatal
-  (** Fatal error response *) ] with sexp
+    RESP_DONE_TAGGED of response_tagged
+  | RESP_DONE_FATAL of response_fatal
 
 (** {2 Greeting response} *)
   
 type greeting =
-  [ resp_cond_auth
-  (** If connection is accepted *)
-  | resp_cond_bye
-  (** If connection is refused *) ] with sexp
+    GREETING_RESP_COND_AUTH of resp_cond_auth
+  | GREETING_RESP_COND_BYE of resp_cond_bye
 
 type continue_req =
-  [ `CONT_REQ of [ `TEXT of resp_text | `BASE64 of string ] ] with sexp
+    CONTINUE_REQ_TEXT of resp_text
+  | CONTINUE_REQ_BASE64 of string
 
-type cont_req_or_resp_data_or_resp_done =
-  [ continue_req
-  | response_data
-  | response_done ] with sexp
+type cont_req_or_resp_data =
+    RESP_CONT_REQ of continue_req
+  | RESP_CONT_DATA of response_data
+
+type response = {
+  rsp_cont_req_or_resp_data_list : cont_req_or_resp_data list;
+  rsp_resp_done : response_done
+}
 
 (** {2 Response parsers} *)
 
-val greeting : (greeting, string list) ImapParser.t
+val greeting : greeting ImapParser.t
 
-val continue_req : ([> continue_req], string list) ImapParser.t
+val response_done : response_done ImapParser.t
 
-val response_data : ([> response_data], string list) ImapParser.t
+val cont_req_or_resp_data : cont_req_or_resp_data ImapParser.t
 
-val response_done : ([> response_done], string list) ImapParser.t
-
-val resp_data_or_resp_done : ([response_data | response_done], string list) ImapParser.t
-
-val cont_req_or_resp_data_or_resp_done : (cont_req_or_resp_data_or_resp_done, string list) ImapParser.t
+val response : response ImapParser.t
+(* val resp_data_or_resp_done : ([response_data | response_done], [response_data | response_done] ImapParser.ret) ImapParser.t *)
+(* val response : (response, response ImapParser.ret) ImapParser.t *)
+(* val cont_req_or_resp_data_or_resp_done : (cont_req_or_resp_data_or_resp_done, _ ImapParser.ret) ImapParser.t *)

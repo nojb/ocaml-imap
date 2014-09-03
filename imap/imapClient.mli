@@ -200,7 +200,7 @@ module Make (IO : IO.S) : sig
 
       This command requires the IDLE extension. *)
 
-  val namespace : session -> (namespace list * namespace list * namespace list) IO.t
+  (* val namespace : session -> (namespace list * namespace list * namespace list) IO.t *)
   (** Returns the three types of namespaces (personal, other users, shared) in the server.
 
       This command requires the NAMESPACE extension. *)
@@ -233,7 +233,7 @@ module Make (IO : IO.S) : sig
   (** Like {!search}, but returns the unique identification numbers of the
       matching messages. *)
 
-  val fetch : session -> Seq_set.t -> fetch_att list -> (Seq.t * msg_att list) list IO.t
+  val fetch : session -> Seq_set.t -> fetch_att list -> msg_att list IO.t
   (** [fetch s set atts h] retrieve flags and/or other attributes [att] for those
       messages whose message sequence numbers belong to [set].  The most common
       attribytes are:
@@ -251,33 +251,31 @@ module Make (IO : IO.S) : sig
       The function [h] is called with each pair [(n, att)] consisting of a sequence
       number [n] and a message attribute [att]. *)
 
-  val fetch_changedsince : session -> Seq_set.t -> Modseq.t ->
-    fetch_att list -> (Seq.t * msg_att list) list IO.t
+  val fetch_changedsince : session -> Seq_set.t -> Modseq.t -> fetch_att list -> msg_att list IO.t
   (** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those
       messages that have a modification sequence number at least [modseq] are
       fetched.
 
       This command requires the CONDSTORE extension. *)
 
-  val uid_fetch : session -> Uid_set.t -> fetch_att list -> (Seq.t * msg_att list) list IO.t
+  val uid_fetch : session -> Uid_set.t -> fetch_att list -> msg_att list IO.t
   (** Like {!fetch}, but the elements of the set are taken to be unique
       identification numbers. *)
 
-  val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t ->
-    fetch_att list -> (Seq.t * msg_att list) list IO.t
+  val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t -> fetch_att list -> msg_att list IO.t
   (** Like {!fetch_changedsince}, but the elements fo the set are taken to be
       unique identification numbers.
 
       This command requires the CONDSTORE extension. *)
 
-  val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  (* val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t *)
   (** [store s set mode silent flags] modifies the flags and/or other attributes
       for those messages whose sequence numbers belong to [set].  The attribute is
       added, remove, or changed (regardless of its original value) according to
       [mode]. *)
 
-  val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
-    store_att -> Seq_set.t IO.t
+  (* val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] -> *)
+    (* store_att -> Seq_set.t IO.t *)
   (** [store_unchangedsince s set modseq mode att] is like {!store}, but only
       those messages that have a modification sequence number not greater than
       [modseq] are affected.  Retruns the set of message numbers that failed the
@@ -285,12 +283,12 @@ module Make (IO : IO.S) : sig
 
       This command requires the CONDSTORE extension. *)
 
-  val uid_store : session -> Uid_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t
+  (* val uid_store : session -> Uid_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t *)
   (** Like {!store} but the elements of the set are taken to be unique
       identification numbers. *)
 
-  val uid_store_unchangedsince : session -> Uid_set.t -> Modseq.t -> [`Add | `Set | `Remove] ->
-    store_att -> Uid_set.t IO.t
+  (* val uid_store_unchangedsince : session -> Uid_set.t -> Modseq.t -> [`Add | `Set | `Remove] -> *)
+    (* store_att -> Uid_set.t IO.t *)
   (** [uid_store_unchangedsince s set modseq mode att] is like {!uid_store}, but
       only those messages that have a modification sequence number not greater than
       [modseq] are affected.  Retruns the set of unique identification numbers that

@@ -22,19 +22,15 @@
 
 (** IMAP queries and response data *)
 
-open Sexplib.Std
-open ImapUint
-  
+module Uint32_set : module type of ImapSet.Make (Uint32)
+
 module type S = sig
-  type t with sexp
+  type t
   val zero : t
   val of_int : int -> t
   val of_string : string -> t
   val to_string : t -> string
-  val max : t -> t -> t
-  val is_zero : t -> bool
   val compare : t -> t -> int
-  val equal : t -> t -> bool
   val succ : t -> t
   val printer : Format.formatter -> t -> unit
 end
@@ -61,28 +57,31 @@ module Seq_set : module type of ImapSet.Make (Seq)
 (** {2 Message flags} *)
                 
 type flag =
-  [ `Answered
+    FLAG_ANSWERED
   (** [\Answered] flag *)
-  | `Flagged
+  | FLAG_FLAGGED
   (** [\Flagged] flag *)
-  | `Deleted
+  | FLAG_DELETED
   (** [\Deleted] flag *)
-  | `Seen
+  | FLAG_SEEN
   (** [\Seen] flag *)
-  | `Draft
+  | FLAG_DRAFT
   (** [\Draft] flag *)
-  | `Recent
+  | FLAG_RECENT
   (** [\Recent] flag *)
-  | `Keyword of string
+  | FLAG_KEYWORD of string
   (** keyword flag *)
-  | `Extension of string
-  (** \extension flag *) ] with sexp
+  | FLAG_EXTENSION of string
+  (* (\** \extension flag *\) ] with sexp *)
+
+type flag_fetch =
+    FLAG_FETCH_RECENT
+  | FLAG_FETCH_OTHER of string
 
 (** Flags returned with a PERMANENTFLAG response code *)
 type flag_perm =
-  [ flag
-  | `All
-  (** New flags can be created *) ] with sexp
+    FLAG_PERM_FLAG of flag
+  | FLAG_PERM_ALL
 
 (** {2 SEARCH command} *)
 
@@ -91,175 +90,295 @@ type day_month_year =
 
 (** Search keys *)
 type search_key =
-  [ `ALL
+    SEARCH_KEY_ALL
   (** All messages in the mailbox. *)
-  | `ANSWERED
+  | SEARCH_KEY_ANSWERED
   (** Messages with the [\Answered] flag set. *)
-  | `BCC of string
+  | SEARCH_KEY_BCC of string
   (** Messages that contain the specified string in the envelope's [BCC] field. *)
-  | `BEFORE of day_month_year
+  | SEARCH_KEY_BEFORE of day_month_year
   (** Messages whose internal date (disregarding time and timezone) is earlier
       than the specified date. *)
-  | `BODY of string
+  | SEARCH_KEY_BODY of string
   (** Messages that contain the specified string in the body of the message. *)
-  | `CC of string
+  | SEARCH_KEY_CC of string
   (** Messages that contain the specified string in the envelope's [CC] field. *)
-  | `DELETED
+  | SEARCH_KEY_DELETED
   (** Messages with the [\Deleted] flag set. *)
-  | `FLAGGED
+  | SEARCH_KEY_FLAGGED
   (** Messages with the [\Flagged] flag set. *)
-  | `FROM of string
+  | SEARCH_KEY_FROM of string
   (** Messages that contain the specified string in the envelope's [FROM]
       field. *)
-  | `KEYWORD of string
+  | SEARCH_KEY_KEYWORD of string
   (** Messages with the specified keyword flag set. *)
-  | `NEW
+  | SEARCH_KEY_NEW
   (** Messages that have the \Recent flag set but not the \Seen flag.  This is
       functionally equivalent to [`AND (`RECENT, `UNSEEN)]. *)
-  | `OLD
+  | SEARCH_KEY_OLD
   (** Messages that do not have the [\Recent] flag set.  This is functionally
       equivalent to [`NOT `RECENT] (as opposed to [`NOT `NEW]). *)
-  | `ON of day_month_year
+  | SEARCH_KEY_ON of day_month_year
   (** Messages whose internal date (disregarding time and timezone) is within
       the specified date. *)
-  | `RECENT
+  | SEARCH_KEY_RECENT
   (** Messages that have the [\Recent] flag set. *)
-  | `SEEN
+  | SEARCH_KEY_SEEN
   (** Messages that have the [\Seen] flag set. *)
-  | `SINCE of day_month_year
+  | SEARCH_KEY_SINCE of day_month_year
   (** Messages whose internal date (disregarding time and timezone) is within or
       later than the specified date. *)
-  | `SUBJECT of string
+  | SEARCH_KEY_SUBJECT of string
   (** Messages that contain the specified string in the envelope's [SUBJECT]
       field. *)
-  | `TEXT of string
+  | SEARCH_KEY_TEXT of string
   (** Messages that contain the specified string in the header or body of the
      message. *)
-  | `TO of string
+  | SEARCH_KEY_TO of string
   (** Messages that contain the specified string in the envelope's [TO]
       field. *)
-  | `UNANSWERED
+  | SEARCH_KEY_UNANSWERED
   (** Messages that do not have the [\Answered] flag set. *)
-  | `UNDELETED
+  | SEARCH_KEY_UNDELETED
   (** Messages that do not have the [\Deleted] flag set. *)
-  | `UNFLAGGED
+  | SEARCH_KEY_UNFLAGGED
   (** Messages that do not have the [\Flagged] flag set. *)
-  | `UNKEYWORD of string
+  | SEARCH_KEY_UNKEYWORD of string
   (** Messages that do not have the specified keyword flag set. *)
-  | `UNSEEN
+  | SEARCH_KEY_UNSEEN
   (** Messages that do not have the [\Seen] flag set. *)
-  | `DRAFT
+  | SEARCH_KEY_DRAFT
   (** Messages with the [\Draft] flag set. *)
-  | `HEADER of string * string
+  | SEARCH_KEY_HEADER of string * string
   (** Messages that have a header with the specified field-name (as defined in
       [RFC-2822]) and that contains the specified string in the text of the header
       (what comes after the colon). *)
-  | `LARGER of int
+  | SEARCH_KEY_LARGER of int
   (** Messages with an [RFC-2822] size larger than the specified number of
       bytes. *)
-  | `NOT of search_key
+  | SEARCH_KEY_NOT of search_key
   (** Messages that do not match the specified search key. *)
-  | `OR of search_key * search_key
+  | SEARCH_KEY_OR of search_key * search_key
   (** Messages that match either search key. *)
-  | `SENTBEFORE of day_month_year
+  | SEARCH_KEY_SENTBEFORE of day_month_year
   (** Messages whose [Date:] header (disregarding time and timezone) is earlier
       than the specified date. *)
-  | `SENTON of day_month_year
+  | SEARCH_KEY_SENTON of day_month_year
   (** Messages whose [Date:] header (disregarding time and timezone) is within
       the specified date. *)
-  | `SENTSINCE of day_month_year
+  | SEARCH_KEY_SENTSINCE of day_month_year
   (** Messages whose [Date:] header (disregarding time and timezone) is within
       or later than the specified date. *)
-  | `SMALLER of int
+  | SEARCH_KEY_SMALLER of int
   (** Messages with an [RFC-2822] size smaller than the specified number of
       bytes. *)
-  | `UID of Uid_set.t
+  | SEARCH_KEY_UID of Uid_set.t
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set. *)
-  | `UNDRAFT
+  | SEARCH_KEY_UNDRAFT
   (** Messages that do not have the [\Draft] flag set. *)
-  | `INSET of Seq_set.t
+  | SEARCH_KEY_INSET of Seq_set.t
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
-  | `AND of search_key * search_key
+  | SEARCH_KEY_AND of search_key * search_key
   (** Messages that match both search keys. *)
-  | `MODSEQ of (flag * [`Shared | `Priv | `All]) option * Modseq.t
-  | `X_GM_RAW of string
+  | SEARCH_KEY_MODSEQ of (flag * [`Shared | `Priv | `All]) option * Modseq.t
+  | SEARCH_KEY_XGMRAW of string
   (** Messages that satisfy Gmail search expression. *)
-  | `X_GM_MSGID of Gmsgid.t
+  | SEARCH_KEY_XGMMSGID of Gmsgid.t
   (** Message with given Gmail Message ID. *)
-  | `X_GM_THRID of Gthrid.t
+  | SEARCH_KEY_XGMTHRID of Gthrid.t
   (** Messages with given Gmail Thread ID. *)
-  | `X_GM_LABELS of string
-  (** Messages with given Gmail labels. *) ]
+  (* | `X_GM_LABELS of string *)
+  (* (\** Messages with given Gmail labels. *\) ] *)
 
 (** {2 FETCH command} *)
 
 (** {3 Queries} *)
 
 type section_msgtext =
-  [ `HEADER
-  (** All header fields *)
-  | `HEADER_FIELDS of string list
-  (** Header fields in the given list. *)
-  | `HEADER_FIELDS_NOT of string list
-  (** Header fields not in the given list. *)
-  | `TEXT
-  (** Text body of the message, omitting headers. *)
-  | `ALL
-  (** Everything *) ] with sexp
+    SECTION_MSGTEXT_HEADER
+  | SECTION_MSGTEXT_HEADER_FIELDS of string list
+  | SECTION_MSGTEXT_HEADER_FIELDS_NOT of string list
+  | SECTION_MSGTEXT_TEXT
+
+type section_part =
+  int list
+
+type section_text =
+    SECTION_TEXT_MSGTEXT of section_msgtext
+  | SECTION_TEXT_MIME
 
 type section_spec =
-  [ section_msgtext
-  | `MIME
-  (** MIME header for the corresponding part *)
-  | `PART of int * section_spec ] with sexp
+    SECTION_SPEC_SECTION_MSGTEXT of section_msgtext
+  | SECTION_SPEC_SECTION_PART of section_part * section_text option
 
 type section =
-  [ section_msgtext
-  | `PART of int * section_spec
-  (** Part in a multipart message *) ] with sexp
-
-type fetch_att_section =
-  [ section
-  | `PARTIAL of section * int * int
-  (** Partial section, offset, length *) ] with sexp
+  section_spec option
 
 (** FETCH queries *)
 type fetch_att =
-  [ `ENVELOPE
+    FETCH_ATT_ENVELOPE
   (** MIME envelope information *)
-  | `INTERNALDATE
+  | FETCH_ATT_INTERNALDATE
   (** The message date kept by the server *)
-  | `RFC822_HEADER
+  | FETCH_ATT_RFC822_HEADER
   (** The message header *)
-  | `RFC822_TEXT
+  | FETCH_ATT_RFC822_TEXT
   (** The message text part *)
-  | `RFC822_SIZE
+  | FETCH_ATT_RFC822_SIZE
   (** The size of the message content *)
-  | `RFC822
+  | FETCH_ATT_RFC822
   (** The message content (header and body) *)
-  | `BODY
+  | FETCH_ATT_BODY
   (** The MIME description of the message *)
-  | `BODYSECTION of fetch_att_section
+  | FETCH_ATT_BODY_SECTION of section * (int * int) option
   (** A MIME part content *)
-  | `BODYPEEK of fetch_att_section
+  | FETCH_ATT_BODY_PEEK_SECTION of section * (int * int) option
   (** Like [`BODYSECTION], but does not set the [`Seen] flag. *)
-  | `BODYSTRUCTURE
+  | FETCH_ATT_BODYSTRUCTURE
   (** The MIME description of the message with additional information *)
-  | `UID
+  | FETCH_ATT_UID
   (** Unique identification number. *)
-  | `FLAGS
+  | FETCH_ATT_FLAGS
   (** Message flags *)
-  | `MODSEQ
-  (** Modification sequence number.  This requires support for the CONDSTORE
-      extension. *)
-  | `X_GM_MSGID
-  (** Gmail message ID. *)
-  | `X_GM_THRID
-  (** Gmail thread ID. *)
-  | `X_GM_LABELS
-  (** Gmail labels *) ] with sexp
+  (* | `MODSEQ *)
+  (* (\** Modification sequence number.  This requires support for the CONDSTORE *)
+  (*     extension. *\) *)
+  (* | `X_GM_MSGID *)
+  (* (\** Gmail message ID. *\) *)
+  (* | `X_GM_THRID *)
+  (* (\** Gmail thread ID. *\) *)
+  (* | `X_GM_LABELS *)
+(* (\** Gmail labels *\) ] with sexp *)
+
+type fetch_type =
+    FETCH_TYPE_ALL
+  | FETCH_TYPE_FULL
+  | FETCH_TYPE_FAST
+  | FETCH_TYPE_FETCH_ATT of fetch_att
+  | FETCH_TYPE_FETCH_ATT_LIST of fetch_att list
+
+(** {MIME} *)
+
+type address = {
+  ad_personal_name : string;
+  ad_source_route : string;
+  ad_mailbox_name : string;
+  ad_host_name : string
+}
+
+type envelope = {
+  env_date : string;
+  env_subject : string;
+  env_from : address list;
+  env_sender : address list;
+  env_reply_to : address list;
+  env_to : address list;
+  env_cc : address list;
+  env_bcc : address list;
+  env_in_reply_to : string;
+  env_message_id : string
+}
+
+type body_fld_param =
+  (string * string) list
+
+type body_fld_dsp = {
+  dsp_type : string;
+  dsp_attributes : body_fld_param
+}
+
+type body_fld_lang =
+    BODY_FLD_LANG_SINGLE of string option
+  | BODY_FLD_LANG_LIST of string list
+
+type media_basic_type =
+    MEDIA_BASIC_APPLICATION
+  | MEDIA_BASIC_AUDIO
+  | MEDIA_BASIC_IMAGE
+  | MEDIA_BASIC_MESSAGE
+  | MEDIA_BASIC_VIDEO
+  | MEDIA_BASIC_OTHER of string
+
+type media_basic = {
+  med_basic_type : media_basic_type;
+  med_basic_subtype : string
+}
+
+type body_fld_enc =
+    BODY_FLD_ENC_7BIT
+  | BODY_FLD_ENC_8BIT
+  | BODY_FLD_ENC_BINARY
+  | BODY_FLD_ENC_BASE64
+  | BODY_FLD_ENC_QUOTED_PRINTABLE
+  | BODY_FLD_ENC_OTHER of string
+
+type body_extension =
+    BODY_EXTENSION_LIST of body_extension list
+  | BODY_EXTENSION_NUMBER of Uint32.t
+  | BODY_EXTENSION_NSTRING of string option
+
+and body_fields = {
+  bd_parameter : body_fld_param;
+  bd_id : string option;
+  bd_description : string option;
+  bd_encoding : body_fld_enc;
+  bd_size : int
+}
+
+and body_type_msg = {
+  bd_fields : body_fields;
+  bd_envelope : envelope;
+  bd_body : body
+}
+
+and body_type_text = {
+  bd_media_text : string;
+  bd_fields : body_fields;
+  bd_lines : int
+}
+
+and body_type_basic = {
+  bd_media_basic : media_basic;
+  bd_fields : body_fields
+}
+
+and body_type_1part_data =
+    BODY_TYPE_1PART_BASIC of body_type_basic
+  | BODY_TYPE_1PART_MSG of body_type_msg
+  | BODY_TYPE_1PART_TEXT of body_type_text
+
+and body_ext_mpart = {
+  bd_parameter : body_fld_param;
+  bd_disposition : body_fld_dsp option;
+  bd_language : body_fld_lang option;
+  bd_loc : string option;
+  bd_extension_list : body_extension list
+}
+
+and body_ext_1part = {
+  bd_md5 : string option;
+  bd_disposition : body_fld_dsp option;
+  bd_language : body_fld_lang option;
+  bd_loc : string option;
+  bd_extension_list : body_extension list
+}
+
+and body_type_1part = {
+  bd_data : body_type_1part_data;
+  bd_ext_1part : body_ext_1part
+}
+
+and body_type_mpart = {
+  bd_list : body list;
+  bd_media_subtype : string;
+  bd_ext_mpart : body_ext_mpart
+}
+
+and body =
+    BODY_1PART of body_type_1part
+  | BODY_MPART of body_type_mpart
 
 (** {3 Responses} *)
   
@@ -271,104 +390,120 @@ type date_time = {
   dt_min : int;
   dt_sec : int;
   dt_zone : int
-} with sexp
+}
 
-type msg_att_section =
-  [ section
-  | `PARTIAL of section * int ] with sexp
+type msg_att_body_section = {
+  sec_section : section;
+  sec_origin_octet : int;
+  sec_body_part : string;
+  sec_length : int
+}
 
 type msg_att_static =
-  [ `ENVELOPE of ImapMime.envelope
-  | `INTERNALDATE of date_time
-  | `RFC822 of string
-  | `RFC822_HEADER of string
-  | `RFC822_TEXT of string
-  | `RFC822_SIZE of int
-  | `BODY of ImapMime.body
-  | `BODYSTRUCTURE of ImapMime.body
-  | `BODYSECTION of msg_att_section * string
-  | `UID of Uid.t
-  | `X_GM_MSGID of Gmsgid.t
-  | `X_GM_THRID of Gthrid.t ] with sexp
+    MSG_ATT_ENVELOPE of envelope
+  | MSG_ATT_INTERNALDATE of date_time
+  | MSG_ATT_RFC822 of string
+  | MSG_ATT_RFC822_HEADER of string
+  | MSG_ATT_RFC822_TEXT of string
+  | MSG_ATT_RFC822_SIZE of int
+  | MSG_ATT_BODY of body
+  | MSG_ATT_BODYSTRUCTURE of body
+  | MSG_ATT_BODY_SECTION of msg_att_body_section
+  | MSG_ATT_UID of Uid.t
+  (* | MSG_ATT_X_GM_MSGID of Gmsgid.t *)
+  (* | MSG_ATT_X_GM_THRID of Gthrid.t *)
 
 type msg_att_dynamic =
-  [ `FLAGS of flag list
-  | `MODSEQ of Modseq.t
-  | `X_GM_LABELS of string list ] with sexp
+  flag_fetch list
+  (* [ `FLAGS of flag list *)
+  (* | `MODSEQ of Modseq.t *)
+  (* | `X_GM_LABELS of string list ] with sexp *)
   
+type msg_att_item =
+    MSG_ATT_ITEM_DYNAMIC of msg_att_dynamic
+  | MSG_ATT_ITEM_STATIC of msg_att_static
+
 type msg_att =
-  [ msg_att_static | msg_att_dynamic ] with sexp
+  msg_att_item list * Seq.t
 
 (** {2 STORE command} *)
 
-type store_att =
-  [ `FLAGS of flag list
-  (** Message flags *)
-  | `FLAGS_SILENT of flag list
-  (** Silent message flags (server will not respond with the updated list of flags). *)
-  | `X_GM_LABELS of string list
-  (** Gmail labels *)
-  | `X_GM_LABELS_SILENT of string list
-  (** Silent Gmail labels (server will not respond with the updated list of labels). *) ] with sexp
+type store_att_flags_sign =
+    STORE_ATT_FLAGS_SET
+  | STORE_ATT_FLAGS_ADD
+  | STORE_ATT_FLAGS_REMOVE
+
+type store_att_flags = {
+  fl_sign : store_att_flags_sign;
+  fl_silent : bool;
+  fl_flag_list : flag list
+}
+
+(* type store_att = *)
+(*   [ `FLAGS of flag list *)
+(*   (\** Message flags *\) *)
+(*   | `FLAGS_SILENT of flag list *)
+(*   (\** Silent message flags (server will not respond with the updated list of flags). *\) *)
+(*   | `X_GM_LABELS of string list *)
+(*   (\** Gmail labels *\) *)
+(*   | `X_GM_LABELS_SILENT of string list *)
+(*   (\** Silent Gmail labels (server will not respond with the updated list of labels). *\) ] with sexp *)
 
 (** {2 STATUS command} *)
 
 (** STATUS queries: the different mailbox status attributes that can be fetched
     via {!Imap.status}. *)
 type status_att =
-  [ `MESSAGES
+    STATUS_ATT_MESSAGES
   (** Number of messages in the mailbox. *)
-  | `RECENT
+  | STATUS_ATT_RECENT
   (** Number of new messages in the mailbox. *)
-  | `UIDNEXT
+  | STATUS_ATT_UIDNEXT
   (** The probable unique identification number of the next message to arrive. *)
-  | `UIDVALIDITY
+  | STATUS_ATT_UIDVALIDITY
   (** The UID validity value of the mailbox. *)
-  | `UNSEEN
+  | STATUS_ATT_UNSEEN
   (** The number of unseen messages in the mailbox. *)
-  | `HIGHESTMODSEQ
+  | STATUS_ATT_HIGHESTMODSEQ
   (** The highest modification sequence of the mailbox.  This requires support
-      for the CONDSTORE extension. *) ] with sexp
+      for the CONDSTORE extension. *)
+  | STATUS_ATT_EXTENSION
 
 (** STATUS replies. See {!status_att}. *)
 type status_info =
-  [ `MESSAGES of int
-  | `RECENT of int
-  | `UIDNEXT of Uid.t
-  | `UIDVALIDITY of Uid.t
-  | `UNSEEN of int
-  | `HIGHESTMODSEQ of Modseq.t ] with sexp
+    STATUS_ATT_MESSAGES of int
+  | STATUS_ATT_RECENT of int
+  | STATUS_ATT_UIDNEXT of Uid.t
+  | STATUS_ATT_UIDVALIDITY of Uid.t
+  | STATUS_ATT_UNSEEN of int
+  | STATUS_ATT_HIGHESTMODSEQ of Modseq.t
+  | STATUS_ATT_EXTENSION
 
 (** {2 LIST/LSUB commands} *)
 
 type mailbox_data_status = {
   st_mailbox : string;
   st_info_list : status_info list
-} with sexp
+}
 
 (** The type of mailbox single flags *)
-type sflag =
-  [ `Noselect
-  (** [\Noselect] flag *)
-  | `Marked
-  (** [\Marked] flag *)
-  | `Unmarked
-  (** [\Unmarked] flag *) ] with sexp
+type mbx_list_sflag =
+    MBX_LIST_SFLAG_NOSELECT
+  | MBX_LIST_SFLAG_MARKED
+  | MBX_LIST_SFLAG_UNMARKED
 
 (** The type of mailbox other flags *)
-type oflag =
-  [ `Noinferiors
-  (** [\Noinferiors] flag *)
-  | `Extension of string
-  (** other flag *) ] with sexp
+type mbx_list_oflag =
+    MBX_LIST_OFLAG_NOINFERIORS
+  | MBX_LIST_OFLAG_EXT of string
 
 (** Mailbox flag *)
 type mbx_list_flags = {
-  mbf_sflag : sflag option;
+  mbf_sflag : mbx_list_sflag option;
   (** Mailbox single flag *)
-  mbf_oflags : oflag list
+  mbf_oflags : mbx_list_oflag list
   (** List of "mailbox other flag" *)
-} with sexp
+}
 
 (** List of mailbox flags *)
 type mailbox_list = {
@@ -378,20 +513,18 @@ type mailbox_list = {
   (** Delimiter of the mailbox path, '\000' if not present *)
   mb_name : string
   (** Name of the mailbox *)
-} with sexp
+}
 
 (** {2 CAPABILITY command} *)
 
 type capability =
-  [ `AUTH_TYPE of string
-  (** Authentication type *)
-  | `NAME of string
-  (** Other type of capability *) ] with sexp
+    CAPABILITY_AUTH_TYPE of string
+  | CAPABILITY_NAME of string
 
 (** {2 NAMESPACE command} *)
 
-type namespace = {
-  ns_prefix : string;
-  ns_delimiter : char;
-  ns_extensions : (string * string list) list
-} with sexp
+(* type namespace = { *)
+(*   ns_prefix : string; *)
+(*   ns_delimiter : char; *)
+(*   ns_extensions : (string * string list) list *)
+(* } with sexp *)

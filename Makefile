@@ -1,7 +1,7 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
 lib:
-	$(OCAMLBUILD) imap/imapClient.native
+	$(OCAMLBUILD) imap/imapClient.byte
 
 clean:
 	$(OCAMLBUILD) -clean
