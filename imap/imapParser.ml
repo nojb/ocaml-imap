@@ -608,22 +608,22 @@ let resp_text_code =
   let uidnext = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT (Uid.of_uint32 n)) in
   let uidvalidity = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY (Uid.of_uint32 n)) in
   let unseen = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN (Seq.of_uint32 n)) in
-  let appenduid =
-    char ' ' >> nz_number >>= fun uidvalidity ->
-    nz_number >>= fun uid -> ret (RESP_TEXT_CODE_APPENDUID (Uid.of_uint32 uidvalidity, Uid.of_uint32 uid))
-  in
-  let copyuid =
-    char ' ' >> nz_number >>= fun uidvalidity ->
-    uid_set >>= fun src_uids ->
-    char ' ' >> uid_set >>= fun dst_uids ->
-    ret (RESP_TEXT_CODE_COPYUID (Uid.of_uint32 uidvalidity, src_uids, dst_uids))
-  in
-  let highestmodseq =
-    char ' ' >> mod_sequence_value >>= fun modseq -> ret (RESP_TEXT_CODE_HIGHESTMODSEQ modseq)
-  in
-  let modified =
-    char ' ' >> sequence_set >>= fun set -> ret (RESP_TEXT_CODE_MODIFIED set)
-  in
+  (* let appenduid = *)
+    (* char ' ' >> nz_number >>= fun uidvalidity -> *)
+    (* nz_number >>= fun uid -> ret (RESP_TEXT_CODE_APPENDUID (Uid.of_uint32 uidvalidity, Uid.of_uint32 uid)) *)
+  (* in *)
+  (* let copyuid = *)
+    (* char ' ' >> nz_number >>= fun uidvalidity -> *)
+    (* uid_set >>= fun src_uids -> *)
+    (* char ' ' >> uid_set >>= fun dst_uids -> *)
+    (* ret (RESP_TEXT_CODE_COPYUID (Uid.of_uint32 uidvalidity, src_uids, dst_uids)) *)
+  (* in *)
+  (* let highestmodseq = *)
+    (* char ' ' >> mod_sequence_value >>= fun modseq -> ret (RESP_TEXT_CODE_HIGHESTMODSEQ modseq) *)
+  (* in *)
+  (* let modified = *)
+    (* char ' ' >> sequence_set >>= fun set -> ret (RESP_TEXT_CODE_MODIFIED set) *)
+  (* in *)
   let other a = opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s)) in
   altn [
     (str "ALERT" >> ret RESP_TEXT_CODE_ALERT);
@@ -637,13 +637,13 @@ let resp_text_code =
     (str "UIDNEXT" >> uidnext);
     (str "UIDVALIDITY" >> uidvalidity);
     (str "UNSEEN" >> unseen);
-    (str "APPENDUID" >> appenduid);
-    (str "COPYUID" >> copyuid);
+    (* (str "APPENDUID" >> appenduid); *)
+    (* (str "COPYUID" >> copyuid); *)
     (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY);
-    (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE);
-    (str "HIGHESTMODSEQ" >> highestmodseq);
-    (str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ);
-    (str "MODIFIED" >> modified);
+    (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
+    (* (str "HIGHESTMODSEQ" >> highestmodseq); *)
+    (* (str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ); *)
+    (* (str "MODIFIED" >> modified); *)
     (atom >>= other)
   ]
 

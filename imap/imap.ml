@@ -90,6 +90,7 @@ let create_session () = {
 
 let handle_response s r =
   s.state <- ImapState.response_store s.state r;
+  ImapPrint.response_print Format.err_formatter r;
   let rsp_text =
     match r.rsp_resp_done with
       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text}}
@@ -110,6 +111,7 @@ let handle_response s r =
 
 let handle_greeting s g =
   s.state <- greeting_store s.state g;
+  ImapPrint.greeting_print Format.err_formatter g;
   match g with
     GREETING_RESP_COND_BYE r ->
       s.imap_response <- r.rsp_text;

@@ -546,13 +546,13 @@ type resp_text_code =
   | RESP_TEXT_CODE_UIDNEXT of Uid.t
   | RESP_TEXT_CODE_UIDVALIDITY of Uid.t
   | RESP_TEXT_CODE_UNSEEN of Seq.t
-  | RESP_TEXT_CODE_APPENDUID of Uid.t * Uid.t
-  | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t
+  (* | RESP_TEXT_CODE_APPENDUID of Uid.t * Uid.t *)
+  (* | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t *)
   | RESP_TEXT_CODE_UIDNOTSTICKY
-  | RESP_TEXT_CODE_COMPRESSIONACTIVE
-  | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t
-  | RESP_TEXT_CODE_NOMODSEQ
-  | RESP_TEXT_CODE_MODIFIED of Uint32_set.t
+  (* | RESP_TEXT_CODE_COMPRESSIONACTIVE *)
+  (* | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t *)
+  (* | RESP_TEXT_CODE_NOMODSEQ *)
+  (* | RESP_TEXT_CODE_MODIFIED of Uint32_set.t *)
   | RESP_TEXT_CODE_OTHER of (string * string)
   | RESP_TEXT_CODE_NONE
   
@@ -629,12 +629,6 @@ type response_done =
     RESP_DONE_TAGGED of response_tagged
   | RESP_DONE_FATAL of response_fatal
 
-(** {2 Greeting response} *)
-  
-type greeting =
-    GREETING_RESP_COND_AUTH of resp_cond_auth
-  | GREETING_RESP_COND_BYE of resp_cond_bye
-
 type continue_req =
     CONTINUE_REQ_TEXT of resp_text
   | CONTINUE_REQ_BASE64 of string
@@ -647,3 +641,10 @@ type response = {
   rsp_cont_req_or_resp_data_list : cont_req_or_resp_data list;
   rsp_resp_done : response_done
 }
+
+(** {2 Greeting response} *)
+  
+type greeting =
+    GREETING_RESP_COND_AUTH of resp_cond_auth
+  | GREETING_RESP_COND_BYE of resp_cond_bye
+

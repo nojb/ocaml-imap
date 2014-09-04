@@ -100,20 +100,20 @@ let resp_text_store s {rsp_code; rsp_text} =
       {s with sel_info = {s.sel_info with sel_uidvalidity = uid}}
   | RESP_TEXT_CODE_UNSEEN unseen ->
       {s with sel_info = {s.sel_info with sel_first_unseen = unseen}}
-  | RESP_TEXT_CODE_APPENDUID (uidvalidity, uid) ->
-      {s with rsp_info = {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}}
-  | RESP_TEXT_CODE_COPYUID (uidvalidity, src_uids, dst_uids) ->
-      {s with rsp_info = {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}}
+  (* | RESP_TEXT_CODE_APPENDUID (uidvalidity, uid) -> *)
+      (* {s with rsp_info = {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}} *)
+  (* | RESP_TEXT_CODE_COPYUID (uidvalidity, src_uids, dst_uids) -> *)
+      (* {s with rsp_info = {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}} *)
   | RESP_TEXT_CODE_UIDNOTSTICKY ->
       {s with sel_info = {s.sel_info with sel_uidnotsticky = true}}
-  | RESP_TEXT_CODE_COMPRESSIONACTIVE ->
-      {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}}
-  | RESP_TEXT_CODE_HIGHESTMODSEQ modseq ->
-      {s with sel_info = {s.sel_info with sel_highestmodseq = modseq}}
-  | RESP_TEXT_CODE_NOMODSEQ ->
-      {s with sel_info = {s.sel_info with sel_highestmodseq = Modseq.zero}}
-  | RESP_TEXT_CODE_MODIFIED set ->
-      {s with rsp_info = {s.rsp_info with rsp_modified = set}}
+  (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
+      (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
+  (* | RESP_TEXT_CODE_HIGHESTMODSEQ modseq -> *)
+      (* {s with sel_info = {s.sel_info with sel_highestmodseq = modseq}} *)
+  (* | RESP_TEXT_CODE_NOMODSEQ -> *)
+      (* {s with sel_info = {s.sel_info with sel_highestmodseq = Modseq.zero}} *)
+  (* | RESP_TEXT_CODE_MODIFIED set -> *)
+      (* {s with rsp_info = {s.rsp_info with rsp_modified = set}} *)
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
