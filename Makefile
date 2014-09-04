@@ -1,9 +1,20 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-lib:
-	$(OCAMLBUILD) imap/imapClient.byte
+all: imap/imap.cma imap/imap.cmxa
+
+%.cma:
+	$(OCAMLBUILD) $@
+
+%.cmxa:
+	$(OCAMLBUILD) $@
+
+%.native:
+	$(OCAMLBUILD) $@
+
+%.byte:
+	$(OCAMLBUILD) $@
 
 clean:
 	$(OCAMLBUILD) -clean
 
-.PHONY: clean lib
+.PHONY: clean all

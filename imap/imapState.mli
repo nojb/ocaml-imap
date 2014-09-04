@@ -36,7 +36,6 @@ type response_info = {
 }
 
 type state = {
-  imap_response : string;
   rsp_info : response_info;
   sel_info : selection_info;
   cap_info : capability list
@@ -46,7 +45,7 @@ val fresh_selection_info : selection_info
   
 val fresh_response_info : response_info
 
-val greetings_store : state -> greeting -> state
+val greeting_store : state -> greeting -> state
 
 val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
@@ -77,8 +76,3 @@ val has_namespace : state -> bool
 
 val has_enable : state -> bool
 (** Whether the IMAP server supports the ENABLE extension. *)
-
-val last_response : state -> string
-(** The descriptive text of the last tagged response (or the last BYE
-    (untagged) response from the server. *)
-

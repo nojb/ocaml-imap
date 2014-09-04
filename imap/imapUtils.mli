@@ -35,11 +35,11 @@ val decode_mutf7 : string -> string
 
 (** {2 List} *)
 
-val option_map : ('a -> 'b option) -> 'a list -> 'b list
+(* val option_map : ('a -> 'b option) -> 'a list -> 'b list *)
 (** Map with a function returning an option, dropping all [None] results and
     extracting all [Some] ones. *)
 
 (** {2 String} *)
-val compare_ci : string -> string -> int
+(* val compare_ci : string -> string -> int *)
 
-val log : [ `Client | `Server ] -> string -> unit
+(* val log : [ `Client | `Server ] -> string -> unit *)

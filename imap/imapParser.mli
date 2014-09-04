@@ -48,7 +48,8 @@ val rep : 'a t -> 'a list t
 val rep1 : 'a t -> 'a list t
 val sep : _ t -> 'a t -> 'a list t
 val sep1 : _ t -> 'a t -> 'a list t
-
+val fix : (unit -> 'a t) -> 'a t
+    
 val char : char -> char t
 val str : string -> string t (* case-insensitive *)
 val accum : (char -> bool) -> string t

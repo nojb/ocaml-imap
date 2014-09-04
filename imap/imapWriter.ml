@@ -293,15 +293,15 @@ let rec search_key =
   | SEARCH_KEY_UNDRAFT -> raw "UNDRAFT"
   | SEARCH_KEY_INSET set -> message_set (seq_set_to_uint32_set set)
   | SEARCH_KEY_AND (q1, q2) ->
-    raw "(" ++ search_key q1 ++ raw " " ++ search_key q2 ++ raw ")"
+      raw "(" ++ search_key q1 ++ raw " " ++ search_key q2 ++ raw ")"
   | SEARCH_KEY_MODSEQ (ext, modseq) ->
-    raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Modseq.to_string modseq)
+      raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Modseq.to_string modseq)
   | SEARCH_KEY_XGMRAW str ->
-    raw "X-GM-RAW " ++ quoted_string str
+      raw "X-GM-RAW " ++ quoted_string str
   | SEARCH_KEY_XGMMSGID msgid ->
-    raw "X-GM-MSGID " ++ raw (Gmsgid.to_string msgid)
+      raw "X-GM-MSGID " ++ raw (Gmsgid.to_string msgid)
   | SEARCH_KEY_XGMTHRID thrid ->
-    raw "X-GM-THRID " ++ raw (Gthrid.to_string thrid)
+      raw "X-GM-THRID " ++ raw (Gthrid.to_string thrid)
   (* | SEARCH_KEY_XGMLABELS lab -> *)
   (*   raw "X-GM-LABEL " ++ gm_label lab *)
 

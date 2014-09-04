@@ -36,7 +36,6 @@ type response_info = {
 }
 
 type state = {
-  imap_response : string;
   rsp_info : response_info;
   sel_info : selection_info;
   cap_info : capability list
@@ -66,7 +65,7 @@ let fresh_response_info = {
 
 let fresh_selection_info = {
   sel_perm_flags = [];
-  sel_perm = assert false; (* READ_ONLY; FIXME *)
+  sel_perm = `READ_ONLY; (* FIXME *)
   sel_uidnext = Uid.zero;
   sel_uidvalidity = Uid.zero;
   sel_first_unseen = Seq.zero;
@@ -192,13 +191,10 @@ let response_tagged_store s {rsp_cond_state = r} =
 let response_fatal_store s r =
   resp_cond_bye_store s r
 
-let resp_cond_auth_store s =
-  function
-    RESP_COND_AUTH_OK r
-  | RESP_COND_AUTH_PREAUTH r ->
-      resp_text_store s r
+let resp_cond_auth_store s {rsp_text = r} =
+  resp_text_store s r
 
-let greetings_store s =
+let greeting_store s =
   function
     GREETING_RESP_COND_AUTH r ->
       resp_cond_auth_store s r
@@ -211,9 +207,8 @@ let text_of_response_done =
   | RESP_DONE_FATAL rsp_text ->
     rsp_text
 
-let response_done_store s r =
-  (* let s = {s with imap_response = text_of_response_done r} in *)
-  match r with
+let response_done_store s =
+  function
     RESP_DONE_TAGGED r ->
       response_tagged_store s r
   | RESP_DONE_FATAL r ->
@@ -232,8 +227,9 @@ let response_store s {rsp_cont_req_or_resp_data_list; rsp_resp_done} =
     rsp_resp_done
 
 let has_capability_name s name =
+  let name = String.uppercase name in
   List.exists
-    (function CAPABILITY_NAME x -> ImapUtils.compare_ci x name = 0
+    (function CAPABILITY_NAME x -> String.uppercase x = name
             | CAPABILITY_AUTH_TYPE _ -> false)
     s.cap_info
 
@@ -257,6 +253,3 @@ let has_namespace s =
 
 let has_enable s =
   has_capability_name s "ENABLE"
-
-let last_response s =
-  s.imap_response

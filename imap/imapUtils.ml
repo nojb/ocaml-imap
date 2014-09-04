@@ -79,50 +79,50 @@ let rec option_map f = function
 let compare_ci s1 s2 =
   compare (String.uppercase s1) (String.uppercase s2)
 
-(* The default logger echoes both input and output to [stderr].  In order to
-   make them look a little nicer, new lines are preceded by "S: " or "C: "
-   depending on the case.  Here a new line means either "\r\n" or "\n". *)
-let log =
-  let read_st = ref `NL in
-  let write_st = ref `NL in
-  fun origin str ->
-    let len = String.length str in
-    let header = match origin with
-      | `Client -> "C: "
-      | `Server -> "S: "
-    in
-    let rec loop st off =
-      if off >= len then
-        st
-      else
-        let header = match st with
-          | `NL -> header
-          | `CR -> "\r"
-          | `Other -> ""
-        in
-        try
-          let idx = String.index_from str off '\n' in
-          if idx = off && (match st with `CR -> true | _ -> false) then begin
-            prerr_newline ();
-            loop `NL (off + 1)
-          end else begin
-            let hascr = idx > 0 && str.[idx-1] = '\r' in
-            let str' = String.sub str off (if hascr then idx-off-1 else idx-off) in
-            prerr_string header;
-            prerr_string str';
-            prerr_newline ();
-            loop `NL (idx + 1)
-          end
-        with
-        | Not_found ->
-          let hascr = len > 0 && str.[len-1] = '\r' in
-          let str' = String.sub str off (if hascr then len-off-1 else len-off) in
-          prerr_string header;
-          prerr_string str';
-          if hascr then `CR else `Other
-    in
-    match origin with
-    | `Client ->
-      write_st := loop !write_st 0
-    | `Server ->
-      read_st := loop !read_st 0
+(* (\* The default logger echoes both input and output to [stderr].  In order to *)
+(*    make them look a little nicer, new lines are preceded by "S: " or "C: " *)
+(*    depending on the case.  Here a new line means either "\r\n" or "\n". *\) *)
+(* let log = *)
+(*   let read_st = ref `NL in *)
+(*   let write_st = ref `NL in *)
+(*   fun origin str -> *)
+(*     let len = String.length str in *)
+(*     let header = match origin with *)
+(*       | `Client -> "C: " *)
+(*       | `Server -> "S: " *)
+(*     in *)
+(*     let rec loop st off = *)
+(*       if off >= len then *)
+(*         st *)
+(*       else *)
+(*         let header = match st with *)
+(*           | `NL -> header *)
+(*           | `CR -> "\r" *)
+(*           | `Other -> "" *)
+(*         in *)
+(*         try *)
+(*           let idx = String.index_from str off '\n' in *)
+(*           if idx = off && (match st with `CR -> true | _ -> false) then begin *)
+(*             prerr_newline (); *)
+(*             loop `NL (off + 1) *)
+(*           end else begin *)
+(*             let hascr = idx > 0 && str.[idx-1] = '\r' in *)
+(*             let str' = String.sub str off (if hascr then idx-off-1 else idx-off) in *)
+(*             prerr_string header; *)
+(*             prerr_string str'; *)
+(*             prerr_newline (); *)
+(*             loop `NL (idx + 1) *)
+(*           end *)
+(*         with *)
+(*         | Not_found -> *)
+(*           let hascr = len > 0 && str.[len-1] = '\r' in *)
+(*           let str' = String.sub str off (if hascr then len-off-1 else len-off) in *)
+(*           prerr_string header; *)
+(*           prerr_string str'; *)
+(*           if hascr then `CR else `Other *)
+(*     in *)
+(*     match origin with *)
+(*     | `Client -> *)
+(*       write_st := loop !write_st 0 *)
+(*     | `Server -> *)
+(*       read_st := loop !read_st 0 *)

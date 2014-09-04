@@ -20,34 +20,9 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-module type S = sig
-  type 'a t
-      
-  val bind : 'a t -> ('a -> 'b t) -> 'b t
-  val return : 'a -> 'a t
-  val fail : exn -> 'a t
-  val catch : (unit -> 'a t) -> (exn -> 'a t) -> 'a t
-      
-  type mutex
-  val create_mutex : unit -> mutex
-  val is_locked : mutex -> bool
-  val with_lock : mutex -> (unit -> 'a t) -> 'a t
+open ImapTypes
 
-  type input
-  type output
+type session
 
-  val read : int -> input -> string t
-  val write : output -> string -> unit t
-  val flush : output -> unit t
-      
-  val connect : int -> string -> (input * output) t
-  val disconnect : (input * output) -> unit t
-      
-  val connect_ssl : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
-    int -> string -> (input * output) t
-  
-  val starttls : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string ->
-    input * output -> (input * output) t
-      
-  val compress : input * output -> input * output
-end
+val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
+val connect : session -> [ `Bye | `Ok of resp_cond_auth_type ]

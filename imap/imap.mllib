@@ -1,12 +1,8 @@
-ImapMime
 ImapTypes
 ImapSet
-ImapClient
+Imap
 ImapAuth
-IO
 ImapState
 ImapWriter
 ImapParser
-ImapResponse
 ImapUtils
-ImapUint

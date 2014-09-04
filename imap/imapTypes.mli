@@ -519,14 +519,6 @@ type capability =
     CAPABILITY_AUTH_TYPE of string
   | CAPABILITY_NAME of string
 
-(** {2 NAMESPACE command} *)
-
-(* type namespace = { *)
-(*   ns_prefix : string; *)
-(*   ns_delimiter : char; *)
-(*   ns_extensions : (string * string list) list *)
-(* } with sexp *)
-
 (** List of capabilities *)
 type capability_data =
   capability list
@@ -563,10 +555,18 @@ type resp_text = {
 
 (** {2 Untagged responses} *)
 
+type 'resp_type resp_cond = {
+  rsp_type : 'resp_type;
+  rsp_text : resp_text
+}
+
 (** Authentication condition responses *)
+type resp_cond_auth_type =
+    RESP_COND_AUTH_OK
+  | RESP_COND_AUTH_PREAUTH
+
 type resp_cond_auth =
-    RESP_COND_AUTH_OK of resp_text
-  | RESP_COND_AUTH_PREAUTH of resp_text
+  resp_cond_auth_type resp_cond
 
 (** BYE response *)
 type resp_cond_bye =
@@ -581,10 +581,8 @@ type resp_cond_state_type =
   | RESP_COND_STATE_NO
   | RESP_COND_STATE_BAD
 
-type resp_cond_state = {
-  rsp_type : resp_cond_state_type;
-  rsp_text : resp_text
-}
+type resp_cond_state =
+  resp_cond_state_type resp_cond
 
 (** Message information *)
 type message_data =
@@ -601,15 +599,6 @@ type mailbox_data =
   | MAILBOX_DATA_EXISTS of int
   | MAILBOX_DATA_RECENT of int
 
-(* type id_response = *)
-(*   [ `ID of (string * string) list ] with sexp *)
-
-(* type namespace_response = *)
-(*   [ `NAMESPACE of namespace list * namespace list * namespace list ] with sexp *)
-
-(* type enable_response = *)
-(*   [ `ENABLED of capability list ] with sexp *)
-
 (** Untagged response *)
 type response_data =
     RESP_DATA_COND_STATE of resp_cond_state
@@ -618,22 +607,6 @@ type response_data =
   | RESP_DATA_MESSAGE_DATA of message_data
   | RESP_DATA_CAPABILITY_DATA of capability_data
   (* | RESP_DATA_EXTENSION_DATA of extension_data *)
-  (* [ resp_cond_state *)
-  (* (\** Condition state response *\) *)
-  (* | resp_cond_bye *)
-  (* (\** BYE response (server is about to close the connection) *\) *)
-  (* | mailbox_data *)
-  (* (\** Mailbox information *\) *)
-  (* | message_data *)
-  (* (\** Message information *\) *)
-  (* | capability_data *)
-  (* (\** Capability information *\) *)
-  (* | id_response *)
-  (* (\** ID response *\) *)
-  (* | namespace_response *)
-  (* (\** NAMESPACE response *\) *)
-  (* | enable_response *)
-  (* (\** ENABLE response *\) ] with sexp *)
 
 (** {2 Tagged responses} *)
   

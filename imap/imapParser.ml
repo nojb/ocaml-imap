@@ -90,6 +90,9 @@ let sep1 s p =
 let sep s p =
   alt (sep1 s p) (ret [])
 
+let fix f b i =
+  f () b i
+
 let rec char c b i =
   if i >= Buffer.length b then
     Need (1, function End -> Fail i | More -> char c b i)
@@ -915,7 +918,7 @@ body-extension  = nstring / number /
 *)
 let rec body_extension () =
   altn [
-    (char '(' >> sep1 (char ' ') (body_extension ()) >>= fun xs -> char ')' >> ret (BODY_EXTENSION_LIST xs));
+    (char '(' >> sep1 (char ' ') (fix body_extension) >>= fun xs -> char ')' >> ret (BODY_EXTENSION_LIST xs));
     (number >>= fun n -> ret (BODY_EXTENSION_NUMBER n));
     (nstring >>= fun s -> ret (BODY_EXTENSION_NSTRING s))
   ]
@@ -940,7 +943,7 @@ let body_ext_1part =
           opt
             begin
               char ' ' >> body_fld_loc >>= fun bd_loc ->
-              rep (char ' ' >> body_extension ()) >>= fun bd_extension_list ->
+              rep (char ' ' >> fix body_extension) >>= fun bd_extension_list ->
               ret {bd_md5; bd_disposition; bd_language; bd_loc; bd_extension_list}
             end
             {bd_md5; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []}
@@ -966,7 +969,7 @@ let body_ext_mpart =
           opt
             begin
               char ' ' >> body_fld_loc >>= fun bd_loc ->
-              rep (char ' ' >> body_extension ()) >>= fun bd_extension_list ->
+              rep (char ' ' >> fix body_extension) >>= fun bd_extension_list ->
               ret {bd_parameter; bd_disposition; bd_language; bd_loc; bd_extension_list}
             end
             {bd_parameter; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []}
@@ -991,7 +994,7 @@ body-type-msg   = media-message SP body-fields SP envelope
 and body_type_msg () =
   media_message >> char ' ' >> body_fields >>= fun bd_fields ->
   char ' ' >> envelope >>= fun bd_envelope ->
-  char ' ' >> body () >>= fun bd_body ->
+  char ' ' >> fix body >>= fun bd_body ->
   ret {bd_fields; bd_envelope; bd_body}
 
 (*
@@ -1009,9 +1012,9 @@ body-type-1part = (body-type-basic / body-type-msg / body-type-text)
 *)
 and body_type_1part () =
   altn [
-    (body_type_msg () >>= fun b -> ret (BODY_TYPE_1PART_MSG b));
-    (body_type_text () >>= fun b -> ret (BODY_TYPE_1PART_TEXT b));
-    (body_type_basic () >>= fun b -> ret (BODY_TYPE_1PART_BASIC b))
+    (fix body_type_msg >>= fun b -> ret (BODY_TYPE_1PART_MSG b));
+    (fix body_type_text >>= fun b -> ret (BODY_TYPE_1PART_TEXT b));
+    (fix body_type_basic >>= fun b -> ret (BODY_TYPE_1PART_BASIC b))
   ] >>= fun bd_data ->
   opt
     (char ' ' >> body_ext_1part)
@@ -1024,7 +1027,7 @@ body-type-mpart = 1*body SP media-subtype
                   [SP body-ext-mpart]
 *)
 and body_type_mpart () =
-  rep1 (body ()) >>= fun bd_list ->
+  rep1 (fix body) >>= fun bd_list ->
   char ' ' >> media_subtype >>= fun bd_media_subtype ->
   body_ext_mpart >>= fun bd_ext_mpart ->
   ret {bd_list; bd_media_subtype; bd_ext_mpart}
@@ -1035,8 +1038,8 @@ body            = "(" (body-type-1part / body-type-mpart) ")"
 and body () =
   char '(' >>
   alt
-    (body_type_1part () >>= fun b -> ret (BODY_1PART b))
-    (body_type_mpart () >>= fun b -> ret (BODY_MPART b))
+    (fix body_type_1part >>= fun b -> ret (BODY_1PART b))
+    (fix body_type_mpart >>= fun b -> ret (BODY_MPART b))
   >>= fun b ->
   char ')' >>
   ret b
@@ -1185,7 +1188,7 @@ let msg_att_static =
     (str "RFC822.TEXT" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822_TEXT s));
     (str "RFC822.SIZE" >> char ' ' >> number' >>= fun n -> ret (MSG_ATT_RFC822_SIZE n));
     (str "RFC822" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822 s));
-    (str "BODYSTRUCTURE" >> char ' ' >> body () >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
+    (str "BODYSTRUCTURE" >> char ' ' >> fix body >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
     (* str "BODY" >> body; *)
     (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID (Uid.of_uint32 uid)));
     (* (str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_MSGID (Gmsgid.of_uint64 n))); *)
@@ -1213,19 +1216,6 @@ let msg_att_dynamic =
   sep (char ' ') flag_fetch >>= fun flags ->
   char ')' >>
   ret flags
-  (* let flags = char ' ' >> flag_list >>= fun flags -> ret (`FLAGS flags) in *)
-  (* let modseq = char ' ' >> char '(' >> permsg_modsequence >>= fun n -> char ')' >> ret (`MODSEQ n) in *)
-  (* let x_gm_labels = *)
-  (*   char ' ' >> char '(' >> *)
-  (*   sep (char ' ') astring >>= fun labs -> *)
-  (*   char ')' >> *)
-  (*   ret (`X_GM_LABELS (List.map ImapUtils.decode_mutf7 labs)) *)
-  (* in *)
-  (* altn [ *)
-  (*   str "FLAGS" >> flags; *)
-  (*   str "MODSEQ" >> modseq; *)
-  (*   str "X-GM-LABELS" >> x_gm_labels *)
-  (* ] *)
 
 (*
 msg-att         = "(" (msg-att-dynamic / msg-att-static)
@@ -1328,9 +1318,10 @@ resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
                     ; Authentication condition
 *)
 let resp_cond_auth =
-  alt
-    (str "OK" >> char ' ' >> resp_text >>= fun rt -> ret (RESP_COND_AUTH_OK rt))
-    (str "PREAUTH" >> char ' ' >> resp_text >>= fun rt -> ret (RESP_COND_AUTH_PREAUTH rt))
+  alt (str "OK" >> ret RESP_COND_AUTH_OK) (str "PREAUTH" >> ret RESP_COND_AUTH_PREAUTH) >>=
+  fun rsp_type ->
+  char ' ' >> resp_text >>= fun rsp_text ->
+  ret {rsp_type; rsp_text}
 
 (*
 resp-cond-bye   = "BYE" SP resp-text
@@ -1358,90 +1349,6 @@ let continue_req =
   alt
     (base64 >>= fun b64 -> str "\r\n" >> ret (CONTINUE_REQ_BASE64 b64))
     (resp_text >>= fun rt -> str "\r\n" >> ret (CONTINUE_REQ_TEXT rt))
-
-(*
-id_params_list ::= "(" #(string SPACE nstring) ")" / nil
-         ;; list of field value pairs
-*)
-let id_params_list =
-  let param =
-    imap_string >>= fun k ->
-    char ' ' >>
-    nstring >>= fun v ->
-    ret (k, v)
-  in
-  alt
-    begin
-      char '(' >>
-      sep1 (char ' ') param >>= fun xs ->
-      char ')' >>
-      ret (ImapUtils.option_map (function (k, Some v) -> Some (k, v) | (_, None) -> None) xs)
-    end
-    (nil >> ret [])
-  
-(*
-id_response ::= "ID" SPACE id_params_list
-*)
-(* let id_response = *)
-(*   str "ID" >> char ' ' >> id_params_list >>= fun params -> ret (`ID params) *)
-
-(*
-Namespace_Response_Extension = SP string SP "(" string *(SP string) ")"
-*)
-(* let namespace_response_extension = *)
-(*   char ' ' >> *)
-(*   imap_string >>= fun n -> *)
-(*   char ' ' >> *)
-(*   char '(' >> *)
-(*   sep1 (char ' ') imap_string >>= fun xs -> *)
-(*   char ')' >> *)
-(*   ret (n, xs) *)
-  
-(*
-Namespace = nil / "(" 1*( "(" string SP  (<"> QUOTED_CHAR <"> /
-      nil) *(Namespace_Response_Extension) ")" ) ")"
-*)
-(* let namespace = *)
-(*   alt *)
-(*     (nil >> ret []) *)
-(*     begin *)
-(*       char '(' >> *)
-(*       rep1 *)
-(*         begin *)
-(*           char '(' >> imap_string >>= fun ns_prefix -> *)
-(*           char ' ' >> *)
-(*           alt quoted_char (nil >> ret '\000') >>= fun ns_delimiter -> *)
-(*           rep namespace_response_extension >>= fun ns_extensions -> *)
-(*           char ')' >> *)
-(*           ret {ns_prefix; ns_delimiter; ns_extensions} *)
-(*         end >>= fun x -> *)
-(*       char ')' >> *)
-(*       ret x *)
-(*     end *)
-
-(*
-Namespace_Response = "*" SP "NAMESPACE" SP Namespace SP Namespace SP
-      Namespace
-
-      ; The first Namespace is the Personal Namespace(s)
-      ; The second Namespace is the Other Users' Namespace(s)
-      ; The third Namespace is the Shared Namespace(s)
-*)
-(* let namespace_response = *)
-(*   str "NAMESPACE" >> *)
-(*   char ' ' >> namespace >>= fun personal -> *)
-(*   char ' ' >> namespace >>= fun others -> *)
-(*   char ' ' >> namespace >>= fun shared -> *)
-(*   ret (`NAMESPACE (personal, others, shared)) *)
-
-(*
-enable-data   = "ENABLED" *(SP capability)
-*)
-(* let enable_data = *)
-(*   str "ENABLED" >> *)
-(*   rep (char ' ' >> capability) >>= fun caps -> *)
-(*   ret (`ENABLED caps) *)
-    (* FIXME *)
 
 (*
 response-data   = "*" SP (resp-cond-state / resp-cond-bye /
