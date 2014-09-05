@@ -221,9 +221,7 @@ type session = {
   mutable next_tag : int;
   mutable state : state;
   mutable imap_response : string;
-  mutable imap_tag : string;
-  mutable i : int;
-  buffer : Buffer.t
+  mutable imap_tag : string
 }
 
 (* exception NO *)
@@ -242,9 +240,7 @@ let create_session () = {
     cap_info = []
   };
   imap_response = "";
-  imap_tag = "";
-  i = 0;
-  buffer = Buffer.create 0
+  imap_tag = ""
 }
 
 (* let run_parser session p = *)

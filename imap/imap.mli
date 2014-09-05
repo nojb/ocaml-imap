@@ -37,9 +37,7 @@ type session = {
   mutable next_tag : int;
   mutable state : state;
   mutable imap_response : string;
-  mutable imap_tag : string;
-  mutable i : int;
-  buffer : Buffer.t
+  mutable imap_tag : string
 }
 
 val next_tag : session -> string

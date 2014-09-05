@@ -25,14 +25,16 @@ open Imap
 
 type session = {
   sock : Ssl.socket;
-  imap_session : Imap.session
+  imap_session : Imap.session;
+  buffer : Buffer.t;
+  mutable pos : int
 }
 
 let parse s p =
   let rec loop =
     function
       Ok (x, i) ->
-        s.imap_session.i <- i;
+        s.pos <- i;
         x
     | Fail i ->
         failwith "parse error" (* FIXME *)
@@ -44,10 +46,10 @@ let parse s p =
             loop (k End)
         | _ as n ->
             (* prerr_string (String.sub buf 0 n); *)
-            Buffer.add_substring s.imap_session.buffer buf 0 n;
+            Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (p s.imap_session.buffer s.imap_session.i)
+  loop (p s.buffer s.pos)
 
 let connect s =
   let g = parse s ImapParser.greeting in
@@ -77,7 +79,7 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = create_session ()}
+  {sock; imap_session = create_session (); buffer = Buffer.create 0; pos = 0}
 
 let get_continuation_request s =
   parse s ImapParser.(continue_req >> ret ())
