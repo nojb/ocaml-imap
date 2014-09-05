@@ -40,7 +40,7 @@ let capability_print ppf =
     CAPABILITY_AUTH_TYPE t ->
       fprintf ppf "(auth-type %s)" t
   | CAPABILITY_NAME x ->
-      fprintf ppf "%s" x
+      fprintf ppf "(name %s)" x
 
 let flag_print ppf =
   function
