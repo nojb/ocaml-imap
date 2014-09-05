@@ -26,3 +26,4 @@ type session
 
 val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
 val connect : session -> [ `Bye | `Ok of resp_cond_auth_type ]
+val send_command : session -> 'a Imap.command -> [ `Bye | `Fail of [ `Bad | `BadTag | `No ] | `Ok of 'a ]

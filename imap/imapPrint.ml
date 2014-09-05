@@ -26,7 +26,7 @@ open ImapTypes
 let capability_print ppf =
   function
     CAPABILITY_AUTH_TYPE t ->
-      fprintf ppf "(auth-type@ %s)" t
+      fprintf ppf "(auth-type %s)" t
   | CAPABILITY_NAME x ->
       fprintf ppf "%s" x
 
@@ -43,9 +43,9 @@ let flag_print ppf =
   | FLAG_DRAFT ->
       fprintf ppf "draft"
   | FLAG_KEYWORD k ->
-      fprintf ppf "(keyword@ %S)" k
+      fprintf ppf "(keyword %S)" k
   | FLAG_EXTENSION k ->
-      fprintf ppf "(extension@ %S)" k
+      fprintf ppf "(extension %S)" k
 
 let flag_perm_print ppf =
   function

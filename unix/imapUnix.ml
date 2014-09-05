@@ -77,6 +77,32 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let sock = Ssl.open_connection ssl_method sockaddr in
   {sock; imap_session = create_session ()}
 
+let get_continuation_request s =
+  parse s ImapParser.(continue_req >> ret ())
+
+let run_sender s f =
+  try
+    ImapWriter.fold
+      (fun () a ->
+         match a with
+           `Raw str ->
+             Ssl.output_string s.sock str
+         | `Cont_req ->
+             Ssl.flush s.sock;
+             get_continuation_request s) () f
+  with
+    _ -> failwith "run_sender"
+      
+let send_command s cmd =
+  let tag = next_tag s.imap_session in
+  let f = ImapWriter.(raw tag ++ char ' ' ++ cmd.cmd_sender ++ crlf) in
+  run_sender s f;
+  let r = parse s cmd.cmd_parser in
+  match handle_response s.imap_session r with
+    `Fail x -> `Fail x
+  | `Ok _ -> `Ok (cmd.cmd_handler s.imap_session.state)
+  | `Bye -> `Bye
+
 (* module M = struct *)
 (*   class virtual input_chan = *)
 (*     object (self) *)

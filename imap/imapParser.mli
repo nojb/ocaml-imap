@@ -79,6 +79,8 @@ val greeting : ImapTypes.greeting t
 
 val response_done : ImapTypes.response_done t
 
+val continue_req : ImapTypes.continue_req t
+
 val cont_req_or_resp_data : ImapTypes.cont_req_or_resp_data t
 
 val response : ImapTypes.response t
