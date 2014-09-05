@@ -474,7 +474,7 @@ type status_att =
   | STATUS_ATT_HIGHESTMODSEQ
   (** The highest modification sequence of the mailbox.  This requires support
       for the CONDSTORE extension. *)
-  | STATUS_ATT_EXTENSION
+  (* | STATUS_ATT_EXTENSION *)
 
 (** STATUS replies. See {!status_att}. *)
 type status_info =
@@ -548,7 +548,7 @@ type resp_text_code =
   | RESP_TEXT_CODE_UNSEEN of Seq.t
   (* | RESP_TEXT_CODE_APPENDUID of Uid.t * Uid.t *)
   (* | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t *)
-  | RESP_TEXT_CODE_UIDNOTSTICKY
+  (* | RESP_TEXT_CODE_UIDNOTSTICKY *)
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE *)
   (* | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t *)
   (* | RESP_TEXT_CODE_NOMODSEQ *)
@@ -603,7 +603,7 @@ type mailbox_data =
     MAILBOX_DATA_FLAGS of flag list
   | MAILBOX_DATA_LIST of mailbox_list
   | MAILBOX_DATA_LSUB of mailbox_list
-  | MAILBOX_DATA_SEARCH of Uint32.t list * Modseq.t
+  | MAILBOX_DATA_SEARCH of Uint32.t list
   | MAILBOX_DATA_STATUS of mailbox_data_status
   | MAILBOX_DATA_EXISTS of int
   | MAILBOX_DATA_RECENT of int
@@ -647,4 +647,41 @@ type response = {
 type greeting =
     GREETING_RESP_COND_AUTH of resp_cond_auth
   | GREETING_RESP_COND_BYE of resp_cond_bye
+
+
+type mailbox_perm =
+    MAILBOX_READONLY
+  | MAILBOX_READWRITE
+
+type selection_info = {
+  sel_perm_flags : flag_perm list;
+  sel_perm : mailbox_perm;
+  sel_uidnext : Uid.t;
+  sel_uidvalidity : Uid.t;
+  sel_first_unseen : Seq.t;
+  sel_flags : flag list;
+  sel_exists : int option;
+  sel_recent : int option;
+  sel_unseen : int
+}
+
+type response_info = {
+  rsp_alert : string;
+  rsp_parse : string;
+  rsp_badcharset : string list;
+  rsp_trycreate : bool;
+  rsp_mailbox_list : mailbox_list list;
+  rsp_mailbox_lsub : mailbox_list list;
+  rsp_search_results : Uint32.t list;
+  rsp_status : mailbox_data_status;
+  rsp_expunged : Seq.t list;
+  rsp_fetch_list : msg_att list;
+  rsp_other : string * string
+}
+
+type state = {
+  rsp_info : response_info;
+  sel_info : selection_info;
+  cap_info : capability list
+}
 

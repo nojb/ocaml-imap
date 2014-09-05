@@ -639,7 +639,7 @@ let resp_text_code =
     (str "UNSEEN" >> unseen);
     (* (str "APPENDUID" >> appenduid); *)
     (* (str "COPYUID" >> copyuid); *)
-    (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY);
+    (* (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY); *)
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
     (* (str "HIGHESTMODSEQ" >> highestmodseq); *)
     (* (str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ); *)
@@ -1254,12 +1254,13 @@ let mailbox_data =
   let list_ = char ' ' >> mailbox_list >>= fun mb -> ret (MAILBOX_DATA_LIST mb) in
   let lsub = char ' ' >> mailbox_list >>= fun mb -> ret (MAILBOX_DATA_LSUB mb) in
   let search =
-    rep (char ' ' >> nz_number) >>= function
-    | [] ->
-        ret (MAILBOX_DATA_SEARCH ([], Modseq.zero))
-    | ns ->
-        opt (char ' ' >> search_sort_mod_seq) Modseq.zero >>= fun modseq ->
-        ret (MAILBOX_DATA_SEARCH (ns, modseq))
+    rep (char ' ' >> nz_number) >>= fun ns -> ret (MAILBOX_DATA_SEARCH ns)
+    (*   function *)
+    (* | [] -> *)
+    (*     ret (MAILBOX_DATA_SEARCH ([], Modseq.zero)) *)
+    (* | ns -> *)
+    (*     opt (char ' ' >> search_sort_mod_seq) Modseq.zero >>= fun modseq -> *)
+    (*     ret (MAILBOX_DATA_SEARCH (ns, modseq)) *)
   in
   let status =
     char ' ' >> mailbox >>= fun mb ->

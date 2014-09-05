@@ -23,80 +23,30 @@
 open ImapUtils
 open ImapTypes
 
-type selection_info = {
-  sel_perm_flags : flag_perm list;
-  sel_perm : [ `READ_ONLY | `READ_WRITE ];
-  sel_uidnext : Uid.t;
-  sel_uidvalidity : Uid.t;
-  sel_first_unseen : Seq.t;
-  sel_flags : flag list;
-  sel_exists : int option;
-  sel_recent : int option;
-  sel_uidnotsticky : bool;
-  sel_highestmodseq : Modseq.t
-}
-
-type response_info = {
-  rsp_alert : string;
-  rsp_parse : string;
-  rsp_badcharset : string list;
-  rsp_trycreate : bool;
-  rsp_mailbox_list : mailbox_list list;
-  (* rsp_mailbox_lsub : mailbox_list list; *)
-  rsp_search_results : Uint32.t list;
-  rsp_search_results_modseq : Modseq.t;
-  rsp_status : mailbox_data_status;
-  rsp_expunged : Seq.t list;
-  rsp_fetch_list : msg_att list;
-  rsp_appenduid : Uid.t * Uid.t;
-  rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
-  rsp_compressionactive : bool;
-  rsp_id : (string * string) list;
-  rsp_modified : Uint32_set.t;
-  (* rsp_namespace : namespace list * namespace list * namespace list; *)
-  rsp_enabled : capability list;
-  rsp_other : string * string
-}
-
-type state = {
-  rsp_info : response_info;
-  sel_info : selection_info;
-  cap_info : capability list
-}
-
 let fresh_response_info = {
   rsp_alert = "";
   rsp_parse = "";
   rsp_badcharset = [];
   rsp_trycreate = false;
   rsp_mailbox_list = [];
-  (* rsp_mailbox_lsub = []; *)
+  rsp_mailbox_lsub = [];
   rsp_search_results = [];
-  rsp_search_results_modseq = Modseq.zero;
   rsp_status = {st_mailbox = ""; st_info_list = []};
   rsp_expunged = [];
   rsp_fetch_list = [];
-  rsp_appenduid = (Uid.zero, Uid.zero);
-  rsp_copyuid = (Uid.zero, Uid_set.empty, Uid_set.empty);
-  rsp_compressionactive = false;
-  rsp_id = [];
-  rsp_modified = Uint32_set.empty;
-  (* rsp_namespace = ([], [], []); *)
-  rsp_enabled = [];
   rsp_other = ("", "")
 }
 
 let fresh_selection_info = {
   sel_perm_flags = [];
-  sel_perm = `READ_ONLY; (* FIXME *)
+  sel_perm = MAILBOX_READONLY;
   sel_uidnext = Uid.zero;
   sel_uidvalidity = Uid.zero;
   sel_first_unseen = Seq.zero;
   sel_flags = [];
   sel_exists = None;
   sel_recent = None;
-  sel_uidnotsticky = false;
-  sel_highestmodseq = Modseq.zero
+  sel_unseen = 0
 }
 
 let resp_text_store s {rsp_code; rsp_text} =
@@ -112,9 +62,9 @@ let resp_text_store s {rsp_code; rsp_text} =
   | RESP_TEXT_CODE_PERMANENTFLAGS flags ->
       {s with sel_info = {s.sel_info with sel_perm_flags = flags}}
   | RESP_TEXT_CODE_READ_ONLY ->
-      {s with sel_info = {s.sel_info with sel_perm = `READ_ONLY}}
+      {s with sel_info = {s.sel_info with sel_perm = MAILBOX_READONLY}}
   | RESP_TEXT_CODE_READ_WRITE ->
-      {s with sel_info = {s.sel_info with sel_perm = `READ_WRITE}}
+      {s with sel_info = {s.sel_info with sel_perm = MAILBOX_READWRITE}}
   | RESP_TEXT_CODE_TRYCREATE ->
       {s with rsp_info = {s.rsp_info with rsp_trycreate = true}}
   | RESP_TEXT_CODE_UIDNEXT uid ->
@@ -127,8 +77,8 @@ let resp_text_store s {rsp_code; rsp_text} =
       (* {s with rsp_info = {s.rsp_info with rsp_appenduid = (uidvalidity, uid)}} *)
   (* | RESP_TEXT_CODE_COPYUID (uidvalidity, src_uids, dst_uids) -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_copyuid = (uidvalidity, src_uids, dst_uids)}} *)
-  | RESP_TEXT_CODE_UIDNOTSTICKY ->
-      {s with sel_info = {s.sel_info with sel_uidnotsticky = true}}
+  (* | RESP_TEXT_CODE_UIDNOTSTICKY -> *)
+      (* {s with sel_info = {s.sel_info with sel_uidnotsticky = true}} *)
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   (* | RESP_TEXT_CODE_HIGHESTMODSEQ modseq -> *)
@@ -155,12 +105,12 @@ let mailbox_data_store s =
                 {s.rsp_info with rsp_mailbox_list =
                                    s.rsp_info.rsp_mailbox_list @ [mb]}}
   (* rsp_mailbox_lsub = s.rsp_info.rsp_mailbox_lsub @ [mb] } *)
-  | MAILBOX_DATA_SEARCH (results, modseq) ->
+  | MAILBOX_DATA_SEARCH results ->
       {s with rsp_info = {s.rsp_info with
-                          rsp_search_results = s.rsp_info.rsp_search_results @ results;
-                          rsp_search_results_modseq =
-                            let max x y = if Modseq.compare x y <= 0 then y else x in
-                            max modseq s.rsp_info.rsp_search_results_modseq}}
+                          rsp_search_results = s.rsp_info.rsp_search_results @ results}}
+                          (* rsp_search_results_modseq = *)
+                            (* let max x y = if Modseq.compare x y <= 0 then y else x in *)
+                            (* max modseq s.rsp_info.rsp_search_results_modseq}} *)
   | MAILBOX_DATA_STATUS status ->
       {s with rsp_info = {s.rsp_info with rsp_status = status}}
   | MAILBOX_DATA_EXISTS n ->

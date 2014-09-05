@@ -24,47 +24,6 @@
 
 open ImapTypes
 
-type selection_info = {
-  sel_perm_flags : flag_perm list;
-  sel_perm : [ `READ_ONLY | `READ_WRITE ];
-  sel_uidnext : Uid.t;
-  sel_uidvalidity : Uid.t;
-  sel_first_unseen : Seq.t;
-  sel_flags : flag list;
-  sel_exists : int option;
-  sel_recent : int option;
-  sel_uidnotsticky : bool;
-  sel_highestmodseq : Modseq.t
-}
-
-type response_info = {
-  rsp_alert : string;
-  rsp_parse : string;
-  rsp_badcharset : string list;
-  rsp_trycreate : bool;
-  rsp_mailbox_list : mailbox_list list;
-  (* rsp_mailbox_lsub : mailbox_list list; *)
-  rsp_search_results : Uint32.t list;
-  rsp_search_results_modseq : Modseq.t;
-  rsp_status : mailbox_data_status;
-  rsp_expunged : Seq.t list;
-  rsp_fetch_list : msg_att list;
-  rsp_appenduid : Uid.t * Uid.t;
-  rsp_copyuid : Uid.t * Uid_set.t * Uid_set.t;
-  rsp_compressionactive : bool;
-  rsp_id : (string * string) list;
-  rsp_modified : Uint32_set.t;
-  (* rsp_namespace : namespace list * namespace list * namespace list; *)
-  rsp_enabled : capability list;
-  rsp_other : string * string
-}
-
-type state = {
-  rsp_info : response_info;
-  sel_info : selection_info;
-  cap_info : capability list
-}
-
 val greeting_store : state -> greeting -> state
 
 val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state

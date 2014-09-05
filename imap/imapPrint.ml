@@ -82,8 +82,8 @@ let resp_text_code_print ppf r =
         fprintf ppf "(uid-validity@ %s)" (Uid.to_string uid)
     | RESP_TEXT_CODE_UNSEEN n ->
         fprintf ppf "(unseen@ %s)" (Seq.to_string n)
-    | RESP_TEXT_CODE_UIDNOTSTICKY ->
-        fprintf ppf "uid-not-sticky"
+    (* | RESP_TEXT_CODE_UIDNOTSTICKY -> *)
+        (* fprintf ppf "uid-not-sticky" *)
     (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
         (* fprintf ppf "compression-active" *)
     (* | RESP_TEXT_CODE_HIGHESTMODSEQ m -> *)
@@ -210,7 +210,7 @@ let mailbox_data_print ppf r =
         fprintf ppf "@[<2>(list@ %a)@]" mailbox_list_print list
     | MAILBOX_DATA_LSUB list ->
         fprintf ppf "@[<2>(lsub@ %a)@]" mailbox_list_print list
-    | MAILBOX_DATA_SEARCH (ns, _) -> (* FIXME modseq *)
+    | MAILBOX_DATA_SEARCH ns ->
         let p ppf = List.iter (fun n -> fprintf ppf "@ %s" (Uint32.to_string n)) in
         fprintf ppf "@[<2>(search@%a)@]" p ns
     | MAILBOX_DATA_STATUS status ->
