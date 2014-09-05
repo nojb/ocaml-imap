@@ -675,59 +675,47 @@ let create mbox = {
   cmd_handler = fun _ -> ()
 }
 
-(* let create s mbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "CREATE" ++ space ++ mailbox mbox) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let delete mbox = {
+  cmd_sender = ImapWriter.(raw "DELETE" ++ char ' ' ++ mailbox mbox);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let delete s mbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "DELETE" ++ space ++ mailbox mbox) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let rename oldbox newbox = {
+  cmd_sender = ImapWriter.(raw "RENAME" ++ char ' ' ++ mailbox oldbox ++ char ' ' ++ mailbox newbox);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let rename s oldbox newbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "RENAME" ++ space ++ mailbox oldbox ++ space ++ mailbox newbox) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let subscribe mbox = {
+  cmd_sender = ImapWriter.(raw "SUBSCRIBE" ++ char ' ' ++ mailbox mbox);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let subscribe s mbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "SUBSCRIBE" ++ space ++ mailbox mbox) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let unsubscribe mbox = {
+  cmd_sender = ImapWriter.(raw "UNSUBCRIBE" ++ char ' ' ++ mailbox mbox);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let unsubscribe s mbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "UNSUBSCRIBE" ++ space ++ mailbox mbox) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let list mbox list_mb = {
+  cmd_sender = ImapWriter.(raw "LIST" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ mailbox list_mb);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun s -> s.rsp_info.rsp_mailbox_list
+}
 
-(* let list_aux s cmd mbox list_mb = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ space ++ mailbox list_mb) in *)
-(*   let aux () = *)
-(*     send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_mailbox_list *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
+let lsub mbox list_mb = {
+  cmd_sender = ImapWriter.(raw "LSUB" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ mailbox list_mb);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun s -> s.rsp_info.rsp_mailbox_list
+}
 
-(* let list s mbox list_mb = *)
-(*   list_aux s "LIST" mbox list_mb *)
-
-(* let lsub s mbox list_mb = *)
-(*   list_aux s "LSUB" mbox list_mb *)
-
-(* let status s mbox attrs = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = *)
-(*     S.(raw "STATUS" ++ space ++ mailbox mbox ++ space ++ list status_att attrs) *)
-(*   in *)
-(*   let aux () = *)
-(*     send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_status *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
+let status mbox attrs = {
+  cmd_sender = ImapWriter.(raw "STATUS" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ list status_att attrs);
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun s -> s.rsp_info.rsp_status
+}
 
 (* let append_uidplus s mbox ?flags ?date data = *)
 (*   let ci = connection_info s in *)
@@ -781,23 +769,23 @@ let create mbox = {
 (* (\* in *\) *)
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
-(* let check s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "CHECK" in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let check = {
+  cmd_sender = ImapWriter.(raw "CHECK");
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let close s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "CLOSE" in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let close = {
+  cmd_sender = ImapWriter.(raw "CLOSE");
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
-(* let expunge s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "EXPUNGE" in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
+let expunge = {
+  cmd_sender = ImapWriter.(raw "EXPUNGE");
+  cmd_parser = ImapParser.response;
+  cmd_handler = fun _ -> ()
+}
 
 (* let uid_expunge s set = *)
 (*   assert (not (Uid_set.mem_zero set)); *)

@@ -217,37 +217,19 @@ val login : string -> string -> unit command
 
 val create : string -> unit command
 
-(* val create : session -> string -> unit IO.t *)
-(* (\** Creates a mailbox.  Mailbox names are assumed to be encoded using UTF8. *\) *)
+val delete : string -> unit command
 
-(* val delete : session -> string -> unit IO.t *)
-(* (\** Deletes a mailbox.  Mailbox names are assumed to be encoded using UTF8. *\) *)
+val rename : string -> string -> unit command
 
-(* val rename : session -> string -> string -> unit IO.t *)
-(* (\** [rename s oldname newname] renames a mailbox from [oldname] to [newname]. *)
-(*     Mailbox names are assumed to be encoded using UTF8. *\) *)
+val subscribe : string -> unit command
 
-(* val subscribe : session -> string -> unit IO.t *)
-(* (\** Adds the specified mailbox name to the server's set of "active" or *)
-(*     "subscribed" mailboxes.  Mailbox names are assumed to be encoded using *)
-(*     UTF8. *\) *)
+val unsubscribe : string -> unit command
 
-(* val unsubscribe : session -> string -> unit IO.t *)
-(* (\** Removes the specified mailbox name from the server's set of "active" or *)
-(*     "subscribed" mailboxes.  Mailbox names are assumed to be encoded using *)
-(*     UTF8. *\) *)
+val list : string -> string -> mailbox_list list command
 
-(* val list : session -> string -> string -> mailbox_list list IO.t *)
-(* (\** [list s base names] returns a list of all the mailbox based at [base] and *)
-(*     matching [names].  Here [names] can contain wildcards like '*' and '%' (see *)
-(*     RFC 3501). *\) *)
+val lsub : string -> string -> mailbox_list list command
 
-(* val lsub : session -> string -> string -> mailbox_list list IO.t *)
-(* (\** Like {!list} but only return those mailboxes which are "subscribed" (see {!subscribe}). *\) *)
-
-(* val status : session -> string -> status_att list -> mailbox_data_status IO.t *)
-(* (\** [status s mbox atts] returns the value of the attributes [atts] of the *)
-(*     mailbox [mbox]. *\) *)
+val status : string -> status_att list -> mailbox_data_status command
 
 (* val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit IO.t *)
 (* (\** [append s mbox ?flags ?date msg] appends a message [msg] to the mailbox *)
@@ -281,16 +263,11 @@ val create : string -> unit command
 
 (* (\** {2 Commands valid only in {b Selected} state} *\) *)
 
-(* val check : session -> unit IO.t *)
-(* (\** Request a checkpoint of the currently selected mailbox.  The exact meaning *)
-(*     of this is implementation-dependant. *\) *)
+val check : unit command
 
-(* val close : session -> unit IO.t *)
-(* (\** Closes the currently selected mailbox. *\) *)
+val close : unit command
 
-(* val expunge : session -> unit IO.t *)
-(* (\** Permanently removes the messages from the selected mailbox that have the *)
-(*     [\Deleted] flag set. *\) *)
+val expunge : unit command
 
 (* val uid_expunge : session -> Uid_set.t -> unit IO.t *)
 (* (\** [uid_expunge s uids] is like {!expunge} but only removes those messages *)
