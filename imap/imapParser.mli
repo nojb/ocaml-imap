@@ -22,17 +22,10 @@
 
 (** CPS Combinator parsers on strings *)
 
-type input =
-    End
-  | More
-
-type 'a result =
-    Ok of 'a * int
-  | Fail of int
-  | Need of int * (input -> 'a result)
+open ImapTypes
 
 type 'a t =
-  Buffer.t -> int -> 'a result
+  'a parser
 
 val bind : 'a t -> ('a -> 'b t) -> 'b t
 val alt : 'a t -> 'a t -> 'a t
@@ -48,7 +41,7 @@ val rep : 'a t -> 'a list t
 val rep1 : 'a t -> 'a list t
 val sep : _ t -> 'a t -> 'a list t
 val sep1 : _ t -> 'a t -> 'a list t
-val fix : (unit -> 'a t) -> 'a t
+val delay : ('a -> 'b t) -> 'a -> 'b t
     
 val char : char -> char t
 val str : string -> string t (* case-insensitive *)
@@ -75,12 +68,14 @@ val quoted_char : char t
 val base64 : string t
 val test : 'a t -> string -> 'a
 
-val greeting : ImapTypes.greeting t
+val capability : capability t
 
-val response_done : ImapTypes.response_done t
+val greeting : greeting t
 
-val continue_req : ImapTypes.continue_req t
+val response_done : response_done t
 
-val cont_req_or_resp_data : ImapTypes.cont_req_or_resp_data t
+val continue_req : continue_req t
 
-val response : ImapTypes.response t
+val cont_req_or_resp_data : cont_req_or_resp_data t
+
+val response : response t

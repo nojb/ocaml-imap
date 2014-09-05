@@ -22,38 +22,21 @@
 
 open ImapTypes
 
-type atom =
-  [ `Raw of string
-  | `Cont_req ]
-
-module Append = struct
-  type 'a t =
-    | Atom of 'a
-    | Empty
-    | Append of 'a t * 'a t
-
-  let (++) x y = Append (x, y)
+let (++) x y = Append (x, y)
       
-  let rec fold f init = function
-    | Atom a -> f init a
-    | Empty -> init
-    | Append (x, y) -> fold f (fold f init x) y
-end
+let rec fold f init = function
+  | Atom a -> f init a
+  | Empty -> init
+  | Append (x, y) -> fold f (fold f init x) y
 
 type t =
-  atom Append.t
-
-let (++) =
-  Append.(++)
-
-let fold =
-  Append.fold
+  sender
 
 let raw s =
-  Append.Atom (`Raw s)
+  Atom (Raw s)
 
 let continuation_req =
-  Append.Atom `Cont_req
+  Atom Cont_req
 
 let char ch =
   raw (String.make 1 ch)
@@ -74,7 +57,7 @@ let crlf =
   raw "\r\n"
 
 let null =
-  Append.Empty
+  Empty
 
 let nil =
   raw "NIL"

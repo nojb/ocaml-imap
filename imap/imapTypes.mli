@@ -22,6 +22,8 @@
 
 (** IMAP queries and response data *)
 
+type extension_data = ..
+
 module Uint32_set : module type of ImapSet.Make (Uint32)
 
 module type S = sig
@@ -420,6 +422,7 @@ type msg_att_dynamic =
 type msg_att_item =
     MSG_ATT_ITEM_DYNAMIC of msg_att_dynamic
   | MSG_ATT_ITEM_STATIC of msg_att_static
+  | MSG_ATT_ITEM_EXTENSION of extension_data
 
 type msg_att =
   msg_att_item list * Seq.t
@@ -465,7 +468,6 @@ type status_att =
   | STATUS_ATT_HIGHESTMODSEQ
   (** The highest modification sequence of the mailbox.  This requires support
       for the CONDSTORE extension. *)
-  (* | STATUS_ATT_EXTENSION *)
 
 (** STATUS replies. See {!status_att}. *)
 type status_info =
@@ -475,7 +477,7 @@ type status_info =
   | STATUS_ATT_UIDVALIDITY of Uid.t
   | STATUS_ATT_UNSEEN of int
   | STATUS_ATT_HIGHESTMODSEQ of Modseq.t
-  | STATUS_ATT_EXTENSION
+  | STATUS_ATT_EXTENSION of extension_data
 
 (** {2 LIST/LSUB commands} *)
 
@@ -544,6 +546,7 @@ type resp_text_code =
   (* | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t *)
   (* | RESP_TEXT_CODE_NOMODSEQ *)
   (* | RESP_TEXT_CODE_MODIFIED of Uint32_set.t *)
+  | RESP_TEXT_CODE_EXTENSION of extension_data
   | RESP_TEXT_CODE_OTHER of (string * string)
   | RESP_TEXT_CODE_NONE
   
@@ -598,6 +601,7 @@ type mailbox_data =
   | MAILBOX_DATA_STATUS of mailbox_data_status
   | MAILBOX_DATA_EXISTS of int
   | MAILBOX_DATA_RECENT of int
+  | MAILBOX_DATA_EXTENSION_DATA of extension_data
 
 (** Untagged response *)
 type response_data =
@@ -606,7 +610,7 @@ type response_data =
   | RESP_DATA_MAILBOX_DATA of mailbox_data
   | RESP_DATA_MESSAGE_DATA of message_data
   | RESP_DATA_CAPABILITY_DATA of capability_data
-  (* | RESP_DATA_EXTENSION_DATA of extension_data *)
+  | RESP_DATA_EXTENSION_DATA of extension_data
 
 (** {2 Tagged responses} *)
   
@@ -666,6 +670,7 @@ type response_info = {
   rsp_status : mailbox_data_status;
   rsp_expunged : Seq.t list;
   rsp_fetch_list : msg_att list;
+  rsp_extension_list : extension_data list;
   rsp_other : string * string
 }
 
@@ -675,3 +680,44 @@ type state = {
   cap_info : capability list
 }
 
+type 'a rope =
+    Atom of 'a
+  | Empty
+  | Append of 'a rope * 'a rope
+
+type send_atom =
+    Raw of string
+  | Cont_req
+
+type sender =
+  send_atom rope
+
+type input =
+    End
+  | More
+
+type 'a result =
+    Ok of 'a * int
+  | Fail of int
+  | Need of int * (input -> 'a result)
+
+type 'a parser =
+  Buffer.t -> int -> 'a result  
+
+type 'a command = {
+  cmd_sender : sender;
+  cmd_parser : response parser;
+  cmd_handler : state -> 'a
+}
+
+type extended_parser =
+    EXTENDED_PARSER_RESPONSE_DATA
+  | EXTENDED_PARSER_RESP_TEXT_CODE
+  | EXTENDED_PARSER_MAILBOX_DATA
+  | EXTENDED_PARSER_FETCH_DATA
+  | EXTENDED_PARSER_STATUS_ATT
+
+type extension = {
+  ext_parser : extended_parser -> extension_data parser;
+  ext_printer : (extension_data -> (Format.formatter -> unit) option)
+}

@@ -24,14 +24,11 @@
 
 open ImapTypes
 
-(** The type of output buffers *)
-type atom = [ `Raw of string | `Cont_req ]
-
-type t
+type t = sender
 
 val (++) : t -> t -> t
 
-val fold : ('a -> atom -> 'a) -> 'a -> t -> 'a
+val fold : ('a -> send_atom -> 'a) -> 'a -> t -> 'a
 
 val space : t
 (** Sends [' ']. *)

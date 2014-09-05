@@ -21,18 +21,9 @@
    SOFTWARE. *)
 
 open ImapTypes
-
-type input =
-    End
-  | More
-
-type 'a result =
-    Ok of 'a * int
-  | Fail of int
-  | Need of int * (input -> 'a result)
-
+  
 type 'a t =
-  Buffer.t -> int -> 'a result
+  'a parser
 
 let bind p f b i =
   let rec loop =
@@ -90,8 +81,8 @@ let sep1 s p =
 let sep s p =
   alt (sep1 s p) (ret [])
 
-let fix f b i =
-  f () b i
+let delay f x b i =
+  f x b i
 
 let rec char c b i =
   if i >= Buffer.length b then
@@ -388,6 +379,15 @@ let test p s =
 
 (** IMAP PARSER *)
 
+let extension_parser calling_parser =
+  let rec loop =
+    function
+      [] -> fail
+    | p :: rest ->
+        alt (p.ext_parser calling_parser) (loop rest)
+  in
+  loop !ImapExtension.extension_list
+    
 (*
 auth-type       = atom
                     ; Defined by [SASL]
@@ -644,6 +644,7 @@ let resp_text_code =
     (* (str "HIGHESTMODSEQ" >> highestmodseq); *)
     (* (str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ); *)
     (* (str "MODIFIED" >> modified); *)
+    (extension_parser EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
     (atom >>= other)
   ]
 
@@ -739,7 +740,7 @@ status-att      = "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
 status-att          =/ "HIGHESTMODSEQ"
                           ;; extends non-terminal defined in RFC 3501.
 *)
-let status_att_number =
+let status_att =
   altn [
     (str "MESSAGES" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_MESSAGES n));
     (str "RECENT" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_RECENT n));
@@ -918,7 +919,8 @@ body-extension  = nstring / number /
 *)
 let rec body_extension () =
   altn [
-    (char '(' >> sep1 (char ' ') (fix body_extension) >>= fun xs -> char ')' >> ret (BODY_EXTENSION_LIST xs));
+    (char '(' >> sep1 (char ' ') (delay body_extension ()) >>= fun xs ->
+     char ')' >> ret (BODY_EXTENSION_LIST xs));
     (number >>= fun n -> ret (BODY_EXTENSION_NUMBER n));
     (nstring >>= fun s -> ret (BODY_EXTENSION_NSTRING s))
   ]
@@ -943,7 +945,7 @@ let body_ext_1part =
           opt
             begin
               char ' ' >> body_fld_loc >>= fun bd_loc ->
-              rep (char ' ' >> fix body_extension) >>= fun bd_extension_list ->
+              rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list ->
               ret {bd_md5; bd_disposition; bd_language; bd_loc; bd_extension_list}
             end
             {bd_md5; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []}
@@ -969,7 +971,7 @@ let body_ext_mpart =
           opt
             begin
               char ' ' >> body_fld_loc >>= fun bd_loc ->
-              rep (char ' ' >> fix body_extension) >>= fun bd_extension_list ->
+              rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list ->
               ret {bd_parameter; bd_disposition; bd_language; bd_loc; bd_extension_list}
             end
             {bd_parameter; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []}
@@ -994,7 +996,7 @@ body-type-msg   = media-message SP body-fields SP envelope
 and body_type_msg () =
   media_message >> char ' ' >> body_fields >>= fun bd_fields ->
   char ' ' >> envelope >>= fun bd_envelope ->
-  char ' ' >> fix body >>= fun bd_body ->
+  char ' ' >> delay body () >>= fun bd_body ->
   ret {bd_fields; bd_envelope; bd_body}
 
 (*
@@ -1012,9 +1014,9 @@ body-type-1part = (body-type-basic / body-type-msg / body-type-text)
 *)
 and body_type_1part () =
   altn [
-    (fix body_type_msg >>= fun b -> ret (BODY_TYPE_1PART_MSG b));
-    (fix body_type_text >>= fun b -> ret (BODY_TYPE_1PART_TEXT b));
-    (fix body_type_basic >>= fun b -> ret (BODY_TYPE_1PART_BASIC b))
+    (delay body_type_msg () >>= fun b -> ret (BODY_TYPE_1PART_MSG b));
+    (delay body_type_text () >>= fun b -> ret (BODY_TYPE_1PART_TEXT b));
+    (delay body_type_basic () >>= fun b -> ret (BODY_TYPE_1PART_BASIC b))
   ] >>= fun bd_data ->
   opt
     (char ' ' >> body_ext_1part)
@@ -1027,7 +1029,7 @@ body-type-mpart = 1*body SP media-subtype
                   [SP body-ext-mpart]
 *)
 and body_type_mpart () =
-  rep1 (fix body) >>= fun bd_list ->
+  rep1 (delay body ()) >>= fun bd_list ->
   char ' ' >> media_subtype >>= fun bd_media_subtype ->
   body_ext_mpart >>= fun bd_ext_mpart ->
   ret {bd_list; bd_media_subtype; bd_ext_mpart}
@@ -1038,8 +1040,8 @@ body            = "(" (body-type-1part / body-type-mpart) ")"
 and body () =
   char '(' >>
   alt
-    (fix body_type_1part >>= fun b -> ret (BODY_1PART b))
-    (fix body_type_mpart >>= fun b -> ret (BODY_MPART b))
+    (delay body_type_1part () >>= fun b -> ret (BODY_1PART b))
+    (delay body_type_mpart () >>= fun b -> ret (BODY_MPART b))
   >>= fun b ->
   char ')' >>
   ret b
@@ -1047,8 +1049,8 @@ and body () =
 (*
 status-att-list =  status-att SP number *(SP status-att SP number)
 *)
-let status_att_list =
-  sep1 (char ' ') status_att_number
+(* let status_att_list = *)
+(*   sep1 (char ' ') status_att_number *)
 
 let date_day_fixed =
   alt (char ' ' >> digit) digits2
@@ -1188,7 +1190,7 @@ let msg_att_static =
     (str "RFC822.TEXT" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822_TEXT s));
     (str "RFC822.SIZE" >> char ' ' >> number' >>= fun n -> ret (MSG_ATT_RFC822_SIZE n));
     (str "RFC822" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822 s));
-    (str "BODYSTRUCTURE" >> char ' ' >> fix body >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
+    (str "BODYSTRUCTURE" >> char ' ' >> delay body () >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
     (* str "BODY" >> body; *)
     (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID (Uid.of_uint32 uid)));
     (* (str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_MSGID (Gmsgid.of_uint64 n))); *)
@@ -1216,7 +1218,7 @@ let msg_att_dynamic =
   sep (char ' ') flag_fetch >>= fun flags ->
   char ')' >>
   ret flags
-
+    
 (*
 msg-att         = "(" (msg-att-dynamic / msg-att-static)
                    *(SP (msg-att-dynamic / msg-att-static)) ")"
@@ -1224,9 +1226,12 @@ msg-att         = "(" (msg-att-dynamic / msg-att-static)
 let msg_att =
   char '(' >>
   sep1 (char ' ')
-    (alt
-       (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a))
-       (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a)))
+    (altn [
+       (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
+       (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
+       (delay extension_parser EXTENDED_PARSER_FETCH_DATA >>= fun e ->
+        ret (MSG_ATT_ITEM_EXTENSION e))
+      ])
   >>= fun xs ->
   char ')' >>
   ret xs
@@ -1240,6 +1245,43 @@ let search_sort_mod_seq =
   char ')' >>
   ret x
 
+let status_info =
+  alt status_att (delay extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
+
+let mailbox_data_flags =
+  str "FLAGS" >> char ' ' >> flag_list >>= fun flags ->
+  ret (MAILBOX_DATA_FLAGS flags)
+
+let mailbox_data_list =
+  str "LIST" >> char ' ' >> mailbox_list >>= fun mb ->
+  ret (MAILBOX_DATA_LIST mb)
+
+let mailbox_data_lsub =
+  str "LSUB" >> char ' ' >> mailbox_list >>= fun mb ->
+  ret (MAILBOX_DATA_LSUB mb)
+
+let mailbox_data_search =
+  str "SEARCH" >> rep (char ' ' >> nz_number) >>= fun ns ->
+  ret (MAILBOX_DATA_SEARCH ns)
+
+let mailbox_data_status =
+  str "STATUS" >> char ' ' >> mailbox >>= fun st_mailbox ->
+  char ' ' >> char '(' >> sep (char ' ') status_info >>= fun st_info_list ->
+  char ')' >>
+  ret (MAILBOX_DATA_STATUS {st_mailbox; st_info_list})
+
+let mailbox_data_exists =
+  number' >>= fun n -> char ' ' >> str "EXISTS" >>
+  ret (MAILBOX_DATA_EXISTS n)
+
+let mailbox_data_recent =
+  number' >>= fun n -> char ' ' >> str "RECENT" >>
+  ret (MAILBOX_DATA_RECENT n)
+
+let mailbox_data_extension_data =
+  delay extension_parser EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
+  ret (MAILBOX_DATA_EXTENSION_DATA e)
+
 (*
 mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
                    "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
@@ -1250,36 +1292,15 @@ mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP
                           search-sort-mod-seq]
 *)
 let mailbox_data =
-  let flags = char ' ' >> flag_list >>= fun flags -> ret (MAILBOX_DATA_FLAGS flags) in
-  let list_ = char ' ' >> mailbox_list >>= fun mb -> ret (MAILBOX_DATA_LIST mb) in
-  let lsub = char ' ' >> mailbox_list >>= fun mb -> ret (MAILBOX_DATA_LSUB mb) in
-  let search =
-    rep (char ' ' >> nz_number) >>= fun ns -> ret (MAILBOX_DATA_SEARCH ns)
-    (*   function *)
-    (* | [] -> *)
-    (*     ret (MAILBOX_DATA_SEARCH ([], Modseq.zero)) *)
-    (* | ns -> *)
-    (*     opt (char ' ' >> search_sort_mod_seq) Modseq.zero >>= fun modseq -> *)
-    (*     ret (MAILBOX_DATA_SEARCH (ns, modseq)) *)
-  in
-  let status =
-    char ' ' >> mailbox >>= fun mb ->
-    char ' ' >> char '(' >> opt status_att_list [] >>= fun att -> char ')' >>
-    ret (MAILBOX_DATA_STATUS {st_mailbox = mb; st_info_list = att})
-  in
-  let exists_or_recent n =
-    char ' ' >>
-    alt
-      (str "EXISTS" >> ret (MAILBOX_DATA_EXISTS n))
-      (str "RECENT" >> ret (MAILBOX_DATA_RECENT n))
-  in
   altn [
-    str "FLAGS" >> flags;
-    str "LIST" >> list_;
-    str "LSUB" >> lsub;
-    str "SEARCH" >> search;
-    str "STATUS" >> status;
-    number' >>= exists_or_recent
+    mailbox_data_flags;
+    mailbox_data_list;
+    mailbox_data_lsub;
+    mailbox_data_search;
+    mailbox_data_status;
+    mailbox_data_exists;
+    mailbox_data_recent;
+    mailbox_data_extension_data
   ]
 
 (*
@@ -1368,9 +1389,9 @@ let response_data =
     (mailbox_data >>= fun r -> ret (RESP_DATA_MAILBOX_DATA r));
     (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
     (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
+    (delay extension_parser EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
     (* id_response; *)
     (* namespace_response; *)
-    (* enable_data *)
   ]
   >>= fun x ->
   str "\r\n" >>

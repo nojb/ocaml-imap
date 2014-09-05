@@ -95,12 +95,6 @@ val handle_greeting : session -> greeting -> [ `Bye | `Ok of resp_cond_auth_type
 
 (* (\** {2 Commands valid in any state} *\) *)
 
-type 'a command = {
-  cmd_sender : ImapWriter.t;
-  cmd_parser : response ImapParser.t;
-  cmd_handler : state -> 'a
-}
-
 val capability : capability list command
 
 (* val capability : session -> capability list IO.t *)

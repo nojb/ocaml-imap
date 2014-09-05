@@ -23,6 +23,18 @@
 open Format
 open ImapTypes
 
+let extension_print ppf e =
+  let rec loop =
+    function
+      [] ->
+        fprintf ppf "(extension ..)"
+    | p :: rest ->
+        match p.ext_printer e with
+          Some f -> f ppf
+        | None -> loop rest
+  in
+  loop !ImapExtension.extension_list
+
 let capability_print ppf =
   function
     CAPABILITY_AUTH_TYPE t ->
@@ -89,7 +101,9 @@ let resp_text_code_print ppf r =
     (* | RESP_TEXT_CODE_HIGHESTMODSEQ m -> *)
         (* fprintf ppf "(highest-mod-seq %s)" (Modseq.to_string m) *)
     (* | RESP_TEXT_CODE_NOMODSEQ -> *)
-        (* fprintf ppf "no-mod-seq" *)
+    (* fprintf ppf "no-mod-seq" *)
+    | RESP_TEXT_CODE_EXTENSION e ->
+        extension_print ppf e
     | RESP_TEXT_CODE_OTHER (k, v) ->
         fprintf ppf "(other %s %s)" k v
     | RESP_TEXT_CODE_NONE ->
@@ -191,8 +205,8 @@ let status_info_print ppf r =
         fprintf ppf "(unseen %i)" n
     | STATUS_ATT_HIGHESTMODSEQ m ->
         fprintf ppf "(highest-mod-seq %s)" (Modseq.to_string m)
-    | STATUS_ATT_EXTENSION ->
-        fprintf ppf "(extension ..)"
+    | STATUS_ATT_EXTENSION e ->
+        extension_print ppf e
   in
   fprintf ppf "@[<2>(status-info@ %a)@]" p r
 
@@ -219,6 +233,8 @@ let mailbox_data_print ppf r =
         fprintf ppf "(exists %i)" n
     | MAILBOX_DATA_RECENT n ->
         fprintf ppf "(recent %i)" n
+    | MAILBOX_DATA_EXTENSION_DATA e ->
+        extension_print ppf e
   in
   fprintf ppf "@[<2>(mailbox-data@ %a)@]" p r
 
@@ -252,6 +268,8 @@ let response_data_print ppf r =
         message_data_print ppf r
     | RESP_DATA_CAPABILITY_DATA r ->
         capability_data_print ppf r
+    | RESP_DATA_EXTENSION_DATA e ->
+        extension_print ppf e
   in
   fprintf ppf "@[<2>(response-data %a)@]" p r
 

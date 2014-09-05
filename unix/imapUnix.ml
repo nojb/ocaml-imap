@@ -20,6 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+open ImapTypes
 open Imap
 
 type session = {
@@ -30,20 +31,21 @@ type session = {
 let parse s p =
   let rec loop =
     function
-      ImapParser.Ok (x, i) ->
+      Ok (x, i) ->
         s.imap_session.i <- i;
         x
-    | ImapParser.Fail i ->
+    | Fail i ->
         failwith "parse error" (* FIXME *)
         (* raise (Parse_error (Buffer.contents s.imap_session.buffer, s.imap_session.i)) *)
-    | ImapParser.Need (len, k) ->
+    | Need (len, k) ->
         let buf = String.create 65536 in
         match Ssl.read s.sock buf 0 (String.length buf) with
           0 ->
-            loop (k ImapParser.End)
+            loop (k End)
         | _ as n ->
+            (* prerr_string (String.sub buf 0 n); *)
             Buffer.add_substring s.imap_session.buffer buf 0 n;
-            loop (k ImapParser.More)
+            loop (k More)
   in
   loop (p s.imap_session.buffer s.imap_session.i)
 
@@ -85,9 +87,9 @@ let run_sender s f =
     ImapWriter.fold
       (fun () a ->
          match a with
-           `Raw str ->
+           Raw str ->
              Ssl.output_string s.sock str
-         | `Cont_req ->
+         | Cont_req ->
              Ssl.flush s.sock;
              get_continuation_request s) () f
   with

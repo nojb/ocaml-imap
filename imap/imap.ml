@@ -34,6 +34,7 @@ let fresh_response_info = {
   rsp_status = {st_mailbox = ""; st_info_list = []};
   rsp_expunged = [];
   rsp_fetch_list = [];
+  rsp_extension_list = [];
   rsp_other = ("", "")
 }
 
@@ -86,7 +87,9 @@ let resp_text_store s {rsp_code; rsp_text} =
   (* | RESP_TEXT_CODE_NOMODSEQ -> *)
       (* {s with sel_info = {s.sel_info with sel_highestmodseq = Modseq.zero}} *)
   (* | RESP_TEXT_CODE_MODIFIED set -> *)
-      (* {s with rsp_info = {s.rsp_info with rsp_modified = set}} *)
+  (* {s with rsp_info = {s.rsp_info with rsp_modified = set}} *)
+  | RESP_TEXT_CODE_EXTENSION e ->
+      ImapExtension.extension_data_store s e
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
@@ -117,6 +120,8 @@ let mailbox_data_store s =
       {s with sel_info = {s.sel_info with sel_exists = Some n}}
   | MAILBOX_DATA_RECENT n ->
       {s with sel_info = {s.sel_info with sel_recent = Some n}}
+  | MAILBOX_DATA_EXTENSION_DATA e ->
+      ImapExtension.extension_data_store s e
 
 let message_data_store s =
   function
@@ -151,6 +156,8 @@ let response_data_store s =
       message_data_store s r
   | RESP_DATA_CAPABILITY_DATA cap_info ->
       {s with cap_info}
+  | RESP_DATA_EXTENSION_DATA e ->
+      ImapExtension.extension_data_store s e
   (* | `ID params -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_id = params}} *)
   (* | `NAMESPACE (pers, other, shared) -> *)
@@ -432,12 +439,6 @@ let next_tag s =
   let tag = s.next_tag in
   s.next_tag <- s.next_tag + 1;
   string_of_int tag
-
-type 'a command = {
-  cmd_sender : ImapWriter.t;
-  cmd_parser : response ImapParser.t;
-  cmd_handler : (state -> 'a)
-}
 
 (* module S = ImapWriter *)
 
