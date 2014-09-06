@@ -32,15 +32,7 @@ val response_store : state -> response -> state
 
 (* val debug : bool ref *)
 
-(** Type of IMAP sessions. *)
-type session = {
-  mutable next_tag : int;
-  mutable state : state;
-  mutable imap_response : string;
-  mutable imap_tag : string
-}
-
-val next_tag : session -> string
+val next_tag : state -> string * state
 
 (** {2 Error handling} *)
 
@@ -64,11 +56,11 @@ val next_tag : session -> string
 
 (** {2 IMAP sessions} *)
 
-val create_session : unit -> session
+val fresh_state : state
 
-val handle_response : session -> response -> [ `Fail of [ `BadTag | `Bad | `No ] | `Ok of response | `Bye ]
+val handle_response : state -> response -> state * [ `Fail of [ `BadTag | `Bad | `No | `Bye ] | `Ok of response ]
 
-val handle_greeting : session -> greeting -> [ `Bye | `Ok of resp_cond_auth_type ]
+val handle_greeting : state -> greeting -> state * [ `Fail of [ `Bye ] | `Ok of resp_cond_auth_type ]
 
 (** Creates a new IMAP session.  The session is initially disconnected and has
     to be connected using {!connect}. *)

@@ -25,5 +25,5 @@ open ImapTypes
 type session
 
 val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
-val connect : session -> [ `Bye | `Ok of resp_cond_auth_type ]
-val send_command : session -> 'a command -> [ `Bye | `Fail of [ `Bad | `BadTag | `No ] | `Ok of 'a ]
+val connect : session -> [ `Fail of [ `Bye ] | `Ok of resp_cond_auth_type ]
+val send_command : session -> 'a command -> [ `Fail of [ `Bad | `BadTag | `No | `Bye ] | `Ok of 'a ]

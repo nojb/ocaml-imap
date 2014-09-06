@@ -217,13 +217,6 @@ let debug =
 (* external uint32_list_to_seq_list : Uint32.t list -> Seq.t list = "%identity" *)
 (* external uint32_list_to_uid_list : Uint32.t list -> Uid.t list = "%identity" *)
 
-type session = {
-  mutable next_tag : int;
-  mutable state : state;
-  mutable imap_response : string;
-  mutable imap_tag : string
-}
-
 (* exception NO *)
 (* exception BAD *)
 (* exception BYE *)
@@ -232,15 +225,13 @@ type session = {
 (* exception Io_error of exn *)
 (* exception Auth_error of exn *)
 
-let create_session () = {
-  next_tag = 0;
-  state = {
-    rsp_info = fresh_response_info;
-    sel_info = fresh_selection_info;
-    cap_info = []
-  };
+let fresh_state = {
+  rsp_info = fresh_response_info;
+  sel_info = fresh_selection_info;
+  cap_info = [];
   imap_response = "";
-  imap_tag = ""
+  current_tag = None;
+  next_tag = 0
 }
 
 (* let run_parser session p = *)
@@ -266,36 +257,41 @@ let create_session () = {
 (*   loop (p ci.buffer ci.i) *)
 
 let handle_response s r =
-  s.state <- response_store s.state r;
+  let s = response_store s r in
   ImapPrint.response_print Format.err_formatter r;
-  let rsp_text =
+  let imap_response =
     match r.rsp_resp_done with
-      RESP_DONE_TAGGED {rsp_cond_state = {rsp_text}}
-    | RESP_DONE_FATAL rsp_text -> rsp_text
+      RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
+    | RESP_DONE_FATAL {rsp_text = s} -> s
   in
-  s.imap_response <- rsp_text.rsp_text;
+  let s = {s with imap_response} in
+  let bad_tag t =
+    match s.current_tag with
+      Some tag -> tag <> t
+    | None -> true
+  in
   match r.rsp_resp_done with
-    RESP_DONE_TAGGED {rsp_tag} when rsp_tag <> s.imap_tag ->
-      `Fail `BadTag
+    RESP_DONE_TAGGED {rsp_tag} when bad_tag rsp_tag ->
+      s, `Fail `BadTag
   | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_BAD}} ->
-      `Fail `Bad
+      s, `Fail `Bad
   | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_NO}} ->
-      `Fail `No
+      s, `Fail `No
   | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_OK}} ->
-      `Ok r
+      s, `Ok r
   | RESP_DONE_FATAL _ ->
-      `Bye
+      s, `Fail `Bye
 
 let handle_greeting s g =
-  s.state <- greeting_store s.state g;
+  let s = greeting_store s g in
   ImapPrint.greeting_print Format.err_formatter g;
   match g with
     GREETING_RESP_COND_BYE r ->
-      s.imap_response <- r.rsp_text;
-      `Bye
+      let s = {s with imap_response = r.rsp_text} in
+      s, `Fail `Bye
   | GREETING_RESP_COND_AUTH r ->
-      s.imap_response <- r.rsp_text.rsp_text;
-      `Ok r.rsp_type
+      let s = {s with imap_response = r.rsp_text.rsp_text} in
+      s, `Ok r.rsp_type
 
 let get_response ci tag =
   assert false
@@ -433,8 +429,11 @@ let get_continuation_request ci =
 
 let next_tag s =
   let tag = s.next_tag in
-  s.next_tag <- s.next_tag + 1;
-  string_of_int tag
+  let next_tag = tag + 1 in
+  let tag = string_of_int tag in
+  tag, {s with current_tag = Some tag; next_tag}
+  (* s.next_tag <- s.next_tag + 1; *)
+  (* string_of_int tag *)
 
 (* module S = ImapWriter *)
 

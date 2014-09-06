@@ -688,7 +688,10 @@ type response_info = {
 type state = {
   rsp_info : response_info;
   sel_info : selection_info;
-  cap_info : capability list
+  cap_info : capability list;
+  imap_response : string;
+  current_tag : string option;
+  next_tag : int
 }
 
 type 'a rope =

@@ -25,7 +25,7 @@ open Imap
 
 type session = {
   sock : Ssl.socket;
-  imap_session : Imap.session;
+  mutable imap_session : state;
   buffer : Buffer.t;
   mutable pos : int
 }
@@ -53,7 +53,9 @@ let parse s p =
 
 let connect s =
   let g = parse s ImapParser.greeting in
-  handle_greeting s.imap_session g
+  let st, r = handle_greeting s.imap_session g in
+  s.imap_session <- st;
+  r
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -79,7 +81,7 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = create_session (); buffer = Buffer.create 0; pos = 0}
+  {sock; imap_session = fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let get_continuation_request s =
   parse s ImapParser.(continue_req >> ret ())
@@ -96,17 +98,23 @@ let run_sender s f =
              get_continuation_request s) () f
   with
     _ -> failwith "run_sender"
+
+let next_tag s =
+  let tag, st = next_tag s.imap_session in
+  s.imap_session <- st;
+  tag
       
 let send_command s cmd =
-  let tag = next_tag s.imap_session in
+  let tag = next_tag s in
   let f = ImapWriter.(raw tag ++ char ' ' ++ cmd.cmd_sender ++ crlf) in
   run_sender s f;
   let r = parse s cmd.cmd_parser in
-  match handle_response s.imap_session r with
+  let st, r = handle_response s.imap_session r in
+  s.imap_session <- st;
+  match r with
     `Fail x -> `Fail x
-  | `Ok _ -> `Ok (cmd.cmd_handler s.imap_session.state)
-  | `Bye -> `Bye
-
+  | `Ok _ -> `Ok (cmd.cmd_handler s.imap_session)
+  
 (* module M = struct *)
 (*   class virtual input_chan = *)
 (*     object (self) *)
