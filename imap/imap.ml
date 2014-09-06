@@ -41,9 +41,9 @@ let fresh_response_info = {
 let fresh_selection_info = {
   sel_perm_flags = [];
   sel_perm = MAILBOX_READONLY;
-  sel_uidnext = Uid.zero;
-  sel_uidvalidity = Uid.zero;
-  sel_first_unseen = Seq.zero;
+  sel_uidnext = Uint32.zero;
+  sel_uidvalidity = Uint32.zero;
+  sel_first_unseen = Uint32.zero;
   sel_flags = [];
   sel_exists = None;
   sel_recent = None;
@@ -209,13 +209,6 @@ let response_store s {rsp_cont_req_or_resp_data_list; rsp_resp_done} =
 let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
   with Not_found -> ref false
-
-(* external uint32_set_to_seq_set : Uint32_set.t -> Seq_set.t = "%identity" *)
-(* external seq_set_to_uint32_set : Seq_set.t -> Uint32_set.t = "%identity" *)
-(* external uint32_set_to_uid_set : Uint32_set.t -> Uid_set.t = "%identity" *)
-(* external uid_set_to_uint32_set : Uid_set.t -> Uint32_set.t = "%identity" *)
-(* external uint32_list_to_seq_list : Uint32.t list -> Seq.t list = "%identity" *)
-(* external uint32_list_to_uid_list : Uint32.t list -> Uid.t list = "%identity" *)
 
 (* exception NO *)
 (* exception BAD *)

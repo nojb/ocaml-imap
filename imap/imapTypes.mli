@@ -24,38 +24,6 @@
 
 type extension_data = ..
 
-module Uint32_set : module type of ImapSet.Make (Uint32)
-
-module type S = sig
-  type t
-  val zero : t
-  val of_int : int -> t
-  val of_string : string -> t
-  val to_string : t -> string
-  val compare : t -> t -> int
-  val succ : t -> t
-  val printer : Format.formatter -> t -> unit
-end
-
-module type S32 = sig
-  include S
-  val of_uint32 : Uint32.t -> t
-end
-
-module type S64 = sig
-  include S
-  val of_uint64 : Uint64.t -> t
-end
-
-module Uid : S32
-module Seq : S32
-module Gmsgid : S64
-module Gthrid : S64
-module Modseq : S64
-
-module Uid_set : module type of ImapSet.Make (Uid)
-module Seq_set : module type of ImapSet.Make (Seq)
-
 (** {2 Message flags} *)
                 
 type flag =
@@ -172,22 +140,22 @@ type search_key =
   | SEARCH_KEY_SMALLER of int
   (** Messages with an [RFC-2822] size smaller than the specified number of
       bytes. *)
-  | SEARCH_KEY_UID of Uid_set.t
+  | SEARCH_KEY_UID of ImapSet.Uint32.t
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set. *)
   | SEARCH_KEY_UNDRAFT
   (** Messages that do not have the [\Draft] flag set. *)
-  | SEARCH_KEY_INSET of Seq_set.t
+  | SEARCH_KEY_INSET of ImapSet.Uint32.t
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
   | SEARCH_KEY_AND of search_key * search_key
   (** Messages that match both search keys. *)
-  | SEARCH_KEY_MODSEQ of (flag * [`Shared | `Priv | `All]) option * Modseq.t
+  | SEARCH_KEY_MODSEQ of (flag * [`Shared | `Priv | `All]) option * Uint64.t
   | SEARCH_KEY_XGMRAW of string
   (** Messages that satisfy Gmail search expression. *)
-  | SEARCH_KEY_XGMMSGID of Gmsgid.t
+  | SEARCH_KEY_XGMMSGID of Uint64.t
   (** Message with given Gmail Message ID. *)
-  | SEARCH_KEY_XGMTHRID of Gthrid.t
+  | SEARCH_KEY_XGMTHRID of Uint64.t
   (** Messages with given Gmail Thread ID. *)
   (* | `X_GM_LABELS of string *)
   (* (\** Messages with given Gmail labels. *\) ] *)
@@ -409,7 +377,7 @@ type msg_att_static =
   | MSG_ATT_BODY of body
   | MSG_ATT_BODYSTRUCTURE of body
   | MSG_ATT_BODY_SECTION of msg_att_body_section
-  | MSG_ATT_UID of Uid.t
+  | MSG_ATT_UID of Uint32.t
   (* | MSG_ATT_X_GM_MSGID of Gmsgid.t *)
   (* | MSG_ATT_X_GM_THRID of Gthrid.t *)
 
@@ -425,7 +393,7 @@ type msg_att_item =
   | MSG_ATT_ITEM_EXTENSION of extension_data
 
 type msg_att =
-  msg_att_item list * Seq.t
+  msg_att_item list * Uint32.t
 
 (** {2 STORE command} *)
 
@@ -473,10 +441,10 @@ type status_att =
 type status_info =
     STATUS_ATT_MESSAGES of int
   | STATUS_ATT_RECENT of int
-  | STATUS_ATT_UIDNEXT of Uid.t
-  | STATUS_ATT_UIDVALIDITY of Uid.t
+  | STATUS_ATT_UIDNEXT of Uint32.t
+  | STATUS_ATT_UIDVALIDITY of Uint32.t
   | STATUS_ATT_UNSEEN of int
-  | STATUS_ATT_HIGHESTMODSEQ of Modseq.t
+  | STATUS_ATT_HIGHESTMODSEQ of Uint64.t
   | STATUS_ATT_EXTENSION of extension_data
 
 (** {2 LIST/LSUB commands} *)
@@ -536,9 +504,9 @@ type resp_text_code =
   | RESP_TEXT_CODE_READ_ONLY
   | RESP_TEXT_CODE_READ_WRITE
   | RESP_TEXT_CODE_TRYCREATE
-  | RESP_TEXT_CODE_UIDNEXT of Uid.t
-  | RESP_TEXT_CODE_UIDVALIDITY of Uid.t
-  | RESP_TEXT_CODE_UNSEEN of Seq.t
+  | RESP_TEXT_CODE_UIDNEXT of Uint32.t
+  | RESP_TEXT_CODE_UIDVALIDITY of Uint32.t
+  | RESP_TEXT_CODE_UNSEEN of Uint32.t
   (* | RESP_TEXT_CODE_APPENDUID of Uid.t * Uid.t *)
   (* | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t *)
   (* | RESP_TEXT_CODE_UIDNOTSTICKY *)
@@ -589,7 +557,7 @@ type resp_cond_state =
 
 (** Message information *)
 type message_data =
-    MESSAGE_DATA_EXPUNGE of Seq.t
+    MESSAGE_DATA_EXPUNGE of Uint32.t
   | MESSAGE_DATA_FETCH of msg_att
                             
 (** Mailbox information *)
@@ -650,9 +618,9 @@ type mailbox_perm =
 type selection_info = {
   sel_perm_flags : flag_perm list;
   sel_perm : mailbox_perm;
-  sel_uidnext : Uid.t;
-  sel_uidvalidity : Uid.t;
-  sel_first_unseen : Seq.t;
+  sel_uidnext : Uint32.t;
+  sel_uidvalidity : Uint32.t;
+  sel_first_unseen : Uint32.t;
   sel_flags : flag list;
   sel_exists : int option;
   sel_recent : int option;
@@ -668,7 +636,7 @@ type response_info = {
   rsp_mailbox_lsub : mailbox_list list;
   rsp_search_results : Uint32.t list;
   rsp_status : mailbox_data_status;
-  rsp_expunged : Seq.t list;
+  rsp_expunged : Uint32.t list;
   rsp_fetch_list : msg_att list;
   rsp_extension_list : extension_data list;
   rsp_other : string * string

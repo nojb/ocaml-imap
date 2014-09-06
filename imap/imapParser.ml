@@ -472,7 +472,7 @@ uniqueid        = nz-number
                     ; Strictly ascending
 *)
 let uniqueid =
-  nz_number >>= fun x -> ret (Uid.of_uint32 x)
+  nz_number
 
 (*
 uid-range       = (uniqueid ":" uniqueid)
@@ -492,12 +492,12 @@ uid-set         = (uniqueid / uid-range) *("," uid-set)
 let uid_set =
   let elem =
     alt
-      (uniqueid >>= fun id -> ret (Uid_set.single id))
-      (uid_range >>= fun r -> ret (Uid_set.interval r))
+      (uniqueid >>= fun id -> ret (ImapSet.Uint32.single id))
+      (uid_range >>= fun r -> ret (ImapSet.Uint32.interval r))
   in
   elem >>= fun x ->
   rep (char ',' >> elem) >>= fun xs ->
-  ret (List.fold_left Uid_set.union x xs)
+  ret (List.fold_left ImapSet.Uint32.union x xs)
 
 (*
 seq-number      = nz-number / "*"
@@ -534,7 +534,7 @@ let seq_range =
   seq_number >>= fun x ->
   char ':' >>
   seq_number >>= fun y ->
-  ret (Uint32_set.interval (x, y))
+  ret (ImapSet.Uint32.interval (x, y))
 
 (*
 sequence-set    = (seq-number / seq-range) *("," sequence-set)
@@ -550,10 +550,10 @@ sequence-set    = (seq-number / seq-range) *("," sequence-set)
                     ; overlap coalesced to be 4,5,6,7,8,9,10.
 *)
 let sequence_set =
-  let elem = alt (seq_number >>= fun x -> ret (Uint32_set.single x)) seq_range in
+  let elem = alt (seq_number >>= fun x -> ret (ImapSet.Uint32.single x)) seq_range in
   elem >>= fun x ->
   rep (char ',' >> elem) >>= fun xs ->
-  ret (List.fold_left Uint32_set.union x xs)
+  ret (List.fold_left ImapSet.Uint32.union x xs)
 
 (* [RFC 4551]
 mod-sequence-value  = 1*DIGIT
@@ -563,7 +563,7 @@ mod-sequence-value  = 1*DIGIT
 *)
 let mod_sequence_value =
   accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
-  try ret (Modseq.of_string s) with _ -> fail
+  try ret (Uint64.of_string s) with _ -> fail
 
 (*
 resp-text-code  = "ALERT" /
@@ -605,9 +605,9 @@ let resp_text_code =
     char ')' >>
     ret (RESP_TEXT_CODE_PERMANENTFLAGS flags)
   in
-  let uidnext = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT (Uid.of_uint32 n)) in
-  let uidvalidity = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY (Uid.of_uint32 n)) in
-  let unseen = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN (Seq.of_uint32 n)) in
+  let uidnext = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
+  let uidvalidity = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
+  let unseen = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
   (* let appenduid = *)
     (* char ' ' >> nz_number >>= fun uidvalidity -> *)
     (* nz_number >>= fun uid -> ret (RESP_TEXT_CODE_APPENDUID (Uid.of_uint32 uidvalidity, Uid.of_uint32 uid)) *)
@@ -744,8 +744,8 @@ let status_att =
   altn [
     (str "MESSAGES" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_MESSAGES n));
     (str "RECENT" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_RECENT n));
-    (str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT (Uid.of_uint32 n)));
-    (str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY (Uid.of_uint32 n)));
+    (str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n));
+    (str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n));
     (str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n));
     (str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun n -> ret (STATUS_ATT_HIGHESTMODSEQ n))
   ]
@@ -1192,7 +1192,7 @@ let msg_att_static =
     (str "RFC822" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822 s));
     (str "BODYSTRUCTURE" >> char ' ' >> delay body () >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
     (* str "BODY" >> body; *)
-    (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID (Uid.of_uint32 uid)));
+    (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID uid));
     (* (str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_MSGID (Gmsgid.of_uint64 n))); *)
   (*   (str "X-GM-THRID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_THRID (Gthrid.of_uint64 n))) *)
   ]
@@ -1309,7 +1309,6 @@ message-data    = nz-number SP ("EXPUNGE" / ("FETCH" SP msg-att))
 let message_data =
   nz_number >>= fun n ->
   char ' ' >>
-  let n = Seq.of_uint32 n in
   alt
     (str "EXPUNGE" >> ret (MESSAGE_DATA_EXPUNGE n))
     (str "FETCH" >> char ' ' >> msg_att >>= fun att -> ret (MESSAGE_DATA_FETCH (att, n)))

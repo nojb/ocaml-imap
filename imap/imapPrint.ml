@@ -89,11 +89,11 @@ let resp_text_code_print ppf r =
     | RESP_TEXT_CODE_TRYCREATE ->
         fprintf ppf "try-create"
     | RESP_TEXT_CODE_UIDNEXT uid ->
-        fprintf ppf "(uid-next@ %s)" (Uid.to_string uid)
+        fprintf ppf "(uid-next@ %s)" (Uint32.to_string uid)
     | RESP_TEXT_CODE_UIDVALIDITY uid ->
-        fprintf ppf "(uid-validity@ %s)" (Uid.to_string uid)
+        fprintf ppf "(uid-validity@ %s)" (Uint32.to_string uid)
     | RESP_TEXT_CODE_UNSEEN n ->
-        fprintf ppf "(unseen@ %s)" (Seq.to_string n)
+        fprintf ppf "(unseen@ %s)" (Uint32.to_string n)
     (* | RESP_TEXT_CODE_UIDNOTSTICKY -> *)
         (* fprintf ppf "uid-not-sticky" *)
     (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
@@ -198,13 +198,13 @@ let status_info_print ppf r =
     | STATUS_ATT_RECENT n ->
         fprintf ppf "(recent %i)" n
     | STATUS_ATT_UIDNEXT uid ->
-        fprintf ppf "(uid-next %s)" (Uid.to_string uid)
+        fprintf ppf "(uid-next %s)" (Uint32.to_string uid)
     | STATUS_ATT_UIDVALIDITY uid ->
-        fprintf ppf "(uid-validity %s)" (Uid.to_string uid)
+        fprintf ppf "(uid-validity %s)" (Uint32.to_string uid)
     | STATUS_ATT_UNSEEN n ->
         fprintf ppf "(unseen %i)" n
     | STATUS_ATT_HIGHESTMODSEQ m ->
-        fprintf ppf "(highest-mod-seq %s)" (Modseq.to_string m)
+        fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string m)
     | STATUS_ATT_EXTENSION e ->
         extension_print ppf e
   in
@@ -245,7 +245,7 @@ let message_data_print ppf r =
   let p ppf =
     function
       MESSAGE_DATA_EXPUNGE n ->
-        fprintf ppf "(expunge %s)" (Seq.to_string n)
+        fprintf ppf "(expunge %s)" (Uint32.to_string n)
     | MESSAGE_DATA_FETCH att ->
         fprintf ppf "@[<2>(fetch@ %a)@]" msg_att_print att
   in

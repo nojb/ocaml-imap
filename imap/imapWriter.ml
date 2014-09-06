@@ -234,9 +234,6 @@ let search_modseq_ext =
   | Some (flg, req) ->
     space ++ raw "\"/flags/" ++ flag flg ++ raw "\" " ++ raw (entry_type_req req)
 
-external seq_set_to_uint32_set : Seq_set.t -> Uint32_set.t = "%identity"
-external uid_set_to_uint32_set : Uid_set.t -> Uint32_set.t = "%identity"
-
 let rec search_key =
   function
     SEARCH_KEY_ALL -> raw "ALL"
@@ -272,19 +269,19 @@ let rec search_key =
   | SEARCH_KEY_SENTON d -> raw "SENTON " ++ day_month_year d
   | SEARCH_KEY_SENTSINCE d -> raw "SENTSINCE " ++ day_month_year d
   | SEARCH_KEY_SMALLER n -> raw "SMALLER " ++ int n
-  | SEARCH_KEY_UID set -> message_set (uid_set_to_uint32_set set)
+  | SEARCH_KEY_UID set -> message_set set
   | SEARCH_KEY_UNDRAFT -> raw "UNDRAFT"
-  | SEARCH_KEY_INSET set -> message_set (seq_set_to_uint32_set set)
+  | SEARCH_KEY_INSET set -> message_set set
   | SEARCH_KEY_AND (q1, q2) ->
       raw "(" ++ search_key q1 ++ raw " " ++ search_key q2 ++ raw ")"
   | SEARCH_KEY_MODSEQ (ext, modseq) ->
-      raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Modseq.to_string modseq)
+      raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Uint64.to_string modseq)
   | SEARCH_KEY_XGMRAW str ->
       raw "X-GM-RAW " ++ quoted_string str
   | SEARCH_KEY_XGMMSGID msgid ->
-      raw "X-GM-MSGID " ++ raw (Gmsgid.to_string msgid)
+      raw "X-GM-MSGID " ++ raw (Uint64.to_string msgid)
   | SEARCH_KEY_XGMTHRID thrid ->
-      raw "X-GM-THRID " ++ raw (Gthrid.to_string thrid)
+      raw "X-GM-THRID " ++ raw (Uint64.to_string thrid)
   (* | SEARCH_KEY_XGMLABELS lab -> *)
   (*   raw "X-GM-LABEL " ++ gm_label lab *)
 

@@ -20,7 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-module type S = sig
+module type NUM = sig
   type t
   val succ : t -> t
   val zero : t
@@ -28,7 +28,67 @@ module type S = sig
   val of_int : int -> t
 end
 
-module Make (N : S) = struct
+module type S = sig
+  type num
+    
+  (** The type of sets, a formal, ordered, union of intervals. *)
+  type t = (num * num) list
+
+  val empty : t
+  (** The empty set. *)
+
+  val all : t
+  (** The interval of all positive numbers. *)
+
+  val single : num -> t
+  (** The interval consisting of a single number. *)
+
+  val single' : int -> t
+
+  val interval : num * num -> t
+  (** The set consisting of a single interval. *)
+
+  val from : num -> t
+  (** The half-interval starting from [n] (inclusive).  It corresponds to the
+      IMAP expression "n:*". *)
+
+  val add : num -> t -> t
+  (** [add n s] adds a single number [n] to the set [s]. *)
+
+  val add_interval : num * num -> t -> t
+  (** [add_interval n m s] adds the whole interval between numbers [n] and [m]
+      (including both [n] and [m]) to the set [s]. *)
+
+  val union : t -> t -> t
+  (** [union s1 s2] forms the union of the [s1] and [s2]. *)
+
+  val mem : t -> num -> bool
+  (** Whether an element belongs to the set. *)
+
+  val mem_zero : t -> bool
+  (** Whether zero belongs to the set. *)
+
+  val iter : (num -> unit) -> t -> unit
+  (** [iter f s] computes [f n1; f n2; ...], where [n1, n2, ...] is an enumeration
+      of the elements of the set [s], in the order that they appear in the
+      underlying list. *)
+
+  val iter2 : (num -> num -> unit) -> t -> t -> unit
+  (** [iter2 f s1 s2] computes [f n1 m1; f n2 m2; ...], where [n1, n2, ...] and
+      [m1, m2, ...] are enumerations of the elements of the sets [s1] and [s2],
+      in the order that they appear in the underlying lists. *)
+
+  val fold : (num -> 'a -> 'a) -> t -> 'a -> 'a
+  (** [fold f s x] computes [... (f n2 (f n1 x))] where [n1, n2, ...] is an
+      anumeration of the elements of [s] in the order that they appear in the
+      underlying list. *)
+
+  val fold_intervals : (num * num -> 'a -> 'a) -> t -> 'a -> 'a
+  (** [fold_intervals f s x] is equivalent to [List.fold_right f s x]. *)
+end
+
+module Make (N : NUM) = struct
+  type num = N.t
   type t = (N.t * N.t) list
 
   let empty =
@@ -171,3 +231,5 @@ module Make (N : S) = struct
   (*   | (n, m) :: set -> *)
   (*     merge (n, m) set *)
 end
+
+module Uint32 = Make (Uint32)
