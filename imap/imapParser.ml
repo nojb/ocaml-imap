@@ -555,16 +555,6 @@ let sequence_set =
   rep (char ',' >> elem) >>= fun xs ->
   ret (List.fold_left ImapSet.Uint32.union x xs)
 
-(* [RFC 4551]
-mod-sequence-value  = 1*DIGIT
-                          ;; Positive unsigned 64-bit integer
-                          ;; (mod-sequence)
-                          ;; (1 <= n < 18,446,744,073,709,551,615)
-*)
-let mod_sequence_value =
-  accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
-  try ret (Uint64.of_string s) with _ -> fail
-
 (*
 resp-text-code  = "ALERT" /
                   "BADCHARSET" [SP "(" astring *(SP astring) ")" ] /
@@ -584,10 +574,6 @@ resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY"
                   ; incorporated before the expansion rule of
                   ;  atom [SP 1*<any TEXT-CHAR except "]">]
                   ; that appears in [IMAP]
-
-resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value /
-                    "NOMODSEQ" /
-                    "MODIFIED" SP set
 *)
 let is_other_char =
   function
@@ -595,19 +581,23 @@ let is_other_char =
   | _ -> true
 
 let resp_text_code =
+  let alert = str "ALERT" >> ret RESP_TEXT_CODE_ALERT in
   let badcharset =
+    str "BADCHARSET" >>
     opt (char ' ' >> char '(' >> sep1 (char ' ') astring >>= fun xs -> char ')' >> ret xs) [] >>= fun xs ->
     ret (RESP_TEXT_CODE_BADCHARSET xs)
   in
+  let capability = capability_data >>= fun c -> ret (RESP_TEXT_CODE_CAPABILITY_DATA c) in
+  let parse = str "PARSE" >> ret RESP_TEXT_CODE_PARSE in
   let permanentflags =
-    char ' ' >> char '(' >>
+    str "PERMANENTFLAGS" >> char ' ' >> char '(' >>
     sep (char ' ') flag_perm >>= fun flags ->
     char ')' >>
     ret (RESP_TEXT_CODE_PERMANENTFLAGS flags)
   in
-  let uidnext = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
-  let uidvalidity = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
-  let unseen = char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
+  let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
+  let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
+  let unseen = str "UNSEEN" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
   (* let appenduid = *)
     (* char ' ' >> nz_number >>= fun uidvalidity -> *)
     (* nz_number >>= fun uid -> ret (RESP_TEXT_CODE_APPENDUID (Uid.of_uint32 uidvalidity, Uid.of_uint32 uid)) *)
@@ -618,32 +608,23 @@ let resp_text_code =
     (* char ' ' >> uid_set >>= fun dst_uids -> *)
     (* ret (RESP_TEXT_CODE_COPYUID (Uid.of_uint32 uidvalidity, src_uids, dst_uids)) *)
   (* in *)
-  (* let highestmodseq = *)
-    (* char ' ' >> mod_sequence_value >>= fun modseq -> ret (RESP_TEXT_CODE_HIGHESTMODSEQ modseq) *)
-  (* in *)
-  (* let modified = *)
-    (* char ' ' >> sequence_set >>= fun set -> ret (RESP_TEXT_CODE_MODIFIED set) *)
-  (* in *)
   let other a = opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s)) in
   altn [
-    (str "ALERT" >> ret RESP_TEXT_CODE_ALERT);
-    (str "BADCHARSET" >> badcharset);
-    (capability_data >>= fun c -> ret (RESP_TEXT_CODE_CAPABILITY_DATA c));
-    (str "PARSE" >> ret RESP_TEXT_CODE_PARSE);
-    (str "PERMANENTFLAGS" >> permanentflags);
+    alert;
+    badcharset;
+    capability;
+    parse;
+    permanentflags;
     (str "READ-ONLY" >> ret RESP_TEXT_CODE_READ_ONLY);
     (str "READ-WRITE" >> ret RESP_TEXT_CODE_READ_WRITE);
     (str "TRYCREATE" >> ret RESP_TEXT_CODE_TRYCREATE);
-    (str "UIDNEXT" >> uidnext);
-    (str "UIDVALIDITY" >> uidvalidity);
-    (str "UNSEEN" >> unseen);
+    uidnext;
+    uidvalidity;
+    unseen;
     (* (str "APPENDUID" >> appenduid); *)
     (* (str "COPYUID" >> copyuid); *)
     (* (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY); *)
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
-    (* (str "HIGHESTMODSEQ" >> highestmodseq); *)
-    (* (str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ); *)
-    (* (str "MODIFIED" >> modified); *)
     (extension_parser EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
     (atom >>= other)
   ]
@@ -736,9 +717,6 @@ let mailbox_list =
 (*
 status-att      = "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
                   "UNSEEN"
-
-status-att          =/ "HIGHESTMODSEQ"
-                          ;; extends non-terminal defined in RFC 3501.
 *)
 let status_att =
   altn [
@@ -747,7 +725,7 @@ let status_att =
     (str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n));
     (str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n));
     (str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n));
-    (str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun n -> ret (STATUS_ATT_HIGHESTMODSEQ n))
+    (delay extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
   ]
 
 let address =
@@ -1198,20 +1176,8 @@ let msg_att_static =
   ]
 
 (*
-permsg-modsequence  = mod-sequence-value
-                          ;; per message mod-sequence
-*)
-let permsg_modsequence =
-  mod_sequence_value
-
-(*
 msg-att-dynamic = "FLAGS" SP "(" [flag-fetch *(SP flag-fetch)] ")"
                     ; MAY change for a message
-
-fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")"
-
-msg-att-dynamic     =/ fetch-mod-resp
-
 *)
 let msg_att_dynamic =
   str "FLAGS" >> char ' ' >> char '(' >>
@@ -1226,24 +1192,16 @@ msg-att         = "(" (msg-att-dynamic / msg-att-static)
 let msg_att =
   char '(' >>
   sep1 (char ' ')
-    (altn [
-       (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
-       (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
-       (delay extension_parser EXTENDED_PARSER_FETCH_DATA >>= fun e ->
-        ret (MSG_ATT_ITEM_EXTENSION e))
-      ])
+    begin
+      altn [
+        (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
+        (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
+        (delay extension_parser EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
+      ]
+    end
   >>= fun xs ->
   char ')' >>
   ret xs
-
-(*
-search-sort-mod-seq = "(" "MODSEQ" SP mod-sequence-value ")"
-*)
-let search_sort_mod_seq =
-  char '(' >>
-  str "MODSEQ" >> char ' ' >> mod_sequence_value >>= fun x ->
-  char ')' >>
-  ret x
 
 let status_info =
   alt status_att (delay extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
@@ -1287,9 +1245,6 @@ mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
                    "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
                    "STATUS" SP mailbox SP "(" [status-att-list] ")" /
                    number SP "EXISTS" / number SP "RECENT"
-   
-mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP
-                          search-sort-mod-seq]
 *)
 let mailbox_data =
   altn [
@@ -1377,8 +1332,6 @@ response-data   = "*" SP (resp-cond-state / resp-cond-bye /
 
 response_data ::= "*" SPACE (resp_cond_state / resp_cond_bye /
          mailbox_data / message_data / capability_data / id_response)
-
-response-data =/ "*" SP enable-data CRLF
 *)
 let response_data =
   char '*' >> char ' ' >>

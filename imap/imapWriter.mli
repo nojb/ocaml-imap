@@ -24,11 +24,7 @@
 
 open ImapTypes
 
-type t = sender
-
-val (++) : t -> t -> t
-
-val fold : ('a -> send_atom -> 'a) -> 'a -> t -> 'a
+type t = unit control
 
 val space : t
 (** Sends [' ']. *)

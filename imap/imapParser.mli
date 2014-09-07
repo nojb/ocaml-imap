@@ -68,6 +68,8 @@ val quoted_char : char t
 val base64 : string t
 val test : 'a t -> string -> 'a
 
+val sequence_set : ImapSet.Uint32.t t
+
 val capability : capability t
 
 val greeting : greeting t

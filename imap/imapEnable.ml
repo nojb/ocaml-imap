@@ -4,6 +4,10 @@ type extension_data += EXTENSION_ENABLE of capability list
 
 open ImapParser
 
+(*
+response-data =/ "*" SP enable-data CRLF
+enable-data   = "ENABLED" *(SP capability)
+*)
 let enable_parser =
   function
     EXTENDED_PARSER_RESPONSE_DATA ->
@@ -26,26 +30,25 @@ let enable_printer =
       None
 
 open ImapWriter
+open Control
 
 let send_capability =
   function
     CAPABILITY_AUTH_TYPE t ->
-      raw "AUTH=" ++ raw t
+      raw "AUTH=" >> raw t
   | CAPABILITY_NAME t ->
       raw t
 
-let enable caps = {
-  cmd_sender = ImapWriter.(raw "ENABLE" ++ char ' ' ++ separated (char ' ') send_capability caps);
-  cmd_parser = ImapParser.response;
-  cmd_handler =
-    fun s ->
-      let rec loop =
-        function [] -> []
-               | EXTENSION_ENABLE caps :: _ -> caps
-               | _ :: rest -> loop rest
-      in
-      loop s.rsp_info.rsp_extension_list
-}
+let enable caps =
+  Imap.std_command
+    (raw "ENABLE" >> char ' ' >> separated (char ' ') send_capability caps)
+    (fun s ->
+       let rec loop =
+         function [] -> []
+                | EXTENSION_ENABLE caps :: _ -> caps
+                | _ :: rest -> loop rest
+       in
+       loop s.rsp_info.rsp_extension_list)
 
 let _ =
   ImapExtension.register_extension {ext_parser = enable_parser; ext_printer = enable_printer}

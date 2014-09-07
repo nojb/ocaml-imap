@@ -89,19 +89,15 @@ let resp_text_code_print ppf r =
     | RESP_TEXT_CODE_TRYCREATE ->
         fprintf ppf "try-create"
     | RESP_TEXT_CODE_UIDNEXT uid ->
-        fprintf ppf "(uid-next@ %s)" (Uint32.to_string uid)
+        fprintf ppf "(uid-next %s)" (Uint32.to_string uid)
     | RESP_TEXT_CODE_UIDVALIDITY uid ->
-        fprintf ppf "(uid-validity@ %s)" (Uint32.to_string uid)
+        fprintf ppf "(uid-validity %s)" (Uint32.to_string uid)
     | RESP_TEXT_CODE_UNSEEN n ->
-        fprintf ppf "(unseen@ %s)" (Uint32.to_string n)
+        fprintf ppf "(unseen %s)" (Uint32.to_string n)
     (* | RESP_TEXT_CODE_UIDNOTSTICKY -> *)
         (* fprintf ppf "uid-not-sticky" *)
     (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
         (* fprintf ppf "compression-active" *)
-    (* | RESP_TEXT_CODE_HIGHESTMODSEQ m -> *)
-        (* fprintf ppf "(highest-mod-seq %s)" (Modseq.to_string m) *)
-    (* | RESP_TEXT_CODE_NOMODSEQ -> *)
-    (* fprintf ppf "no-mod-seq" *)
     | RESP_TEXT_CODE_EXTENSION e ->
         extension_print ppf e
     | RESP_TEXT_CODE_OTHER (k, v) ->

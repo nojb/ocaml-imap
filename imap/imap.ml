@@ -249,43 +249,6 @@ let fresh_state = {
 (*   in *)
 (*   loop (p ci.buffer ci.i) *)
 
-let handle_response s r =
-  let s = response_store s r in
-  ImapPrint.response_print Format.err_formatter r;
-  let imap_response =
-    match r.rsp_resp_done with
-      RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
-    | RESP_DONE_FATAL {rsp_text = s} -> s
-  in
-  let s = {s with imap_response} in
-  let bad_tag t =
-    match s.current_tag with
-      Some tag -> tag <> t
-    | None -> true
-  in
-  match r.rsp_resp_done with
-    RESP_DONE_TAGGED {rsp_tag} when bad_tag rsp_tag ->
-      s, `Fail `BadTag
-  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_BAD}} ->
-      s, `Fail `Bad
-  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_NO}} ->
-      s, `Fail `No
-  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_OK}} ->
-      s, `Ok r
-  | RESP_DONE_FATAL _ ->
-      s, `Fail `Bye
-
-let handle_greeting s g =
-  let s = greeting_store s g in
-  ImapPrint.greeting_print Format.err_formatter g;
-  match g with
-    GREETING_RESP_COND_BYE r ->
-      let s = {s with imap_response = r.rsp_text} in
-      s, `Fail `Bye
-  | GREETING_RESP_COND_AUTH r ->
-      let s = {s with imap_response = r.rsp_text.rsp_text} in
-      s, `Ok r.rsp_type
-
 let get_response ci tag =
   assert false
 (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
@@ -425,40 +388,56 @@ let next_tag s =
   let next_tag = tag + 1 in
   let tag = string_of_int tag in
   tag, {s with current_tag = Some tag; next_tag}
-  (* s.next_tag <- s.next_tag + 1; *)
-  (* string_of_int tag *)
+ 
+open Control
 
-(* module S = ImapWriter *)
+let greeting =
+  liftP ImapParser.greeting >>= fun g ->
+  ImapPrint.greeting_print Format.err_formatter g;
+  modify (fun s -> greeting_store s g) >>
+  match g with
+    GREETING_RESP_COND_BYE r ->
+      modify (fun s -> {s with imap_response = r.rsp_text}) >>
+      fail Bye
+  | GREETING_RESP_COND_AUTH r ->
+      modify (fun s -> {s with imap_response = r.rsp_text.rsp_text}) >>
+      ret r.rsp_type
 
-(* let run_sender ci (f : S.t) = *)
-(*   let _, oc = ci.chan in *)
-(*   IO.catch *)
-(*     (fun () -> *)
-(*        S.fold (fun io a -> *)
-(*            match a with *)
-(*            | `Raw s -> *)
-(*                io >>= fun () -> IO.write oc s *)
-(*            | `Cont_req -> *)
-(*                io >>= fun () -> IO.flush oc >>= fun () -> *)
-(*                get_continuation_request ci >>= fun _ -> *)
-(*                IO.return ()) (IO.return ()) f >>= fun () -> *)
-(*        IO.flush oc) *)
-(*     (fun e -> ci.disconnect () >>= fun () -> IO.fail (Io_error e)) *)
+let handle_response r =
+  ImapPrint.response_print Format.err_formatter r;
+  let imap_response =
+    match r.rsp_resp_done with
+      RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
+    | RESP_DONE_FATAL {rsp_text = s} -> s
+  in
+  modify (fun s -> {s with imap_response}) >>
+  gets (fun s -> s.current_tag) >>= fun tag ->
+  let bad_tag t = match tag with Some tag -> tag <> t | None -> true in
+  match r.rsp_resp_done with
+    RESP_DONE_TAGGED {rsp_tag} when bad_tag rsp_tag ->
+      fail BadTag
+  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_BAD}} ->
+      fail Bad
+  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_NO}} ->
+      fail No
+  | RESP_DONE_TAGGED {rsp_cond_state = {rsp_type = RESP_COND_STATE_OK}} ->
+      ret ()
+  | RESP_DONE_FATAL _ ->
+      fail Bye
 
-(* let send_command' ci f = *)
-(*   let tag = generate_tag ci in *)
-(*   let f = S.(raw tag ++ space ++ f ++ crlf) in *)
-(*   run_sender ci f >|= fun () -> tag *)
+let std_command sender handler tag =
+  send tag >>
+  send " " >>
+  sender >>
+  send "\r\n" >>
+  flush >>
+  liftP ImapParser.response >>= fun r ->
+  modify (fun s -> response_store s r) >>
+  handle_response r >>
+  gets handler
 
-(* let send_command ci f = *)
-(*   send_command' ci f >>= fun tag -> *)
-(*   get_response ci tag >|= fun _ -> () *)
-
-let capability = {
-  cmd_sender = ImapWriter.raw "CAPABILITY";
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun s -> s.cap_info
-}
+let capability =
+  std_command (ImapWriter.raw "CAPABILITY") (fun s -> s.cap_info)
 
 (* let capability session = *)
 (*   let ci = connection_info session in *)
@@ -471,11 +450,8 @@ let capability = {
 (* (\* let aux () = send_command ci cmd >|= fun () -> ci.state.cap_info in *\) *)
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
-let noop = {
-  cmd_sender = ImapWriter.raw "NOOP";
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let noop =
+  std_command (ImapWriter.raw "NOOP") (fun _ -> ())
 
 (* let noop s = *)
 (*   let ci = connection_info s in *)
@@ -558,12 +534,11 @@ let noop = {
 (*   in *)
 (*   IO.with_lock ci.send_lock aux *)
 
-let login user pass = {
-  cmd_sender = ImapWriter.(raw "LOGIN" ++ char ' ' ++ string user ++ char ' ' ++ string pass);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
-
+let login user pass =
+  std_command
+    (ImapWriter.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
+    (fun _ -> ())
+  
 (* let login s user pass = *)
 (*   let ci = connection_info s in *)
 (*   let cmd = S.(raw "LOGIN" ++ space ++ string user ++ space ++ string pass) in *)
@@ -608,53 +583,45 @@ let login user pass = {
 (*   select_aux s "EXAMINE" ~use_condstore:false mbox >>= fun _ -> *)
 (*   IO.return () *)
 
-let create mbox = {
-  cmd_sender = ImapWriter.(raw "CREATE" ++ char ' ' ++ mailbox mbox);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let create mbox =
+  std_command
+    (ImapWriter.(raw "CREATE" >> char ' ' >> mailbox mbox))
+    (fun _ -> ())
 
-let delete mbox = {
-  cmd_sender = ImapWriter.(raw "DELETE" ++ char ' ' ++ mailbox mbox);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let delete mbox =
+  std_command
+    (ImapWriter.(raw "DELETE" >> char ' ' >> mailbox mbox))
+    (fun _ -> ())
 
-let rename oldbox newbox = {
-  cmd_sender = ImapWriter.(raw "RENAME" ++ char ' ' ++ mailbox oldbox ++ char ' ' ++ mailbox newbox);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let rename oldbox newbox =
+  std_command
+    (ImapWriter.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
+    (fun _ -> ())
 
-let subscribe mbox = {
-  cmd_sender = ImapWriter.(raw "SUBSCRIBE" ++ char ' ' ++ mailbox mbox);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let subscribe mbox =
+  std_command
+    (ImapWriter.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
+    (fun _ -> ())
 
-let unsubscribe mbox = {
-  cmd_sender = ImapWriter.(raw "UNSUBCRIBE" ++ char ' ' ++ mailbox mbox);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let unsubscribe mbox =
+  std_command
+    (ImapWriter.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
+    (fun _ -> ())
 
-let list mbox list_mb = {
-  cmd_sender = ImapWriter.(raw "LIST" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ mailbox list_mb);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun s -> s.rsp_info.rsp_mailbox_list
-}
+let list mbox list_mb =
+  std_command
+    (ImapWriter.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (fun s -> s.rsp_info.rsp_mailbox_list)
 
-let lsub mbox list_mb = {
-  cmd_sender = ImapWriter.(raw "LSUB" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ mailbox list_mb);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun s -> s.rsp_info.rsp_mailbox_list
-}
+let lsub mbox list_mb =
+  std_command
+    (ImapWriter.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (fun s -> s.rsp_info.rsp_mailbox_list)
 
-let status mbox attrs = {
-  cmd_sender = ImapWriter.(raw "STATUS" ++ char ' ' ++ mailbox mbox ++ char ' ' ++ list status_att attrs);
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun s -> s.rsp_info.rsp_status
-}
+let status mbox attrs =
+  std_command
+    (ImapWriter.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
+    (fun s -> s.rsp_info.rsp_status)
 
 (* let append_uidplus s mbox ?flags ?date data = *)
 (*   let ci = connection_info s in *)
@@ -708,23 +675,14 @@ let status mbox attrs = {
 (* (\* in *\) *)
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
-let check = {
-  cmd_sender = ImapWriter.(raw "CHECK");
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let check =
+  std_command (ImapWriter.(raw "CHECK")) (fun _ -> ())
 
-let close = {
-  cmd_sender = ImapWriter.(raw "CLOSE");
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let close =
+  std_command (ImapWriter.(raw "CLOSE")) (fun _ -> ())
 
-let expunge = {
-  cmd_sender = ImapWriter.(raw "EXPUNGE");
-  cmd_parser = ImapParser.response;
-  cmd_handler = fun _ -> ()
-}
+let expunge =
+  std_command (ImapWriter.(raw "EXPUNGE")) (fun _ -> ())
 
 (* let uid_expunge s set = *)
 (*   assert (not (Uid_set.mem_zero set)); *)

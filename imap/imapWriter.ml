@@ -22,24 +22,18 @@
 
 open ImapTypes
 
-let (++) x y = Append (x, y)
-      
-let rec fold f init = function
-  | Atom a -> f init a
-  | Empty -> init
-  | Append (x, y) -> fold f (fold f init x) y
+type t = unit control
 
-type t =
-  sender
+open Control
 
 let raw s =
-  Atom (Raw s)
+  send s
 
 let continuation_req =
-  Atom Cont_req
+  flush >> liftP ImapParser.continue_req >> ret ()
 
 let char ch =
-  raw (String.make 1 ch)
+  send (String.make 1 ch)
 
 let space =
   char ' '
@@ -57,7 +51,7 @@ let crlf =
   raw "\r\n"
 
 let null =
-  Empty
+  ret ()
 
 let nil =
   raw "NIL"
@@ -65,25 +59,25 @@ let nil =
 let rec separated sep f = function
   | [] -> null
   | x :: [] -> f x
-  | x :: xs -> f x ++ sep ++ separated sep f xs
+  | x :: xs -> f x >> sep >> separated sep f xs
 
 let list f = function
   | [] -> nil
   | _ as xs ->
-    char '(' ++ separated (char ' ') f xs ++ char ')'
+    char '(' >> separated (char ' ') f xs >> char ')'
 
 let separated_pair l sep r (x, y) =
-  l x ++ sep ++ r y
+  l x >> sep >> r y
 
 let literal str =
-  char '{' ++ int (String.length str) ++ char '}' ++ crlf ++ continuation_req ++ raw str
+  char '{' >> int (String.length str) >> char '}' >> crlf >> continuation_req >> raw str
 
 let quoted_string str =
   let escaped =
     Str.global_substitute (Str.regexp "[\"\\]")
       (fun s -> let s = Str.matched_string s in "\\" ^ s) str
   in
-  char '\"' ++ raw escaped ++ char '\"'
+  char '\"' >> raw escaped >> char '\"'
   
 let needs_literal = function
   | '\x80' .. '\xff' | '\r' | '\n' -> true
@@ -131,11 +125,11 @@ let date_time x =
 let message_interval (n, m) =
   if Uint32.compare n m = 0 then uint32 n
   else if Uint32.compare n Uint32.zero = 0 then
-    uint32 m ++ raw ":*"
+    uint32 m >> raw ":*"
   else if Uint32.compare m Uint32.zero = 0 then
-    uint32 n ++ raw ":*"
+    uint32 n >> raw ":*"
   else
-    uint32 n ++ raw ":" ++ uint32 m
+    uint32 n >> raw ":" >> uint32 m
   (* | ImapSet.Top, ImapSet.Top -> raw "*" *)
   (* | ImapSet.Num n, ImapSet.Top -> uint32 n @> raw ":*" *)
   (* | ImapSet.Top, ImapSet.Num n -> uint32 n @> raw ":*" *)
@@ -149,8 +143,8 @@ let message_set set =
 let section_msgtext =
   function
     SECTION_MSGTEXT_HEADER  -> raw "HEADER"
-  | SECTION_MSGTEXT_HEADER_FIELDS xs -> raw "HEADER.FIELDS" ++ space ++ list string xs
-  | SECTION_MSGTEXT_HEADER_FIELDS_NOT xs -> raw "HEADER.FIELDS.NOT" ++ space ++ list string xs
+  | SECTION_MSGTEXT_HEADER_FIELDS xs -> raw "HEADER.FIELDS" >> space >> list string xs
+  | SECTION_MSGTEXT_HEADER_FIELDS_NOT xs -> raw "HEADER.FIELDS.NOT" >> space >> list string xs
   | SECTION_MSGTEXT_TEXT -> raw "TEXT"
 (* | `ALL -> null *)
 
@@ -171,14 +165,14 @@ let rec section_spec =
   | SECTION_SPEC_SECTION_PART (part, None) ->
       section_part part
   | SECTION_SPEC_SECTION_PART (part, Some t) ->
-      section_part part ++ char '.' ++ section_text t
+      section_part part >> char '.' >> section_text t
 
 and section =
   function
     None ->
       raw "[]"
   | Some spec ->
-      char '[' ++ section_spec spec ++ char ']'
+      char '[' >> section_spec spec >> char ']'
 
 let fetch_att =
   function
@@ -189,12 +183,12 @@ let fetch_att =
   | FETCH_ATT_RFC822_TEXT -> raw "RFC822.TEXT"
   | FETCH_ATT_RFC822_SIZE -> raw "RFC822.SIZE"
   | FETCH_ATT_BODY -> raw "BODY"
-  | FETCH_ATT_BODY_SECTION (sec, None) -> raw "BODY" ++ space ++ section sec
+  | FETCH_ATT_BODY_SECTION (sec, None) -> raw "BODY" >> space >> section sec
   | FETCH_ATT_BODY_SECTION (sec, Some (ofs, len)) ->
-      raw "BODY" ++ space ++ section sec ++ char '<' ++ int ofs ++ char '.' ++ int len ++ char '>'
-  | FETCH_ATT_BODY_PEEK_SECTION (sec, None) -> raw "BODY.PEEK" ++ space ++ section sec
+      raw "BODY" >> space >> section sec >> char '<' >> int ofs >> char '.' >> int len >> char '>'
+  | FETCH_ATT_BODY_PEEK_SECTION (sec, None) -> raw "BODY.PEEK" >> space >> section sec
   | FETCH_ATT_BODY_PEEK_SECTION (sec, Some (ofs, len)) ->
-      raw "BODY.PEEK" ++ space ++ section sec ++ char '<' ++ int ofs ++ char '.' ++ int len ++ char '>'
+      raw "BODY.PEEK" >> space >> section sec >> char '<' >> int ofs >> char '.' >> int len >> char '>'
   | FETCH_ATT_BODYSTRUCTURE -> raw "BODYSTRUCTURE"
   | FETCH_ATT_UID -> raw "UID"
   | FETCH_ATT_FLAGS -> raw "FLAGS"
@@ -217,7 +211,7 @@ let flag =
   | FLAG_SEEN -> raw "\\Seen"
   | FLAG_DRAFT -> raw "\\Draft"
   | FLAG_KEYWORD s -> raw s
-  | FLAG_EXTENSION s -> char '\\' ++ raw s (* FIXME: encode in MUTF7 ? *)
+  | FLAG_EXTENSION s -> char '\\' >> raw s (* FIXME: encode in MUTF7 ? *)
 
 let gm_label s =
   raw (ImapUtils.encode_mutf7 s)
@@ -232,58 +226,58 @@ let search_modseq_ext =
   function
     None -> null
   | Some (flg, req) ->
-    space ++ raw "\"/flags/" ++ flag flg ++ raw "\" " ++ raw (entry_type_req req)
+    space >> raw "\"/flags/" >> flag flg >> raw "\" " >> raw (entry_type_req req)
 
 let rec search_key =
   function
     SEARCH_KEY_ALL -> raw "ALL"
   | SEARCH_KEY_ANSWERED -> raw "ANSWERED"
-  | SEARCH_KEY_BCC s -> raw "BCC " ++ string s
-  | SEARCH_KEY_BEFORE d -> raw "BEFORE " ++ day_month_year d
-  | SEARCH_KEY_BODY s -> raw "BODY " ++ string s
-  | SEARCH_KEY_CC s -> raw "CC " ++ string s
+  | SEARCH_KEY_BCC s -> raw "BCC " >> string s
+  | SEARCH_KEY_BEFORE d -> raw "BEFORE " >> day_month_year d
+  | SEARCH_KEY_BODY s -> raw "BODY " >> string s
+  | SEARCH_KEY_CC s -> raw "CC " >> string s
   | SEARCH_KEY_DELETED -> raw "DELETED"
   | SEARCH_KEY_FLAGGED -> raw "FLAGGED"
-  | SEARCH_KEY_FROM s -> raw "FROM " ++ string s
-  | SEARCH_KEY_KEYWORD s -> raw "KEYWORD " ++ string s
+  | SEARCH_KEY_FROM s -> raw "FROM " >> string s
+  | SEARCH_KEY_KEYWORD s -> raw "KEYWORD " >> string s
   | SEARCH_KEY_NEW -> raw "NEW"
   | SEARCH_KEY_OLD -> raw "OLD"
-  | SEARCH_KEY_ON d -> raw "ON " ++ day_month_year d
+  | SEARCH_KEY_ON d -> raw "ON " >> day_month_year d
   | SEARCH_KEY_RECENT -> raw "RECENT"
   | SEARCH_KEY_SEEN -> raw "SEEN"
-  | SEARCH_KEY_SINCE d -> raw "SINCE " ++ day_month_year d
-  | SEARCH_KEY_SUBJECT s -> raw "SUBJECT " ++ string s
-  | SEARCH_KEY_TEXT s -> raw "TEXT " ++ string s
-  | SEARCH_KEY_TO s -> raw "TO " ++ string s
+  | SEARCH_KEY_SINCE d -> raw "SINCE " >> day_month_year d
+  | SEARCH_KEY_SUBJECT s -> raw "SUBJECT " >> string s
+  | SEARCH_KEY_TEXT s -> raw "TEXT " >> string s
+  | SEARCH_KEY_TO s -> raw "TO " >> string s
   | SEARCH_KEY_UNANSWERED -> raw "UNANSWERED"
   | SEARCH_KEY_UNDELETED -> raw "UNDELETED"
   | SEARCH_KEY_UNFLAGGED -> raw "UNDELETED"
-  | SEARCH_KEY_UNKEYWORD s -> raw "UNKEYWORD " ++ string s
+  | SEARCH_KEY_UNKEYWORD s -> raw "UNKEYWORD " >> string s
   | SEARCH_KEY_UNSEEN -> raw "UNSEEN"
   | SEARCH_KEY_DRAFT -> raw "DRAFT"
-  | SEARCH_KEY_HEADER (s1, s2) -> raw "HEADER " ++ string s1 ++ raw " " ++ string s2
-  | SEARCH_KEY_LARGER n -> raw "LARGER " ++ int n
-  | SEARCH_KEY_NOT q -> raw "NOT " ++ search_key q
-  | SEARCH_KEY_OR (q1, q2) -> raw "OR " ++ search_key q1 ++ raw " " ++ search_key q2
-  | SEARCH_KEY_SENTBEFORE d -> raw "SENTBEFORE " ++ day_month_year d
-  | SEARCH_KEY_SENTON d -> raw "SENTON " ++ day_month_year d
-  | SEARCH_KEY_SENTSINCE d -> raw "SENTSINCE " ++ day_month_year d
-  | SEARCH_KEY_SMALLER n -> raw "SMALLER " ++ int n
+  | SEARCH_KEY_HEADER (s1, s2) -> raw "HEADER " >> string s1 >> raw " " >> string s2
+  | SEARCH_KEY_LARGER n -> raw "LARGER " >> int n
+  | SEARCH_KEY_NOT q -> raw "NOT " >> search_key q
+  | SEARCH_KEY_OR (q1, q2) -> raw "OR " >> search_key q1 >> raw " " >> search_key q2
+  | SEARCH_KEY_SENTBEFORE d -> raw "SENTBEFORE " >> day_month_year d
+  | SEARCH_KEY_SENTON d -> raw "SENTON " >> day_month_year d
+  | SEARCH_KEY_SENTSINCE d -> raw "SENTSINCE " >> day_month_year d
+  | SEARCH_KEY_SMALLER n -> raw "SMALLER " >> int n
   | SEARCH_KEY_UID set -> message_set set
   | SEARCH_KEY_UNDRAFT -> raw "UNDRAFT"
   | SEARCH_KEY_INSET set -> message_set set
   | SEARCH_KEY_AND (q1, q2) ->
-      raw "(" ++ search_key q1 ++ raw " " ++ search_key q2 ++ raw ")"
+      raw "(" >> search_key q1 >> raw " " >> search_key q2 >> raw ")"
   | SEARCH_KEY_MODSEQ (ext, modseq) ->
-      raw "MODSEQ" ++ search_modseq_ext ext ++ space ++ raw (Uint64.to_string modseq)
+      raw "MODSEQ" >> search_modseq_ext ext >> space >> raw (Uint64.to_string modseq)
   | SEARCH_KEY_XGMRAW str ->
-      raw "X-GM-RAW " ++ quoted_string str
+      raw "X-GM-RAW " >> quoted_string str
   | SEARCH_KEY_XGMMSGID msgid ->
-      raw "X-GM-MSGID " ++ raw (Uint64.to_string msgid)
+      raw "X-GM-MSGID " >> raw (Uint64.to_string msgid)
   | SEARCH_KEY_XGMTHRID thrid ->
-      raw "X-GM-THRID " ++ raw (Uint64.to_string thrid)
+      raw "X-GM-THRID " >> raw (Uint64.to_string thrid)
   (* | SEARCH_KEY_XGMLABELS lab -> *)
-  (*   raw "X-GM-LABEL " ++ gm_label lab *)
+  (*   raw "X-GM-LABEL " >> gm_label lab *)
 
 let status_att (att : status_att) =
   let to_string : status_att -> string =
@@ -298,7 +292,7 @@ let status_att (att : status_att) =
   raw (to_string att)
 
 (* let store_att = function *)
-(*   | `FLAGS flags -> raw "FLAGS" ++ space ++ list flag flags *)
-(*   | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" ++ space ++ list flag flags *)
-(*   | `X_GM_LABELS labels -> raw "X-GM-LABELS" ++ space ++ list gm_label labels *)
-(*   | `X_GM_LABELS_SILENT labels -> raw "X-GM-LABELS.SILENT" ++ space ++ list gm_label labels *)
+(*   | `FLAGS flags -> raw "FLAGS" >> space >> list flag flags *)
+(*   | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" >> space >> list flag flags *)
+(*   | `X_GM_LABELS labels -> raw "X-GM-LABELS" >> space >> list gm_label labels *)
+(*   | `X_GM_LABELS_SILENT labels -> raw "X-GM-LABELS.SILENT" >> space >> list gm_label labels *)

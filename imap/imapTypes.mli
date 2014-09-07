@@ -651,35 +651,38 @@ type state = {
   next_tag : int
 }
 
-type 'a rope =
-    Atom of 'a
-  | Empty
-  | Append of 'a rope * 'a rope
-
-type send_atom =
-    Raw of string
-  | Cont_req
-
-type sender =
-  send_atom rope
-
 type input =
     End
   | More
 
-type 'a result =
+type 'a parse_result =
     Ok of 'a * int
   | Fail of int
-  | Need of int * (input -> 'a result)
+  | Need of int * (input -> 'a parse_result)
 
 type 'a parser =
-  Buffer.t -> int -> 'a result  
+  Buffer.t -> int -> 'a parse_result
 
-type 'a command = {
-  cmd_sender : sender;
-  cmd_parser : response parser;
-  cmd_handler : state -> 'a
-}
+type control_buffer =
+  state * string list
+
+type error =
+    Bad
+  | BadTag
+  | No
+  | Bye
+  | ParseError
+
+type 'a result =
+    ControlOk of 'a * state * string list * int
+  | ControlFail of error
+  | ControlNeed of int * (input -> 'a result)
+  | ControlFlush of string list * 'a result
+
+type 'a control =
+  state -> string list -> Buffer.t -> int -> 'a result
+
+type 'a command = string -> 'a control
 
 type extended_parser =
     EXTENDED_PARSER_RESPONSE_DATA

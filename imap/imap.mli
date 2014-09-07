@@ -56,11 +56,13 @@ val next_tag : state -> string * state
 
 (** {2 IMAP sessions} *)
 
+val fresh_selection_info : selection_info
+
 val fresh_state : state
 
-val handle_response : state -> response -> state * [ `Fail of [ `BadTag | `Bad | `No | `Bye ] | `Ok of response ]
+val greeting : resp_cond_auth_type control
 
-val handle_greeting : state -> greeting -> state * [ `Fail of [ `Bye ] | `Ok of resp_cond_auth_type ]
+val std_command : unit control -> (state -> 'a) -> 'a command
 
 (** Creates a new IMAP session.  The session is initially disconnected and has
     to be connected using {!connect}. *)
@@ -92,9 +94,6 @@ val capability : capability list command
 (*     command. *\) *)
 
 val noop : unit command
-
-(* val noop : session -> unit IO.t *)
-(* (\** Polls the server for an event by sending a {b NOOP} command. *\) *)
 
 (* val logout : session -> unit IO.t *)
 (* (\** Logs out from the server by sending a {b LOGOUT} command. *\) *)
@@ -130,10 +129,6 @@ val noop : unit command
 (*     [auth]. *\) *)
 
 val login : string -> string -> unit command
-
-(* val login : session -> string -> string -> unit IO.t *)
-(* (\** [login s user pass] authenticates the client using login [user] and password *)
-(*     [pass]. *\) *)
 
 (* (\** {2 Commands valid in {b Authenticated} or {b Selected} state} *\) *)
 

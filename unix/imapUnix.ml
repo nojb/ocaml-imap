@@ -30,16 +30,23 @@ type session = {
   mutable pos : int
 }
 
-let parse s p =
+let run_control s c =
   let rec loop =
     function
-      Ok (x, i) ->
+      ControlOk (x, st, [], i) ->
+        s.imap_session <- st;
         s.pos <- i;
-        x
-    | Fail i ->
-        failwith "parse error" (* FIXME *)
-        (* raise (Parse_error (Buffer.contents s.imap_session.buffer, s.imap_session.i)) *)
-    | Need (len, k) ->
+        `Ok x
+    | ControlOk (_, _, _ :: _, _) ->
+        failwith "not flushed?"
+    | ControlFail x ->
+        `Fail x
+    | ControlFlush (buf, r) ->
+        Printf.eprintf "flushing: %S\n%!" (String.concat ", " buf);
+        List.iter (function "" -> () | str -> Ssl.output_string s.sock str) buf;
+        Ssl.flush s.sock;
+        loop r
+    | ControlNeed (len, k) ->
         let buf = String.create 65536 in
         match Ssl.read s.sock buf 0 (String.length buf) with
           0 ->
@@ -49,13 +56,10 @@ let parse s p =
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (p s.buffer s.pos)
+  loop (c s.imap_session [] s.buffer s.pos)
 
 let connect s =
-  let g = parse s ImapParser.greeting in
-  let st, r = handle_greeting s.imap_session g in
-  s.imap_session <- st;
-  r
+  run_control s Imap.greeting 
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -83,37 +87,13 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let sock = Ssl.open_connection ssl_method sockaddr in
   {sock; imap_session = fresh_state; buffer = Buffer.create 0; pos = 0}
 
-let get_continuation_request s =
-  parse s ImapParser.(continue_req >> ret ())
-
-let run_sender s f =
-  try
-    ImapWriter.fold
-      (fun () a ->
-         match a with
-           Raw str ->
-             Ssl.output_string s.sock str
-         | Cont_req ->
-             Ssl.flush s.sock;
-             get_continuation_request s) () f
-  with
-    _ -> failwith "run_sender"
-
 let next_tag s =
   let tag, st = next_tag s.imap_session in
   s.imap_session <- st;
   tag
       
 let send_command s cmd =
-  let tag = next_tag s in
-  let f = ImapWriter.(raw tag ++ char ' ' ++ cmd.cmd_sender ++ crlf) in
-  run_sender s f;
-  let r = parse s cmd.cmd_parser in
-  let st, r = handle_response s.imap_session r in
-  s.imap_session <- st;
-  match r with
-    `Fail x -> `Fail x
-  | `Ok _ -> `Ok (cmd.cmd_handler s.imap_session)
+  run_control s (cmd (next_tag s)) 
   
 (* module M = struct *)
 (*   class virtual input_chan = *)

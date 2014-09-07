@@ -136,15 +136,6 @@ let unregister_all () =
 (* (\*   char ' ' >> namespace >>= fun shared -> *\) *)
 (* (\*   ret (`NAMESPACE (personal, others, shared)) *\) *)
 
-(* (\* *)
-(* enable-data   = "ENABLED" *(SP capability) *)
-(* *\) *)
-(* (\* let enable_data = *\) *)
-(* (\*   str "ENABLED" >> *\) *)
-(* (\*   rep (char ' ' >> capability) >>= fun caps -> *\) *)
-(* (\*   ret (`ENABLED caps) *\) *)
-(*     (\* FIXME *\) *)
-
 (* (\** {2 NAMESPACE command} *\) *)
 
 (* (\* type namespace = { *\) *)
@@ -161,35 +152,3 @@ let unregister_all () =
 
 (* (\* type enable_response = *\) *)
 (* (\*   [ `ENABLED of capability list ] with sexp *\) *)
-
-(* type extended_parser = *)
-(*     EXTENDED_PARSER_RESPONSE_DATA *)
-(*   | EXTENDED_PARSER_RESP_TEXT_CODE *)
-(*   | EXTENDED_PARSER_MAILBOX_DATA *)
-(*   | EXTENDED_PARSER_FETCH_DATA *)
-(*   | EXTENDED_PARSER_STATUS_ATT *)
-
-(* type extension_data = .. *)
-
-(* type extension_api = { *)
-(*   ext_name : string; *)
-(*   ext_parser : extended_parser -> extension_data *)
-(* } *)
-
-(* type extension_data += *)
-(*     ENABLE_TYPE_ENABLE of capability list *)
-
-(* let enable_parse = *)
-(*   str "ENABLED" >> ... >> *)
-
-(* let enable_extension_parse = *)
-(*   function *)
-(*     EXTENDED_PARSER_RESPONSE_DATA -> *)
-(*       enable_parse *)
-(*   | _ -> *)
-(*       fail *)
-
-(* let extension_enable = { *)
-(*   ext_name = "ENABLE"; *)
-(*   ext_parser = enable_extension_parse *)
-(* } *)
