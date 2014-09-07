@@ -534,32 +534,6 @@ let login user pass =
 (*   in *)
 (*   IO.with_lock ci.send_lock aux *)
 
-(* let select_aux s cmd ?use_condstore:(use_condstore=false) mbox = *)
-(*   let ci = connection_info s in *)
-(*   let send_condstore = *)
-(*     if use_condstore then S.(space ++ raw "(CONDSTORE)") else S.null *)
-(*   in *)
-(*   let cmd = S.(raw cmd ++ space ++ mailbox mbox ++ send_condstore) in *)
-(*   let aux () = *)
-(*     ci.state <- {ci.state with sel_info = fresh_selection_info}; *)
-(*     send_command ci cmd >|= fun () -> ci.state.sel_info.sel_highestmodseq *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
-
-(* let select_condstore s mbox = *)
-(*   select_aux s "SELECT" ~use_condstore:true mbox *)
-
-(* let select s mbox = *)
-(*   select_aux s "SELECT" ~use_condstore:false mbox >>= fun _ -> *)
-(*   IO.return () *)
-
-(* let examine_condstore s mbox = *)
-(*   select_aux s "EXAMINE" ~use_condstore:true mbox *)
-
-(* let examine s mbox = *)
-(*   select_aux s "EXAMINE" ~use_condstore:false mbox >>= fun _ -> *)
-(*   IO.return () *)
-
 let create mbox =
   std_command
     (ImapWriter.(raw "CREATE" >> char ' ' >> mailbox mbox))

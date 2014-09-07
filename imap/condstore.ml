@@ -137,12 +137,12 @@ let condstore_parse =
 
 open Control
 
-let select_condstore_optional mb use_condstore =
+let select_condstore_optional mb cmd use_condstore =
   let send_condstore =
     ImapWriter.(if use_condstore then raw " (CONDSTORE)" else raw "")
   in
   let cmd_sender =
-    ImapWriter.(raw "SELECT" >> char ' ' >> mailbox mb >> send_condstore)
+    ImapWriter.(raw cmd >> char ' ' >> mailbox mb >> send_condstore)
   in
   let cmd_handler s =
     let rec loop =
@@ -163,10 +163,20 @@ let select_condstore_optional mb use_condstore =
     Imap.std_command cmd_sender cmd_handler tag
 
 let select_condstore mb =
-  select_condstore_optional mb true
+  select_condstore_optional mb "SELECT" true
 
 let select mb =
-  select_condstore_optional mb false
+  fun tag ->
+    select_condstore_optional mb "SELECT" false tag >>
+    ret ()
+
+let examine_condstore mb =
+  select_condstore_optional mb "EXAMINE" true
+
+let examine mb =
+  fun tag ->
+    select_condstore_optional mb "EXAMINE" false tag >>
+    ret ()
 
 let _ =
   ImapExtension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}
