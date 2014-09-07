@@ -108,7 +108,8 @@ let resp_text_code_print ppf r =
   fprintf ppf "@[<2>(resp-text-code@ %a)@]" p r
 
 let resp_text_print ppf r =
-  fprintf ppf "@[<2>(resp-text@ %a@ %S)@]" resp_text_code_print r.rsp_code r.rsp_text
+  fprintf ppf "@[<2>(resp-text@ %a%t)@]" resp_text_code_print r.rsp_code
+    (fun ppf -> if r.rsp_text <> "" then fprintf ppf "@ %S" r.rsp_text)
 
 let resp_cond_state_print ppf r =
   let p ppf =
