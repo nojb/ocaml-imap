@@ -439,25 +439,8 @@ let std_command sender handler tag =
 let capability =
   std_command (ImapWriter.raw "CAPABILITY") (fun s -> s.cap_info)
 
-(* let capability session = *)
-(*   let ci = connection_info session in *)
-(*   let cmd = S.raw "CAPABILITY" in *)
-(*   let tag = generate_tag ci in *)
-(*   let f = S.(raw tag ++ space ++ cmd ++ crlf) in *)
-(*   run_sender ci f >>= fun () -> *)
-(*   parse_response ci >>= fun _ -> *)
-(*   IO.return ci.state.cap_info *)
-(* (\* let aux () = send_command ci cmd >|= fun () -> ci.state.cap_info in *\) *)
-(* (\* IO.with_lock ci.send_lock aux *\) *)
-
 let noop =
   std_command (ImapWriter.raw "NOOP") (fun _ -> ())
-
-(* let noop s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "NOOP" in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
 
 (* let logout s = *)
 (*   let ci = connection_info s in *)
@@ -539,12 +522,6 @@ let login user pass =
     (ImapWriter.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
     (fun _ -> ())
   
-(* let login s user pass = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "LOGIN" ++ space ++ string user ++ space ++ string pass) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
-
 (* let compress s = *)
 (*   let ci = connection_info s in *)
 (*   let cmd = S.raw "COMPRESS DEFLATE" in *)

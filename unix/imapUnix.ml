@@ -37,12 +37,14 @@ let run_control s c =
         s.imap_session <- st;
         s.pos <- i;
         `Ok x
-    | ControlOk (_, _, _ :: _, _) ->
-        failwith "not flushed?"
+    | ControlOk (x, st, buf, i) ->
+        loop (ControlFlush (List.rev buf, ControlOk (x, st, [], i)))
     | ControlFail x ->
         `Fail x
     | ControlFlush (buf, r) ->
-        Printf.eprintf "flushing: %S\n%!" (String.concat ", " buf);
+        prerr_endline ">>>>";
+        List.iter prerr_string buf;
+        prerr_endline ">>>>";
         List.iter (function "" -> () | str -> Ssl.output_string s.sock str) buf;
         Ssl.flush s.sock;
         loop r
@@ -52,7 +54,9 @@ let run_control s c =
           0 ->
             loop (k End)
         | _ as n ->
-            (* prerr_string (String.sub buf 0 n); *)
+            prerr_endline "<<<<";
+            prerr_string (String.sub buf 0 n);
+            prerr_endline "<<<<";
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
@@ -251,11 +255,6 @@ let send_command s cmd =
 (*   let return x = x *)
 (*   let catch f g = try f () with e -> g e *)
 
-(*   type mutex = unit *)
-(*   let create_mutex () = () *)
-(*   let with_lock () f = f () *)
-(*   let is_locked () = false *)
-
 (*   type input = input_chan *)
 (*   type output = Unix.file_descr * output_chan *)
 
@@ -331,8 +330,3 @@ let send_command s cmd =
 (*     let oc = deflate_output oc in *)
 (*     (ic, (fd, oc)) *)
 (* end *)
-
-(* include Client.Make (M) *)
-
-(* let idle s f = *)
-(*   ignore (idle s f) *)

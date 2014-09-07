@@ -127,6 +127,21 @@ let rec accum f b i =
   in
   loop i
 
+let nz_digits b i =
+  let rec first = ref true in
+  let rec loop j =
+    if j >= Buffer.length b then
+      Need (1, function End when i = j -> Fail j
+                      | End -> Ok (Buffer.sub b i (j - i), j)
+                      | More -> loop j)
+    else
+      match Buffer.nth b j with
+        '0' -> if i = j then Fail i else loop (j+1)
+      | '1' .. '9' -> first := false; loop (j+1)
+      | _ -> if i = j then Fail i else Ok (Buffer.sub b i (j - i), j)
+  in
+  loop i
+
 let crlf =
   str "\r\n" >> ret ()
 
@@ -257,18 +272,11 @@ nz-number       = digit-nz *DIGIT
                     ; Non-zero unsigned 32-bit integer
                     ; (0 < n < 4,294,967,296)
 *)
-let is_nz_number_digit () =
-  let first = ref true in
-  function
-    '0' -> not !first
-  | '1' .. '9' -> true
-  | _ -> false
-  
 let nz_number =
-  app Uint32.of_string (accum (is_nz_number_digit ()))
+  app Uint32.of_string nz_digits
     
 let nz_number' =
-  app int_of_string (accum (is_nz_number_digit ()))
+  app int_of_string nz_digits
 
 let nil =
   str "nil" >> ret ()
@@ -608,7 +616,9 @@ let resp_text_code =
     (* char ' ' >> uid_set >>= fun dst_uids -> *)
     (* ret (RESP_TEXT_CODE_COPYUID (Uid.of_uint32 uidvalidity, src_uids, dst_uids)) *)
   (* in *)
-  let other a = opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s)) in
+  let other =
+    atom >>= fun a -> opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s))
+  in
   altn [
     alert;
     badcharset;
@@ -626,7 +636,7 @@ let resp_text_code =
     (* (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY); *)
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
     (extension_parser EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
-    (atom >>= other)
+    other
   ]
 
 (*
