@@ -137,6 +137,50 @@ let condstore_parse =
 
 open Control
 
+let search_modseq_aux cmd ?charset key =
+  let sender =
+    let open ImapWriter in
+    raw cmd >>
+    begin
+      match charset with
+        Some charset when search_key_need_to_send_charset key ->
+          char ' ' >> string charset
+      | _ ->
+          ret ()
+    end >>
+    char ' ' >>
+    search_key key
+  in
+  let cmd_handler s =
+    let rec loop =
+      function
+        [] ->
+          let res = s.rsp_info.rsp_search_results in
+          modify (fun s -> {s with rsp_info = {s.rsp_info with rsp_search_results = []}}) >>
+          ret (res, Uint64.zero)
+      | CONDSTORE_SEARCH_DATA (res, m) :: _ ->
+          ret (res, m)
+      | _ :: rest ->
+          loop rest
+    in
+    loop s.rsp_info.rsp_extension_list
+  in
+  Imap.std_command sender cmd_handler
+
+let search_modseq ?charset key =
+  search_modseq_aux "SEARCH" ?charset key
+
+let uid_search_modseq ?charset key =
+  search_modseq_aux "UID SEARCH" ?charset key
+
+let search ?charset key =
+  fun tag ->
+    search_modseq_aux "SEARCH" ?charset key tag >> ret ()
+
+let uid_search ?charset key =
+  fun tag ->
+    search_modseq_aux "UID SEARCH" ?charset key tag >> ret ()
+
 let select_condstore_optional mb cmd use_condstore =
   let send_condstore =
     ImapWriter.(if use_condstore then raw " (CONDSTORE)" else raw "")

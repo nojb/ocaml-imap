@@ -223,7 +223,7 @@ let mailbox_data_print ppf r =
         fprintf ppf "@[<2>(lsub@ %a)@]" mailbox_list_print list
     | MAILBOX_DATA_SEARCH ns ->
         let p ppf = List.iter (fun n -> fprintf ppf "@ %s" (Uint32.to_string n)) in
-        fprintf ppf "@[<2>(search@%a)@]" p ns
+        fprintf ppf "@[<2>(search%a)@]" p ns
     | MAILBOX_DATA_STATUS status ->
         fprintf ppf "@[<2>(status@ %a)@]" mailbox_data_status_print status
     | MAILBOX_DATA_EXISTS n ->

@@ -82,12 +82,6 @@ let resp_text_store s {rsp_code; rsp_text} =
       (* {s with sel_info = {s.sel_info with sel_uidnotsticky = true}} *)
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
-  (* | RESP_TEXT_CODE_HIGHESTMODSEQ modseq -> *)
-      (* {s with sel_info = {s.sel_info with sel_highestmodseq = modseq}} *)
-  (* | RESP_TEXT_CODE_NOMODSEQ -> *)
-      (* {s with sel_info = {s.sel_info with sel_highestmodseq = Modseq.zero}} *)
-  (* | RESP_TEXT_CODE_MODIFIED set -> *)
-  (* {s with rsp_info = {s.rsp_info with rsp_modified = set}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
       ImapExtension.extension_data_store s e
   | RESP_TEXT_CODE_OTHER other ->
@@ -106,14 +100,10 @@ let mailbox_data_store s =
   | MAILBOX_DATA_LSUB mb ->
       {s with rsp_info =
                 {s.rsp_info with rsp_mailbox_list =
-                                   s.rsp_info.rsp_mailbox_list @ [mb]}}
-  (* rsp_mailbox_lsub = s.rsp_info.rsp_mailbox_lsub @ [mb] } *)
+                                   s.rsp_info.rsp_mailbox_lsub @ [mb]}}
   | MAILBOX_DATA_SEARCH results ->
       {s with rsp_info = {s.rsp_info with
                           rsp_search_results = s.rsp_info.rsp_search_results @ results}}
-                          (* rsp_search_results_modseq = *)
-                            (* let max x y = if Modseq.compare x y <= 0 then y else x in *)
-                            (* max modseq s.rsp_info.rsp_search_results_modseq}} *)
   | MAILBOX_DATA_STATUS status ->
       {s with rsp_info = {s.rsp_info with rsp_status = status}}
   | MAILBOX_DATA_EXISTS n ->
@@ -227,49 +217,6 @@ let fresh_state = {
   next_tag = 0
 }
 
-(* let run_parser session p = *)
-(*   let rec loop = *)
-(*     function *)
-(*       ImapParser.Ok (x, i) -> *)
-(*         session.i <- i; *)
-(*         IO.return x *)
-(*     | ImapParser.Fail i -> *)
-(*         IO.fail (Parse_error (Buffer.contents ci.buffer, i)) *)
-(*     | ImapParser.Need (len, k) -> *)
-(*         let ic, _  = ci.chan in *)
-(*         IO.read 65536 ic >>= *)
-(*         begin *)
-(*           function *)
-(*             "" -> *)
-(*               loop (k ImapParser.End) *)
-(*           | _ as data -> *)
-(*               Buffer.add_string ci.buffer data; *)
-(*               loop (k ImapParser.More) *)
-(*         end *)
-(*   in *)
-(*   loop (p ci.buffer ci.i) *)
-
-let get_response ci tag =
-  assert false
-(*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
-(*   let rec loop () = *)
-(*     read_resp_data_or_resp_done ci >>= *)
-(*     function *)
-(*       `BYE _ -> *)
-(*         ci.disconnect () >>= fun () -> *)
-(*         IO.fail BYE *)
-(*     | #ImapResponse.response_data -> *)
-(*         loop () *)
-(*     | `TAGGED (tag', `OK rt) -> *)
-(*         if tag <> tag' then IO.fail Bad_tag *)
-(*         else IO.return rt *)
-(*     | `TAGGED (_, `BAD rt) -> *)
-(*         IO.fail BAD *)
-(*     | `TAGGED (_, `NO rt) -> *)
-(*         IO.fail NO *)
-(*   in *)
-(*   loop () *)
-
 let get_idle_response ci tag f stop =
   assert false
 (*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
@@ -334,54 +281,6 @@ let get_auth_response step ci tag =
 (*         | `NEEDS_MORE -> loop true *)
 (*   in *)
 (*   loop true *)
-
-let get_continuation_request ci =
-  assert false
-(* read ci ImapResponse.continue_req (fun _ _ -> ()) >|= function (`CONT_REQ x) -> x *)
-
-(* let make () = *)
-(*   { conn_state = Disconnected } *)
-
-(* let connect' s chan = *)
-(*   let disconnect' chan = *)
-(*     s.conn_state <- Disconnected; *)
-(*     IO.catch (fun () -> IO.disconnect chan) (fun _ -> IO.return ()) *)
-(*   in *)
-(*   match s.conn_state with *)
-(*     Disconnected -> *)
-(*       let ci = { *)
-(*         chan; next_tag = 1; *)
-(*         buffer = Buffer.create 0; *)
-(*         i = 0; *)
-(*         imap_response = ""; *)
-(*         imap_tag = ""; *)
-(*         state = { *)
-(*           rsp_info = fresh_response_info; *)
-(*           sel_info = fresh_selection_info; *)
-(*           cap_info = [] *)
-(*         }; *)
-(*         compress_deflate = false; *)
-(*         send_lock = IO.create_mutex (); *)
-(*         disconnect = (fun () -> disconnect' chan) *)
-(*       } *)
-(*       in *)
-(*       s.conn_state <- Connected ci; *)
-(*       parse_greeting ci *)
-(*   | _ -> *)
-(*       IO.fail (Failure "Imap.connect: already connected") *)
-
-(* let connect s ?(port=143) host = *)
-(*   IO.connect port host >>= connect' s *)
-
-(* let connect_ssl s ?(version=`TLSv1) ?ca_file ?(port=993) host = *)
-(*   IO.connect_ssl version ?ca_file port host >>= connect' s *)
-
-(* let disconnect s = *)
-(*   match s.conn_state with *)
-(*     Disconnected -> () *)
-(*   | Connected ci -> *)
-(*       let (_ : unit IO.t) = ci.disconnect () in *)
-(*       () *)
 
 let next_tag s =
   let tag = s.next_tag in
@@ -641,24 +540,6 @@ let expunge =
 (*   let cmd = S.(raw "UID EXPUNGE" ++ space ++ message_set (uid_set_to_uint32_set set)) in *)
 (*   let aux () = send_command ci cmd in *)
 (*   IO.with_lock ci.send_lock aux *)
-
-(* let search_aux s cmd ?charset query = *)
-(*   let ci = connection_info s in *)
-(*   let charset_opt = match charset with *)
-(*     | None -> S.null *)
-(*     | Some charset -> S.(string charset ++ space) *)
-(*   in *)
-(*   let cmd = S.(raw cmd ++ space ++ charset_opt ++ search_key query) in *)
-(*   let aux () = *)
-(*     send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_search_results *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
-
-(* let search s ?charset query = *)
-(*   search_aux s "SEARCH" ?charset query >|= uint32_list_to_seq_list *)
-
-(* let uid_search s ?charset query = *)
-(*   search_aux s "UID SEARCH" ?charset query >|= uint32_list_to_uid_list *)
 
 (* type msg_att_handler = *)
 (*     Seq.t * msg_att list -> unit *)

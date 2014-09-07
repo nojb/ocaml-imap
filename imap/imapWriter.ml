@@ -277,7 +277,51 @@ let rec search_key =
   | SEARCH_KEY_XGMTHRID thrid ->
       raw "X-GM-THRID " >> raw (Uint64.to_string thrid)
   (* | SEARCH_KEY_XGMLABELS lab -> *)
-  (*   raw "X-GM-LABEL " >> gm_label lab *)
+(*   raw "X-GM-LABEL " >> gm_label lab *)
+
+let rec search_key_need_to_send_charset =
+  function
+    SEARCH_KEY_ALL
+  | SEARCH_KEY_ANSWERED -> false
+  | SEARCH_KEY_BCC _ -> true
+  | SEARCH_KEY_BEFORE _ -> false
+  | SEARCH_KEY_BODY _
+  | SEARCH_KEY_CC _ -> true
+  | SEARCH_KEY_DELETED
+  | SEARCH_KEY_FLAGGED -> false
+  | SEARCH_KEY_FROM _
+  | SEARCH_KEY_KEYWORD _ -> true
+  | SEARCH_KEY_NEW
+  | SEARCH_KEY_OLD
+  | SEARCH_KEY_ON _
+  | SEARCH_KEY_RECENT
+  | SEARCH_KEY_SEEN
+  | SEARCH_KEY_SINCE _ -> false
+  | SEARCH_KEY_SUBJECT _
+  | SEARCH_KEY_TEXT _
+  | SEARCH_KEY_TO _ -> true
+  | SEARCH_KEY_UNANSWERED
+  | SEARCH_KEY_UNDELETED
+  | SEARCH_KEY_UNFLAGGED -> false
+  | SEARCH_KEY_UNKEYWORD _ -> true
+  | SEARCH_KEY_UNSEEN
+  | SEARCH_KEY_DRAFT -> false
+  | SEARCH_KEY_HEADER _ -> true
+  | SEARCH_KEY_LARGER _ -> false
+  | SEARCH_KEY_NOT q -> search_key_need_to_send_charset q
+  | SEARCH_KEY_OR (q1, q2) -> search_key_need_to_send_charset q1 || search_key_need_to_send_charset q2
+  | SEARCH_KEY_SENTBEFORE _
+  | SEARCH_KEY_SENTON _
+  | SEARCH_KEY_SENTSINCE _
+  | SEARCH_KEY_SMALLER _
+  | SEARCH_KEY_UID _
+  | SEARCH_KEY_UNDRAFT
+  | SEARCH_KEY_INSET _ -> false
+  | SEARCH_KEY_XGMTHRID _ -> true
+  (* | SEARCH_KEY_MULTIPLE -> ??? *)
+  | SEARCH_KEY_MODSEQ _
+  | SEARCH_KEY_XGMMSGID _ -> false
+  | _ -> true
 
 let status_att (att : status_att) =
   let to_string : status_att -> string =
