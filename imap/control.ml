@@ -46,5 +46,15 @@ let get st _ _ i =
 let put st _ _ _ i =
   ControlOk ((), st, i)
 
+let catch f g st buf b i =
+  let rec loop =
+    function
+      ControlOk _ as ok -> ok
+    | ControlFail err -> g err st buf b i
+    | ControlNeed (len, k) -> ControlNeed (len, fun inp -> loop (k inp))
+    | ControlFlush (str, r) -> ControlFlush (str, loop r)
+  in
+  loop (f st buf b i)
+
 let (>>=) = bind
 let (>>) m1 m2 = m1 >>= fun _ -> m2

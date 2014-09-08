@@ -324,16 +324,18 @@ let handle_response r =
   | RESP_DONE_FATAL _ ->
       fail Bye
 
-let std_command sender handler tag =
-  send tag >>
-  send " " >>
-  sender >>
-  send "\r\n" >>
-  flush >>
-  liftP ImapParser.response >>= fun r ->
-  modify (fun s -> response_store s r) >>
-  handle_response r >>
-  gets handler
+let std_command sender handler =
+  let cmd =
+    send " " >>
+    sender >>
+    send "\r\n" >>
+    flush >>
+    liftP ImapParser.response >>= fun r ->
+    modify (fun s -> response_store s r) >>
+    handle_response r >>
+    gets handler
+  in
+  fun tag -> send tag >> cmd
 
 let capability =
   std_command (ImapWriter.raw "CAPABILITY") (fun s -> s.cap_info)
@@ -341,17 +343,9 @@ let capability =
 let noop =
   std_command (ImapWriter.raw "NOOP") (fun _ -> ())
 
-(* let logout s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "LOGOUT" in *)
-(*   let aux () = *)
-(*     IO.catch *)
-(*       (fun () -> send_command ci cmd) *)
-(*       (function *)
-(*         | BYE -> ci.disconnect () *)
-(*         | exn -> IO.fail exn) *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
+let logout =
+  fun tag ->
+    catch (std_command (ImapWriter.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
 
 (* let id s params = *)
 (*   let ci = connection_info s in *)

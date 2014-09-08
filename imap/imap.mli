@@ -95,8 +95,8 @@ val capability : capability list command
 
 val noop : unit command
 
-(* val logout : session -> unit IO.t *)
-(* (\** Logs out from the server by sending a {b LOGOUT} command. *\) *)
+val logout : unit command
+(** Logs out from the server by sending a {b LOGOUT} command. *)
 
 (* val id : session -> (string * string) list -> (string * string) list IO.t *)
 (* (\** Sends an {b ID} command with an association list of identification *)
@@ -136,22 +136,6 @@ val login : string -> string -> unit command
 (* (\** Enables compression. *)
 
 (*     This command requires the COMPRESS=DEFLATE extension. *\) *)
-
-(* val select : session -> string -> unit IO.t *)
-(* (\** Selects a mailbox so that the messages inside can be accessed and modified. *)
-(*     Mailbox names are assumed to be encoded using UTF8. *\) *)
-
-(* val select_condstore : session -> string -> Modseq.t IO.t *)
-(* (\** Like {!select}, but returns the higest modification sequence of the *)
-(*     mailbox. *)
-
-(*     This command requires the CONDSTORE extension. *\) *)
-
-(* val examine : session -> string -> unit IO.t *)
-(* (\** Like {!select}, but opens the mailbox in read-only mode. *\) *)
-
-(* val examine_condstore : session -> string -> Modseq.t IO.t *)
-(* (\** Like {!select_condstore}, but opens the mailbox in read-only mode. *\) *)
 
 val create : string -> unit command
 
@@ -212,15 +196,6 @@ val expunge : unit command
 (*     whose unique identificatio number belongs to the set [uids]. *)
 
 (*     This command requires the UIDPLUS extension. *\) *)
-
-(* val search : session -> ?charset:string -> search_key -> Seq.t list IO.t *)
-(* (\** [search s ?charset query] return the sequence numbers of all the messages *)
-(*     that match the given criteria [query].  The parameter [?charset] specifies *)
-(*     which encoding is used to encode whatever text is present in [query]. *\) *)
-
-(* val uid_search : session -> ?charset:string -> search_key -> Uid.t list IO.t *)
-(* (\** Like {!search}, but returns the unique identification numbers of the *)
-(*     matching messages. *\) *)
 
 (* val fetch : session -> Seq_set.t -> fetch_att list -> msg_att list IO.t *)
 (* (\** [fetch s set atts h] retrieve flags and/or other attributes [att] for those *)
@@ -305,11 +280,3 @@ val expunge : unit command
 (*     identification numbers. *)
 
 (*     This command requires the UIDPLUS extension. *\) *)
-
-(* (\** {2 Session information} *\) *)
-
-(* val state : session -> ImapState.state *)
-(* (\** Returns the current known imap information. *\) *)
-
-(* val is_busy : session -> bool *)
-(* (\** Whether some command is in progress. *\) *)
