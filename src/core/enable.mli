@@ -21,40 +21,6 @@
    SOFTWARE. *)
 
 open Types
-open TypesPrivate
+open Core
 
-type 'a result =
-    ControlOk of 'a * state * int
-  | ControlFail of error
-  | ControlNeed of int * (input -> 'a result)
-  | ControlFlush of string * 'a result
-
-type 'a control
-
-val flush : unit control
-
-val bind : 'a control -> ('a -> 'b control) -> 'b control
-
-val fail : error -> _ control
-
-val liftP : 'a parser -> 'a control
-
-val send : string -> unit control
-
-val ret : 'a -> 'a control
-
-val gets : (state -> 'a) -> 'a control
-
-val modify : (state -> state) -> unit control
-
-val get : state control
-
-val put : state -> unit control
-
-val catch : 'a control -> (error -> 'a control) -> 'a control
-
-val (>>=) : 'a control -> ('a -> 'b control) -> 'b control
-
-val (>>) : _ control -> 'a control -> 'a control
-
-val run : 'a control -> state -> Buffer.t -> int -> 'a result
+val enable : capability list -> capability list command

@@ -20,16 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapTypes
-
-let string_of_error =
-  function
-    Bad -> "Server did not understand request"
-  | BadTag -> "Incorrect tag in reply"
-  | No -> "Server denied request"
-  | Bye -> "Server closed the connection"
-  | ParseError -> "Parser error"
-  | Auth_error -> "Authentication error"
+open Imap
+open Types
 
 exception Error of error
 
@@ -41,6 +33,7 @@ type session = {
 }
 
 let run_control s c =
+  let open Control in
   let buf = String.create 65536 in
   let rec loop =
     function
@@ -68,10 +61,10 @@ let run_control s c =
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (c s.imap_session (Buffer.create 0) s.buffer s.pos)
+  loop (run c s.imap_session s.buffer s.pos)
 
 let connect s =
-  run_control s Commands.greeting 
+  run_control s Core.greeting 
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -97,10 +90,10 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = Commands.fresh_state; buffer = Buffer.create 0; pos = 0}
+  {sock; imap_session = Core.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
-  let tag, st = Commands.next_tag s.imap_session in
+  let tag, st = Core.next_tag s.imap_session in
   s.imap_session <- st;
   tag
       

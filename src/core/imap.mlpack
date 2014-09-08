@@ -7,9 +7,10 @@ Extension
 Parser
 Print
 ImapSet
-ImapTypes
+Types
 Utils
 Sender
 Uidplus
 Id
 Idle
+Core

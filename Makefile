@@ -1,6 +1,12 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-all: src/core/imap.cma
+all: core unix lwt
+
+core: src/core/imap.cma
+
+unix: src/unix/imapUnix.cma
+
+lwt: src/lwt/imapLwt.cma
 
 %.cma:
 	$(OCAMLBUILD) $@

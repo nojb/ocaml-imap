@@ -1,26 +1,27 @@
-(* The MIT License (MIT) *)
+(* The MIT License (MIT)
 
-(* Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com> *)
+   Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
 
-(* Permission is hereby granted, free of charge, to any person obtaining a copy *)
-(* of this software and associated documentation files (the "Software"), to deal *)
-(* in the Software without restriction, including without limitation the rights *)
-(* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell *)
-(* copies of the Software, and to permit persons to whom the Software is *)
-(* furnished to do so, subject to the following conditions: *)
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
 
-(* The above copyright notice and this permission notice shall be included in *)
-(* all copies or substantial portions of the Software. *)
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
 
-(* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *)
-(* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, *)
-(* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE *)
-(* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER *)
-(* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, *)
-(* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE *)
-(* SOFTWARE. *)
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. *)
 
-open ImapTypes
+open Types
+open TypesPrivate
   
 type 'a t =
   'a parser
@@ -388,13 +389,14 @@ let test p s =
 (** IMAP PARSER *)
 
 let extension_parser calling_parser =
+  let open Extension in
   let rec loop =
     function
       [] -> fail
     | p :: rest ->
         alt (p.ext_parser calling_parser) (loop rest)
   in
-  loop !Extension.extension_list
+  loop !extension_list
 
 let extension_parser =
   delay extension_parser
@@ -591,7 +593,7 @@ let resp_text_code =
     uidvalidity;
     unseen;
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
-    (extension_parser EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
+    (extension_parser Extension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
     other
   ]
 
@@ -690,7 +692,7 @@ let status_att =
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n) in
-  let extension = extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e) in
+  let extension = extension_parser Extension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e) in
   altn [ messages; recent; uidnext; uidvalidity; unseen; extension ]
 
 let address =
@@ -1158,7 +1160,7 @@ let msg_att =
       altn [
         (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
         (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
-        (extension_parser EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
+        (extension_parser Extension.EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
       ]
     end
   >>= fun xs ->
@@ -1166,7 +1168,7 @@ let msg_att =
   ret xs
 
 let status_info =
-  alt status_att (extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
+  alt status_att (extension_parser Extension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
 
 let mailbox_data_flags =
   str "FLAGS" >> char ' ' >> flag_list >>= fun flags ->
@@ -1199,7 +1201,7 @@ let mailbox_data_recent =
   ret (MAILBOX_DATA_RECENT n)
 
 let mailbox_data_extension_data =
-  extension_parser EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
+  extension_parser Extension.EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
   ret (MAILBOX_DATA_EXTENSION_DATA e)
 
 (*
@@ -1293,7 +1295,7 @@ let response_data =
     (mailbox_data >>= fun r -> ret (RESP_DATA_MAILBOX_DATA r));
     (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
     (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
-    (extension_parser EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
+    (extension_parser Extension.EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
     (* namespace_response; *)
   ]
   >>= fun x ->

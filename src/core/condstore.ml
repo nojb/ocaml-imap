@@ -1,27 +1,28 @@
-(* The MIT License (MIT) *)
+(* The MIT License (MIT)
 
-(* Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com> *)
+   Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
 
-(* Permission is hereby granted, free of charge, to any person obtaining a copy *)
-(* of this software and associated documentation files (the "Software"), to deal *)
-(* in the Software without restriction, including without limitation the rights *)
-(* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell *)
-(* copies of the Software, and to permit persons to whom the Software is *)
-(* furnished to do so, subject to the following conditions: *)
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
 
-(* The above copyright notice and this permission notice shall be included in *)
-(* all copies or substantial portions of the Software. *)
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
 
-(* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *)
-(* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, *)
-(* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE *)
-(* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER *)
-(* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, *)
-(* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE *)
-(* SOFTWARE. *)
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. *)
 
-open ImapTypes
-
+open Types
+open Extension
+  
 (* resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value / *)
 (*                     "NOMODSEQ" / *)
 (*                     "MODIFIED" SP set *)
@@ -106,7 +107,7 @@ let condstore_parse =
     altn [ highestmodseq; nomodseq; modified ]
   in
   function
-  | EXTENDED_PARSER_RESP_TEXT_CODE ->
+    EXTENDED_PARSER_RESP_TEXT_CODE ->
       condstore_resptextcode >>= fun r ->
       ret (CONDSTORE_RESP_TEXT_CODE r)
   | EXTENDED_PARSER_FETCH_DATA ->
@@ -163,7 +164,7 @@ let search_modseq_aux cmd ?charset key =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Commands.std_command sender cmd_handler
+  Core.std_command sender cmd_handler
 
 let search_modseq ?charset key =
   search_modseq_aux "SEARCH" ?charset key
@@ -197,8 +198,8 @@ let select_condstore_optional mb cmd use_condstore =
     loop s.rsp_info.rsp_extension_list
   in
   fun tag ->
-    modify (fun s -> {s with sel_info = Commands.fresh_selection_info}) >>
-    Commands.std_command cmd_sender cmd_handler tag
+    modify (fun s -> {s with sel_info = Core.fresh_selection_info}) >>
+    Core.std_command cmd_sender cmd_handler tag
 
 let select_condstore mb =
   select_condstore_optional mb "SELECT" true
@@ -229,7 +230,7 @@ let fetch_aux cmd set changedsince attrs =
     raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
-  Commands.std_command cmd cmd_handler
+  Core.std_command cmd cmd_handler
 
 let fetch_changedsince set modseq attrs =
   fetch_aux "FETCH" set (Some modseq) attrs
@@ -264,7 +265,7 @@ let store_aux cmd set unchangedsince flags =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Commands.std_command sender handler
+  Core.std_command sender handler
 
 let store set flags tag =
   store_aux "STORE" set None flags tag >> ret ()
@@ -279,4 +280,4 @@ let uid_store_unchangedsince set unchangedsince flags =
   store_aux "UID STORE" set (Some unchangedsince) flags
     
 let _ =
-  Extension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}
+  register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}

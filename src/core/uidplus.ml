@@ -1,27 +1,28 @@
-(* The MIT License (MIT) *)
+(* The MIT License (MIT)
 
-(* Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com> *)
+   Copyright (c) 2014 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
 
-(* Permission is hereby granted, free of charge, to any person obtaining a copy *)
-(* of this software and associated documentation files (the "Software"), to deal *)
-(* in the Software without restriction, including without limitation the rights *)
-(* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell *)
-(* copies of the Software, and to permit persons to whom the Software is *)
-(* furnished to do so, subject to the following conditions: *)
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
 
-(* The above copyright notice and this permission notice shall be included in *)
-(* all copies or substantial portions of the Software. *)
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
 
-(* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR *)
-(* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, *)
-(* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE *)
-(* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER *)
-(* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, *)
-(* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE *)
-(* SOFTWARE. *)
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE. *)
 
-open ImapTypes
-
+open Types
+open Extension
+  
 (* resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid *)
 
 (* resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set *)
@@ -111,7 +112,7 @@ let uid_expunge set =
     let open Sender in
     raw "UID EXPUNGE" >> char ' ' >> message_set set
   in
-  Commands.std_command sender (fun _ -> ())
+  Core.std_command sender (fun _ -> ())
 
 let copy_aux cmd set destbox =
   let sender =
@@ -130,7 +131,7 @@ let copy_aux cmd set destbox =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Commands.std_command sender handler
+  Core.std_command sender handler
 
 let copy set destbox tag =
   copy_aux "COPY" set destbox tag >> ret ()
@@ -143,3 +144,6 @@ let uidplus_copy =
 
 let uidplus_uid_copy =
   copy_aux "UID COPY"
+
+let _ =
+  register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}

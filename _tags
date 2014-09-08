@@ -1,4 +1,4 @@
 true: package(str), package(uint)
 true: package(cryptokit), package(ucorelib)
-<imap>: include
+<src/core>: include
 true: debug

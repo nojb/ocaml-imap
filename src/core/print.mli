@@ -20,7 +20,8 @@
 (* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE *)
 (* SOFTWARE. *)
 
-open ImapTypes
+open Types
+open TypesPrivate
 
 val capability_print : Format.formatter -> capability -> unit
 val response_print : Format.formatter -> response -> unit

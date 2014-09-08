@@ -20,16 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapTypes
-
-let string_of_error =
-  function
-    Bad -> "Server did not understand request"
-  | BadTag -> "Incorrect tag in reply"
-  | No -> "Server denied request"
-  | Bye -> "Server closed the connection"
-  | ParseError -> "Parser error"
-  | Auth_error -> "Authentication error"
+open Imap
+open Types
 
 exception Error of error
 
@@ -56,19 +48,19 @@ let run_control s c =
   let buf = String.create 65536 in
   let rec loop =
     function
-      ControlOk (x, st, i) ->
+      Control.ControlOk (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
         return x
-    | ControlFail err ->
+    | Control.ControlFail err ->
         fail (Error err)
-    | ControlFlush (str, r) ->
+    | Control.ControlFlush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
         fully_write s.sock str 0 (String.length str) >>= fun () ->
         loop r
-    | ControlNeed (len, k) ->
+    | Control.ControlNeed (len, k) ->
         Lwt_ssl.read s.sock buf 0 (String.length buf) >>=
         function
           0 ->
@@ -80,10 +72,10 @@ let run_control s c =
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (c s.imap_session (Buffer.create 0) s.buffer s.pos)
+  loop (Control.run c s.imap_session s.buffer s.pos)
 
 let connect s =
-  run_control s Commands.greeting
+  run_control s Core.greeting
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -112,10 +104,10 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   Lwt_unix.connect fd sockaddr >>= fun () ->
   let context = Ssl.create_context ssl_method Ssl.Client_context in
   Lwt_ssl.ssl_connect fd context >>= fun sock ->
-  return {sock; imap_session = Commands.fresh_state; buffer = Buffer.create 0; pos = 0}
+  return {sock; imap_session = Core.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
-  let tag, st = Commands.next_tag s.imap_session in
+  let tag, st = Core.next_tag s.imap_session in
   s.imap_session <- st;
   tag
       

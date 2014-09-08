@@ -20,14 +20,14 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapTypes
+open Imap
+open Types
+open Core
 
 exception Error of error
-
-val string_of_error : error -> string
 
 type session
 
 val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session Lwt.t
-val connect : session -> resp_cond_auth_type Lwt.t
+val connect : session -> [ `NeedsAuth | `PreAuth ] Lwt.t
 val send_command : session -> 'a command -> 'a Lwt.t

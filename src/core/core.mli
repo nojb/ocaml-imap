@@ -22,39 +22,33 @@
 
 open Types
 open TypesPrivate
+open Control
+  
+val string_of_error : error -> string
+  
+type 'a command = string -> 'a control
 
-type 'a result =
-    ControlOk of 'a * state * int
-  | ControlFail of error
-  | ControlNeed of int * (input -> 'a result)
-  | ControlFlush of string * 'a result
+val response_data_store : state -> response_data -> state
 
-type 'a control
+val greeting_store : state -> greeting -> state
 
-val flush : unit control
+val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
-val bind : 'a control -> ('a -> 'b control) -> 'b control
+val response_store : state -> response -> state
 
-val fail : error -> _ control
+val handle_response : response -> unit control
 
-val liftP : 'a parser -> 'a control
+(* val debug : bool ref *)
 
-val send : string -> unit control
+val next_tag : state -> string * state
 
-val ret : 'a -> 'a control
+(** {2 IMAP sessions} *)
 
-val gets : (state -> 'a) -> 'a control
+val fresh_selection_info : selection_info
 
-val modify : (state -> state) -> unit control
+val fresh_state : state
 
-val get : state control
+val greeting : [ `NeedsAuth | `PreAuth ] control
 
-val put : state -> unit control
+val std_command : unit control -> (state -> 'a) -> 'a command
 
-val catch : 'a control -> (error -> 'a control) -> 'a control
-
-val (>>=) : 'a control -> ('a -> 'b control) -> 'b control
-
-val (>>) : _ control -> 'a control -> 'a control
-
-val run : 'a control -> state -> Buffer.t -> int -> 'a result
