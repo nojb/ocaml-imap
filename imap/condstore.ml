@@ -242,5 +242,40 @@ let uid_fetch_changedsince set modseq attrs =
 let uid_fetch set attrs =
   fetch_aux "UID FETCH" set None attrs
 
+let store_aux cmd set unchangedsince flags =
+  let sender =
+    let open Sender in
+    let unchangedsince =
+      match unchangedsince with
+        None -> ret ()
+      | Some modseq -> raw "(UNCHANGEDSINCE " >> raw (Uint64.to_string modseq) >> raw ") "
+    in
+    raw cmd >> char ' ' >> message_set set >> char ' ' >> unchangedsince >> store_att_flags flags
+  in
+  let handler s =
+    let rec loop =
+      function
+        [] -> ImapSet.Uint32.empty
+      | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_MODIFIED uids) :: _ ->
+          uids
+      | _ :: rest ->
+          loop rest
+    in
+    loop s.rsp_info.rsp_extension_list
+  in
+  Commands.std_command sender handler
+
+let store set flags tag =
+  store_aux "STORE" set None flags tag >> ret ()
+
+let uid_store set flags tag =
+  store_aux "UID STORE" set None flags tag >> ret ()
+
+let store_unchangedsince set unchangedsince flags =
+  store_aux "STORE" set (Some unchangedsince) flags
+
+let uid_store_unchangedsince set unchangedsince flags =
+  store_aux "UID STORE" set (Some unchangedsince) flags
+    
 let _ =
   Extension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}

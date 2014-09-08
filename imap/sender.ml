@@ -335,7 +335,16 @@ let status_att (att : status_att) =
   in
   raw (to_string att)
 
-(* let store_att = function *)
+let store_att_flags flags =
+  let sign =
+    match flags.fl_sign with
+      STORE_ATT_FLAGS_SET -> ret ()
+    | STORE_ATT_FLAGS_ADD -> char '+'
+    | STORE_ATT_FLAGS_REMOVE -> char '-'
+  in
+  let silent = if flags.fl_silent then raw ".SILENT" else ret () in
+  sign >> raw "FLAGS" >> silent >> char ' ' >> separated (char ' ') flag flags.fl_flag_list
+
 (*   | `FLAGS flags -> raw "FLAGS" >> space >> list flag flags *)
 (*   | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" >> space >> list flag flags *)
 (*   | `X_GM_LABELS labels -> raw "X-GM-LABELS" >> space >> list gm_label labels *)

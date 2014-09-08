@@ -147,30 +147,3 @@ val expunge : unit command
 
 (*     This command requires the CONDSTORE extension. *\) *)
 
-(* (\* val store : session -> Seq_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t *\) *)
-(* (\** [store s set mode silent flags] modifies the flags and/or other attributes *)
-(*     for those messages whose sequence numbers belong to [set].  The attribute is *)
-(*     added, remove, or changed (regardless of its original value) according to *)
-(*     [mode]. *\) *)
-
-(* (\* val store_unchangedsince : session -> Seq_set.t -> Modseq.t -> [`Add | `Set | `Remove] -> *\) *)
-(* (\* store_att -> Seq_set.t IO.t *\) *)
-(* (\** [store_unchangedsince s set modseq mode att] is like {!store}, but only *)
-(*     those messages that have a modification sequence number not greater than *)
-(*     [modseq] are affected.  Retruns the set of message numbers that failed the *)
-(*     UNCHANGEDSINCE test. *)
-
-(*     This command requires the CONDSTORE extension. *\) *)
-
-(* (\* val uid_store : session -> Uid_set.t -> [`Add | `Set | `Remove] -> store_att -> unit IO.t *\) *)
-(* (\** Like {!store} but the elements of the set are taken to be unique *)
-(*     identification numbers. *\) *)
-
-(* (\* val uid_store_unchangedsince : session -> Uid_set.t -> Modseq.t -> [`Add | `Set | `Remove] -> *\) *)
-(* (\* store_att -> Uid_set.t IO.t *\) *)
-(* (\** [uid_store_unchangedsince s set modseq mode att] is like {!uid_store}, but *)
-(*     only those messages that have a modification sequence number not greater than *)
-(*     [modseq] are affected.  Retruns the set of unique identification numbers that *)
-(*     failed the UNCHANGEDSINCE test. *)
-
-(*     This command requires the CONDSTORE extension. *\) *)

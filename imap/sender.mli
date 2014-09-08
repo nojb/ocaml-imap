@@ -92,5 +92,5 @@ val search_key : search_key -> t
 val status_att : status_att -> t
 (** Sends an IMAP status attribute. *)
 
-(* val store_att : ImapTypes.store_att -> t *)
+val store_att_flags : store_att_flags -> t
 (** Sends an IMAP store attribute. *)
