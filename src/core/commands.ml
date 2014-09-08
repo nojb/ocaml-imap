@@ -144,6 +144,19 @@ let status mbox attrs =
     (Sender.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
     (fun s -> s.rsp_info.rsp_status)
 
+let copy_aux cmd set destbox =
+  let sender =
+    let open Sender in
+    raw cmd >> char ' ' >> message_set set >> char ' ' >> mailbox destbox
+  in
+  Core.std_command sender (fun _ -> ())
+
+let copy set destbox =
+  copy_aux "COPY" set destbox
+
+let uid_copy set destbox =
+  copy_aux "UID COPY" set destbox
+
 (* let append_uidplus s mbox ?flags ?date data = *)
 (*   let ci = connection_info s in *)
 (*   let flags = match flags with *)

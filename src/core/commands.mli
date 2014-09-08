@@ -108,3 +108,7 @@ val expunge : unit command
 val fetch : ImapSet.t -> fetch_att list -> msg_att list command
 
 val uid_fetch : ImapSet.t -> fetch_att list -> msg_att list command
+
+val copy : ImapSet.t -> string -> unit command
+    
+val uid_copy : ImapSet.t -> string -> unit command

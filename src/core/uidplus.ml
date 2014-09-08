@@ -114,36 +114,23 @@ let uid_expunge set =
   in
   Core.std_command sender (fun _ -> ())
 
-let copy_aux cmd set destbox =
-  let sender =
-    let open Sender in
-    raw cmd >> char ' ' >> message_set set >> char ' ' >> mailbox destbox
+let extract_copy_uid s =
+  let rec loop =
+    function
+      [] ->
+        Uint32.zero, ImapSet.empty, ImapSet.empty
+    | UIDPLUS_RESP_CODE_COPY (uid, src, dst) :: _ ->
+        uid, src, dst
+    | _ :: rest ->
+        loop rest
   in
-  let handler s =
-    let rec loop =
-      function
-        [] ->
-          Uint32.zero, ImapSet.empty, ImapSet.empty
-      | UIDPLUS_RESP_CODE_COPY (uid, src, dst) :: _ ->
-          uid, src, dst
-      | _ :: rest ->
-          loop rest
-    in
-    loop s.rsp_info.rsp_extension_list
-  in
-  Core.std_command sender handler
+  loop s.rsp_info.rsp_extension_list
 
-let copy set destbox tag =
-  copy_aux "COPY" set destbox tag >> ret ()
+let uidplus_copy set destbox tag =
+  Commands.copy set destbox tag >> gets extract_copy_uid
 
-let uid_copy set destbox tag =
-  copy_aux "UID COPY" set destbox tag >> ret ()
-
-let uidplus_copy =
-  copy_aux "COPY"
-
-let uidplus_uid_copy =
-  copy_aux "UID COPY"
+let uidplus_uid_copy set destbox tag =
+  Commands.uid_copy set destbox tag >> gets extract_copy_uid
 
 let _ =
   register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}

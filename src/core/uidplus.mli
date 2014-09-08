@@ -24,7 +24,5 @@ open Types
 open Core
   
 val uid_expunge : ImapSet.t -> unit command
-val copy : ImapSet.t -> string -> unit command
-val uid_copy : ImapSet.t -> string -> unit command
 val uidplus_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
 val uidplus_uid_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
