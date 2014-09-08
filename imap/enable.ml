@@ -24,13 +24,12 @@ open ImapTypes
   
 type extension_data += EXTENSION_ENABLE of capability list
 
-open Parser
-
 (*
 response-data =/ "*" SP enable-data CRLF
 enable-data   = "ENABLED" *(SP capability)
 *)
 let enable_parser =
+  let open Parser in
   function
     EXTENDED_PARSER_RESPONSE_DATA ->
       str "ENABLED" >>
@@ -40,10 +39,9 @@ let enable_parser =
       fail
 
 
-open Print
-open Format
-
 let enable_printer =
+  let open Format in
+  let open Print in
   function
     EXTENSION_ENABLE caps ->
       let p ppf = List.iter (fun x -> fprintf ppf "@ %a" capability_print x) in
@@ -51,26 +49,30 @@ let enable_printer =
   | _ ->
       None
 
-open Sender
 open Control
 
-let send_capability =
-  function
-    CAPABILITY_AUTH_TYPE t ->
-      raw "AUTH=" >> raw t
-  | CAPABILITY_NAME t ->
-      raw t
+let enable_sender caps =
+  let open Sender in
+  let send_capability =
+    function
+      CAPABILITY_AUTH_TYPE t ->
+        raw "AUTH=" >> raw t
+    | CAPABILITY_NAME t ->
+        raw t
+  in
+  raw "ENABLE" >> char ' ' >> separated (char ' ') send_capability caps
+
+let enable_handler s =
+  let rec loop =
+    function
+      [] -> []
+    | EXTENSION_ENABLE caps :: _ -> caps
+    | _ :: rest -> loop rest
+  in
+  loop s.rsp_info.rsp_extension_list
 
 let enable caps =
-  Commands.std_command
-    (raw "ENABLE" >> char ' ' >> separated (char ' ') send_capability caps)
-    (fun s ->
-       let rec loop =
-         function [] -> []
-                | EXTENSION_ENABLE caps :: _ -> caps
-                | _ :: rest -> loop rest
-       in
-       loop s.rsp_info.rsp_extension_list)
+  Commands.std_command (enable_sender caps) enable_handler
 
 let _ =
   Extension.register_extension {ext_parser = enable_parser; ext_printer = enable_printer}

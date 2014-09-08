@@ -419,13 +419,6 @@ let close =
 let expunge =
   std_command (Sender.(raw "EXPUNGE")) (fun _ -> ())
 
-(* let uid_expunge s set = *)
-(*   assert (not (Uid_set.mem_zero set)); *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "UID EXPUNGE" ++ space ++ message_set (uid_set_to_uint32_set set)) in *)
-(*   let aux () = send_command ci cmd in *)
-(*   IO.with_lock ci.send_lock aux *)
-
 (* type msg_att_handler = *)
 (*     Seq.t * msg_att list -> unit *)
 

@@ -127,12 +127,6 @@ val close : unit command
 
 val expunge : unit command
 
-(* val uid_expunge : session -> Uid_set.t -> unit IO.t *)
-(* (\** [uid_expunge s uids] is like {!expunge} but only removes those messages *)
-(*     whose unique identificatio number belongs to the set [uids]. *)
-
-(*     This command requires the UIDPLUS extension. *\) *)
-
 (* val fetch : session -> Seq_set.t -> fetch_att list -> msg_att list IO.t *)
 (* (\** [fetch s set atts h] retrieve flags and/or other attributes [att] for those *)
 (*     messages whose message sequence numbers belong to [set].  The most common *)
