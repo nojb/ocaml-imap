@@ -66,6 +66,13 @@ let flag_perm_print ppf =
   | FLAG_PERM_ALL ->
       fprintf ppf "all"
 
+let flag_fetch_print ppf =
+  function
+    FLAG_FETCH_RECENT ->
+      fprintf ppf "recent"
+  | FLAG_FETCH_OTHER f ->
+      fprintf ppf "(other %a)" flag_print f
+        
 let resp_text_code_print ppf r =
   let p ppf =
     function
@@ -235,8 +242,137 @@ let mailbox_data_print ppf r =
   in
   fprintf ppf "@[<2>(mailbox-data@ %a)@]" p r
 
-let msg_att_print ppf _ =
+let address_print ppf x =
+  fprintf ppf "@[<2>(address@ (name %S)@ (addr %S)@ (mailbox %S)@ (host %S))@]"
+    x.ad_personal_name x.ad_source_route x.ad_mailbox_name x.ad_host_name
+
+let address_list_print ppf =
+  function
+    [] -> fprintf ppf "()"
+  | x :: xs ->
+      let p ppf = List.iter (fun x -> fprintf ppf "@ %a" address_print x) in
+      fprintf ppf "@[<2>(%a%a)@]" address_print x p xs
+
+let envelope_print ppf env =
+  fprintf ppf "@[<2>(envelope@ (date %S)@ (subject %S)@ \
+               (from@ %a)@ (sender@ %a)@ (reply-to@ %a)@ \
+               (to@ %a)@ (cc@ %a)@ (bcc@ %a)@ (in-reply-to %S)@ \
+               (message-id %S))@]"
+    env.env_date
+    env.env_subject
+    address_list_print env.env_from
+    address_list_print env.env_sender
+    address_list_print env.env_reply_to
+    address_list_print env.env_to
+    address_list_print env.env_cc
+    address_list_print env.env_bcc
+    env.env_in_reply_to
+    env.env_message_id
+
+let date_time_print ppf dt =
+  fprintf ppf "@[<2>(date-time %i/%i%i - %i:%i:%i %i)@]"
+    dt.dt_day dt.dt_month dt.dt_year dt.dt_hour dt.dt_min dt.dt_month
+    dt.dt_zone
+
+let media_basic_print ppf med =
+  let p ppf =
+    function
+      MEDIA_BASIC_APPLICATION ->
+        fprintf ppf "application"
+    | MEDIA_BASIC_AUDIO ->
+        fprintf ppf "audio"
+    | MEDIA_BASIC_IMAGE ->
+        fprintf ppf "image"
+    | MEDIA_BASIC_MESSAGE ->
+        fprintf ppf "message"
+    | MEDIA_BASIC_VIDEO ->
+        fprintf ppf "video"
+    | MEDIA_BASIC_OTHER s ->
+        fprintf ppf "%s" s
+  in
+  fprintf ppf "@[<2>(media-basic@ %a@ %s)@]" p med.med_basic_type med.med_basic_subtype
+
+let body_fields_print ppf fields =
   ()
+
+let body_type_basic_print ppf b =
+  fprintf ppf "@[<2>(body-type-basic@ %a@ %a)@]"
+    media_basic_print b.bd_media_basic
+    body_fields_print b.bd_fields
+
+let body_type_msg_print ppf _ =
+  ()
+
+let body_type_text_print ppf _ =
+  ()
+
+let body_1part_print ppf b =
+  let p ppf =
+    function
+      BODY_TYPE_1PART_BASIC b ->
+        body_type_basic_print ppf b
+    | BODY_TYPE_1PART_MSG b ->
+        body_type_msg_print ppf b
+    | BODY_TYPE_1PART_TEXT b ->
+        body_type_text_print ppf b
+  in
+  fprintf ppf "@[<2>(body-type-1part@ %a)@]" p b.bd_data
+
+let body_mpart_print ppf _ =
+  ()
+
+let body_print ppf b =
+  let p ppf =
+    function
+      BODY_1PART p ->
+        body_1part_print ppf p
+    | BODY_MPART p ->
+        body_mpart_print ppf p
+  in
+  fprintf ppf "@[<2>(body@ %a)@]" p b
+
+let msg_att_item_static ppf =
+  function
+    MSG_ATT_ENVELOPE env -> (* FIXME *)
+      fprintf ppf "@[<2>(envelope@ %a)@]" envelope_print env
+  | MSG_ATT_INTERNALDATE dt ->
+      fprintf ppf "@[<2>(internal-date@ %a)@]" date_time_print dt
+  | MSG_ATT_RFC822 s ->
+      fprintf ppf "@[<2>(rfc822@ %S)@]" s
+  | MSG_ATT_RFC822_HEADER s ->
+      fprintf ppf "@[<2>(rfc822-header@ %S)@]" s
+  | MSG_ATT_RFC822_TEXT s ->
+      fprintf ppf "@[<2>(rfc822-text@ %S)@]" s
+  | MSG_ATT_RFC822_SIZE n ->
+      fprintf ppf "@[<2>(rfc822-size %i)@]" n
+  | MSG_ATT_BODY body ->
+      fprintf ppf "@[<2>(body@ %a)@]" body_print body
+  | MSG_ATT_BODYSTRUCTURE body ->
+      fprintf ppf "@[<2>(bodystructure@ %a)@]" body_print body
+  | MSG_ATT_BODY_SECTION _ ->
+      fprintf ppf "@[<2>(body-section@ )@]"
+  | MSG_ATT_UID n ->
+      fprintf ppf "(uid %s)" (Uint32.to_string n)
+
+let msg_att_item_dynamic ppf r =
+  let p ppf = List.iter (fun x -> fprintf ppf "@ %a" flag_fetch_print x) in
+  fprintf ppf "@[<2>(flags%a)@]" p r
+
+let msg_att_item_print ppf r =
+  let p ppf =
+    function
+      MSG_ATT_ITEM_DYNAMIC r ->
+        fprintf ppf "@[<2>(mag-att-dynamic@ %a)@]" msg_att_item_dynamic r
+    | MSG_ATT_ITEM_STATIC r ->
+        fprintf ppf "@[<2>(msg-att-static@ %a)@]" msg_att_item_static r
+    | MSG_ATT_ITEM_EXTENSION e ->
+        fprintf ppf "@[<2>(msg-att-extension@ %a)@]" extension_print e
+  in
+  fprintf ppf "@[<2>(msg-att-item@ %a)@]" p r
+
+let msg_att_print ppf (r, n) =
+  let p ppf = List.iter (fun x -> fprintf ppf "@ %a" msg_att_item_print x) in
+  fprintf ppf "@[<2>(msg-att%a@ %s)@]" p r (Uint32.to_string n)
 
 let message_data_print ppf r =
   let p ppf =
