@@ -79,18 +79,7 @@ val lsub : string -> string -> mailbox_list list command
 
 val status : string -> status_att list -> mailbox_data_status command
 
-(* val append : session -> string -> ?flags:flag list -> ?date:float -> string -> unit IO.t *)
-(* (\** [append s mbox ?flags ?date msg] appends a message [msg] to the mailbox *)
-(*     [mbox].  The flags of the new message will be set to [?flags] (or the empty *)
-(*     list if omitted).  The timestamp of the message will be set to [?date] (or *)
-(*     current time and date if omitted). *\) *)
-
-(* val append_uidplus : session -> string -> ?flags:flag list -> ?date:float -> string -> *)
-(*   (Uid.t * Uid.t) IO.t *)
-(* (\** Like {!append} but returns a pair with the updated value of UIDVALIDITY and *)
-(*     the UID of the newly appended message. *)
-
-(*     This command requires the UIDPLUS extension. *\) *)
+val append : string -> ?flags:flag list -> ?date_time:float -> string -> unit command
 
 (* (\* val namespace : session -> (namespace list * namespace list * namespace list) IO.t *\) *)
 (* (\** Returns the three types of namespaces (personal, other users, shared) in the server. *)

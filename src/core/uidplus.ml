@@ -43,7 +43,7 @@ uid-range       = (uniqueid ":" uniqueid)
 *)
 
 type extension_data +=
-     UIDPLUS_RESP_CODE_APND of Uint32.t * Uint32.t
+     UIDPLUS_RESP_CODE_APND of Uint32.t * ImapSet.t
    | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.t * ImapSet.t
    | UIDPLUS_RESP_CODE_UIDNOTSTICKY
 
@@ -51,8 +51,7 @@ let uidplus_printer =
   let open Format in
   function
     UIDPLUS_RESP_CODE_APND (uid1, uid2) ->
-      Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s %s)@]"
-               (Uint32.to_string uid1) (Uint32.to_string uid2))
+      Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s ?)@]" (Uint32.to_string uid1)) (* FIXME *)
   | UIDPLUS_RESP_CODE_COPY (uid, uidset1, uidset2) ->
       Some (fun ppf -> fprintf ppf "@[<2>(uidplus-copy %s ?)@]" (Uint32.to_string uid))
   | UIDPLUS_RESP_CODE_UIDNOTSTICKY ->
@@ -84,7 +83,7 @@ let uidplus_parser =
     nz_number >>= fun uid ->
     char ' ' >>
     nz_number >>= fun uid2 ->
-    ret (UIDPLUS_RESP_CODE_APND (uid, uid2))
+    ret (UIDPLUS_RESP_CODE_APND (uid, ImapSet.single uid2))
   in
   let resp_code_copy =
     str "COPYUID" >>
@@ -131,6 +130,29 @@ let uidplus_copy set destbox tag =
 
 let uidplus_uid_copy set destbox tag =
   Commands.uid_copy set destbox tag >> gets extract_copy_uid
+
+let extract_apnd_uid s =
+  let rec loop =
+    function
+      [] ->
+        Uint32.zero, ImapSet.empty
+    | UIDPLUS_RESP_CODE_APND (uid, set) :: _ ->
+        uid, set
+    | _ :: rest ->
+        loop rest
+  in
+  loop s.rsp_info.rsp_extension_list
+
+let extract_apnd_single_uid s =
+  let uid, set = extract_apnd_uid s in
+  match set with
+    [] ->
+      uid, Uint32.zero
+  | (first, _) :: _ ->
+      uid, first
+
+let uidplus_append mailbox ?flags ?date_time msg tag =
+  Commands.append mailbox ?flags ?date_time msg tag >> gets extract_apnd_single_uid
 
 let _ =
   register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}

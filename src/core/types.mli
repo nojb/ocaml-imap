@@ -383,8 +383,6 @@ type msg_att_static =
 
 type msg_att_dynamic =
   flag_fetch list
-  (* [ `FLAGS of flag list *)
-  (* | `MODSEQ of Modseq.t *)
   (* | `X_GM_LABELS of string list ] with sexp *)
   
 type msg_att_item =

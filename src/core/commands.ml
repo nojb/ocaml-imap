@@ -157,27 +157,14 @@ let copy set destbox =
 let uid_copy set destbox =
   copy_aux "UID COPY" set destbox
 
-(* let append_uidplus s mbox ?flags ?date data = *)
-(*   let ci = connection_info s in *)
-(*   let flags = match flags with *)
-(*     | None | Some [] -> S.null *)
-(*     | Some flags -> S.(list flag flags ++ space) *)
-(*   in *)
-(*   let date = match date with *)
-(*     | None -> S.null *)
-(*     | Some dt -> S.(date_time dt ++ space) *)
-(*   in *)
-(*   let cmd = *)
-(*     S.(raw "APPEND" ++ space ++ mailbox mbox ++ space ++ flags ++ date ++ literal data) *)
-(*   in *)
-(*   let aux () = *)
-(*     send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_appenduid *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
-
-(* let append s mbox ?flags ?date data = *)
-(*   append_uidplus s mbox ?flags ?date data >>= fun _ -> *)
-(*   IO.return () *)
+let append mbox ?flags ?date_time:dt data =
+  let sender =
+    let open Sender in
+    let flags = match flags with None | Some [] -> ret () | Some flags -> list flag flags >> char ' ' in
+    let date = match dt with None -> ret () | Some dt -> date_time dt >> char ' ' in
+    raw "APPEND" >> space >> mailbox mbox >> char ' ' >> flags >> date >> literal data
+  in
+  std_command sender (fun _ -> ())
 
 (* let namespace s = *)
 (*   assert false *)
