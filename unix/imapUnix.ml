@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open Imap
 
 type session = {
   sock : Ssl.socket;
@@ -33,19 +32,17 @@ type session = {
 let run_control s c =
   let rec loop =
     function
-      ControlOk (x, st, [], i) ->
+      ControlOk (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
         `Ok x
-    | ControlOk (x, st, buf, i) ->
-        loop (ControlFlush (List.rev buf, ControlOk (x, st, [], i)))
     | ControlFail x ->
         `Fail x
-    | ControlFlush (buf, r) ->
+    | ControlFlush (str, r) ->
         prerr_endline ">>>>";
-        List.iter prerr_string buf;
+        prerr_string str;
         prerr_endline ">>>>";
-        List.iter (function "" -> () | str -> Ssl.output_string s.sock str) buf;
+        Ssl.output_string s.sock str;
         Ssl.flush s.sock;
         loop r
     | ControlNeed (len, k) ->
@@ -60,7 +57,7 @@ let run_control s c =
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (c s.imap_session [] s.buffer s.pos)
+  loop (c s.imap_session (Buffer.create 0) s.buffer s.pos)
 
 let connect s =
   run_control s Imap.greeting 
@@ -89,10 +86,10 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = fresh_state; buffer = Buffer.create 0; pos = 0}
+  {sock; imap_session = Imap.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
-  let tag, st = next_tag s.imap_session in
+  let tag, st = Imap.next_tag s.imap_session in
   s.imap_session <- st;
   tag
       

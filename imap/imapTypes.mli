@@ -663,9 +663,6 @@ type 'a parse_result =
 type 'a parser =
   Buffer.t -> int -> 'a parse_result
 
-type control_buffer =
-  state * string list
-
 type error =
     Bad
   | BadTag
@@ -674,13 +671,13 @@ type error =
   | ParseError
 
 type 'a result =
-    ControlOk of 'a * state * string list * int
+    ControlOk of 'a * state * int
   | ControlFail of error
   | ControlNeed of int * (input -> 'a result)
-  | ControlFlush of string list * 'a result
+  | ControlFlush of string * 'a result
 
 type 'a control =
-  state -> string list -> Buffer.t -> int -> 'a result
+  state -> Buffer.t -> Buffer.t -> int -> 'a result
 
 type 'a command = string -> 'a control
 
