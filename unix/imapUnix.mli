@@ -20,11 +20,14 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap
 open ImapTypes
+
+exception Error of error
+
+val string_of_error : error -> string
 
 type session
 
 val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
-val connect : session -> [ `Fail of error | `Ok of resp_cond_auth_type ]
-val send_command : session -> 'a command -> [ `Fail of error | `Ok of 'a ]
+val connect : session -> resp_cond_auth_type
+val send_command : session -> 'a command -> 'a

@@ -1039,9 +1039,6 @@ and body () =
 (*
 status-att-list =  status-att SP number *(SP status-att SP number)
 *)
-(* let status_att_list = *)
-(*   sep1 (char ' ') status_att_number *)
-
 let date_day_fixed =
   alt (char ' ' >> digit) digits2
 
@@ -1334,9 +1331,6 @@ let continue_req =
 (*
 response-data   = "*" SP (resp-cond-state / resp-cond-bye /
                   mailbox-data / message-data / capability-data) CRLF
-
-response_data ::= "*" SPACE (resp_cond_state / resp_cond_bye /
-         mailbox_data / message_data / capability_data / id_response)
 *)
 let response_data =
   char '*' >> char ' ' >>
@@ -1347,7 +1341,6 @@ let response_data =
     (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
     (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
     (extension_parser EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
-    (* id_response; *)
     (* namespace_response; *)
   ]
   >>= fun x ->

@@ -147,12 +147,8 @@ let response_data_store s =
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
       Extension.extension_data_store s e
-  (* | `ID params -> *)
-  (*   {s with rsp_info = {s.rsp_info with rsp_id = params}} *)
   (* | `NAMESPACE (pers, other, shared) -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}} *)
-  (* | `ENABLED caps -> *)
-  (*   {s with rsp_info = {s.rsp_info with rsp_enabled = caps}} *)
 
 let response_tagged_store s {rsp_cond_state = r} =
   resp_cond_state_store s r
@@ -199,12 +195,6 @@ let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
   with Not_found -> ref false
 
-(* exception NO *)
-(* exception BAD *)
-(* exception BYE *)
-(* exception Parse_error of string * int *)
-(* exception Bad_tag *)
-(* exception Io_error of exn *)
 (* exception Auth_error of exn *)
 
 let fresh_state = {
@@ -345,18 +335,6 @@ let noop =
 let logout =
   fun tag ->
     catch (std_command (Sender.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
-
-(* let id s params = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = match params with *)
-(*     | [] -> S.(raw "ID" ++ space ++ nil) *)
-(*     | _ -> S.(raw "ID" ++ space ++ list (separated_pair string space string) params) *)
-(*   in *)
-(*   let aux () = *)
-(*     send_command ci cmd >>= fun () -> *)
-(*     IO.return ci.state.rsp_info.rsp_id *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
 
 (* let starttls ?(version = `TLSv1) ?ca_file s = *)
 (*   let ci = connection_info s in *)

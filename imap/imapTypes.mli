@@ -511,9 +511,6 @@ type resp_text_code =
   (* | RESP_TEXT_CODE_COPYUID of Uid.t * Uid_set.t * Uid_set.t *)
   (* | RESP_TEXT_CODE_UIDNOTSTICKY *)
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE *)
-  (* | RESP_TEXT_CODE_HIGHESTMODSEQ of Modseq.t *)
-  (* | RESP_TEXT_CODE_NOMODSEQ *)
-  (* | RESP_TEXT_CODE_MODIFIED of Uint32_set.t *)
   | RESP_TEXT_CODE_EXTENSION of extension_data
   | RESP_TEXT_CODE_OTHER of (string * string)
   | RESP_TEXT_CODE_NONE

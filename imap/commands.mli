@@ -65,18 +65,6 @@ val noop : unit command
 val logout : unit command
 (** Logs out from the server by sending a {b LOGOUT} command. *)
 
-(* val id : session -> (string * string) list -> (string * string) list IO.t *)
-(* (\** Sends an {b ID} command with an association list of identification *)
-(*     parameters [params] and returns whatever identification parameters the *)
-(*     server sends back. *)
-
-(*     Some common values for the identification keys are: *)
-(*     - {b name} Name of the program *)
-(*     - {b version} Version number of the program *)
-(*     - {b support-url} URL to contact for support *)
-
-(*     This command requires the ID extension. *\) *)
-
 (* (\** {2 Commands valid in {b Non-authenticated} state} *\) *)
 
 (* val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)

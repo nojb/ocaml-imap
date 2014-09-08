@@ -20,8 +20,17 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap
 open ImapTypes
+
+let string_of_error =
+  function
+    Bad -> "Server did not understand request"
+  | BadTag -> "Incorrect tag in reply"
+  | No -> "Server denied request"
+  | Bye -> "Server closed the connection"
+  | ParseError -> "Parser error"
+
+exception Error of error
 
 type session = {
   sock : Ssl.socket;
@@ -36,9 +45,9 @@ let run_control s c =
       ControlOk (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
-        `Ok x
-    | ControlFail x ->
-        `Fail x
+        x
+    | ControlFail err ->
+        raise (Error err)
     | ControlFlush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
@@ -95,106 +104,11 @@ let next_tag s =
   tag
       
 let send_command s cmd =
-  run_control s (cmd (next_tag s)) 
+  run_control s (cmd (next_tag s))
   
 (* module M = struct *)
 (*   class virtual input_chan = *)
 (*     object (self) *)
-(*       method virtual read : string -> int -> int -> int *)
-(*       method virtual close : unit *)
-
-(*       method read_char = *)
-(*         let buf = String.create 1 in *)
-(*         match self#read buf 0 1 with *)
-(*         | 0 -> raise End_of_file *)
-(*         | _ -> buf.[0] *)
-
-(*       method read_char_opt = *)
-(*         try Some self#read_char with End_of_file -> None *)
-
-(*       method read_line = *)
-(*         let buf = Buffer.create 128 in *)
-(*         let rec loop cr_read = *)
-(*           match self#read_char_opt with *)
-(*           | None -> *)
-(*             if cr_read then Buffer.add_char buf '\r'; *)
-(*             Buffer.contents buf *)
-(*           | Some '\n' -> *)
-(*             Buffer.contents buf *)
-(*           | Some '\r' -> *)
-(*             if cr_read then Buffer.add_char buf '\r'; *)
-(*             loop true *)
-(*           | Some ch -> *)
-(*             if cr_read then Buffer.add_char buf '\r'; *)
-(*             Buffer.add_char buf ch; *)
-(*             loop false *)
-(*         in *)
-(*         match self#read_char with *)
-(*         | '\r' -> loop true *)
-(*         | '\n' -> "" *)
-(*         | ch -> Buffer.add_char buf ch; loop false *)
-
-(*       method read_exactly n = *)
-(*         let buf = String.create n in *)
-(*         let rec loop n off len = *)
-(*           if len <= 0 then buf *)
-(*           else *)
-(*             match self#read buf off len with *)
-(*             | 0 -> raise End_of_file *)
-(*             | m -> loop (n + m) (off + m) (len - m) *)
-(*         in *)
-(*         loop 0 0 n *)
-(*     end *)
-
-(*   class virtual output_chan = *)
-(*     object (self) *)
-(*       method virtual write : string -> int -> int -> int *)
-
-(*       method virtual close : unit *)
-
-(*       method virtual flush : unit *)
-
-(*       method write_string s = *)
-(*         let rec loop off len = *)
-(*           if len <= 0 then *)
-(*             () *)
-(*           else *)
-(*             let n = self#write s off len in *)
-(*             loop (off + n) (len - n) *)
-(*         in *)
-(*         loop 0 (String.length s) *)
-(*     end *)
-
-(*   let input_of_in_channel ic = *)
-(*     object *)
-(*       inherit input_chan *)
-(*       method read = Pervasives.input ic *)
-(*       method close = Pervasives.close_in ic *)
-(*     end *)
-
-(*   let output_of_out_channel oc = *)
-(*     object *)
-(*       inherit output_chan *)
-(*       method write buf off len = Pervasives.output oc buf off len; len *)
-(*       method close = Pervasives.close_out oc *)
-(*       method flush = Pervasives.flush oc *)
-(*     end *)
-
-(*   let input_of_ssl sock = *)
-(*     object *)
-(*       inherit input_chan *)
-(*       method read = Ssl.read sock *)
-(*       method close = Ssl.shutdown sock *)
-(*     end *)
-
-(*   let output_of_ssl sock = *)
-(*     object *)
-(*       inherit output_chan *)
-(*       method write = Ssl.write sock *)
-(*       method close = Ssl.shutdown sock *)
-(*       method flush = Ssl.flush sock *)
-(*     end *)
-
 (*   let inflate_input ic = *)
 (*     let chunk_size = 1024 in *)
 (*     let read_buf = String.create chunk_size in *)
@@ -245,36 +159,6 @@ let send_command s cmd =
 (*         if tr#available_output > 0 then oc#write_string tr#get_string; *)
 (*         oc#flush *)
 (*     end *)
-
-(*   type 'a t = 'a *)
-
-(*   let bind t f = f t *)
-(*   let fail e = raise e *)
-(*   let return x = x *)
-(*   let catch f g = try f () with e -> g e *)
-
-(*   type input = input_chan *)
-(*   type output = Unix.file_descr * output_chan *)
-
-(*   let read_line ic = *)
-(*     let s = ic#read_line in *)
-(*     if !Client.debug then begin *)
-(*       Utils.log `Server s; *)
-(*       Utils.log `Server "\r\n" *)
-(*     end; *)
-(*     s *)
-
-(*   let read_exactly ic n = *)
-(*     let s = ic#read_exactly n in *)
-(*     if !Client.debug then Utils.log `Server s; *)
-(*     s    *)
-
-(*   let write (_, oc) s = *)
-(*     oc#write_string s; *)
-(*     if !Client.debug then Utils.log `Client s *)
-
-(*   let flush (_, oc) = *)
-(*     oc#flush *)
 
 (*   let connect port host = *)
 (*     let he = Unix.gethostbyname host in *)
