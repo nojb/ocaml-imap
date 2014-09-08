@@ -486,31 +486,6 @@ let uniqueid =
   nz_number
 
 (*
-uid-range       = (uniqueid ":" uniqueid)
-                  ; two uniqueid values and all values
-                  ; between these two regards of order.
-                  ; Example: 2:4 and 4:2 are equivalent.
-*)
-let uid_range =
-  uniqueid >>= fun x ->
-  char ':' >>
-  uniqueid >>= fun y ->
-  ret (x, y)
-
-(*
-uid-set         = (uniqueid / uid-range) *("," uid-set)
-*)
-let uid_set =
-  let elem =
-    alt
-      (uniqueid >>= fun id -> ret (ImapSet.Uint32.single id))
-      (uid_range >>= fun r -> ret (ImapSet.Uint32.interval r))
-  in
-  elem >>= fun x ->
-  rep (char ',' >> elem) >>= fun xs ->
-  ret (List.fold_left ImapSet.Uint32.union x xs)
-
-(*
 seq-number      = nz-number / "*"
                     ; message sequence number (COPY, FETCH, STORE
                     ; commands) or unique identifier (UID COPY,
@@ -576,15 +551,6 @@ resp-text-code  = "ALERT" /
                   "UIDNEXT" SP nz-number / "UIDVALIDITY" SP nz-number /
                   "UNSEEN" SP nz-number /
                   atom [SP 1*<any TEXT-CHAR except "]">]
-
-resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid
-
-resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set
-
-resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY"
-                  ; incorporated before the expansion rule of
-                  ;  atom [SP 1*<any TEXT-CHAR except "]">]
-                  ; that appears in [IMAP]
 *)
 let is_other_char =
   function
@@ -609,16 +575,6 @@ let resp_text_code =
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
-  (* let appenduid = *)
-    (* char ' ' >> nz_number >>= fun uidvalidity -> *)
-    (* nz_number >>= fun uid -> ret (RESP_TEXT_CODE_APPENDUID (Uid.of_uint32 uidvalidity, Uid.of_uint32 uid)) *)
-  (* in *)
-  (* let copyuid = *)
-    (* char ' ' >> nz_number >>= fun uidvalidity -> *)
-    (* uid_set >>= fun src_uids -> *)
-    (* char ' ' >> uid_set >>= fun dst_uids -> *)
-    (* ret (RESP_TEXT_CODE_COPYUID (Uid.of_uint32 uidvalidity, src_uids, dst_uids)) *)
-  (* in *)
   let other =
     atom >>= fun a -> opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s))
   in
@@ -634,9 +590,6 @@ let resp_text_code =
     uidnext;
     uidvalidity;
     unseen;
-    (* (str "APPENDUID" >> appenduid); *)
-    (* (str "COPYUID" >> copyuid); *)
-    (* (str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY); *)
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
     (extension_parser EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
     other

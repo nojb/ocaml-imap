@@ -463,26 +463,6 @@ let expunge =
 (*   store_aux "UID STORE" s (uid_set_to_uint32_set set) (Some unchangedsince) mode flags >|= *)
 (*   uint32_set_to_uid_set *)
 
-(* let copy_aux cmd s set destbox = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw cmd ++ space ++ message_set set ++ space ++ mailbox destbox) in *)
-(*   let aux () = send_command ci cmd >|= fun () -> ci.state.rsp_info.rsp_copyuid in *)
-(*   IO.with_lock ci.send_lock aux *)
-
-(* let copy s set destbox = *)
-(*   copy_aux "COPY" s (seq_set_to_uint32_set set) destbox >>= fun _ -> *)
-(*   IO.return () *)
-
-(* let uidplus_copy s (set : Seq_set.t) destbox = *)
-(*   copy_aux "COPY" s (seq_set_to_uint32_set set) destbox *)
-
-(* let uid_copy s set destbox = *)
-(*   copy_aux "UID COPY" s (uid_set_to_uint32_set set) destbox >>= fun _ -> *)
-(*   IO.return () *)
-
-(* let uidplus_uid_copy s set destbox = *)
-(*   copy_aux "UID COPY" s (uid_set_to_uint32_set set) destbox *)
-
 (* let state s = *)
 (*   let ci = connection_info s in *)
 (*   ci.state *)

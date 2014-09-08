@@ -180,24 +180,3 @@ val expunge : unit command
 (*     failed the UNCHANGEDSINCE test. *)
 
 (*     This command requires the CONDSTORE extension. *\) *)
-
-(* val copy : session -> Seq_set.t -> string -> unit IO.t *)
-(* (\** Copies the given set of messages from the selected mailbox to the given *)
-(*     mailbox.  The set elements are assumed to be sequence numbers. *\) *)
-
-(* val uidplus_copy : session -> Seq_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t *)
-(* (\** Like {!copy}, but returns a tuple [(uid, srcuids, dstuids)] where [uid] is *)
-(*     the updated UIDVALIDITY of the destination mailbox, [srcuids] is the set of *)
-(*     message UIDs that where copied and [dstuids] is the sequence set of message UIDs *)
-(*     assigned to the copied messages, in the same order. *)
-
-(*     This command requires the UIDPLUS extension. *\) *)
-
-(* val uid_copy : session -> Uid_set.t -> string -> unit IO.t *)
-(* (\** Like {!copy} but the set elements are assumed to be unique identification numbers. *\) *)
-
-(* val uidplus_uid_copy : session -> Uid_set.t -> string -> (Uid.t * Uid_set.t * Uid_set.t) IO.t *)
-(* (\** Like {!uidplus_copy}, but the set elements are assumed to be unique *)
-(*     identification numbers. *)
-
-(*     This command requires the UIDPLUS extension. *\) *)
