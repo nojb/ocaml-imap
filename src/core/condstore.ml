@@ -30,7 +30,7 @@ open Extension
 type condstore_resptextcode =
    | CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
    | CONDSTORE_RESPTEXTCODE_NOMODSEQ
-   | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.Uint32.t
+   | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
        
 type extension_data +=
      CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
@@ -257,7 +257,7 @@ let store_aux cmd set unchangedsince flags =
   let handler s =
     let rec loop =
       function
-        [] -> ImapSet.Uint32.empty
+        [] -> ImapSet.empty
       | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_MODIFIED uids) :: _ ->
           uids
       | _ :: rest ->

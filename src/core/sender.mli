@@ -76,7 +76,7 @@ val mailbox : string -> t
 val date_time : float -> t
 (** Sends an IMAP [date-time]. *)
 
-val message_set : ImapSet.Uint32.t -> t
+val message_set : ImapSet.t -> t
 (** Sends an IMAP [sequence-set]. *)
 
 val flag : flag -> t

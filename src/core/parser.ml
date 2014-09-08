@@ -522,7 +522,7 @@ let seq_range =
   seq_number >>= fun x ->
   char ':' >>
   seq_number >>= fun y ->
-  ret (ImapSet.Uint32.interval (x, y))
+  ret (ImapSet.interval x y)
 
 (*
 sequence-set    = (seq-number / seq-range) *("," sequence-set)
@@ -538,10 +538,10 @@ sequence-set    = (seq-number / seq-range) *("," sequence-set)
                     ; overlap coalesced to be 4,5,6,7,8,9,10.
 *)
 let sequence_set =
-  let elem = alt (seq_number >>= fun x -> ret (ImapSet.Uint32.single x)) seq_range in
+  let elem = alt (seq_number >>= fun x -> ret (ImapSet.single x)) seq_range in
   elem >>= fun x ->
   rep (char ',' >> elem) >>= fun xs ->
-  ret (List.fold_left ImapSet.Uint32.union x xs)
+  ret (List.fold_left ImapSet.union x xs)
 
 (*
 resp-text-code  = "ALERT" /

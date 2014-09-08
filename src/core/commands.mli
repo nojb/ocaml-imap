@@ -105,6 +105,6 @@ val close : unit command
 
 val expunge : unit command
 
-val fetch : ImapSet.Uint32.t -> fetch_att list -> msg_att list command
+val fetch : ImapSet.t -> fetch_att list -> msg_att list command
 
-val uid_fetch : ImapSet.Uint32.t -> fetch_att list -> msg_att list command
+val uid_fetch : ImapSet.t -> fetch_att list -> msg_att list command

@@ -71,7 +71,7 @@ val test : 'a t -> string -> 'a
 
 val uniqueid : Uint32.t t
 
-val sequence_set : ImapSet.Uint32.t t
+val sequence_set : ImapSet.t t
 
 val capability : capability t
 

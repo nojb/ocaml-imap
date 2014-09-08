@@ -44,7 +44,7 @@ uid-range       = (uniqueid ":" uniqueid)
 
 type extension_data +=
      UIDPLUS_RESP_CODE_APND of Uint32.t * Uint32.t
-   | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.Uint32.t * ImapSet.Uint32.t
+   | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.t * ImapSet.t
    | UIDPLUS_RESP_CODE_UIDNOTSTICKY
 
 let uidplus_printer =
@@ -71,12 +71,12 @@ let uidplus_parser =
   let uid_set =
     let elem =
       alt
-        (uniqueid >>= fun id -> ret (ImapSet.Uint32.single id))
-        (uid_range >>= fun r -> ret (ImapSet.Uint32.interval r))
+        (uniqueid >>= fun id -> ret (ImapSet.single id))
+        (uid_range >>= fun (x, y) -> ret (ImapSet.interval x y))
     in
     elem >>= fun x ->
     rep (char ',' >> elem) >>= fun xs ->
-    ret (List.fold_left ImapSet.Uint32.union x xs)
+    ret (List.fold_left ImapSet.union x xs)
   in
   let resp_code_apnd =
     str "APPENDUID" >>
@@ -123,7 +123,7 @@ let copy_aux cmd set destbox =
     let rec loop =
       function
         [] ->
-          Uint32.zero, ImapSet.Uint32.empty, ImapSet.Uint32.empty
+          Uint32.zero, ImapSet.empty, ImapSet.empty
       | UIDPLUS_RESP_CODE_COPY (uid, src, dst) :: _ ->
           uid, src, dst
       | _ :: rest ->

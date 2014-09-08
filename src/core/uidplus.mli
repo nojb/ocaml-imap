@@ -23,8 +23,8 @@
 open Types
 open Core
   
-val uid_expunge : ImapSet.Uint32.t -> unit command
-val copy : ImapSet.Uint32.t -> string -> unit command
-val uid_copy : ImapSet.Uint32.t -> string -> unit command
-val uidplus_copy : ImapSet.Uint32.t -> string -> (Uint32.t * ImapSet.Uint32.t * ImapSet.Uint32.t) command
-val uidplus_uid_copy : ImapSet.Uint32.t -> string -> (Uint32.t * ImapSet.Uint32.t * ImapSet.Uint32.t) command
+val uid_expunge : ImapSet.t -> unit command
+val copy : ImapSet.t -> string -> unit command
+val uid_copy : ImapSet.t -> string -> unit command
+val uidplus_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
+val uidplus_uid_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command

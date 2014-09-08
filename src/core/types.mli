@@ -140,12 +140,12 @@ type search_key =
   | SEARCH_KEY_SMALLER of int
   (** Messages with an [RFC-2822] size smaller than the specified number of
       bytes. *)
-  | SEARCH_KEY_UID of ImapSet.Uint32.t
+  | SEARCH_KEY_UID of ImapSet.t
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set. *)
   | SEARCH_KEY_UNDRAFT
   (** Messages that do not have the [\Draft] flag set. *)
-  | SEARCH_KEY_INSET of ImapSet.Uint32.t
+  | SEARCH_KEY_INSET of ImapSet.t
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
   | SEARCH_KEY_AND of search_key * search_key

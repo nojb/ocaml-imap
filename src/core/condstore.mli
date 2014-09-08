@@ -31,11 +31,11 @@ val select : string -> unit command
 val select_condstore : string -> Uint64.t command
 val examine : string -> unit command
 val examine_condstore : string -> Uint64.t command
-val fetch_changedsince_optional : ImapSet.Uint32.t -> Uint64.t option -> fetch_att list -> msg_att list command
-val uid_fetch_changedsince_optional : ImapSet.Uint32.t -> Uint64.t option -> fetch_att list -> msg_att list command
-val fetch_changedsince : ImapSet.Uint32.t -> Uint64.t -> fetch_att list -> msg_att list command
-val uid_fetch_changedsince : ImapSet.Uint32.t -> Uint64.t -> fetch_att list -> msg_att list command
-val store : ImapSet.Uint32.t -> store_att_flags -> unit command
-val uid_store : ImapSet.Uint32.t -> store_att_flags -> unit command
-val store_unchangedsince : ImapSet.Uint32.t -> Uint64.t -> store_att_flags -> ImapSet.Uint32.t command
-val uid_store_unchangedsince : ImapSet.Uint32.t -> Uint64.t -> store_att_flags -> ImapSet.Uint32.t command
+val fetch_changedsince_optional : ImapSet.t -> Uint64.t option -> fetch_att list -> msg_att list command
+val uid_fetch_changedsince_optional : ImapSet.t -> Uint64.t option -> fetch_att list -> msg_att list command
+val fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_att list -> msg_att list command
+val uid_fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_att list -> msg_att list command
+val store : ImapSet.t -> store_att_flags -> unit command
+val uid_store : ImapSet.t -> store_att_flags -> unit command
+val store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
+val uid_store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
