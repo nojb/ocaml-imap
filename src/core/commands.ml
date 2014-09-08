@@ -184,3 +184,9 @@ let close =
 
 let expunge =
   std_command (Sender.(raw "EXPUNGE")) (fun _ -> ())
+
+let fetch set attrs =
+  Condstore.fetch_changedsince_optional set None attrs
+
+let uid_fetch set attrs =
+  Condstore.uid_fetch_changedsince_optional set None attrs

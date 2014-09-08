@@ -105,23 +105,6 @@ val close : unit command
 
 val expunge : unit command
 
-(* val fetch : session -> Seq_set.t -> fetch_att list -> msg_att list IO.t *)
-(* (\** [fetch s set atts h] retrieve flags and/or other attributes [att] for those *)
-(*     messages whose message sequence numbers belong to [set].  The most common *)
-(*     attribytes are: *)
+val fetch : ImapSet.Uint32.t -> fetch_att list -> msg_att list command
 
-(*     - [`BODYSECTION `ALL] - this returns the full message: headers *)
-(*       and body, *)
-(*     - [`BODYSECTION `TEXT] - this returns just the the text of the body *)
-(*       of the message, not the header, *)
-(*     - [`BODY] - this returns a {!Imap_body.t} describing the structure of the message, *)
-(*     - [`ENVELOPE] - this parses the header and returns a {!Imap_envelope.t} with this *)
-(*       information, *)
-(*     - [`FLAGS] - the flags in the message, *)
-(*     - [`UID] - the unique identifier of the message. *)
-
-(*     The function [h] is called with each pair [(n, att)] consisting of a sequence *)
-(*     number [n] and a message attribute [att]. *\) *)
-
-(*     This command requires the CONDSTORE extension. *\) *)
-
+val uid_fetch : ImapSet.Uint32.t -> fetch_att list -> msg_att list command

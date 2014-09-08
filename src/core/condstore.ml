@@ -232,17 +232,17 @@ let fetch_aux cmd set changedsince attrs =
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
   Core.std_command cmd cmd_handler
 
-let fetch_changedsince set modseq attrs =
-  fetch_aux "FETCH" set (Some modseq) attrs
+let fetch_changedsince_optional =
+  fetch_aux "FETCH"
 
-let fetch set attrs =
-  fetch_aux "FETCH" set None attrs
+let uid_fetch_changedsince_optional =
+  fetch_aux "UID FETCH"
+
+let fetch_changedsince set modseq attrs =
+  fetch_changedsince_optional set (Some modseq) attrs
 
 let uid_fetch_changedsince set modseq attrs =
-  fetch_aux "UID FETCH" set (Some modseq) attrs
-
-let uid_fetch set attrs =
-  fetch_aux "UID FETCH" set None attrs
+  uid_fetch_changedsince_optional set (Some modseq) attrs
 
 let store_aux cmd set unchangedsince flags =
   let sender =
