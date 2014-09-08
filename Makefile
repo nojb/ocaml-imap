@@ -1,6 +1,6 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-all: imap/imap.cma imap/imap.cmxa
+all: imap/imap.cma
 
 %.cma:
 	$(OCAMLBUILD) $@

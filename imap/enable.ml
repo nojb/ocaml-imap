@@ -2,7 +2,7 @@ open ImapTypes
   
 type extension_data += EXTENSION_ENABLE of capability list
 
-open ImapParser
+open Parser
 
 (*
 response-data =/ "*" SP enable-data CRLF
@@ -18,7 +18,7 @@ let enable_parser =
       fail
 
 
-open ImapPrint
+open Print
 open Format
 
 let enable_printer =
@@ -29,7 +29,7 @@ let enable_printer =
   | _ ->
       None
 
-open ImapWriter
+open Sender
 open Control
 
 let send_capability =
@@ -40,7 +40,7 @@ let send_capability =
       raw t
 
 let enable caps =
-  Imap.std_command
+  Commands.std_command
     (raw "ENABLE" >> char ' ' >> separated (char ' ') send_capability caps)
     (fun s ->
        let rec loop =
@@ -51,4 +51,4 @@ let enable caps =
        loop s.rsp_info.rsp_extension_list)
 
 let _ =
-  ImapExtension.register_extension {ext_parser = enable_parser; ext_printer = enable_printer}
+  Extension.register_extension {ext_parser = enable_parser; ext_printer = enable_printer}

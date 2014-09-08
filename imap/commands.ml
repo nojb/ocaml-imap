@@ -20,7 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapUtils
 open ImapTypes
 
 let fresh_response_info = {
@@ -83,7 +82,7 @@ let resp_text_store s {rsp_code; rsp_text} =
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
-      ImapExtension.extension_data_store s e
+      Extension.extension_data_store s e
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
@@ -111,7 +110,7 @@ let mailbox_data_store s =
   | MAILBOX_DATA_RECENT n ->
       {s with sel_info = {s.sel_info with sel_recent = Some n}}
   | MAILBOX_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s e
+      Extension.extension_data_store s e
 
 let message_data_store s =
   function
@@ -147,7 +146,7 @@ let response_data_store s =
   | RESP_DATA_CAPABILITY_DATA cap_info ->
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s e
+      Extension.extension_data_store s e
   (* | `ID params -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_id = params}} *)
   (* | `NAMESPACE (pers, other, shared) -> *)
@@ -291,8 +290,8 @@ let next_tag s =
 open Control
 
 let greeting =
-  liftP ImapParser.greeting >>= fun g ->
-  ImapPrint.greeting_print Format.err_formatter g;
+  liftP Parser.greeting >>= fun g ->
+  Print.greeting_print Format.err_formatter g;
   modify (fun s -> greeting_store s g) >>
   match g with
     GREETING_RESP_COND_BYE r ->
@@ -303,7 +302,7 @@ let greeting =
       ret r.rsp_type
 
 let handle_response r =
-  ImapPrint.response_print Format.err_formatter r;
+  Print.response_print Format.err_formatter r;
   let imap_response =
     match r.rsp_resp_done with
       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
@@ -330,7 +329,7 @@ let std_command sender handler =
     sender >>
     send "\r\n" >>
     flush >>
-    liftP ImapParser.response >>= fun r ->
+    liftP Parser.response >>= fun r ->
     modify (fun s -> response_store s r) >>
     handle_response r >>
     gets handler
@@ -338,14 +337,14 @@ let std_command sender handler =
   fun tag -> send tag >> cmd
 
 let capability =
-  std_command (ImapWriter.raw "CAPABILITY") (fun s -> s.cap_info)
+  std_command (Sender.raw "CAPABILITY") (fun s -> s.cap_info)
 
 let noop =
-  std_command (ImapWriter.raw "NOOP") (fun _ -> ())
+  std_command (Sender.raw "NOOP") (fun _ -> ())
 
 let logout =
   fun tag ->
-    catch (std_command (ImapWriter.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
+    catch (std_command (Sender.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
 
 (* let id s params = *)
 (*   let ci = connection_info s in *)
@@ -395,7 +394,7 @@ let logout =
 
 let login user pass =
   std_command
-    (ImapWriter.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
+    (Sender.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
     (fun _ -> ())
   
 (* let compress s = *)
@@ -412,42 +411,42 @@ let login user pass =
 
 let create mbox =
   std_command
-    (ImapWriter.(raw "CREATE" >> char ' ' >> mailbox mbox))
+    (Sender.(raw "CREATE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let delete mbox =
   std_command
-    (ImapWriter.(raw "DELETE" >> char ' ' >> mailbox mbox))
+    (Sender.(raw "DELETE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let rename oldbox newbox =
   std_command
-    (ImapWriter.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
+    (Sender.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
     (fun _ -> ())
 
 let subscribe mbox =
   std_command
-    (ImapWriter.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
+    (Sender.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let unsubscribe mbox =
   std_command
-    (ImapWriter.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
+    (Sender.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let list mbox list_mb =
   std_command
-    (ImapWriter.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (Sender.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
     (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let lsub mbox list_mb =
   std_command
-    (ImapWriter.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (Sender.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
     (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let status mbox attrs =
   std_command
-    (ImapWriter.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
+    (Sender.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
     (fun s -> s.rsp_info.rsp_status)
 
 (* let append_uidplus s mbox ?flags ?date data = *)
@@ -503,13 +502,13 @@ let status mbox attrs =
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
 let check =
-  std_command (ImapWriter.(raw "CHECK")) (fun _ -> ())
+  std_command (Sender.(raw "CHECK")) (fun _ -> ())
 
 let close =
-  std_command (ImapWriter.(raw "CLOSE")) (fun _ -> ())
+  std_command (Sender.(raw "CLOSE")) (fun _ -> ())
 
 let expunge =
-  std_command (ImapWriter.(raw "EXPUNGE")) (fun _ -> ())
+  std_command (Sender.(raw "EXPUNGE")) (fun _ -> ())
 
 (* let uid_expunge s set = *)
 (*   assert (not (Uid_set.mem_zero set)); *)

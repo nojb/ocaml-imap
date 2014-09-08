@@ -33,7 +33,7 @@ let extension_print ppf e =
           Some f -> f ppf
         | None -> loop rest
   in
-  loop !ImapExtension.extension_list
+  loop !Extension.extension_list
 
 let capability_print ppf =
   function

@@ -69,7 +69,7 @@ let condstore_printer =
   | _ ->
       None
 
-open ImapParser
+open Parser
 
 (* [RFC 4551]
 mod-sequence-value  = 1*DIGIT
@@ -139,7 +139,7 @@ open Control
 
 let search_modseq_aux cmd ?charset key =
   let sender =
-    let open ImapWriter in
+    let open Sender in
     raw cmd >>
     begin
       match charset with
@@ -165,7 +165,7 @@ let search_modseq_aux cmd ?charset key =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Imap.std_command sender cmd_handler
+  Commands.std_command sender cmd_handler
 
 let search_modseq ?charset key =
   search_modseq_aux "SEARCH" ?charset key
@@ -183,10 +183,10 @@ let uid_search ?charset key =
 
 let select_condstore_optional mb cmd use_condstore =
   let send_condstore =
-    ImapWriter.(if use_condstore then raw " (CONDSTORE)" else raw "")
+    Sender.(if use_condstore then raw " (CONDSTORE)" else raw "")
   in
   let cmd_sender =
-    ImapWriter.(raw cmd >> char ' ' >> mailbox mb >> send_condstore)
+    Sender.(raw cmd >> char ' ' >> mailbox mb >> send_condstore)
   in
   let cmd_handler s =
     let rec loop =
@@ -203,8 +203,8 @@ let select_condstore_optional mb cmd use_condstore =
     loop s.rsp_info.rsp_extension_list
   in
   fun tag ->
-    modify (fun s -> {s with sel_info = Imap.fresh_selection_info}) >>
-    Imap.std_command cmd_sender cmd_handler tag
+    modify (fun s -> {s with sel_info = Commands.fresh_selection_info}) >>
+    Commands.std_command cmd_sender cmd_handler tag
 
 let select_condstore mb =
   select_condstore_optional mb "SELECT" true
@@ -227,13 +227,13 @@ let fetch_aux cmd set changedsince attrs =
     match changedsince with
       None -> ret ()
     | Some modseq ->
-        ImapWriter.(char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')')
+        Sender.(char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')')
   in
   let cmd =
-    ImapWriter.(raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince)
+    Sender.(raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince)
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
-  Imap.std_command cmd cmd_handler
+  Commands.std_command cmd cmd_handler
 
 let fetch_changedsince set modseq attrs =
   fetch_aux "FETCH" set (Some modseq) attrs
@@ -248,4 +248,4 @@ let uid_fetch set attrs =
   fetch_aux "UID FETCH" set None attrs
 
 let _ =
-  ImapExtension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}
+  Extension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}

@@ -394,7 +394,7 @@ let extension_parser calling_parser =
     | p :: rest ->
         alt (p.ext_parser calling_parser) (loop rest)
   in
-  loop !ImapExtension.extension_list
+  loop !Extension.extension_list
 
 let extension_parser =
   delay extension_parser
@@ -712,7 +712,7 @@ let mbx_list_flags =
     end
 
 let mailbox =
-  let decode_mailbox_name s = try ImapUtils.decode_mutf7 s with _ -> s in
+  let decode_mailbox_name s = try Utils.decode_mutf7 s with _ -> s in
   astring >>= fun s -> ret (decode_mailbox_name s)
 
 (*
