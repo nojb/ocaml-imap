@@ -34,11 +34,23 @@ let string_of_error =
 exception Error of error
 
 type session = {
-  sock : Ssl.socket;
+  sock : Lwt_ssl.socket;
   mutable imap_session : state;
   buffer : Buffer.t;
   mutable pos : int
 }
+
+open Lwt
+
+let fully_write sock buf pos len =
+  let rec loop pos len =
+    if len <= 0 then
+      return ()
+    else
+      Lwt_ssl.write sock buf pos len >>= fun n ->
+      loop (pos + n) (len - n)
+  in
+  loop pos len
 
 let run_control s c =
   let buf = String.create 65536 in
@@ -47,18 +59,18 @@ let run_control s c =
       ControlOk (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
-        x
+        return x
     | ControlFail err ->
-        raise (Error err)
+        fail (Error err)
     | ControlFlush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
-        Ssl.output_string s.sock str;
-        Ssl.flush s.sock;
+        fully_write s.sock str 0 (String.length str) >>= fun () ->
         loop r
     | ControlNeed (len, k) ->
-        match Ssl.read s.sock buf 0 (String.length buf) with
+        Lwt_ssl.read s.sock buf 0 (String.length buf) >>=
+        function
           0 ->
             loop (k End)
         | _ as n ->
@@ -71,7 +83,7 @@ let run_control s c =
   loop (c s.imap_session (Buffer.create 0) s.buffer s.pos)
 
 let connect s =
-  run_control s Commands.greeting 
+  run_control s Commands.greeting
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -96,8 +108,11 @@ let _ =
 let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
-  let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = Commands.fresh_state; buffer = Buffer.create 0; pos = 0}
+  let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Lwt_unix.connect fd sockaddr >>= fun () ->
+  let context = Ssl.create_context ssl_method Ssl.Client_context in
+  Lwt_ssl.ssl_connect fd context >>= fun sock ->
+  return {sock; imap_session = Commands.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
   let tag, st = Commands.next_tag s.imap_session in
