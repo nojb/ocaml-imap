@@ -255,8 +255,8 @@ let address_list_print ppf =
 
 let envelope_print ppf env =
   fprintf ppf "@[<2>(envelope@ (date %S)@ (subject %S)@ \
-               (from@ %a)@ (sender@ %a)@ (reply-to@ %a)@ \
-               (to@ %a)@ (cc@ %a)@ (bcc@ %a)@ (in-reply-to %S)@ \
+               (from %a)@ (sender %a)@ (reply-to %a)@ \
+               (to %a)@ (cc %a)@ (bcc %a)@ (in-reply-to %S)@ \
                (message-id %S))@]"
     env.env_date
     env.env_subject
@@ -334,7 +334,7 @@ let body_print ppf b =
 let msg_att_item_static ppf =
   function
     MSG_ATT_ENVELOPE env -> (* FIXME *)
-      fprintf ppf "@[<2>(envelope@ %a)@]" envelope_print env
+      envelope_print ppf env
   | MSG_ATT_INTERNALDATE dt ->
       fprintf ppf "@[<2>(internal-date@ %a)@]" date_time_print dt
   | MSG_ATT_RFC822 s ->

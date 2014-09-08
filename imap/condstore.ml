@@ -222,5 +222,30 @@ let examine mb =
     select_condstore_optional mb "EXAMINE" false tag >>
     ret ()
 
+let fetch_aux cmd set changedsince attrs =
+  let changedsince =
+    match changedsince with
+      None -> ret ()
+    | Some modseq ->
+        ImapWriter.(char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')')
+  in
+  let cmd =
+    ImapWriter.(raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince)
+  in
+  let cmd_handler s = s.rsp_info.rsp_fetch_list in
+  Imap.std_command cmd cmd_handler
+
+let fetch_changedsince set modseq attrs =
+  fetch_aux "FETCH" set (Some modseq) attrs
+
+let fetch set attrs =
+  fetch_aux "FETCH" set None attrs
+
+let uid_fetch_changedsince set modseq attrs =
+  fetch_aux "UID FETCH" set (Some modseq) attrs
+
+let uid_fetch set attrs =
+  fetch_aux "UID FETCH" set None attrs
+
 let _ =
   ImapExtension.register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}

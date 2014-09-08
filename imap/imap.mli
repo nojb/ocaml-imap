@@ -34,23 +34,6 @@ val response_store : state -> response -> state
 
 val next_tag : state -> string * state
 
-(** {2 Error handling} *)
-
-(** Raised when the server returns a [NO] response. *)
-(* exception NO *)
-
-(** Raised when the server returns a [BAD] response. *)
-(* exception BAD *)
-
-(** Raised when the server closes the connection abruptly by sending a [BYE] message. *)
-(* exception BYE *)
-
-(** Raised when a server response cannot be parsed. *)
-(* exception Parse_error of string * int *)
-
-(** I/O error *)
-(* exception Io_error of exn *)
-
 (** Authentication error *)
 (* exception Auth_error of exn *)
 
@@ -64,14 +47,6 @@ val greeting : resp_cond_auth_type control
 
 val std_command : unit control -> (state -> 'a) -> 'a command
 
-(** Creates a new IMAP session.  The session is initially disconnected and has
-    to be connected using {!connect}. *)
-
-(* val connect : session -> ?port:int -> string -> resp_cond_auth_type IO.t *)
-(* (\** Connects to the IMAP server on the given port and hostname.  Returns *)
-(*     [`Needsauth] if the server requires authentication and [`Preauth] if the *)
-(*     session has already been authenticated in some other fashion. *\) *)
-
 (* val connect_ssl : session -> ?version:[`TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)
 (*   ?port : int -> string -> resp_cond_auth_type IO.t *)
 (* (\** Connects to the IMAP server using a SSL connection on the given port and *)
@@ -81,17 +56,9 @@ val std_command : unit control -> (state -> 'a) -> 'a command
 (*     the server requires authentication and [`Preauth] if the session has *)
 (*     already been authenticated in some other fashion. *\) *)
 
-(* val disconnect : session -> unit *)
-(* (\** Disconnects from the server forcefully.  For a graceful exit, {!logout} is *)
-(*     preferred. *\) *)
-
 (* (\** {2 Commands valid in any state} *\) *)
 
 val capability : capability list command
-
-(* val capability : session -> capability list IO.t *)
-(* (\** Queries the IMAP server for its capabilities by sending a {b CAPABILITY} *)
-(*     command. *\) *)
 
 val noop : unit command
 
@@ -111,12 +78,6 @@ val logout : unit command
 (*     This command requires the ID extension. *\) *)
 
 (* (\** {2 Commands valid in {b Non-authenticated} state} *\) *)
-
-(* val enable : session -> capability list -> capability list IO.t *)
-(* (\** Tells the server to enable the given list of capabilities.  Returns the list *)
-(*     of capabilities actually enabled. *)
-
-(*     This command requires the ENABLE extension. *\) *)
 
 (* val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)
 (*   session -> unit IO.t *)
@@ -214,21 +175,6 @@ val expunge : unit command
 
 (*     The function [h] is called with each pair [(n, att)] consisting of a sequence *)
 (*     number [n] and a message attribute [att]. *\) *)
-
-(* val fetch_changedsince : session -> Seq_set.t -> Modseq.t -> fetch_att list -> msg_att list IO.t *)
-(* (\** [fetch_changedsince s set modseq atts] is like {!fetch}, but only those *)
-(*     messages that have a modification sequence number at least [modseq] are *)
-(*     fetched. *)
-
-(*     This command requires the CONDSTORE extension. *\) *)
-
-(* val uid_fetch : session -> Uid_set.t -> fetch_att list -> msg_att list IO.t *)
-(* (\** Like {!fetch}, but the elements of the set are taken to be unique *)
-(*     identification numbers. *\) *)
-
-(* val uid_fetch_changedsince : session -> Uid_set.t -> Modseq.t -> fetch_att list -> msg_att list IO.t *)
-(* (\** Like {!fetch_changedsince}, but the elements fo the set are taken to be *)
-(*     unique identification numbers. *)
 
 (*     This command requires the CONDSTORE extension. *\) *)
 

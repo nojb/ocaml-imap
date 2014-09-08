@@ -732,14 +732,13 @@ status-att      = "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
                   "UNSEEN"
 *)
 let status_att =
-  altn [
-    (str "MESSAGES" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_MESSAGES n));
-    (str "RECENT" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_RECENT n));
-    (str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n));
-    (str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n));
-    (str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n));
-    (extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
-  ]
+  let messages = str "MESSAGES" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_MESSAGES n) in
+  let recent = str "RECENT" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_RECENT n) in
+  let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n) in
+  let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n) in
+  let unseen = str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n) in
+  let extension = extension_parser EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e) in
+  altn [ messages; recent; uidnext; uidvalidity; unseen; extension ]
 
 let address =
   char '(' >>
@@ -1260,16 +1259,9 @@ mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
                    number SP "EXISTS" / number SP "RECENT"
 *)
 let mailbox_data =
-  altn [
-    mailbox_data_flags;
-    mailbox_data_list;
-    mailbox_data_lsub;
-    mailbox_data_search;
-    mailbox_data_status;
-    mailbox_data_exists;
-    mailbox_data_recent;
-    mailbox_data_extension_data
-  ]
+  altn
+    [ mailbox_data_flags; mailbox_data_list; mailbox_data_lsub; mailbox_data_search;
+      mailbox_data_status; mailbox_data_exists; mailbox_data_recent; mailbox_data_extension_data ]
 
 (*
 message-data    = nz-number SP ("EXPUNGE" / ("FETCH" SP msg-att))
