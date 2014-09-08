@@ -37,18 +37,17 @@ type extension_data +=
    | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
    | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
 
-open Format
-
-let condstore_resptextcode_print ppf =
-  function
-    CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
-      fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n)
-  | CONDSTORE_RESPTEXTCODE_NOMODSEQ ->
-      fprintf ppf "(no-mod-seq)"
-  | CONDSTORE_RESPTEXTCODE_MODIFIED ns ->
-      fprintf ppf "(modified@ ?)"
-
 let condstore_printer =
+  let open Format in
+  let condstore_resptextcode_print ppf =
+    function
+      CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
+        fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n)
+    | CONDSTORE_RESPTEXTCODE_NOMODSEQ ->
+        fprintf ppf "(no-mod-seq)"
+    | CONDSTORE_RESPTEXTCODE_MODIFIED ns ->
+        fprintf ppf "(modified@ ?)"
+  in
   function
     CONDSTORE_FETCH_DATA_MODSEQ n ->
       Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
@@ -69,47 +68,43 @@ let condstore_printer =
   | _ ->
       None
 
-open Parser
-
 (* [RFC 4551]
 mod-sequence-value  = 1*DIGIT
                           ;; Positive unsigned 64-bit integer
                           ;; (mod-sequence)
                           ;; (1 <= n < 18,446,744,073,709,551,615)
 *)
-let mod_sequence_value =
-  accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
-  try ret (Uint64.of_string s) with _ -> fail
 
 (*
 search-sort-mod-seq = "(" "MODSEQ" SP mod-sequence-value ")"
 *)
-let search_sort_mod_seq =
-  char '(' >>
-  str "MODSEQ" >> char ' ' >> mod_sequence_value >>= fun x ->
-  char ')' >>
-  ret x
 
 (*
 permsg-modsequence  = mod-sequence-value
                           ;; per message mod-sequence
 *)
-let permsg_modsequence =
-  mod_sequence_value
-
-let condstore_resptextcode =
-  let highestmodseq =
-    str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun modseq ->
-    ret (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ modseq)
-  in
-  let nomodseq = str "NOMODSEQ" >> ret CONDSTORE_RESPTEXTCODE_NOMODSEQ in
-  let modified =
-    str "MODIFIED" >> char ' ' >> sequence_set >>= fun set ->
-    ret (CONDSTORE_RESPTEXTCODE_MODIFIED set)
-  in
-  altn [ highestmodseq; nomodseq; modified ]
-
 let condstore_parse =
+  let open Parser in
+  let mod_sequence_value =
+    accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
+    try ret (Uint64.of_string s) with _ -> fail
+  in
+  let search_sort_mod_seq =
+    char '(' >> str "MODSEQ" >> char ' ' >> mod_sequence_value >>= fun x -> char ')' >> ret x
+  in
+  let permsg_modsequence = mod_sequence_value in
+  let condstore_resptextcode =
+    let highestmodseq =
+      str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun modseq ->
+      ret (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ modseq)
+    in
+    let nomodseq = str "NOMODSEQ" >> ret CONDSTORE_RESPTEXTCODE_NOMODSEQ in
+    let modified =
+      str "MODIFIED" >> char ' ' >> sequence_set >>= fun set ->
+      ret (CONDSTORE_RESPTEXTCODE_MODIFIED set)
+    in
+    altn [ highestmodseq; nomodseq; modified ]
+  in
   function
   | EXTENDED_PARSER_RESP_TEXT_CODE ->
       condstore_resptextcode >>= fun r ->
@@ -182,11 +177,9 @@ let uid_search ?charset key =
     search_modseq_aux "UID SEARCH" ?charset key tag >> ret ()
 
 let select_condstore_optional mb cmd use_condstore =
-  let send_condstore =
-    Sender.(if use_condstore then raw " (CONDSTORE)" else raw "")
-  in
   let cmd_sender =
-    Sender.(raw cmd >> char ' ' >> mailbox mb >> send_condstore)
+    let open Sender in
+    raw cmd >> char ' ' >> mailbox mb >> if use_condstore then raw " (CONDSTORE)" else ret ()
   in
   let cmd_handler s =
     let rec loop =
@@ -223,14 +216,16 @@ let examine mb =
     ret ()
 
 let fetch_aux cmd set changedsince attrs =
-  let changedsince =
-    match changedsince with
-      None -> ret ()
-    | Some modseq ->
-        Sender.(char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')')
-  in
   let cmd =
-    Sender.(raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince)
+    let open Sender in
+    let changedsince =
+      match changedsince with
+        None ->
+          ret ()
+      | Some modseq ->
+          char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')'
+    in
+    raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
   Commands.std_command cmd cmd_handler

@@ -114,18 +114,6 @@ val status : string -> status_att list -> mailbox_data_status command
 
 (*     This command requires the UIDPLUS extension. *\) *)
 
-(* val idle : session -> (unit -> [`Continue | `Stop]) -> unit IO.t * (unit -> unit) *)
-(* (\** [idle s f] indicates the server that we are ready to accept real-time *)
-(*     notifications by sending an {b IDLE} command.  It returns a pair [(idle, *)
-(*     stop)] of a lwt thread [idle] which only returns once the IDLE command ends. *)
-(*     The function [stop] can be used to end the IDLE command at any time.  If *)
-(*     [stop] is invoked after the [IDLE] command has ended nothing will happen. *)
-(*     Each time the server sends a response the function [f] is invoked.  If it *)
-(*     returns [`Continue] we keep listening.  If it returns [`Stop], the IDLE *)
-(*     command is stopped. *)
-
-(*     This command requires the IDLE extension. *\) *)
-
 (* (\* val namespace : session -> (namespace list * namespace list * namespace list) IO.t *\) *)
 (* (\** Returns the three types of namespaces (personal, other users, shared) in the server. *)
 
