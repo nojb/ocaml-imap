@@ -29,6 +29,7 @@ let string_of_error =
   | No -> "Server denied request"
   | Bye -> "Server closed the connection"
   | ParseError -> "Parser error"
+  | Auth_error -> "Authentication error"
 
 exception Error of error
 

@@ -666,6 +666,7 @@ type error =
   | No
   | Bye
   | ParseError
+  | Auth_error
 
 type 'a result =
     ControlOk of 'a * state * int

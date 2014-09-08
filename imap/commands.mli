@@ -73,9 +73,7 @@ val logout : unit command
 (*     then it must point to a certificate in PEM format and will be used to *)
 (*     validate the server identity. *\) *)
 
-(* val authenticate : session -> ImapAuth.t -> unit IO.t *)
-(* (\** [authenticate s auth] authenticates the client using the SASL mechanism *)
-(*     [auth]. *\) *)
+val authenticate : Auth.t -> unit command
 
 val login : string -> string -> unit command
 

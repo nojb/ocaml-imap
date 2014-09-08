@@ -233,44 +233,6 @@ let get_idle_response ci tag f stop =
 (*   in *)
 (*   loop () *)
 
-let get_auth_response step ci tag =
-  assert false
-(*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
-(*   let rec loop needs_more = *)
-(*     read_cont_req_or_resp_data_or_resp_done ci >>= *)
-(*     function *)
-(*       `BYE _ -> *)
-(*         ci.disconnect () >>= fun () -> *)
-(*         IO.fail BYE *)
-(*     | #ImapResponse.response_data -> *)
-(*         loop needs_more *)
-(*     | `TAGGED (tag', `OK _) -> *)
-(*         begin *)
-(*           if needs_more then step "" else IO.return `OK end >>= begin *)
-(*           function *)
-(*             `OK -> *)
-(*               if tag <> tag' then IO.fail Bad_tag *)
-(*               else IO.return () *)
-(*           | `NEEDS_MORE -> *)
-(*               IO.fail (Auth_error (Failure "Insufficient data for SASL authentication")) *)
-(*         end *)
-(*     | `TAGGED (_, `BAD rt) -> *)
-(*         IO.fail BAD *)
-(*     | `TAGGED (_, `NO rt) -> *)
-(*         IO.fail NO *)
-(*     | `CONT_REQ data -> *)
-(*         let data = *)
-(*           match data with *)
-(*             `BASE64 data -> data *)
-(*           | `TEXT _ -> "" *)
-(*         in *)
-(*         step data >>= *)
-(*         function *)
-(*           `OK -> loop false *)
-(*         | `NEEDS_MORE -> loop true *)
-(*   in *)
-(*   loop true *)
-
 let next_tag s =
   let tag = s.next_tag in
   let next_tag = tag + 1 in
@@ -352,23 +314,41 @@ let logout =
 (*   in *)
 (*   IO.with_lock ci.send_lock aux *)
 
-(* let authenticate s auth = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.(raw "AUTHENTICATE" ++ space ++ string auth.ImapAuth.name) in *)
-(*   let step data = *)
-(*     let data = ImapUtils.base64_decode data in *)
-(*     begin *)
-(*       try IO.return (auth.ImapAuth.step data) *)
-(*       with e -> IO.fail (Auth_error e) *)
-(*     end >>= fun (rc, data) -> *)
-(*     let data = ImapUtils.base64_encode data in *)
-(*     run_sender ci S.(raw data ++ crlf) >>= fun () -> *)
-(*     IO.return rc *)
-(*   in *)
-(*   let aux () = *)
-(*     send_command' ci cmd >>= get_auth_response step ci *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
+let authenticate auth tag =
+  let step data =
+    let step data = try ret (auth.Auth.step data) with _ -> fail Auth_error in
+    step (Utils.base64_decode data) >>= fun (rc, data) ->
+    let data = Utils.base64_encode data in
+    Sender.(raw data >> crlf) >>
+    flush >>
+    ret rc
+  in
+  let auth_sender tag =
+    let open Sender in
+    raw tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.Auth.name >> crlf
+  in
+  auth_sender tag >>
+  flush >>
+  let rec loop needs_more =
+    liftP
+      Parser.(alt
+                (continue_req >>= fun data -> ret (`More data))
+                (response >>= fun r -> ret (`Done r))) >>= function
+      `More data ->
+        let data = match data with CONTINUE_REQ_BASE64 data -> data | CONTINUE_REQ_TEXT _ -> "" in
+        step data >>= fun needs_more ->
+        loop (match needs_more with `OK -> false | `NEEDS_MORE -> true)
+    | `Done r ->
+        if needs_more then
+          step "" >>= function
+            `OK -> ret r
+          | `NEEDS_MORE -> fail Auth_error
+        else
+          ret r
+  in
+  loop true >>= fun r ->
+  modify (fun s -> response_store s r) >>
+  handle_response r
 
 let login user pass =
   std_command
