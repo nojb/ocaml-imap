@@ -22,7 +22,8 @@
 
 open Types
 open Core
-  
+
+val fetch_att_modseq : fetch_att
 val search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
 val uid_search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
 val search : ?charset:string -> search_key -> Uint32.t list command

@@ -38,6 +38,8 @@ type extension_data +=
    | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
    | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
 
+let fetch_att_modseq = FETCH_ATT_EXTENSION "MODSEQ"
+
 let condstore_printer =
   let open Format in
   let condstore_resptextcode_print ppf =

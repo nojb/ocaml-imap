@@ -191,10 +191,9 @@ let fetch_att =
   | FETCH_ATT_BODYSTRUCTURE -> raw "BODYSTRUCTURE"
   | FETCH_ATT_UID -> raw "UID"
   | FETCH_ATT_FLAGS -> raw "FLAGS"
-  (* | `MODSEQ -> raw "MODSEQ" *)
+  | FETCH_ATT_EXTENSION s -> raw s
   (* | `X_GM_MSGID -> raw "X-GM-MSGID" *)
   (* | `X_GM_THRID -> raw "X-GM-THRID" *)
-(* | `X_GM_LABELS -> raw "X-GM-LABELS" *)
 
 let day_month_year (dd, mmm, yyyy) =
   let month_names =
@@ -343,8 +342,3 @@ let store_att_flags flags =
   in
   let silent = if flags.fl_silent then raw ".SILENT" else ret () in
   sign >> raw "FLAGS" >> silent >> char ' ' >> separated (char ' ') flag flags.fl_flag_list
-
-(*   | `FLAGS flags -> raw "FLAGS" >> space >> list flag flags *)
-(*   | `FLAGS_SILENT flags -> raw "FLAGS.SILENT" >> space >> list flag flags *)
-(*   | `X_GM_LABELS labels -> raw "X-GM-LABELS" >> space >> list gm_label labels *)
-(*   | `X_GM_LABELS_SILENT labels -> raw "X-GM-LABELS.SILENT" >> space >> list gm_label labels *)

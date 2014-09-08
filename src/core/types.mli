@@ -210,15 +210,11 @@ type fetch_att =
   (** Unique identification number. *)
   | FETCH_ATT_FLAGS
   (** Message flags *)
-  (* | `MODSEQ *)
-  (* (\** Modification sequence number.  This requires support for the CONDSTORE *)
-  (*     extension. *\) *)
+  | FETCH_ATT_EXTENSION of string
   (* | `X_GM_MSGID *)
   (* (\** Gmail message ID. *\) *)
   (* | `X_GM_THRID *)
   (* (\** Gmail thread ID. *\) *)
-  (* | `X_GM_LABELS *)
-(* (\** Gmail labels *\) ] with sexp *)
 
 type fetch_type =
     FETCH_TYPE_ALL
@@ -383,7 +379,6 @@ type msg_att_static =
 
 type msg_att_dynamic =
   flag_fetch list
-  (* | `X_GM_LABELS of string list ] with sexp *)
   
 type msg_att_item =
     MSG_ATT_ITEM_DYNAMIC of msg_att_dynamic
@@ -405,16 +400,6 @@ type store_att_flags = {
   fl_silent : bool;
   fl_flag_list : flag list
 }
-
-(* type store_att = *)
-(*   [ `FLAGS of flag list *)
-(*   (\** Message flags *\) *)
-(*   | `FLAGS_SILENT of flag list *)
-(*   (\** Silent message flags (server will not respond with the updated list of flags). *\) *)
-(*   | `X_GM_LABELS of string list *)
-(*   (\** Gmail labels *\) *)
-(*   | `X_GM_LABELS_SILENT of string list *)
-(*   (\** Silent Gmail labels (server will not respond with the updated list of labels). *\) ] with sexp *)
 
 (** {2 STATUS command} *)
 
