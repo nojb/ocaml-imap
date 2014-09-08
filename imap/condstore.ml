@@ -151,10 +151,13 @@ let search_modseq_aux cmd ?charset key =
       function
         [] ->
           let res = s.rsp_info.rsp_search_results in
-          modify (fun s -> {s with rsp_info = {s.rsp_info with rsp_search_results = []}}) >>
-          ret (res, Uint64.zero)
+          (* modify (fun s -> {s with rsp_info = {s.rsp_info with rsp_search_results = []}}) >> *)
+          (* ret (res, Uint64.zero) *)
+          (* FIXME *)
+          (res, Uint64.zero)
       | CONDSTORE_SEARCH_DATA (res, m) :: _ ->
-          ret (res, m)
+          (* ret (res, m) *)
+          (res, m)
       | _ :: rest ->
           loop rest
     in
@@ -168,13 +171,11 @@ let search_modseq ?charset key =
 let uid_search_modseq ?charset key =
   search_modseq_aux "UID SEARCH" ?charset key
 
-let search ?charset key =
-  fun tag ->
-    search_modseq_aux "SEARCH" ?charset key tag >> ret ()
+let search ?charset key tag =
+  search_modseq_aux "SEARCH" ?charset key tag >>= fun (res, _) -> ret res
 
-let uid_search ?charset key =
-  fun tag ->
-    search_modseq_aux "UID SEARCH" ?charset key tag >> ret ()
+let uid_search ?charset key tag =
+  search_modseq_aux "UID SEARCH" ?charset key tag >>= fun (res, _) -> ret res
 
 let select_condstore_optional mb cmd use_condstore =
   let cmd_sender =
