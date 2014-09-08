@@ -195,8 +195,6 @@ let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
   with Not_found -> ref false
 
-(* exception Auth_error of exn *)
-
 let fresh_state = {
   rsp_info = fresh_response_info;
   sel_info = fresh_selection_info;
@@ -205,33 +203,6 @@ let fresh_state = {
   current_tag = None;
   next_tag = 0
 }
-
-let get_idle_response ci tag f stop =
-  assert false
-(*   ci.state <- {ci.state with rsp_info = fresh_response_info}; *)
-(*   let rec loop () = *)
-(*     read_cont_req_or_resp_data_or_resp_done ci >>= *)
-(*     function *)
-(*       `BYE _ -> *)
-(*         ci.disconnect () >>= fun () -> *)
-(*         IO.fail BYE *)
-(*     | #ImapResponse.response_data -> *)
-(*         begin *)
-(*           match f () with *)
-(*             `Continue -> loop () *)
-(*           | `Stop -> stop (); loop () *)
-(*         end *)
-(*     | `TAGGED (tag', `OK _) -> *)
-(*         if tag <> tag' then IO.fail Bad_tag *)
-(*         else IO.return () *)
-(*     | `TAGGED (_, `BAD rt) -> *)
-(*         IO.fail BAD *)
-(*     | `TAGGED (_, `NO rt) -> *)
-(*         IO.fail NO *)
-(*     | `CONT_REQ _ -> *)
-(*         loop () *)
-(*   in *)
-(*   loop () *)
 
 let next_tag s =
   let tag = s.next_tag in
@@ -428,26 +399,6 @@ let status mbox attrs =
 (* let append s mbox ?flags ?date data = *)
 (*   append_uidplus s mbox ?flags ?date data >>= fun _ -> *)
 (*   IO.return () *)
-
-(* let idle s f = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "IDLE" in *)
-(*   let idling = ref false in *)
-(*   let stop () = *)
-(*     if !idling then begin *)
-(*       idling := false; *)
-(*       ignore (IO.catch *)
-(*                 (fun () -> run_sender ci S.(raw "DONE" ++ crlf)) *)
-(*                 (fun _ -> IO.return ())) *)
-(*     end *)
-(*   in *)
-(*   let aux () = *)
-(*     ci.state <- {ci.state with sel_info = {ci.state.sel_info with sel_exists = None; sel_recent = None}}; *)
-(*     send_command' ci cmd >>= fun tag -> *)
-(*     idling := true; *)
-(*     get_idle_response ci tag f stop *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux, stop *)
 
 (* let namespace s = *)
 (*   assert false *)

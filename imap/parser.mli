@@ -74,6 +74,8 @@ val capability : capability t
 
 val greeting : greeting t
 
+val response_data : response_data t
+
 val response_done : response_done t
 
 val continue_req : continue_req t

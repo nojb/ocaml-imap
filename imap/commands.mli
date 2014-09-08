@@ -24,18 +24,19 @@
 
 open ImapTypes
 
+val response_data_store : state -> response_data -> state
+
 val greeting_store : state -> greeting -> state
 
 val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
 val response_store : state -> response -> state
 
+val handle_response : response -> unit control
+
 (* val debug : bool ref *)
 
 val next_tag : state -> string * state
-
-(** Authentication error *)
-(* exception Auth_error of exn *)
 
 (** {2 IMAP sessions} *)
 
