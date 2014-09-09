@@ -172,6 +172,12 @@ let append mbox ?flags ?date_time:dt data =
   in
   std_command sender (fun _ -> ())
 
+let search =
+  Condstore.search
+
+let uid_search =
+  Condstore.uid_search
+
 (* let namespace s = *)
 (*   assert false *)
 (* (\* let ci = connection_info s in *\) *)

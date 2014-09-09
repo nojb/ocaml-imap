@@ -62,6 +62,22 @@ let add_interval n m set =
 let union s1 s2 =
   List.fold_right (fun r s2 -> r :: s2) s1 s2
 
+let of_list l = (* FIXME find ranges of contiguous messages *)
+  let l = List.sort compare l in
+  let rec loop start finish =
+    function
+      [] ->
+        [(start, finish)]
+    | n :: rest ->
+        if Uint32.(compare (add finish one) n = 0) then
+          loop start n rest
+        else
+          (start, finish) :: loop n n rest
+  in
+  match l with
+    [] -> []
+  | x :: rest -> loop x x rest
+
 (* let rec iter f = function *)
 (*   | [] -> () *)
 (*   | (l, r) :: set -> *)

@@ -76,6 +76,10 @@ val status : string -> status_att list -> mailbox_data_status command
 
 val append : string -> ?flags:flag list -> ?date_time:float -> string -> unit command
 
+val search : ?charset:string -> search_key -> Uint32.t list command
+
+val uid_search : ?charset:string -> search_key -> Uint32.t list command
+
 (* (\* val namespace : session -> (namespace list * namespace list * namespace list) IO.t *\) *)
 (* (\** Returns the three types of namespaces (personal, other users, shared) in the server. *)
 

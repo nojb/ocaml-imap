@@ -216,9 +216,9 @@ let gm_label s =
 
 let entry_type_req =
   function
-    `All -> "all"
-  | `Shared -> "shared"
-  | `Priv -> "priv"
+    SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_ALL -> "all"
+  | SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_SHARED -> "shared"
+  | SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_PRIV -> "priv"
 
 let search_modseq_ext =
   function
@@ -274,8 +274,8 @@ let rec search_key =
       raw "X-GM-MSGID " >> raw (Uint64.to_string msgid)
   | SEARCH_KEY_XGMTHRID thrid ->
       raw "X-GM-THRID " >> raw (Uint64.to_string thrid)
-  (* | SEARCH_KEY_XGMLABELS lab -> *)
-(*   raw "X-GM-LABEL " >> gm_label lab *)
+  | SEARCH_KEY_XGMLABELS lab ->
+      raw "X-GM-LABELS " >> gm_label lab
 
 let rec search_key_need_to_send_charset =
   function

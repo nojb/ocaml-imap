@@ -66,3 +66,5 @@ val add_interval : num -> num -> t -> t
 
 val union : t -> t -> t
 (** [union s1 s2] forms the union of the [s1] and [s2]. *)
+
+val of_list : num list -> t

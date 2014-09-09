@@ -24,10 +24,10 @@ open Types
 open TypesPrivate
   
 type 'a result =
-    ControlOk of 'a * state * int
-  | ControlFail of error
-  | ControlNeed of int * (input -> 'a result)
-  | ControlFlush of string * 'a result
+    Ok of 'a * state * int
+  | Fail of error
+  | Need of (input -> 'a result)
+  | Flush of string * 'a result
 
 type 'a control =
   state -> Buffer.t -> Buffer.t -> int -> 'a result
@@ -35,56 +35,56 @@ type 'a control =
 let flush st buf _ i =
   let str = Buffer.contents buf in
   Buffer.clear buf;
-  ControlFlush (str, ControlOk ((), st, i))
+  Flush (str, Ok ((), st, i))
 
 let bind m f st buf b i =
   let rec loop =
     function
-      ControlOk (x, st, i) -> f x st buf b i
-    | ControlFail _ as x -> x
-    | ControlNeed (len, k) -> ControlNeed (len, fun inp -> loop (k inp))
-    | ControlFlush (buf, r) -> ControlFlush (buf, loop r)
+      Ok (x, st, i) -> f x st buf b i
+    | Fail _ as x -> x
+    | Need k -> Need (fun inp -> loop (k inp))
+    | Flush (buf, r) -> Flush (buf, loop r)
   in
   loop (m st buf b i)
 
 let fail err _ _ _ _ =
-  ControlFail err
+  Fail err
     
 let liftP p st _ b i =
   let rec loop =
     function
-      Ok (x, i) -> ControlOk (x, st, i)
-    | Fail _ -> ControlFail ParseError
-    | Need (len, k) -> ControlNeed (len, fun inp -> loop (k inp))
+      TypesPrivate.Ok (x, i) -> Ok (x, st, i)
+    | TypesPrivate.Fail _ -> Fail ParseError
+    | TypesPrivate.Need k -> Need (fun inp -> loop (k inp))
   in
   loop (p b i)
       
 let send s st buf _ i =
   Buffer.add_string buf s;
-  ControlOk ((), st, i)
+  Ok ((), st, i)
 
 let ret x st _ _ i =
-  ControlOk (x, st, i)
+  Ok (x, st, i)
 
 let gets f st _ _ i =
-  ControlOk (f st, st, i)
+  Ok (f st, st, i)
 
 let modify f st _ _ i =
-  ControlOk ((), f st, i)
+  Ok ((), f st, i)
 
 let get st _ _ i =
-  ControlOk (st, st, i)
+  Ok (st, st, i)
 
 let put st _ _ _ i =
-  ControlOk ((), st, i)
+  Ok ((), st, i)
 
 let catch f g st buf b i =
   let rec loop =
     function
-      ControlOk _ as ok -> ok
-    | ControlFail err -> g err st buf b i
-    | ControlNeed (len, k) -> ControlNeed (len, fun inp -> loop (k inp))
-    | ControlFlush (str, r) -> ControlFlush (str, loop r)
+      Ok _ as ok -> ok
+    | Fail err -> g err st buf b i
+    | Need k -> Need (fun inp -> loop (k inp))
+    | Flush (str, r) -> Flush (str, loop r)
   in
   loop (f st buf b i)
 

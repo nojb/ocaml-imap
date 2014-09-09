@@ -21,40 +21,29 @@
    SOFTWARE. *)
 
 open Types
-open TypesPrivate
+open Extension
 
-type 'a result =
-    Ok of 'a * state * int
-  | Fail of error
-  | Need of (input -> 'a result)
-  | Flush of string * 'a result
+type extension_data +=
+     XGMMSGID_MSGID of Uint64.t
 
-type 'a control
+let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
 
-val flush : unit control
+let xgmmsgid_printer =
+  let open Format in
+  function
+    XGMMSGID_MSGID id ->
+      Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
+  | _ ->
+      None
 
-val bind : 'a control -> ('a -> 'b control) -> 'b control
+let xgmmsgid_parser =
+  let open Parser in
+  function
+    EXTENDED_PARSER_FETCH_DATA ->
+      str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
+      ret (XGMMSGID_MSGID n)
+  | _ ->
+      fail
 
-val fail : error -> _ control
-
-val liftP : 'a parser -> 'a control
-
-val send : string -> unit control
-
-val ret : 'a -> 'a control
-
-val gets : (state -> 'a) -> 'a control
-
-val modify : (state -> state) -> unit control
-
-val get : state control
-
-val put : state -> unit control
-
-val catch : 'a control -> (error -> 'a control) -> 'a control
-
-val (>>=) : 'a control -> ('a -> 'b control) -> 'b control
-
-val (>>) : _ control -> 'a control -> 'a control
-
-val run : 'a control -> state -> Buffer.t -> int -> 'a result
+let _ =
+  register_extension {ext_parser = xgmmsgid_parser; ext_printer = xgmmsgid_printer}

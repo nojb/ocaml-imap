@@ -48,19 +48,19 @@ let run_control s c =
   let buf = String.create 65536 in
   let rec loop =
     function
-      Control.ControlOk (x, st, i) ->
+      Control.Ok (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
         return x
-    | Control.ControlFail err ->
+    | Control.Fail err ->
         fail (Error err)
-    | Control.ControlFlush (str, r) ->
+    | Control.Flush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
         fully_write s.sock str 0 (String.length str) >>= fun () ->
         loop r
-    | Control.ControlNeed (len, k) ->
+    | Control.Need k ->
         Lwt_ssl.read s.sock buf 0 (String.length buf) >>=
         function
           0 ->

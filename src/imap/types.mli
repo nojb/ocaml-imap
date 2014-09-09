@@ -56,6 +56,11 @@ type flag_perm =
 type day_month_year =
   int * int * int
 
+type search_key_modseq_entry_type =
+    SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_PRIV
+  | SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_SHARED
+  | SEARCH_KEY_MODSEQ_ENTRY_TYPE_REQ_ALL
+
 (** Search keys *)
 type search_key =
     SEARCH_KEY_ALL
@@ -150,14 +155,14 @@ type search_key =
       message sequence number set. *)
   | SEARCH_KEY_AND of search_key * search_key
   (** Messages that match both search keys. *)
-  | SEARCH_KEY_MODSEQ of (flag * [`Shared | `Priv | `All]) option * Uint64.t
+  | SEARCH_KEY_MODSEQ of (flag * search_key_modseq_entry_type) option * Uint64.t
   | SEARCH_KEY_XGMRAW of string
   (** Messages that satisfy Gmail search expression. *)
   | SEARCH_KEY_XGMMSGID of Uint64.t
   (** Message with given Gmail Message ID. *)
   | SEARCH_KEY_XGMTHRID of Uint64.t
   (** Messages with given Gmail Thread ID. *)
-  (* | `X_GM_LABELS of string *)
+  | SEARCH_KEY_XGMLABELS of string
   (* (\** Messages with given Gmail labels. *\) ] *)
 
 (** {2 FETCH command} *)
@@ -374,7 +379,6 @@ type msg_att_static =
   | MSG_ATT_BODYSTRUCTURE of body
   | MSG_ATT_BODY_SECTION of msg_att_body_section
   | MSG_ATT_UID of Uint32.t
-  (* | MSG_ATT_X_GM_MSGID of Gmsgid.t *)
   (* | MSG_ATT_X_GM_THRID of Gthrid.t *)
 
 type msg_att_dynamic =

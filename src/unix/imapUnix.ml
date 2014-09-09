@@ -37,20 +37,20 @@ let run_control s c =
   let buf = String.create 65536 in
   let rec loop =
     function
-      ControlOk (x, st, i) ->
+      Ok (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
         x
-    | ControlFail err ->
+    | Fail err ->
         raise (Error err)
-    | ControlFlush (str, r) ->
+    | Flush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
         Ssl.output_string s.sock str;
         Ssl.flush s.sock;
         loop r
-    | ControlNeed (len, k) ->
+    | Need k ->
         match Ssl.read s.sock buf 0 (String.length buf) with
           0 ->
             loop (k End)

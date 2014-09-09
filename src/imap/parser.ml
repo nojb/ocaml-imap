@@ -31,7 +31,7 @@ let bind p f b i =
     function
       Ok (x, i) -> f x b i
     | Fail _ as x -> x
-    | Need (n, k) -> Need (n, fun inp -> loop (k inp))
+    | Need k -> Need (fun inp -> loop (k inp))
   in
   loop (p b i)
 
@@ -42,7 +42,7 @@ let alt p q b i =
     function
       Ok _ as x -> x
     | Fail _ -> q b i
-    | Need (n, k) -> Need (n, fun inp -> loop (k inp))
+    | Need k -> Need (fun inp -> loop (k inp))
   in
   loop (p b i)
 
@@ -87,7 +87,7 @@ let delay f x b i =
 
 let rec char c b i =
   if i >= Buffer.length b then
-    Need (1, function End -> Fail i | More -> char c b i)
+    Need (function End -> Fail i | More -> char c b i)
   else if Buffer.nth b i = c then
     Ok (c, i + 1)
   else
@@ -95,7 +95,7 @@ let rec char c b i =
 
 let rec any_char b i =
   if i >= Buffer.length b then
-    Need (1, function End -> Fail i | More -> any_char b i)
+    Need (function End -> Fail i | More -> any_char b i)
   else
     Ok (Buffer.nth b i, i + 1)
 
@@ -109,16 +109,16 @@ let str u b i =
       else
         Fail i
     else
-      Need (len - left, function End -> Fail i | More -> str i)
+      Need (function End -> Fail i | More -> str i)
   in
   str i
 
 let rec accum f b i =
   let rec loop j =
     if j >= Buffer.length b then
-      Need (1, function End when i = j -> Fail j
-                      | End -> Ok (Buffer.sub b i (j - i), j)
-                      | More -> loop j)
+      Need (function End when i = j -> Fail j
+                   | End -> Ok (Buffer.sub b i (j - i), j)
+                   | More -> loop j)
     else if f (Buffer.nth b j) then
       loop (j+1)
     else if j = i then
@@ -132,9 +132,9 @@ let nz_digits b i =
   let rec first = ref true in
   let rec loop j =
     if j >= Buffer.length b then
-      Need (1, function End when i = j -> Fail j
-                      | End -> Ok (Buffer.sub b i (j - i), j)
-                      | More -> loop j)
+      Need (function End when i = j -> Fail j
+                   | End -> Ok (Buffer.sub b i (j - i), j)
+                   | More -> loop j)
     else
       match Buffer.nth b j with
         '0' -> if i = j then Fail i else loop (j+1)
@@ -156,7 +156,7 @@ let number =
 
 let rec eof b i =
   if i >= Buffer.length b then
-    Need (0, function End -> Ok ((), i) | More -> eof b i)
+    Need (function End -> Ok ((), i) | More -> eof b i)
   else
     Fail i
 
@@ -167,7 +167,7 @@ let rec quoted b i =
   let bb = Buffer.create 0 in
   let rec loop i =
     if i >= Buffer.length b then
-      Need (1, function End -> Fail i | More -> loop i)
+      Need (function End -> Fail i | More -> loop i)
     else
       match Buffer.nth b i with
         '\"' -> Ok (Buffer.contents bb, i+1)
@@ -175,7 +175,7 @@ let rec quoted b i =
       | '\\' ->
           let rec loop1 i =
             if i >= Buffer.length b then
-              Need (2, function End -> Fail i | More -> loop1 i)
+              Need (function End -> Fail i | More -> loop1 i)
             else
               match Buffer.nth b i with
                 '\"' | '\\' as c ->
@@ -192,7 +192,7 @@ let rec quoted b i =
           Fail i
   in
   if i >= Buffer.length b then
-    Need (2, function End -> Fail i | More -> quoted b i)
+    Need (function End -> Fail i | More -> quoted b i)
   else if Buffer.nth b i = '\"' then
     loop (i+1)
   else
@@ -208,7 +208,7 @@ let literal =
     if len <= left then
       Ok (Buffer.sub b i len, i + len)
     else
-      Need (len - left, function End -> Fail i | More -> lit len b i)
+      Need (function End -> Fail i | More -> lit len b i)
   in
   char '{' >> number' >>= fun len -> char '}' >> str "\r\n" >> lit len
 
@@ -290,7 +290,7 @@ let nstring' =
 
 let rec digit b i =
   if i >= Buffer.length b then
-    Need (1, function End -> Fail i | More -> digit b i)
+    Need (function End -> Fail i | More -> digit b i)
   else
     match Buffer.nth b i with
       '0' .. '9' as c ->
@@ -309,14 +309,14 @@ let digits4 =
 let rec quoted_char =
   let rec aux b i =
     if i >= Buffer.length b then
-      Need (1, function End -> Fail i | More -> aux b i)
+      Need (function End -> Fail i | More -> aux b i)
     else
       match Buffer.nth b i with
         '\r' | '\n' | '\"' -> Fail i
       | '\\' ->
           let rec loop1 i =
             if i >= Buffer.length b then
-              Need (1, function End -> Fail i | More -> loop1 i)
+              Need (function End -> Fail i | More -> loop1 i)
             else
               match Buffer.nth b i with
                 '\\' | '\"' as c -> Ok (c, i + 1)
@@ -334,7 +334,7 @@ let rec string_of_length n b i =
   let rec loop i =
     let left = Buffer.length b - i in
     if n > left then
-      Need (n - left, function End -> Fail (i + left) | More -> loop i)
+      Need (function End -> Fail (i + left) | More -> loop i)
     else
       Ok (Buffer.sub b i n, i + n)
   in
@@ -375,7 +375,7 @@ let test p s =
     function
       Ok (x, _) -> x
     | Fail _ -> failwith "parsing error"
-    | Need (_, k) ->
+    | Need k ->
         if i >= String.length s then
           loop i (k End)
         else
@@ -1135,7 +1135,6 @@ let msg_att_static =
     (str "BODYSTRUCTURE" >> char ' ' >> delay body () >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
     (* str "BODY" >> body; *)
     (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID uid));
-    (* (str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_MSGID (Gmsgid.of_uint64 n))); *)
   (*   (str "X-GM-THRID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_THRID (Gthrid.of_uint64 n))) *)
   ]
 

@@ -69,6 +69,8 @@ val quoted_char : char t
 val base64 : string t
 val test : 'a t -> string -> 'a
 
+val uint64 : Uint64.t t
+
 val uniqueid : Uint32.t t
 
 val sequence_set : ImapSet.t t

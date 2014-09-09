@@ -141,7 +141,7 @@ type greeting =
 type 'a parse_result =
     Ok of 'a * int
   | Fail of int
-  | Need of int * (input -> 'a parse_result)
+  | Need of (input -> 'a parse_result)
 
 type 'a parser =
   Buffer.t -> int -> 'a parse_result
