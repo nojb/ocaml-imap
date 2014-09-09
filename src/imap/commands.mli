@@ -25,16 +25,7 @@
 open Types
 open Core
 open Control
-
-(* val connect_ssl : session -> ?version:[`TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)
-(*   ?port : int -> string -> resp_cond_auth_type IO.t *)
-(* (\** Connects to the IMAP server using a SSL connection on the given port and *)
-(*     hostname. [?version] is the version of the SSL protocol to use (default is *)
-(*     TLSv1).  If [?ca_file] is not omitted, then it should point to a file in *)
-(*     PEM format used to verify the server certificate.  Returns [`Needsauth] if *)
-(*     the server requires authentication and [`Preauth] if the session has *)
-(*     already been authenticated in some other fashion. *\) *)
-
+  
 (* (\** {2 Commands valid in any state} *\) *)
 
 val capability : capability list command
@@ -62,6 +53,10 @@ val login : string -> string -> unit command
 (* (\** Enables compression. *)
 
 (*     This command requires the COMPRESS=DEFLATE extension. *\) *)
+
+val examine : string -> unit command
+
+val select : string -> unit command
 
 val create : string -> unit command
 

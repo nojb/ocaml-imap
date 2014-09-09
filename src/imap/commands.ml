@@ -104,6 +104,12 @@ let login user pass =
 (*   in *)
 (*   IO.with_lock ci.send_lock aux *)
 
+let examine mbox =
+  Condstore.examine mbox
+
+let select mbox =
+  Condstore.select mbox
+
 let create mbox =
   std_command
     (Sender.(raw "CREATE" >> char ' ' >> mailbox mbox))
@@ -185,8 +191,8 @@ let close =
 let expunge =
   std_command (Sender.(raw "EXPUNGE")) (fun _ -> ())
 
-let fetch set attrs =
-  Condstore.fetch_changedsince_optional set None attrs
+let fetch =
+  Condstore.fetch
 
-let uid_fetch set attrs =
-  Condstore.uid_fetch_changedsince_optional set None attrs
+let uid_fetch =
+  Condstore.uid_fetch

@@ -1,8 +1,8 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-all: core unix lwt test
+all: imap unix lwt test
 
-core: src/core/imap.cma
+imap: src/imap/imap.cma
 
 unix: src/unix/imapUnix.cma
 
