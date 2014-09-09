@@ -60,12 +60,7 @@ val nstring' : string t
 val nz_number : Uint32.t t
 val nz_number' : int t
 val nil : unit t
-val digit : int t
-val digits2 : int t
-val digits4 : int t
-val string_of_length : int -> string t
 val eof : unit t
-val quoted_char : char t
 val base64 : string t
 val test : 'a t -> string -> 'a
 

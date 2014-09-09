@@ -82,8 +82,14 @@ let sep1 s p =
 let sep s p =
   alt (sep1 s p) (ret [])
 
-let delay f x b i =
-  f x b i
+let rec rep_ p =
+  alt (rep1_ p) (ret ())
+
+and rep1_ p =
+  p >>= fun _ -> rep_ p
+
+let take_from pos b i =
+  Ok (Buffer.sub b pos (i - pos), i)
 
 let rec char c b i =
   if i >= Buffer.length b then
@@ -99,49 +105,46 @@ let rec any_char b i =
   else
     Ok (Buffer.nth b i, i + 1)
 
-let str u b i =
-  let len = String.length u in
-  let rec str i =
+let satisfy f =
+  any_char >>= fun c -> if f c then ret c else fail
+
+let skip_while f =
+  rep1_ (satisfy f)
+
+let pos _ i =
+  Ok (i, i)
+
+let delay f x b i =
+  f x b i
+
+let skip n b i =
+  let rec loop () =
     let left = Buffer.length b - i in
-    if len <= left then
-      if String.uppercase (Buffer.sub b i len) = String.uppercase u then
-        Ok (u, i + len)
-      else
-        Fail i
+    if n <= left then
+      Ok ((), i + n)
     else
-      Need (function End -> Fail i | More -> str i)
+      Need (function End -> Fail (i + left) | More -> loop ())
   in
-  str i
+  loop ()
 
-let rec accum f b i =
-  let rec loop j =
-    if j >= Buffer.length b then
-      Need (function End when i = j -> Fail j
-                   | End -> Ok (Buffer.sub b i (j - i), j)
-                   | More -> loop j)
-    else if f (Buffer.nth b j) then
-      loop (j+1)
-    else if j = i then
-      Fail j
-    else
-      Ok (Buffer.sub b i (j - i), j)
-  in
-  loop i
+let string_of_length n =
+  pos >>= fun i -> skip n >> take_from i
 
-let nz_digits b i =
-  let rec first = ref true in
-  let rec loop j =
-    if j >= Buffer.length b then
-      Need (function End when i = j -> Fail j
-                   | End -> Ok (Buffer.sub b i (j - i), j)
-                   | More -> loop j)
-    else
-      match Buffer.nth b j with
-        '0' -> if i = j then Fail i else loop (j+1)
-      | '1' .. '9' -> first := false; loop (j+1)
-      | _ -> if i = j then Fail i else Ok (Buffer.sub b i (j - i), j)
-  in
-  loop i
+let str u =
+  string_of_length (String.length u) >>= fun s ->
+  if String.uppercase s = String.uppercase u then ret s else fail
+
+let rec accum f =
+  pos >>= fun i -> skip_while f >> take_from i
+
+let digit =
+  satisfy (function '0' .. '9' -> true | _ -> false)
+
+let nz_digit =
+  satisfy (function '1' .. '9' -> true | _ -> false)
+
+let nz_digits =
+  pos >>= fun i -> nz_digit >> rep digit >> take_from i
 
 let crlf =
   str "\r\n" >> ret ()
@@ -163,54 +166,31 @@ let rec eof b i =
 let number' =
   app int_of_string (accum (function '0' .. '9' -> true | _ -> false))
 
-let rec quoted b i =
-  let bb = Buffer.create 0 in
-  let rec loop i =
-    if i >= Buffer.length b then
-      Need (function End -> Fail i | More -> loop i)
-    else
-      match Buffer.nth b i with
-        '\"' -> Ok (Buffer.contents bb, i+1)
-      | '\r' | '\n' -> Fail i
-      | '\\' ->
-          let rec loop1 i =
-            if i >= Buffer.length b then
-              Need (function End -> Fail i | More -> loop1 i)
-            else
-              match Buffer.nth b i with
-                '\"' | '\\' as c ->
-                  Buffer.add_char bb c;
-                  loop (i+1)
-              | _ ->
-                  Fail i
-          in
-          loop1 (i+1)
-      | '\x01' .. '\x7f' as c ->
-          Buffer.add_char bb c;
-          loop (i+1)
-      | _ ->
-          Fail i
-  in
-  if i >= Buffer.length b then
-    Need (function End -> Fail i | More -> quoted b i)
-  else if Buffer.nth b i = '\"' then
-    loop (i+1)
-  else
-    Fail i
+let escaped_char =
+  any_char >>=
+  function
+    '\r' | '\n' | '\"' -> fail
+  | '\\' -> satisfy (function '\\' | '\"' -> true | _ -> false)
+  | '\x01' .. '\x7f' as c -> ret c
+  | _ -> fail
+
+let quoted_char =
+  char '\"' >> escaped_char >>= fun c -> char '\"' >> ret c
+
+let quoted =
+  char '\"' >>= fun _ ->
+  let b = Buffer.create 0 in
+  rep_ (app (Buffer.add_char b) escaped_char) >>
+  char '\"' >>= fun _ ->
+  ret (Buffer.contents b)
 
 (*
 literal         = "{" number "}" CRLF *CHAR8
                     ; Number represents the number of CHAR8s
 *)
 let literal =
-  let rec lit len b i =
-    let left = Buffer.length b - i in
-    if len <= left then
-      Ok (Buffer.sub b i len, i + len)
-    else
-      Need (function End -> Fail i | More -> lit len b i)
-  in
-  char '{' >> number' >>= fun len -> char '}' >> str "\r\n" >> lit len
+  char '{' >> number' >>= fun len -> char '}' >> str "\r\n" >>
+  string_of_length len
 
 (*
 string          = quoted / literal
@@ -288,57 +268,14 @@ let nstring =
 let nstring' =
   app (function Some s -> s | None -> "") nstring
 
-let rec digit b i =
-  if i >= Buffer.length b then
-    Need (function End -> Fail i | More -> digit b i)
-  else
-    match Buffer.nth b i with
-      '0' .. '9' as c ->
-        Ok (Char.code c - Char.code '0', i + 1)
-    | _ ->
-        Fail i
+let digits1 =
+  app (fun c -> Char.code c - Char.code '0') digit
 
 let digits2 =
-  digit >>= fun n -> digit >>= fun m -> ret (n * 10 + m)
+  pos >>= fun i -> digit >> digit >> app int_of_string (take_from i)
 
 let digits4 =
-  digit >>= fun n -> digit >>= fun m ->
-  digit >>= fun r -> digit >>= fun s ->
-  ret (n * 1000 + m * 100 + r * 10 + s)
-
-let rec quoted_char =
-  let rec aux b i =
-    if i >= Buffer.length b then
-      Need (function End -> Fail i | More -> aux b i)
-    else
-      match Buffer.nth b i with
-        '\r' | '\n' | '\"' -> Fail i
-      | '\\' ->
-          let rec loop1 i =
-            if i >= Buffer.length b then
-              Need (function End -> Fail i | More -> loop1 i)
-            else
-              match Buffer.nth b i with
-                '\\' | '\"' as c -> Ok (c, i + 1)
-              | _ -> Fail i
-          in
-          loop1 (i + 1)
-      | '\x01' .. '\x7f' as c ->
-          Ok (c, i + 1)
-      | _ ->
-          Fail i
-  in
-  char '\"' >> aux >>= fun c -> char '\"' >> ret c
-          
-let rec string_of_length n b i =
-  let rec loop i =
-    let left = Buffer.length b - i in
-    if n > left then
-      Need (function End -> Fail (i + left) | More -> loop i)
-    else
-      Ok (Buffer.sub b i n, i + n)
-  in
-  loop i
+  pos >>= fun i -> digit >> digit >> digit >> digit >> app int_of_string (take_from i)
 
 let is_base64_char =
   function
@@ -347,27 +284,17 @@ let is_base64_char =
   | _ -> false
 
 let base64_char =
-  any_char >>= fun c -> if is_base64_char c then ret c else fail
-
-let repn n p f =
-  let rec loop i =
-    if i = 0 then
-      ret ()
-    else
-      p >>= fun x -> f x; loop (i-1)
-  in
-  loop n
+  satisfy is_base64_char
 
 let base64 =
-  let b = Buffer.create 0 in
-  let rec loop () =
-    altn [
-      (repn 4 base64_char (Buffer.add_char b) >>= loop);
-      (repn 2 base64_char (Buffer.add_char b) >> str "==" >> ret ());
-      (repn 3 base64_char (Buffer.add_char b) >> str "=" >> ret ())
-    ]
+  let base64_terminal =
+    alt
+      (base64_char >> base64_char >> base64_char >> str "=")
+      (base64_char >> base64_char >> str "==")
   in
-  loop () >>= fun () -> ret (Buffer.contents b)
+  pos >>= fun i ->
+  rep_ (base64_char >> base64_char >> base64_char >> base64_char) >>
+  base64_terminal >>  take_from i
 
 let test p s =
   let b = Buffer.create 0 in
@@ -995,7 +922,7 @@ and body () =
 status-att-list =  status-att SP number *(SP status-att SP number)
 *)
 let date_day_fixed =
-  alt (char ' ' >> digit) digits2
+  alt (char ' ' >> digits1) digits2
 
 let date_month =
   app String.capitalize (string_of_length 3) >>= function
