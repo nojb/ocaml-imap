@@ -1,7 +1,7 @@
 #require "uint"
 #require "ssl"
 #require "str"
-#require "ucorelib"
+#require "uutf"
 #require "cryptokit"
 #directory "_build/src/imap"
 #directory "_build/src/unix"

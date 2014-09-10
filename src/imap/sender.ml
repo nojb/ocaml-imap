@@ -72,12 +72,20 @@ let literal str =
   char '{' >> int (String.length str) >> char '}' >> crlf >> continuation_req >> raw str
 
 let quoted_string str =
-  let escaped =
-    Str.global_substitute (Str.regexp "[\"\\]")
-      (fun s -> let s = Str.matched_string s in "\\" ^ s) str
+  let rec loop i j =
+    if j >= String.length str then
+      raw (String.sub str i j)
+    else
+      match str.[j] with
+        '\"' | '\\' as c ->
+          raw (String.sub str i j) >>
+          char '\\' >> char c >>
+          loop (j+1) (j+1)
+      | _ ->
+          loop i (j+1)
   in
-  char '\"' >> raw escaped >> char '\"'
-  
+  char '\"' >> loop 0 0 >> char '\"'
+            
 let needs_literal = function
   | '\x80' .. '\xff' | '\r' | '\n' -> true
   | _ -> false

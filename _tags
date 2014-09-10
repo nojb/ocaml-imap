@@ -1,4 +1,4 @@
-true: package(str), package(uint), package(cryptokit), package(ucorelib)
+true: package(uint), package(cryptokit), package(uutf)
 <src/unix/*> or <tests/*> or <src/lwt/*> or <src/other/*>: package(ssl)
 <src/lwt/*>: package(lwt.ssl)
 true: debug
