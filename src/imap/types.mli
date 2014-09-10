@@ -288,7 +288,23 @@ type body_extension =
   | BODY_EXTENSION_NUMBER of Uint32.t
   | BODY_EXTENSION_NSTRING of string option
 
-and body_fields = {
+type body_ext_mpart = {
+  bd_parameter : body_fld_param;
+  bd_disposition : body_fld_dsp option;
+  bd_language : body_fld_lang option;
+  bd_loc : string option;
+  bd_extension_list : body_extension list
+}
+
+type body_ext_1part = {
+  bd_md5 : string option;
+  bd_disposition : body_fld_dsp option;
+  bd_language : body_fld_lang option;
+  bd_loc : string option;
+  bd_extension_list : body_extension list
+}
+
+type body_fields = {
   bd_parameter : body_fld_param;
   bd_id : string option;
   bd_description : string option;
@@ -296,43 +312,27 @@ and body_fields = {
   bd_size : int
 }
 
-and body_type_msg = {
-  bd_fields : body_fields;
-  bd_envelope : envelope;
-  bd_body : body
-}
-
-and body_type_text = {
+type body_type_text = {
   bd_media_text : string;
   bd_fields : body_fields;
   bd_lines : int
 }
 
-and body_type_basic = {
+type body_type_basic = {
   bd_media_basic : media_basic;
   bd_fields : body_fields
+}
+
+type body_type_msg = {
+  bd_fields : body_fields;
+  bd_envelope : envelope;
+  bd_body : body
 }
 
 and body_type_1part_data =
     BODY_TYPE_1PART_BASIC of body_type_basic
   | BODY_TYPE_1PART_MSG of body_type_msg
   | BODY_TYPE_1PART_TEXT of body_type_text
-
-and body_ext_mpart = {
-  bd_parameter : body_fld_param;
-  bd_disposition : body_fld_dsp option;
-  bd_language : body_fld_lang option;
-  bd_loc : string option;
-  bd_extension_list : body_extension list
-}
-
-and body_ext_1part = {
-  bd_md5 : string option;
-  bd_disposition : body_fld_dsp option;
-  bd_language : body_fld_lang option;
-  bd_loc : string option;
-  bd_extension_list : body_extension list
-}
 
 and body_type_1part = {
   bd_data : body_type_1part_data;
