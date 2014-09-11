@@ -194,6 +194,9 @@ let cont_req_or_resp_data_store s =
       response_data_store s r
 
 let response_store s {rsp_cont_req_or_resp_data_list; rsp_resp_done} =
+  let s = {s with rsp_info = fresh_response_info} in
+  (* FIXME : check if this does not conflict with the implementation of IDLE -
+     it seems that the response_data_store there gets discarded ? *)
   response_done_store
     (List.fold_left cont_req_or_resp_data_store s rsp_cont_req_or_resp_data_list)
     rsp_resp_done
