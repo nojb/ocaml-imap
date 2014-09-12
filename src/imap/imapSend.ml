@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Control
+open ImapTypes
+open ImapControl
   
 type t = unit control
 
@@ -29,7 +29,7 @@ let raw s =
   send s
 
 let continuation_req =
-  flush >> liftP Parser.continue_req >> ret ()
+  flush >> liftP ImapParser.continue_req >> ret ()
 
 let char ch =
   send (String.make 1 ch)
@@ -117,7 +117,7 @@ let nstring = function
   | None -> nil
 
 let mailbox box =
-  string (Utils.encode_mutf7 box)
+  string (ImapUtils.encode_mutf7 box)
 
 let months =
   [|"Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; "Jul"; "Aug"; "Sep";
@@ -220,7 +220,7 @@ let flag =
   | FLAG_EXTENSION s -> char '\\' >> raw s (* FIXME: encode in MUTF7 ? *)
 
 let gm_label s =
-  raw (Utils.encode_mutf7 s)
+  raw (ImapUtils.encode_mutf7 s)
 
 let entry_type_req =
   function

@@ -20,35 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
-open Control
+open ImapTypes
+open ImapCore
   
-val string_of_error : error -> string
-  
-type 'a command = string -> 'a control
-
-val response_data_store : state -> response_data -> state
-
-val greeting_store : state -> greeting -> state
-
-val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
-
-val response_store : state -> response -> state
-
-val handle_response : response -> unit control
-
-(* val debug : bool ref *)
-
-val next_tag : state -> string * state
-
-(** {2 IMAP sessions} *)
-
-val fresh_selection_info : selection_info
-
-val fresh_state : state
-
-val greeting : [ `NeedsAuth | `PreAuth ] control
-
-val std_command : unit control -> (state -> 'a) -> 'a command
-
+val idle : unit command

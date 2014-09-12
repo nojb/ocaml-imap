@@ -20,8 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap
-open Types
+open ImapTypes
 
 exception Error of error
 
@@ -48,19 +47,19 @@ let run_control s c =
   let buf = String.create 65536 in
   let rec loop =
     function
-      Control.Ok (x, st, i) ->
+      ImapControl.Ok (x, st, i) ->
         s.imap_session <- st;
         s.pos <- i;
         return x
-    | Control.Fail err ->
+    | ImapControl.Fail err ->
         fail (Error err)
-    | Control.Flush (str, r) ->
+    | ImapControl.Flush (str, r) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
         fully_write s.sock str 0 (String.length str) >>= fun () ->
         loop r
-    | Control.Need k ->
+    | ImapControl.Need k ->
         Lwt_ssl.read s.sock buf 0 (String.length buf) >>=
         function
           0 ->
@@ -72,10 +71,10 @@ let run_control s c =
             Buffer.add_substring s.buffer buf 0 n;
             loop (k More)
   in
-  loop (Control.run c s.imap_session s.buffer s.pos)
+  loop (ImapControl.run c s.imap_session s.buffer s.pos)
 
 let connect s =
-  run_control s Core.greeting
+  run_control s ImapCore.greeting
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -104,10 +103,10 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   Lwt_unix.connect fd sockaddr >>= fun () ->
   let context = Ssl.create_context ssl_method Ssl.Client_context in
   Lwt_ssl.ssl_connect fd context >>= fun sock ->
-  return {sock; imap_session = Core.fresh_state; buffer = Buffer.create 0; pos = 0}
+  return {sock; imap_session = ImapCore.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
-  let tag, st = Core.next_tag s.imap_session in
+  let tag, st = ImapCore.next_tag s.imap_session in
   s.imap_session <- st;
   tag
       

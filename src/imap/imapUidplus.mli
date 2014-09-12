@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Core
+open ImapTypes
+open ImapCore
   
 val uid_expunge : ImapSet.t -> unit command
 val uidplus_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command

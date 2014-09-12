@@ -20,20 +20,20 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
-open Core
-open Control
+open ImapTypes
+open ImapTypesPrivate
+open ImapCore
+open ImapControl
 
 let capability =
-  std_command (Sender.raw "CAPABILITY") (fun s -> s.cap_info)
+  std_command (ImapSend.raw "CAPABILITY") (fun s -> s.cap_info)
 
 let noop =
-  std_command (Sender.raw "NOOP") (fun _ -> ())
+  std_command (ImapSend.raw "NOOP") (fun _ -> ())
 
 let logout =
   fun tag ->
-    catch (std_command (Sender.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
+    catch (std_command (ImapSend.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
 
 (* let starttls ?(version = `TLSv1) ?ca_file s = *)
 (*   let ci = connection_info s in *)
@@ -53,22 +53,22 @@ let logout =
 
 let authenticate auth tag =
   let step data =
-    let step data = try ret (auth.Auth.step data) with _ -> fail Auth_error in
-    step (Utils.base64_decode data) >>= fun (rc, data) ->
-    let data = Utils.base64_encode data in
-    Sender.(raw data >> crlf) >>
+    let step data = try ret (auth.ImapAuth.step data) with _ -> fail Auth_error in
+    step (ImapUtils.base64_decode data) >>= fun (rc, data) ->
+    let data = ImapUtils.base64_encode data in
+    ImapSend.(raw data >> crlf) >>
     flush >>
     ret rc
   in
   let auth_sender tag =
-    let open Sender in
-    raw tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.Auth.name >> crlf
+    let open ImapSend in
+    raw tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.ImapAuth.name >> crlf
   in
   auth_sender tag >>
   flush >>
   let rec loop needs_more =
     liftP
-      Parser.(alt
+      ImapParser.(alt
                 (continue_req >>= fun data -> ret (`More data))
                 (response >>= fun r -> ret (`Done r))) >>= function
       `More data ->
@@ -89,7 +89,7 @@ let authenticate auth tag =
 
 let login user pass =
   std_command
-    (Sender.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
+    (ImapSend.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
     (fun _ -> ())
   
 (* let compress s = *)
@@ -105,57 +105,57 @@ let login user pass =
 (*   IO.with_lock ci.send_lock aux *)
 
 let examine mbox =
-  Condstore.examine mbox
+  ImapCondstore.examine mbox
 
 let select mbox =
-  Condstore.select mbox
+  ImapCondstore.select mbox
 
 let create mbox =
   std_command
-    (Sender.(raw "CREATE" >> char ' ' >> mailbox mbox))
+    (ImapSend.(raw "CREATE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let delete mbox =
   std_command
-    (Sender.(raw "DELETE" >> char ' ' >> mailbox mbox))
+    (ImapSend.(raw "DELETE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let rename oldbox newbox =
   std_command
-    (Sender.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
+    (ImapSend.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
     (fun _ -> ())
 
 let subscribe mbox =
   std_command
-    (Sender.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
+    (ImapSend.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let unsubscribe mbox =
   std_command
-    (Sender.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
+    (ImapSend.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
     (fun _ -> ())
 
 let list mbox list_mb =
   std_command
-    (Sender.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (ImapSend.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
     (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let lsub mbox list_mb =
   std_command
-    (Sender.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
+    (ImapSend.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
     (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let status mbox attrs =
   std_command
-    (Sender.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
+    (ImapSend.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
     (fun s -> s.rsp_info.rsp_status)
 
 let copy_aux cmd set destbox =
   let sender =
-    let open Sender in
+    let open ImapSend in
     raw cmd >> char ' ' >> message_set set >> char ' ' >> mailbox destbox
   in
-  Core.std_command sender (fun _ -> ())
+  ImapCore.std_command sender (fun _ -> ())
 
 let copy set destbox =
   copy_aux "COPY" set destbox
@@ -165,7 +165,7 @@ let uid_copy set destbox =
 
 let append mbox ?flags ?date_time:dt data =
   let sender =
-    let open Sender in
+    let open ImapSend in
     let flags = match flags with None | Some [] -> ret () | Some flags -> list flag flags >> char ' ' in
     let date = match dt with None -> ret () | Some dt -> date_time dt >> char ' ' in
     raw "APPEND" >> space >> mailbox mbox >> char ' ' >> flags >> date >> literal data
@@ -173,10 +173,10 @@ let append mbox ?flags ?date_time:dt data =
   std_command sender (fun _ -> ())
 
 let search =
-  Condstore.search
+  ImapCondstore.search
 
 let uid_search =
-  Condstore.uid_search
+  ImapCondstore.uid_search
 
 (* let namespace s = *)
 (*   assert false *)
@@ -189,16 +189,16 @@ let uid_search =
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
 let check =
-  std_command (Sender.(raw "CHECK")) (fun _ -> ())
+  std_command (ImapSend.(raw "CHECK")) (fun _ -> ())
 
 let close =
-  std_command (Sender.(raw "CLOSE")) (fun _ -> ())
+  std_command (ImapSend.(raw "CLOSE")) (fun _ -> ())
 
 let expunge =
-  std_command (Sender.(raw "EXPUNGE")) (fun _ -> ())
+  std_command (ImapSend.(raw "EXPUNGE")) (fun _ -> ())
 
 let fetch =
-  Condstore.fetch
+  ImapCondstore.fetch
 
 let uid_fetch =
-  Condstore.uid_fetch
+  ImapCondstore.uid_fetch

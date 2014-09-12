@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Extension
+open ImapTypes
+open ImapExtension
   
 (* resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid *)
 
@@ -60,7 +60,7 @@ let uidplus_printer =
       None
 
 let uidplus_parser =
-  let open Parser in
+  let open ImapParser in
   let uid_range =
     uniqueid >>= fun x ->
     char ':' >>
@@ -104,14 +104,14 @@ let uidplus_parser =
   | _ ->
       fail
 
-open Control
+open ImapControl
 
 let uid_expunge set =
   let sender =
-    let open Sender in
+    let open ImapSend in
     raw "UID EXPUNGE" >> char ' ' >> message_set set
   in
-  Core.std_command sender (fun _ -> ())
+  ImapCore.std_command sender (fun _ -> ())
 
 let extract_copy_uid s =
   let rec loop =
@@ -126,10 +126,10 @@ let extract_copy_uid s =
   loop s.rsp_info.rsp_extension_list
 
 let uidplus_copy set destbox tag =
-  Commands.copy set destbox tag >> gets extract_copy_uid
+  ImapCommands.copy set destbox tag >> gets extract_copy_uid
 
 let uidplus_uid_copy set destbox tag =
-  Commands.uid_copy set destbox tag >> gets extract_copy_uid
+  ImapCommands.uid_copy set destbox tag >> gets extract_copy_uid
 
 let extract_apnd_uid s =
   let rec loop =
@@ -152,7 +152,7 @@ let extract_apnd_single_uid s =
       uid, first
 
 let uidplus_append mailbox ?flags ?date_time msg tag =
-  Commands.append mailbox ?flags ?date_time msg tag >> gets extract_apnd_single_uid
+  ImapCommands.append mailbox ?flags ?date_time msg tag >> gets extract_apnd_single_uid
 
 let _ =
   register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}

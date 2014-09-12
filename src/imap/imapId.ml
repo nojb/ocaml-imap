@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Extension
+open ImapTypes
+open ImapExtension
   
 type extension_data +=
      ID_PARAMS of (string * string option) list
@@ -38,10 +38,10 @@ let id_printer =
   | _ ->
       None
 
-open Control
+open ImapControl
 
 let id_sender params =
-  let open Sender in
+  let open ImapSend in
   let param_sender =
     function
       (k, None) ->
@@ -55,7 +55,7 @@ let id_sender params =
   | xs -> list param_sender params
 
 let id_parser =
-  let open Parser in
+  let open ImapParser in
   let id_params =
     astring >>= fun k ->
     char ' ' >>
@@ -82,7 +82,7 @@ let id_handler s =
   loop s.rsp_info.rsp_extension_list
 
 let id params =
-  Core.std_command (id_sender params) id_handler
+  ImapCore.std_command (id_sender params) id_handler
 
 let id_basic name version =
   let get l n =

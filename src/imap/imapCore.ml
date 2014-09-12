@@ -20,9 +20,9 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
-open Control
+open ImapTypes
+open ImapTypesPrivate
+open ImapControl
 
 let string_of_error =
   function
@@ -89,7 +89,7 @@ let resp_text_store s {rsp_code; rsp_text} =
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
-      Extension.extension_data_store s e
+      ImapExtension.extension_data_store s e
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
@@ -117,7 +117,7 @@ let mailbox_data_store s =
   | MAILBOX_DATA_RECENT n ->
       {s with sel_info = {s.sel_info with sel_recent = Some n}}
   | MAILBOX_DATA_EXTENSION_DATA e ->
-      Extension.extension_data_store s e
+      ImapExtension.extension_data_store s e
 
 let message_data_store s =
   function
@@ -153,7 +153,7 @@ let response_data_store s =
   | RESP_DATA_CAPABILITY_DATA cap_info ->
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
-      Extension.extension_data_store s e
+      ImapExtension.extension_data_store s e
   (* | `NAMESPACE (pers, other, shared) -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}} *)
 
@@ -221,8 +221,8 @@ let next_tag s =
   tag, {s with current_tag = Some tag; next_tag}
  
 let greeting =
-  liftP Parser.greeting >>= fun g ->
-  Print.greeting_print Format.err_formatter g;
+  liftP ImapParser.greeting >>= fun g ->
+  ImapPrint.greeting_print Format.err_formatter g;
   modify (fun s -> greeting_store s g) >>
   match g with
     GREETING_RESP_COND_BYE r ->
@@ -235,7 +235,7 @@ let greeting =
       | RESP_COND_AUTH_PREAUTH -> ret `PreAuth
 
 let handle_response r =
-  Print.response_print Format.err_formatter r;
+  ImapPrint.response_print Format.err_formatter r;
   let imap_response =
     match r.rsp_resp_done with
       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
@@ -262,7 +262,7 @@ let std_command sender handler =
     sender >>
     send "\r\n" >>
     flush >>
-    liftP Parser.response >>= fun r ->
+    liftP ImapParser.response >>= fun r ->
     modify (fun s -> response_store s r) >>
     handle_response r >>
     gets handler

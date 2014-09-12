@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
+open ImapTypes
+open ImapTypesPrivate
   
 type 'a t =
   'a parser
@@ -316,7 +316,7 @@ let test p s =
 (** IMAP PARSER *)
 
 let extension_parser calling_parser =
-  let open Extension in
+  let open ImapExtension in
   let rec loop =
     function
       [] -> fail
@@ -520,7 +520,7 @@ let resp_text_code =
     uidvalidity;
     unseen;
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
-    (extension_parser Extension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
+    (extension_parser ImapExtension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
     other
   ]
 
@@ -594,7 +594,7 @@ let mbx_list_flags =
     end
 
 let mailbox =
-  let decode_mailbox_name s = try Utils.decode_mutf7 s with _ -> s in
+  let decode_mailbox_name s = try ImapUtils.decode_mutf7 s with _ -> s in
   astring >>= fun s -> ret (decode_mailbox_name s)
 
 (*
@@ -619,7 +619,9 @@ let status_att =
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n) in
-  let extension = extension_parser Extension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e) in
+  let extension =
+    extension_parser ImapExtension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e)
+  in
   altn [ messages; recent; uidnext; uidvalidity; unseen; extension ]
 
 let address =
@@ -1086,7 +1088,7 @@ let msg_att =
       altn [
         (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
         (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
-        (extension_parser Extension.EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
+        (extension_parser ImapExtension.EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
       ]
     end
   >>= fun xs ->
@@ -1094,7 +1096,7 @@ let msg_att =
   ret xs
 
 let status_info =
-  alt status_att (extension_parser Extension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
+  alt status_att (extension_parser ImapExtension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
 
 let mailbox_data_flags =
   str "FLAGS" >> char ' ' >> flag_list >>= fun flags ->
@@ -1127,7 +1129,7 @@ let mailbox_data_recent =
   ret (MAILBOX_DATA_RECENT n)
 
 let mailbox_data_extension_data =
-  extension_parser Extension.EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
+  extension_parser ImapExtension.EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
   ret (MAILBOX_DATA_EXTENSION_DATA e)
 
 (*
@@ -1221,7 +1223,7 @@ let response_data =
     (mailbox_data >>= fun r -> ret (RESP_DATA_MAILBOX_DATA r));
     (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
     (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
-    (extension_parser Extension.EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
+    (extension_parser ImapExtension.EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
     (* namespace_response; *)
   ]
   >>= fun x ->

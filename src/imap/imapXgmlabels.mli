@@ -20,22 +20,11 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Control
+open ImapTypes
+open ImapCore
 
-let idle tag =
-  let sender tag =
-    let open Sender in
-    raw tag >> char ' ' >> raw "IDLE" >> crlf
-  in
-  sender tag >>
-  flush >>
-  liftP Parser.continue_req >>
-  (* let rec loop () = *) (* FIXME ? *)
-  liftP Parser.response_data >>= fun r ->
-  modify (fun s -> Core.response_data_store s r) >>
-  Sender.(raw "DONE" >> crlf) >> flush >>
-  (* in *)
-  (* loop () >> *)
-  liftP Parser.response >>= fun r ->
-  modify (fun s -> Core.response_store s r) >>
-  Core.handle_response r
+val fetch_att_xgmlabels : fetch_att
+
+val uid_store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command
+
+val store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command

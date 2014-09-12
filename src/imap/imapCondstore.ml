@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Extension
+open ImapTypes
+open ImapExtension
   
 (* resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value / *)
 (*                     "NOMODSEQ" / *)
@@ -87,7 +87,7 @@ permsg-modsequence  = mod-sequence-value
                           ;; per message mod-sequence
 *)
 let condstore_parse =
-  let open Parser in
+  let open ImapParser in
   let mod_sequence_value =
     accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
     try ret (Uint64.of_string s) with _ -> fail
@@ -133,11 +133,11 @@ let condstore_parse =
   | _ ->
       fail
 
-open Control
+open ImapControl
 
 let search_modseq_aux cmd ?charset key =
   let sender =
-    let open Sender in
+    let open ImapSend in
     raw cmd >>
     begin
       match charset with
@@ -166,7 +166,7 @@ let search_modseq_aux cmd ?charset key =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Core.std_command sender cmd_handler
+  ImapCore.std_command sender cmd_handler
 
 let search_modseq ?charset key =
   search_modseq_aux "SEARCH" ?charset key
@@ -182,7 +182,7 @@ let uid_search ?charset key tag =
 
 let select_condstore_optional mb cmd use_condstore =
   let cmd_sender =
-    let open Sender in
+    let open ImapSend in
     raw cmd >> char ' ' >> mailbox mb >> if use_condstore then raw " (CONDSTORE)" else ret ()
   in
   let cmd_handler s =
@@ -200,8 +200,8 @@ let select_condstore_optional mb cmd use_condstore =
     loop s.rsp_info.rsp_extension_list
   in
   fun tag ->
-    modify (fun s -> {s with sel_info = Core.fresh_selection_info}) >>
-    Core.std_command cmd_sender cmd_handler tag
+    modify (fun s -> {s with sel_info = ImapCore.fresh_selection_info}) >>
+    ImapCore.std_command cmd_sender cmd_handler tag
 
 let select_condstore mb =
   select_condstore_optional mb "SELECT" true
@@ -221,7 +221,7 @@ let examine mb =
 
 let fetch_aux cmd set changedsince attrs =
   let cmd =
-    let open Sender in
+    let open ImapSend in
     let changedsince =
       match changedsince with
         None ->
@@ -232,7 +232,7 @@ let fetch_aux cmd set changedsince attrs =
     raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
-  Core.std_command cmd cmd_handler
+  ImapCore.std_command cmd cmd_handler
 
 let fetch set attrs =
   fetch_aux "FETCH" set None attrs
@@ -248,7 +248,7 @@ let uid_fetch_changedsince set modseq attrs =
 
 let store_aux cmd set unchangedsince flags =
   let sender =
-    let open Sender in
+    let open ImapSend in
     let unchangedsince =
       match unchangedsince with
         None -> ret ()
@@ -267,7 +267,7 @@ let store_aux cmd set unchangedsince flags =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  Core.std_command sender handler
+  ImapCore.std_command sender handler
 
 let store set flags tag =
   store_aux "STORE" set None flags tag >> ret ()

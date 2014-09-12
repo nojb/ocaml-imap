@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
+open ImapTypes
+open ImapTypesPrivate
   
 type 'a result =
     Ok of 'a * state * int
@@ -53,9 +53,9 @@ let fail err _ _ _ _ =
 let liftP p st _ b i =
   let rec loop =
     function
-      TypesPrivate.Ok (x, i) -> Ok (x, st, i)
-    | TypesPrivate.Fail _ -> Fail ParseError
-    | TypesPrivate.Need k -> Need (fun inp -> loop (k inp))
+      ImapTypesPrivate.Ok (x, i) -> Ok (x, st, i)
+    | ImapTypesPrivate.Fail _ -> Fail ParseError
+    | ImapTypesPrivate.Need k -> Need (fun inp -> loop (k inp))
   in
   loop (p b i)
       

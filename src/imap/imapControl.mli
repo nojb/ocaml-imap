@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open TypesPrivate
+open ImapTypes
+open ImapTypesPrivate
 
 type 'a result =
     Ok of 'a * state * int

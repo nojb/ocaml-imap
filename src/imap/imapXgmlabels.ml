@@ -20,8 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Extension
+open ImapTypes
+open ImapExtension
 
 type extension_data +=
      XGMLABELS_XGMLABELS of string list
@@ -39,7 +39,7 @@ let xgmlabels_printer =
       None
 
 let xgmlabels_parser =
-  let open Parser in
+  let open ImapParser in
   function
     EXTENDED_PARSER_FETCH_DATA ->
       str "X-GM-LABELS" >> char ' ' >>
@@ -48,11 +48,11 @@ let xgmlabels_parser =
   | _ ->
       fail
 
-open Control
+open ImapControl
 
 let store_xgmlabels_aux cmd set fl_sign fl_silent labels =
   let sender =
-    let open Sender in
+    let open ImapSend in
     send cmd >> char ' ' >> message_set set >> char ' ' >>
     begin
       match fl_sign with
@@ -64,7 +64,7 @@ let store_xgmlabels_aux cmd set fl_sign fl_silent labels =
     char ' ' >>
     list string labels
   in
-  Core.std_command sender (fun _ -> ())
+  ImapCore.std_command sender (fun _ -> ())
 
 let store_xgmlabels =
   store_xgmlabels_aux "STORE"

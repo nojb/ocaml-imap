@@ -22,8 +22,8 @@
 
 (** Output routines *)
 
-open Types
-open Control
+open ImapTypes
+open ImapControl
   
 type t = unit control
 

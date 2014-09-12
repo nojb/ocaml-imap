@@ -20,7 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Core
+open ImapTypes
+open ImapCore
   
-val idle : unit command
+val id : (string * string option) list -> (string * string option) list command
+val id_basic : string -> string -> (string option * string option) command

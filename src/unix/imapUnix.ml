@@ -20,8 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap
-open Types
+open ImapTypes
 
 exception Error of error
 
@@ -33,7 +32,7 @@ type session = {
 }
 
 let run_control s c =
-  let open Control in
+  let open ImapControl in
   let buf = String.create 65536 in
   let rec loop =
     function
@@ -64,7 +63,7 @@ let run_control s c =
   loop (run c s.imap_session s.buffer s.pos)
 
 let connect s =
-  run_control s Core.greeting 
+  run_control s ImapCore.greeting 
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -90,10 +89,10 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = Core.fresh_state; buffer = Buffer.create 0; pos = 0}
+  {sock; imap_session = ImapCore.fresh_state; buffer = Buffer.create 0; pos = 0}
 
 let next_tag s =
-  let tag, st = Core.next_tag s.imap_session in
+  let tag, st = ImapCore.next_tag s.imap_session in
   s.imap_session <- st;
   tag
       

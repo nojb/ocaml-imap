@@ -22,8 +22,8 @@
 
 (** CPS Combinator parsers on strings *)
 
-open Types
-open TypesPrivate
+open ImapTypes
+open ImapTypesPrivate
   
 type 'a t =
   'a parser

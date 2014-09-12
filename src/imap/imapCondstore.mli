@@ -23,10 +23,20 @@
 open ImapTypes
 open ImapCore
 
-exception Error of error
-
-type session
-
-val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
-val connect : session -> [ `NeedsAuth | `PreAuth ]
-val send_command : session -> 'a command -> 'a
+val fetch_att_modseq : fetch_att
+val search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
+val uid_search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
+val search : ?charset:string -> search_key -> Uint32.t list command
+val uid_search : ?charset:string -> search_key -> Uint32.t list command
+val select : string -> unit command
+val select_condstore : string -> Uint64.t command
+val examine : string -> unit command
+val examine_condstore : string -> Uint64.t command
+val fetch : ImapSet.t -> fetch_att list -> msg_att list command
+val uid_fetch : ImapSet.t -> fetch_att list -> msg_att list command
+val fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_att list -> msg_att list command
+val uid_fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_att list -> msg_att list command
+val store : ImapSet.t -> store_att_flags -> unit command
+val uid_store : ImapSet.t -> store_att_flags -> unit command
+val store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
+val uid_store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command

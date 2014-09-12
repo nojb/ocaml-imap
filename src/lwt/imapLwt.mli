@@ -20,9 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Imap
-open Types
-open Core
+open ImapTypes
+open ImapCore
 
 exception Error of error
 

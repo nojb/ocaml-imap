@@ -22,9 +22,9 @@
 
 (** IMAP protocol interface *)
 
-open Types
-open Core
-open Control
+open ImapTypes
+open ImapCore
+open ImapControl
   
 (* (\** {2 Commands valid in any state} *\) *)
 
@@ -43,7 +43,7 @@ val logout : unit command
 (*     then it must point to a certificate in PEM format and will be used to *)
 (*     validate the server identity. *\) *)
 
-val authenticate : Auth.t -> unit command
+val authenticate : ImapAuth.t -> unit command
 
 val login : string -> string -> unit command
 

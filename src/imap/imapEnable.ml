@@ -20,30 +20,61 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Types
-open Extension
-
+open ImapTypes
+open ImapExtension
+  
 type extension_data +=
-     XGMMSGID_MSGID of Uint64.t
+     EXTENSION_ENABLE of capability list
 
-let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
-
-let xgmmsgid_printer =
-  let open Format in
+(*
+response-data =/ "*" SP enable-data CRLF
+enable-data   = "ENABLED" *(SP capability)
+*)
+let enable_parser =
+  let open ImapParser in
   function
-    XGMMSGID_MSGID id ->
-      Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
-  | _ ->
-      None
-
-let xgmmsgid_parser =
-  let open Parser in
-  function
-    EXTENDED_PARSER_FETCH_DATA ->
-      str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
-      ret (XGMMSGID_MSGID n)
+    EXTENDED_PARSER_RESPONSE_DATA ->
+      str "ENABLED" >>
+      rep (char ' ' >> capability) >>= fun caps ->
+      ret (EXTENSION_ENABLE caps)
   | _ ->
       fail
 
+
+let enable_printer =
+  let open Format in
+  let open ImapPrint in
+  function
+    EXTENSION_ENABLE caps ->
+      let p ppf = List.iter (fun x -> fprintf ppf "@ %a" capability_print x) in
+      Some (fun ppf -> fprintf ppf "@[<2>(enabled%a)@]" p caps)
+  | _ ->
+      None
+
+open ImapControl
+
+let enable_sender caps =
+  let open ImapSend in
+  let send_capability =
+    function
+      CAPABILITY_AUTH_TYPE t ->
+        raw "AUTH=" >> raw t
+    | CAPABILITY_NAME t ->
+        raw t
+  in
+  raw "ENABLE" >> char ' ' >> separated (char ' ') send_capability caps
+
+let enable_handler s =
+  let rec loop =
+    function
+      [] -> []
+    | EXTENSION_ENABLE caps :: _ -> caps
+    | _ :: rest -> loop rest
+  in
+  loop s.rsp_info.rsp_extension_list
+
+let enable caps =
+  ImapCore.std_command (enable_sender caps) enable_handler
+
 let _ =
-  register_extension {ext_parser = xgmmsgid_parser; ext_printer = xgmmsgid_printer}
+  register_extension {ext_parser = enable_parser; ext_printer = enable_printer}

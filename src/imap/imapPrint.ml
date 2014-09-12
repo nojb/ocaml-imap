@@ -21,11 +21,11 @@
    SOFTWARE. *)
 
 open Format
-open Types
-open TypesPrivate
+open ImapTypes
+open ImapTypesPrivate
 
 let extension_print ppf e =
-  let open Extension in
+  let open ImapExtension in
   let rec loop =
     function
       [] ->
