@@ -1,23 +1,30 @@
-# ocaml-imap
+# ocaml-imap - an IMAP4 client library
 
-OCaml-IMAP is an OCaml client library for the
-[IMAP4rev1](http://tools.ietf.org/html/rfc3501) protocol.  It is written in a
-monadic style and can be used with [Lwt](http://ocsigen.org/lwt/) or
-[Async](https://github.com/janestreet/async) to support concurrency.  It aims to
-be correct, easy to use and complete.
+OCaml-IMAP is an OCaml client library for the [IMAP4rev1][] protocol.  It is is
+designed to be independent of the underlying buffering scheme and I/O system,
+and it can easily be used with [Lwt][] or [Async] to support concurrency.
 
 This is a preliminary release.
 
 The full IMAP4rev1 protocol is supported in addition of some common extensions
 (see below).
 
+Contact: [Nicolas Ojeda Bar][]
+
+[IMAP4rev1]: http://tools.ietf.org/html/rfc3501
+[Lwt]: http://ocsigen.org/lwt/
+[Async]: https://github.com/janestreet/async 
+[Nicolas Ojeda Bar]: n.oje.bar@gmail.com
+
 ## Acknowledgements
 
 This library has been greatly influenced by
 
-- [MailCore2](https://github.com/MailCore/mailcore2)
-- Ruby's [Net::IMAP](http://ruby-doc.org/stdlib-2.0/libdoc/net/imap/rdoc/Net/IMAP.html)
-  module.
+- [MailCore2][]
+- Ruby's [Net::IMAP][] module
+
+[MailCore2]: https://github.com/MailCore/mailcore2
+[Net::IMAP]: http://ruby-doc.org/stdlib-2.0/libdoc/net/imap/rdoc/Net/IMAP.html
 
 ## Requirements and installation
 
@@ -64,12 +71,7 @@ auto-evaluation of Lwt threads.  All the examples below are done using the
    ```ocaml
    # #require "imap.lwt";;
    # open Imap;;
-   # open Imap_types;;
-   # #install_printer Uid.printer;;
-   # #install_printer Seq.printer;;
-   # #install_printer Gmsgid.printer;;
-   # #install_printer Gthrid.printer;;
-   # #install_printer Modseq.printer;;
+   # open Types;;
    ```
 
 2. Set up and open a SSL connection to the IMAP server
@@ -229,15 +231,13 @@ S: 2 OK 73 good day (Success)
 ## Supported IMAP extensions
 
 - COMPRESS=DEFLATE [(RFC 4978)](https://tools.ietf.org/html/rfc4978)
-- IDLE [(RFC 2177)](https://tools.ietf.org/html/rfc2177)
+<!-- - IDLE [(RFC 2177)](https://tools.ietf.org/html/rfc2177) -->
 - CONDSTORE [(RFC 4551)](https://tools.ietf.org/html/rfc4551)
 - ID [(RFC 2971)](https://tools.ietf.org/html/rfc2971)
 - UIDPLUS [(RFC 4315)](https://tools.ietf.org/html/rfc4315)
 - X-GM-EXT-1 [(Google)](https://developers.google.com/gmail/imap_extensions)
-- NAMESPACE [(RFC 2342)](http://www.ietf.org/rfc/rfc2342.txt)
+<!-- - NAMESPACE [(RFC 2342)](http://www.ietf.org/rfc/rfc2342.txt) -->
 - ENABLE [(RFC 5161)](https://tools.ietf.org/html/rfc5161)
 - AUTH=XOAUTH2 [(Google)](https://developers.google.com/gmail/xoauth2_protocol)
 
 ## Comments
-
-Comments, bug reports and feature requests are very welcome: n.oje.bar@gmail.com.
