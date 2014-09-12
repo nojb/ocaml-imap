@@ -23,14 +23,14 @@
 open ImapTypes
 open ImapTypesPrivate
   
-type 'a result =
-    Ok of 'a * state * int
-  | Fail of error
-  | Need of (input -> 'a result)
-  | Flush of string * 'a result
+type ('a, 'state, 'err) result =
+    Ok of 'a * 'state * int
+  | Fail of 'err
+  | Need of (input -> ('a, 'state, 'err) result)
+  | Flush of string * ('a, 'state, 'err) result
 
-type 'a control =
-  state -> Buffer.t -> Buffer.t -> int -> 'a result
+type ('a, 'state, 'err) control =
+  'state -> Buffer.t -> Buffer.t -> int -> ('a, 'state, 'err) result
 
 let flush st buf _ i =
   let str = Buffer.contents buf in

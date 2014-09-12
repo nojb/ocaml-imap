@@ -23,38 +23,38 @@
 open ImapTypes
 open ImapTypesPrivate
 
-type 'a result =
-    Ok of 'a * state * int
-  | Fail of error
-  | Need of (input -> 'a result)
-  | Flush of string * 'a result
+type ('a, 'state, 'err) result =
+    Ok of 'a * 'state * int
+  | Fail of 'err
+  | Need of (input -> ('a, 'state, 'err) result)
+  | Flush of string * ('a, 'state, 'err) result
 
-type 'a control
+type ('a, 'state, 'control) control
 
-val flush : unit control
+val flush : (unit, _, _) control
 
-val bind : 'a control -> ('a -> 'b control) -> 'b control
+val bind : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> ('b, 'state, 'err) control
 
-val fail : error -> _ control
+val fail : 'err -> (_, _, 'err) control
 
-val liftP : 'a parser -> 'a control
+val liftP : 'a parser -> ('a, _, error) control
 
-val send : string -> unit control
+val send : string -> (unit, _, _) control
 
-val ret : 'a -> 'a control
+val ret : 'a -> ('a, _, _) control
 
-val gets : (state -> 'a) -> 'a control
+val gets : ('state -> 'a) -> ('a, 'state, _) control
 
-val modify : (state -> state) -> unit control
+val modify : ('state -> 'state) -> (unit, 'state, _) control
 
-val get : state control
+val get : ('state, 'state, _) control
 
-val put : state -> unit control
+val put : 'state -> (unit, 'state, _) control
 
-val catch : 'a control -> (error -> 'a control) -> 'a control
+val catch : ('a, 'state, 'err) control -> ('err -> ('a, 'state, 'err) control) -> ('a, 'state, 'err) control
 
-val (>>=) : 'a control -> ('a -> 'b control) -> 'b control
+val (>>=) : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> ('b, 'state, 'err) control
 
-val (>>) : _ control -> 'a control -> 'a control
+val (>>) : (_, 'state, 'err) control -> ('a, 'state, 'err) control -> ('a, 'state, 'err) control
 
-val run : 'a control -> state -> Buffer.t -> int -> 'a result
+val run : ('a, 'state, 'err) control -> 'state -> Buffer.t -> int -> ('a, 'state, 'err) result

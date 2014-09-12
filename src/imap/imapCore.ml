@@ -33,7 +33,7 @@ let string_of_error =
   | ParseError -> "Parser error"
   | Auth_error -> "Authentication error"
 
-type 'a command = string -> 'a control
+type 'a command = string -> ('a, state, error) control
 
 let fresh_response_info = {
   rsp_alert = "";

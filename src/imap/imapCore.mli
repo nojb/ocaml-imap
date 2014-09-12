@@ -26,7 +26,7 @@ open ImapControl
   
 val string_of_error : error -> string
   
-type 'a command = string -> 'a control
+type 'a command = string -> ('a, state, error) control
 
 val response_data_store : state -> response_data -> state
 
@@ -36,7 +36,7 @@ val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
 val response_store : state -> response -> state
 
-val handle_response : response -> unit control
+val handle_response : response -> (unit, state, error) control
 
 (* val debug : bool ref *)
 
@@ -48,7 +48,7 @@ val fresh_selection_info : selection_info
 
 val fresh_state : state
 
-val greeting : [ `NeedsAuth | `PreAuth ] control
+val greeting : ([ `NeedsAuth | `PreAuth ], state, error) control
 
-val std_command : unit control -> (state -> 'a) -> 'a command
+val std_command : (unit, state, error) control -> (state -> 'a) -> 'a command
 

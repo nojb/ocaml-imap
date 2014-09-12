@@ -25,7 +25,7 @@
 open ImapTypes
 open ImapControl
   
-type t = unit control
+type t = (unit, state, error) control
 
 val space : t
 (** Sends [' ']. *)
