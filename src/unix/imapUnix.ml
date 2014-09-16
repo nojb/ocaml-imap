@@ -20,50 +20,62 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapTypes
+(* open ImapSession *)
 
-exception Error of error
+exception Error of ImapSession.error
 
 type session = {
   sock : Ssl.socket;
-  mutable imap_session : state;
+  mutable imap_session : ImapSession.session;
   buffer : Buffer.t;
   mutable pos : int
 }
 
-let run_control s c =
-  let open ImapControl in
-  let buf = String.create 65536 in
-  let rec loop =
-    function
-      Ok (x, st, i) ->
-        s.imap_session <- st;
-        s.pos <- i;
-        x
-    | Fail err ->
-        raise (Error err)
-    | Flush (str, r) ->
-        prerr_endline ">>>>";
-        prerr_string str;
-        prerr_endline ">>>>";
-        Ssl.output_string s.sock str;
-        Ssl.flush s.sock;
-        loop r
-    | Need k ->
-        match Ssl.read s.sock buf 0 (String.length buf) with
-          0 ->
-            loop (k End)
-        | _ as n ->
-            prerr_endline "<<<<";
-            prerr_string (String.sub buf 0 n);
-            prerr_endline "<<<<";
-            Buffer.add_substring s.buffer buf 0 n;
-            loop (k More)
-  in
-  loop (run c s.imap_session s.buffer s.pos)
+(* let run_control s c = *)
+(*   let open ImapControl in *)
+(*   let buf = String.create 65536 in *)
+(*   let rec loop = *)
+(*     function *)
+(*       Ok (x, st, i) -> *)
+(*         s.imap_session <- st; *)
+(*         s.pos <- i; *)
+(*         x *)
+(*     | Fail err -> *)
+(*         raise (Error err) *)
+(*     | Flush (str, r) -> *)
+(*         prerr_endline ">>>>"; *)
+(*         prerr_string str; *)
+(*         prerr_endline ">>>>"; *)
+(*         Ssl.output_string s.sock str; *)
+(*         Ssl.flush s.sock; *)
+(*         loop r *)
+(*     | Need k -> *)
+(*         match Ssl.read s.sock buf 0 (String.length buf) with *)
+(*           0 -> *)
+(*             loop (k End) *)
+(*         | _ as n -> *)
+(*             prerr_endline "<<<<"; *)
+(*             prerr_string (String.sub buf 0 n); *)
+(*             prerr_endline "<<<<"; *)
+(*             Buffer.add_substring s.buffer buf 0 n; *)
+(*             loop (k More) *)
+(*   in *)
+(*   loop (run c s.imap_session s.buffer s.pos) *)
 
-let connect s =
-  run_control s ImapCore.greeting 
+exception Error of ImapSession.error
+
+module IO = struct
+  type error = ImapSession.error
+  type 'a t = 'a
+  let ret x = x
+  let bind x f = f x
+  let fail x = raise (Error x)
+  type io = Ssl.socket
+  let input sock buf pos len = Ssl.read sock buf pos len
+  let output sock buf pos len = Ssl.write sock buf pos len
+end
+
+module Run = ImapControl.MakeRun (IO)
 
 let _ =
   prerr_endline "Initialising SSL...";
@@ -85,15 +97,24 @@ let _ =
 (*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
 (*       ctx *)
 
-let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
+let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host username password =
   let he = Unix.gethostbyname host in
   let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   let sock = Ssl.open_connection ssl_method sockaddr in
-  {sock; imap_session = ImapCore.fresh_state; buffer = Buffer.create 0; pos = 0}
+  {sock; imap_session = ImapSession.fresh_session username password; buffer = Buffer.create 0; pos = 0}
 
-let send_command s cmd =
-  run_control s cmd
-  
+(* let connect s = *)
+(*   Run.run s ImapCore.greeting  *)
+
+let run s cmd =
+  let x, st, i = Run.run cmd s.sock s.imap_session s.buffer s.pos in
+  s.imap_session <- st;
+  s.pos <- i;
+  x
+
+let connect s =
+  run s ImapSession.connect
+
 (* module M = struct *)
 (*   class virtual input_chan = *)
 (*     object (self) *)

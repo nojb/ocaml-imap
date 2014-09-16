@@ -88,8 +88,76 @@ let catch f g st buf b i =
   in
   loop (f st buf b i)
 
+let try_bind m f g st buf b i =
+  let rec loop =
+    function
+      Ok (x, st, i) -> f x st buf b i
+    | Fail err -> g err st buf b i
+    | Need k -> Need (fun inp -> loop (k inp))
+    | Flush (str, r) -> Flush (str, loop r)
+  in
+  loop (m st buf b i)
+
 let (>>=) = bind
+
 let (>>) m1 m2 = m1 >>= fun _ -> m2
+
+let lift f g m st buf b i =
+  let rec loop = function
+    | Ok (x, state, i) -> Ok (x, g st state, i)
+    | Fail err -> Fail err
+    | Need k -> Need (fun inp -> loop (k inp))
+    | Flush (str, r) -> Flush (str, loop r)
+  in
+  loop (m (f st) buf b i)
 
 let run m st b i =
   m st (Buffer.create 0) b i
+
+module type CONTROL = sig
+  type error
+  type 'a t
+  val ret : 'a -> 'a t
+  val bind : 'a t -> ('a -> 'b t) -> 'b t
+  val fail : error -> _ t
+
+  type io
+
+  val input : io -> string -> int -> int -> int t
+  val output : io -> string -> int -> int -> int t
+end
+
+module MakeRun (IO : CONTROL) = struct
+  let really_output io buf pos len =
+    let rec loop pos len =
+      if len <= 0 then IO.ret ()
+      else IO.bind (IO.output io buf pos len) (fun n -> loop (pos + n) (len - n))
+    in
+    loop pos len
+  let run c io s b i =
+    let buf = String.create 65536 in
+    let rec loop = function
+      | Ok (x, st, i) ->
+          IO.ret (x, st, i)
+      | Fail err ->
+          IO.fail err
+      | Flush (str, r) ->
+          prerr_endline ">>>>";
+          prerr_string str;
+          prerr_endline ">>>>";
+          IO.bind (really_output io str 0 (String.length str)) (fun () -> loop r)
+      | Need k ->
+          IO.bind
+            (IO.input io buf 0 (String.length buf))
+            (function
+              | 0 ->
+                  loop (k End)
+              | _ as n ->
+                  prerr_endline "<<<<";
+                  prerr_string (String.sub buf 0 n);
+                  prerr_endline "<<<<";
+                  Buffer.add_substring b buf 0 n;
+                  loop (k More))
+    in
+    loop (run c s b i)
+end

@@ -23,10 +23,10 @@
 open ImapTypes
 open ImapCore
 
-exception Error of error
+exception Error of ImapSession.error
 
 type session
 
-val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> session
+val create_session : ?ssl_method : Ssl.protocol -> ?port : int -> string -> string -> string -> session
+val run : session -> ('a, ImapSession.session, ImapSession.error) ImapControl.control -> 'a
 val connect : session -> [ `NeedsAuth | `PreAuth ]
-val send_command : session -> 'a command -> 'a

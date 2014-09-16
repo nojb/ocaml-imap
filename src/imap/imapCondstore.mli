@@ -23,6 +23,17 @@
 open ImapTypes
 open ImapCore
 
+type condstore_resptextcode =
+   | CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
+   | CONDSTORE_RESPTEXTCODE_NOMODSEQ
+   | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
+
+type extension_data +=
+     CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
+   | CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+   | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
+   | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+
 val fetch_att_modseq : fetch_att
 val search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
 val uid_search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command

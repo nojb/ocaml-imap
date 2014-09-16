@@ -1,12 +1,12 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-all: imap unix lwt test
+all: imap unix test
 
 imap: src/imap/imap.cma
 
 unix: src/unix/imapUnix.cma
 
-lwt: src/lwt/imapLwt.cma
+# lwt: src/lwt/imapLwt.cma
 
 test: tests/test_unix.byte
 
