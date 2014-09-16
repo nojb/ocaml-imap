@@ -33,7 +33,7 @@ let string_of_error =
   | ParseError -> "Parser error"
   | Auth_error -> "Authentication error"
 
-type 'a command = string -> ('a, state, error) control
+type 'a command = ('a, state, error) control
 
 let fresh_response_info = {
   rsp_alert = "";
@@ -214,12 +214,6 @@ let fresh_state = {
   next_tag = 0
 }
 
-let next_tag s =
-  let tag = s.next_tag in
-  let next_tag = tag + 1 in
-  let tag = string_of_int tag in
-  tag, {s with current_tag = Some tag; next_tag}
- 
 let greeting =
   liftP ImapParser.greeting >>= fun g ->
   ImapPrint.greeting_print Format.err_formatter g;
@@ -256,16 +250,21 @@ let handle_response r =
   | RESP_DONE_FATAL _ ->
       fail Bye
 
+let next_tag =
+  gets (fun s -> s.next_tag) >>= fun tag ->
+  let ctag = string_of_int tag in
+  modify (fun s -> {s with current_tag = Some ctag; next_tag = tag+1}) >>
+  ret ctag
+
 let std_command sender handler =
-  let cmd =
-    send " " >>
-    sender >>
-    send "\r\n" >>
-    flush >>
-    liftP ImapParser.response >>= fun r ->
-    modify (fun s -> response_store s r) >>
-    handle_response r >>
-    gets handler
-  in
-  fun tag -> send tag >> cmd
+  next_tag >>= fun tag ->
+  send tag >>
+  send " " >>
+  sender >>
+  send "\r\n" >>
+  flush >>
+  liftP ImapParser.response >>= fun r ->
+  modify (fun s -> response_store s r) >>
+  handle_response r >>
+  gets handler
 

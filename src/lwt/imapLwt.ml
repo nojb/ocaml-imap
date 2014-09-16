@@ -105,13 +105,8 @@ let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host =
   Lwt_ssl.ssl_connect fd context >>= fun sock ->
   return {sock; imap_session = ImapCore.fresh_state; buffer = Buffer.create 0; pos = 0}
 
-let next_tag s =
-  let tag, st = ImapCore.next_tag s.imap_session in
-  s.imap_session <- st;
-  tag
-      
 let send_command s cmd =
-  run_control s (cmd (next_tag s))
+  run_control s cmd
   
 (* module M = struct *)
 (*   class virtual input_chan = *)

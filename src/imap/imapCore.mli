@@ -26,7 +26,7 @@ open ImapControl
   
 val string_of_error : error -> string
   
-type 'a command = string -> ('a, state, error) control
+type 'a command = ('a, state, error) control
 
 val response_data_store : state -> response_data -> state
 
@@ -40,7 +40,7 @@ val handle_response : response -> (unit, state, error) control
 
 (* val debug : bool ref *)
 
-val next_tag : state -> string * state
+val next_tag : string command
 
 (** {2 IMAP sessions} *)
 

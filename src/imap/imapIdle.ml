@@ -22,12 +22,13 @@
 
 open ImapControl
 
-let idle tag =
-  let sender tag =
+let idle =
+  let sender =
     let open ImapSend in
+    ImapCore.next_tag >>= fun tag ->
     raw tag >> char ' ' >> raw "IDLE" >> crlf
   in
-  sender tag >>
+  sender >>
   flush >>
   liftP ImapParser.continue_req >>
   (* let rec loop () = *) (* FIXME ? *)

@@ -92,9 +92,8 @@ let id_basic name version =
       Not_found -> None
   in
   let cmd = id ["name", Some name; "version", Some version] in
-  fun tag ->
-    cmd tag >>= fun params ->
-    ret (get params "name", get params "version")
+  cmd >>= fun params ->
+  ret (get params "name", get params "version")
   
 let _ =
   register_extension {ext_printer = id_printer; ext_parser = id_parser}

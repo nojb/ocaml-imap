@@ -174,11 +174,11 @@ let search_modseq ?charset key =
 let uid_search_modseq ?charset key =
   search_modseq_aux "UID SEARCH" ?charset key
 
-let search ?charset key tag =
-  search_modseq_aux "SEARCH" ?charset key tag >>= fun (res, _) -> ret res
+let search ?charset key =
+  search_modseq_aux "SEARCH" ?charset key >>= fun (res, _) -> ret res
 
-let uid_search ?charset key tag =
-  search_modseq_aux "UID SEARCH" ?charset key tag >>= fun (res, _) -> ret res
+let uid_search ?charset key =
+  search_modseq_aux "UID SEARCH" ?charset key >>= fun (res, _) -> ret res
 
 let select_condstore_optional mb cmd use_condstore =
   let cmd_sender =
@@ -199,25 +199,20 @@ let select_condstore_optional mb cmd use_condstore =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  fun tag ->
-    modify (fun s -> {s with sel_info = ImapCore.fresh_selection_info}) >>
-    ImapCore.std_command cmd_sender cmd_handler tag
+  modify (fun s -> {s with sel_info = ImapCore.fresh_selection_info}) >>
+  ImapCore.std_command cmd_sender cmd_handler
 
 let select_condstore mb =
   select_condstore_optional mb "SELECT" true
 
 let select mb =
-  fun tag ->
-    select_condstore_optional mb "SELECT" false tag >>
-    ret ()
+  select_condstore_optional mb "SELECT" false >> ret ()
 
 let examine_condstore mb =
   select_condstore_optional mb "EXAMINE" true
 
 let examine mb =
-  fun tag ->
-    select_condstore_optional mb "EXAMINE" false tag >>
-    ret ()
+  select_condstore_optional mb "EXAMINE" false >> ret ()
 
 let fetch_aux cmd set changedsince attrs =
   let cmd =
@@ -269,11 +264,11 @@ let store_aux cmd set unchangedsince flags =
   in
   ImapCore.std_command sender handler
 
-let store set flags tag =
-  store_aux "STORE" set None flags tag >> ret ()
+let store set flags =
+  store_aux "STORE" set None flags >> ret ()
 
-let uid_store set flags tag =
-  store_aux "UID STORE" set None flags tag >> ret ()
+let uid_store set flags =
+  store_aux "UID STORE" set None flags >> ret ()
 
 let store_unchangedsince set unchangedsince flags =
   store_aux "STORE" set (Some unchangedsince) flags

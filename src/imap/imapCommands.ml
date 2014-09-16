@@ -32,8 +32,7 @@ let noop =
   std_command (ImapSend.raw "NOOP") (fun _ -> ())
 
 let logout =
-  fun tag ->
-    catch (std_command (ImapSend.raw "LOGOUT") (fun _ -> ()) tag) (function Bye -> ret () | _ as e -> fail e)
+  catch (std_command (ImapSend.raw "LOGOUT") (fun _ -> ())) (function Bye -> ret () | _ as e -> fail e)
 
 (* let starttls ?(version = `TLSv1) ?ca_file s = *)
 (*   let ci = connection_info s in *)
@@ -51,7 +50,7 @@ let logout =
 (*   in *)
 (*   IO.with_lock ci.send_lock aux *)
 
-let authenticate auth tag =
+let authenticate auth =
   let step data =
     let step data = try ret (auth.ImapAuth.step data) with _ -> fail Auth_error in
     step (ImapUtils.base64_decode data) >>= fun (rc, data) ->
@@ -60,11 +59,12 @@ let authenticate auth tag =
     flush >>
     ret rc
   in
-  let auth_sender tag =
+  let auth_sender =
     let open ImapSend in
+    next_tag >>= fun tag ->
     raw tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.ImapAuth.name >> crlf
   in
-  auth_sender tag >>
+  auth_sender >>
   flush >>
   let rec loop needs_more =
     liftP

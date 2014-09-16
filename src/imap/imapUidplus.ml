@@ -125,11 +125,11 @@ let extract_copy_uid s =
   in
   loop s.rsp_info.rsp_extension_list
 
-let uidplus_copy set destbox tag =
-  ImapCommands.copy set destbox tag >> gets extract_copy_uid
+let uidplus_copy set destbox =
+  ImapCommands.copy set destbox >> gets extract_copy_uid
 
-let uidplus_uid_copy set destbox tag =
-  ImapCommands.uid_copy set destbox tag >> gets extract_copy_uid
+let uidplus_uid_copy set destbox =
+  ImapCommands.uid_copy set destbox >> gets extract_copy_uid
 
 let extract_apnd_uid s =
   let rec loop =
@@ -151,8 +151,8 @@ let extract_apnd_single_uid s =
   | (first, _) :: _ ->
       uid, first
 
-let uidplus_append mailbox ?flags ?date_time msg tag =
-  ImapCommands.append mailbox ?flags ?date_time msg tag >> gets extract_apnd_single_uid
+let uidplus_append mailbox ?flags ?date_time msg =
+  ImapCommands.append mailbox ?flags ?date_time msg >> gets extract_apnd_single_uid
 
 let _ =
   register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}
