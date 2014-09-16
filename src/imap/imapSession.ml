@@ -22,20 +22,25 @@
 
 open ImapTypes
 
-type state =
-  | DISCONNECTED
-  | LOGGEDIN
-  | SELECTED
-
-type session = {
-  imap_state : ImapTypes.state;
-  state : state;
-  current_folder : string option;
+type selected_info = {
+  current_folder : string;
   uid_next : Uint32.t;
   uid_validity : Uint32.t;
   mod_sequence_value : Uint64.t;
   folder_msg_count : int option;
-  first_unseen_uid : Uint32.t;
+  first_unseen_uid : Uint32.t
+}
+
+type state =
+  | DISCONNECTED
+  | CONNECTED
+  | LOGGEDIN
+  | SELECTED of selected_info
+
+type session = {
+  imap_state : ImapTypes.state;
+  state : state;
+  condstore_enabled : bool;
   username : string;
   password : string
 }
@@ -43,12 +48,13 @@ type session = {
 let fresh_session username password = {
   imap_state = ImapCore.fresh_state;
   state = DISCONNECTED;
-  current_folder = None;
-  uid_next = Uint32.zero;
-  uid_validity = Uint32.zero;
-  mod_sequence_value = Uint64.zero;
-  folder_msg_count = None;
-  first_unseen_uid = Uint32.zero;
+  (* current_folder = None; *)
+  (* uid_next = Uint32.zero; *)
+  (* uid_validity = Uint32.zero; *)
+  (* mod_sequence_value = Uint64.zero; *)
+  (* folder_msg_count = None; *)
+  (* first_unseen_uid = Uint32.zero; *)
+  condstore_enabled = false;
   username;
   password
 }
@@ -170,7 +176,7 @@ type error =
   | `GmailTooManySimultaneousConnections
   | `MobileMeMoved
   | `YahooUnavailable
-  | `ErrorNonExistantFolder
+  | `NonExistantFolder
   | `Rename
   | `Delete
   | `Create
@@ -198,7 +204,19 @@ type error =
   | `Compression
   | `NoSender
   | `NoRecipient
-  | `Noop ]
+  | `Noop
+  | `State ]
+
+type folder_status = {
+  unseen_count : int;
+  message_count : int;
+  recent_count : int;
+  uid_next : Uint32.t;
+  uid_validity : Uint32.t;
+  highest_mod_seq_value : Uint64.t
+}
+
+type 'a control = ('a, session, error) ImapControl.control
 
 let flag_from_lep = function
   | FLAG_ANSWERED -> `Answered
@@ -289,13 +307,17 @@ open ImapControl
 
 let lift m = lift (fun st -> st.imap_state) (fun st imap_state -> {st with imap_state}) m
 
+let assert_state f =
+  get >>= fun st -> if f st.state then ret () else fail `State
+
 let connect =
   try_bind
     (lift ImapCore.greeting)
-    (fun x -> ret x)
+    (fun x -> modify (fun s -> {s with state = CONNECTED}) >> ret x)
     (fun _ -> fail `Connection)
 
 let login =
+  assert_state (function CONNECTED -> true | _ -> false) >>
   gets (fun s -> s.username, s.password) >>= fun (username, password) ->
   try_bind
     (lift (ImapCommands.login username password))
@@ -319,16 +341,50 @@ let select folder : (unit, session, error) control =
   try_bind
     (lift (ImapCommands.select folder))
     (fun _ ->
-       modify (fun st -> {st with uid_next = st.imap_state.sel_info.sel_uidnext;
-                                  uid_validity = st.imap_state.sel_info.sel_uidvalidity;
-                                  state = SELECTED;
-                                  current_folder = Some folder;
-                                  folder_msg_count = st.imap_state.sel_info.sel_exists;
-                                  first_unseen_uid = st.imap_state.sel_info.sel_first_unseen;
-                                  mod_sequence_value = get_mod_sequence_value st.imap_state}))
+       modify (fun st -> {st with state = SELECTED
+                                      {uid_next = st.imap_state.sel_info.sel_uidnext;
+                                       uid_validity = st.imap_state.sel_info.sel_uidvalidity;
+                                       current_folder = folder;
+                                       folder_msg_count = st.imap_state.sel_info.sel_exists;
+                                       first_unseen_uid = st.imap_state.sel_info.sel_first_unseen;
+                                       mod_sequence_value = get_mod_sequence_value st.imap_state}}))
     (function
       | ParseError -> fail `Parse
       | _ -> modify (fun st -> {st with state = LOGGEDIN}))
+
+let folder_status folder =
+  let att_list : status_att list =
+    STATUS_ATT_UNSEEN :: STATUS_ATT_RECENT :: STATUS_ATT_UIDNEXT ::
+    STATUS_ATT_UIDVALIDITY :: []
+  in
+  gets (fun st -> if st.condstore_enabled then (STATUS_ATT_HIGHESTMODSEQ : status_att) :: att_list else att_list)
+  >>= fun att_list ->
+  try_bind
+    (lift (ImapCommands.status folder att_list))
+    (fun status ->
+       let rec loop fs = function
+         | [] -> ret fs
+         | STATUS_ATT_MESSAGES message_count :: rest ->
+             loop {fs with message_count} rest
+         | STATUS_ATT_UNSEEN unseen_count :: rest ->
+             loop {fs with unseen_count} rest
+         | STATUS_ATT_RECENT recent_count :: rest ->
+             loop {fs with recent_count} rest
+         | STATUS_ATT_UIDNEXT uid_next :: rest ->
+             loop {fs with uid_next} rest
+         | STATUS_ATT_UIDVALIDITY uid_validity :: rest ->
+             loop {fs with uid_validity} rest
+         | STATUS_ATT_HIGHESTMODSEQ highest_mod_seq_value :: rest ->
+             loop {fs with highest_mod_seq_value} rest
+         | _ :: rest ->
+             loop fs rest
+       in
+       loop {message_count = 0; unseen_count = 0; recent_count = 0;
+             uid_next = Uint32.zero; uid_validity = Uint32.zero;
+             highest_mod_seq_value = Uint64.zero} status.st_info_list)
+    (function
+      | ParseError -> fail `Parse
+      | _ -> fail `NonExistantFolder)
 
 let enable_feature (feature : string) =
   try_bind
@@ -337,10 +393,22 @@ let enable_feature (feature : string) =
     (fun _ -> ret false)
 
 let uid_next s =
-  s.uid_next
+  match s.state with
+  | SELECTED sel ->
+      sel.uid_next
+  | _ ->
+      invalid_arg "uid_next: bad state"
 
 let uid_validity s =
-  s.uid_validity
+  match s.state with
+  | SELECTED sel ->
+      sel.uid_validity
+  | _ ->
+      invalid_arg "uid_validity: bad state"
 
 let mod_sequence_value s =
-  s.mod_sequence_value
+  match s.state with
+  | SELECTED sel ->
+      sel.mod_sequence_value
+  | _ ->
+      invalid_arg "mod_sequence_value: bad state"

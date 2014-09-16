@@ -141,7 +141,7 @@ type error =
   | `GmailTooManySimultaneousConnections
   | `MobileMeMoved
   | `YahooUnavailable
-  | `ErrorNonExistantFolder
+  | `NonExistantFolder
   | `Rename
   | `Delete
   | `Create
@@ -169,12 +169,26 @@ type error =
   | `Compression
   | `NoSender
   | `NoRecipient
-  | `Noop ]
+  | `Noop
+  | `State ]
 
-val connect : ([ `NeedsAuth | `PreAuth ], session, error) ImapControl.control
+type folder_status = {
+  unseen_count : int;
+  message_count : int;
+  recent_count : int;
+  uid_next : Uint32.t;
+  uid_validity : Uint32.t;
+  highest_mod_seq_value : Uint64.t
+}
 
-val login : (unit, session, error) ImapControl.control
+type 'a control = ('a, session, error) ImapControl.control
 
-val select : string -> (unit, session, error) ImapControl.control
+val connect : [ `NeedsAuth | `PreAuth ] control
 
-val enable_feature : string -> (bool, session, error) ImapControl.control
+val login : unit control
+
+val select : string -> unit control
+
+val folder_status : string -> folder_status control
+
+val enable_feature : string -> bool control

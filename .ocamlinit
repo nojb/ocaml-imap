@@ -1,4 +1,6 @@
 #require "uint"
+#install_printer Uint32.printer
+#install_printer Uint64.printer
 #require "ssl"
 #require "str"
 #require "uutf"
