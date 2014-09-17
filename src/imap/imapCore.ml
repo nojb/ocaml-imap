@@ -211,7 +211,10 @@ let fresh_state = {
   cap_info = [];
   imap_response = "";
   current_tag = None;
-  next_tag = 0
+  next_tag = 0;
+  out_buf = Buffer.create 0;
+  in_buf = Buffer.create 0;
+  in_pos = 0
 }
 
 let greeting =
@@ -256,7 +259,7 @@ let next_tag =
   modify (fun s -> {s with current_tag = Some ctag; next_tag = tag+1}) >>
   ret ctag
 
-let std_command sender handler =
+let std_command sender =
   next_tag >>= fun tag ->
   send tag >>
   send " " >>
@@ -265,6 +268,4 @@ let std_command sender handler =
   flush >>
   liftP ImapParser.response >>= fun r ->
   modify (fun s -> response_store s r) >>
-  handle_response r >>
-  gets handler
-
+  handle_response r

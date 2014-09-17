@@ -64,7 +64,7 @@ let store_xgmlabels_aux cmd set fl_sign fl_silent labels =
     char ' ' >>
     list string labels
   in
-  ImapCore.std_command sender (fun _ -> ())
+  ImapCore.std_command sender
 
 let store_xgmlabels =
   store_xgmlabels_aux "STORE"

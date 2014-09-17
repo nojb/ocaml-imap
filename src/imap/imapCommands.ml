@@ -26,13 +26,13 @@ open ImapCore
 open ImapControl
 
 let capability =
-  std_command (ImapSend.raw "CAPABILITY") (fun s -> s.cap_info)
+  std_command (ImapSend.raw "CAPABILITY") >> gets (fun s -> s.cap_info)
 
 let noop =
-  std_command (ImapSend.raw "NOOP") (fun _ -> ())
+  std_command (ImapSend.raw "NOOP")
 
 let logout =
-  catch (std_command (ImapSend.raw "LOGOUT") (fun _ -> ())) (function Bye -> ret () | _ as e -> fail e)
+  catch (std_command (ImapSend.raw "LOGOUT")) (function Bye -> ret () | _ as e -> fail e)
 
 (* let starttls ?(version = `TLSv1) ?ca_file s = *)
 (*   let ci = connection_info s in *)
@@ -67,18 +67,19 @@ let authenticate auth =
   auth_sender >>
   flush >>
   let rec loop needs_more =
-    liftP
-      ImapParser.(alt
-                (continue_req >>= fun data -> ret (`More data))
-                (response >>= fun r -> ret (`Done r))) >>= function
-      `More data ->
+    let p =
+      let open ImapParser in
+      alt (continue_req >>= fun data -> ret (`More data)) (response >>= fun r -> ret (`Done r))
+    in
+    liftP p >>= function
+    | `More data ->
         let data = match data with CONTINUE_REQ_BASE64 data -> data | CONTINUE_REQ_TEXT _ -> "" in
         step data >>= fun needs_more ->
         loop (match needs_more with `OK -> false | `NEEDS_MORE -> true)
     | `Done r ->
         if needs_more then
           step "" >>= function
-            `OK -> ret r
+          | `OK -> ret r
           | `NEEDS_MORE -> fail Auth_error
         else
           ret r
@@ -90,7 +91,6 @@ let authenticate auth =
 let login user pass =
   std_command
     (ImapSend.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
-    (fun _ -> ())
   
 (* let compress s = *)
 (*   let ci = connection_info s in *)
@@ -113,49 +113,43 @@ let select mbox =
 let create mbox =
   std_command
     (ImapSend.(raw "CREATE" >> char ' ' >> mailbox mbox))
-    (fun _ -> ())
-
+ 
 let delete mbox =
   std_command
     (ImapSend.(raw "DELETE" >> char ' ' >> mailbox mbox))
-    (fun _ -> ())
-
+ 
 let rename oldbox newbox =
   std_command
     (ImapSend.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
-    (fun _ -> ())
-
+ 
 let subscribe mbox =
   std_command
     (ImapSend.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
-    (fun _ -> ())
-
+ 
 let unsubscribe mbox =
   std_command
     (ImapSend.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
-    (fun _ -> ())
-
+ 
 let list mbox list_mb =
-  std_command
-    (ImapSend.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
-    (fun s -> s.rsp_info.rsp_mailbox_list)
+  std_command (ImapSend.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb)) >>
+  gets (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let lsub mbox list_mb =
   std_command
-    (ImapSend.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb))
-    (fun s -> s.rsp_info.rsp_mailbox_list)
+    (ImapSend.(raw "LSUB" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb)) >>
+  gets (fun s -> s.rsp_info.rsp_mailbox_list)
 
 let status mbox attrs =
   std_command
-    (ImapSend.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs))
-    (fun s -> s.rsp_info.rsp_status)
+    (ImapSend.(raw "STATUS" >> char ' ' >> mailbox mbox >> char ' ' >> list status_att attrs)) >>
+  gets (fun s -> s.rsp_info.rsp_status)
 
 let copy_aux cmd set destbox =
   let sender =
     let open ImapSend in
     raw cmd >> char ' ' >> message_set set >> char ' ' >> mailbox destbox
   in
-  ImapCore.std_command sender (fun _ -> ())
+  ImapCore.std_command sender
 
 let copy set destbox =
   copy_aux "COPY" set destbox
@@ -170,7 +164,7 @@ let append mbox ?flags ?date_time:dt data =
     let date = match dt with None -> ret () | Some dt -> date_time dt >> char ' ' in
     raw "APPEND" >> space >> mailbox mbox >> char ' ' >> flags >> date >> literal data
   in
-  std_command sender (fun _ -> ())
+  std_command sender
 
 let search =
   ImapCondstore.search
@@ -189,13 +183,13 @@ let uid_search =
 (* (\* IO.with_lock ci.send_lock aux *\) *)
 
 let check =
-  std_command (ImapSend.(raw "CHECK")) (fun _ -> ())
+  std_command (ImapSend.(raw "CHECK"))
 
 let close =
-  std_command (ImapSend.(raw "CLOSE")) (fun _ -> ())
+  std_command (ImapSend.(raw "CLOSE"))
 
 let expunge =
-  std_command (ImapSend.(raw "EXPUNGE")) (fun _ -> ())
+  std_command (ImapSend.(raw "EXPUNGE"))
 
 let fetch =
   ImapCondstore.fetch

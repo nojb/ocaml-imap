@@ -166,7 +166,7 @@ let search_modseq_aux cmd ?charset key =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  ImapCore.std_command sender cmd_handler
+  ImapCore.std_command sender >> gets cmd_handler
 
 let search_modseq ?charset key =
   search_modseq_aux "SEARCH" ?charset key
@@ -200,7 +200,7 @@ let select_condstore_optional mb cmd use_condstore =
     loop s.rsp_info.rsp_extension_list
   in
   modify (fun s -> {s with sel_info = ImapCore.fresh_selection_info}) >>
-  ImapCore.std_command cmd_sender cmd_handler
+  ImapCore.std_command cmd_sender >> gets cmd_handler
 
 let select_condstore mb =
   select_condstore_optional mb "SELECT" true
@@ -227,7 +227,7 @@ let fetch_aux cmd set changedsince attrs =
     raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
-  ImapCore.std_command cmd cmd_handler
+  ImapCore.std_command cmd >> gets cmd_handler
 
 let fetch set attrs =
   fetch_aux "FETCH" set None attrs
@@ -262,7 +262,7 @@ let store_aux cmd set unchangedsince flags =
     in
     loop s.rsp_info.rsp_extension_list
   in
-  ImapCore.std_command sender handler
+  ImapCore.std_command sender >> gets handler
 
 let store set flags =
   store_aux "STORE" set None flags >> ret ()

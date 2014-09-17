@@ -24,95 +24,94 @@ open ImapTypes
 open ImapTypesPrivate
   
 type ('a, 'state, 'err) result =
-    Ok of 'a * 'state * int
+  | Ok of 'a * 'state
   | Fail of 'err
   | Need of (input -> ('a, 'state, 'err) result)
-  | Flush of string * ('a, 'state, 'err) result
+  | Flush of (unit -> ('a, 'state, 'err) result)
 
 type ('a, 'state, 'err) control =
-  'state -> Buffer.t -> Buffer.t -> int -> ('a, 'state, 'err) result
+  'state -> ('a, 'state, 'err) result
 
-let flush st buf _ i =
-  let str = Buffer.contents buf in
-  Buffer.clear buf;
-  Flush (str, Ok ((), st, i))
+let flush st =
+  (* let str = Buffer.contents buf in *)
+  (* Buffer.clear st.out_buf; *)
+  Flush (fun () -> Ok ((), st))
 
-let bind m f st buf b i =
+let bind m f st =
   let rec loop =
     function
-      Ok (x, st, i) -> f x st buf b i
+    | Ok (x, st) -> f x st
     | Fail _ as x -> x
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush (buf, r) -> Flush (buf, loop r)
+    | Flush k -> Flush (fun () -> loop (k ()))
   in
-  loop (m st buf b i)
+  loop (m st)
 
-let fail err _ _ _ _ =
+let fail err _ =
   Fail err
     
-let liftP p st _ b i =
+let liftP p st =
   let rec loop =
     function
-      ImapTypesPrivate.Ok (x, i) -> Ok (x, st, i)
+      ImapTypesPrivate.Ok (x, i) -> Ok (x, {st with in_pos = i})
     | ImapTypesPrivate.Fail _ -> Fail ParseError
     | ImapTypesPrivate.Need k -> Need (fun inp -> loop (k inp))
   in
-  loop (p b i)
+  loop (p st.in_buf st.in_pos)
       
-let send s st buf _ i =
-  Buffer.add_string buf s;
-  Ok ((), st, i)
+let send s st =
+  Buffer.add_string st.out_buf s;
+  Ok ((), st)
 
-let ret x st _ _ i =
-  Ok (x, st, i)
+let ret x st =
+  Ok (x, st)
 
-let gets f st _ _ i =
-  Ok (f st, st, i)
+let gets f st =
+  Ok (f st, st)
 
-let modify f st _ _ i =
-  Ok ((), f st, i)
+let modify f st =
+  Ok ((), f st)
 
-let get st _ _ i =
-  Ok (st, st, i)
+let get st =
+  Ok (st, st)
 
-let put st _ _ _ i =
-  Ok ((), st, i)
+let put st _ =
+  Ok ((), st)
 
-let catch f g st buf b i =
-  let rec loop =
-    function
-      Ok _ as ok -> ok
-    | Fail err -> g err st buf b i
+let catch f g st =
+  let rec loop = function
+    | Ok _ as ok -> ok
+    | Fail err -> g err st
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush (str, r) -> Flush (str, loop r)
+    | Flush k -> Flush (fun () -> loop (k ()))
   in
-  loop (f st buf b i)
+  loop (f st)
 
-let try_bind m f g st buf b i =
-  let rec loop =
-    function
-      Ok (x, st, i) -> f x st buf b i
-    | Fail err -> g err st buf b i
+let try_bind m f g st =
+  let rec loop = function
+    | Ok (x, st) -> f x st
+    | Fail err -> g err st
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush (str, r) -> Flush (str, loop r)
+    | Flush k -> Flush (fun () -> loop (k ()))
   in
-  loop (m st buf b i)
+  loop (m st)
 
 let (>>=) = bind
 
 let (>>) m1 m2 = m1 >>= fun _ -> m2
 
-let lift f g m st buf b i =
+let lift f g m st =
   let rec loop = function
-    | Ok (x, state, i) -> Ok (x, g st state, i)
+    | Ok (x, state) -> Ok (x, g st state)
     | Fail err -> Fail err
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush (str, r) -> Flush (str, loop r)
+    | Flush k -> Flush (fun () -> loop (k ()))
   in
-  loop (m (f st) buf b i)
+  loop (m (f st))
 
-let run m st b i =
-  m st (Buffer.create 0) b i
+let run m st =
+  Buffer.clear st.out_buf;
+  m st
 
 module type CONTROL = sig
   type error
@@ -134,18 +133,20 @@ module MakeRun (IO : CONTROL) = struct
       else IO.bind (IO.output io buf pos len) (fun n -> loop (pos + n) (len - n))
     in
     loop pos len
-  let run c io s b i =
-    let buf = String.create 65536 in
+  let run c io st =
+    let buf = Bytes.create 65536 in
     let rec loop = function
-      | Ok (x, st, i) ->
-          IO.ret (x, st, i)
+      | Ok (x, st) ->
+          IO.ret (x, st)
       | Fail err ->
           IO.fail err
-      | Flush (str, r) ->
+      | Flush k ->
+          let str = Buffer.contents st.out_buf in
+          Buffer.clear st.out_buf;
           prerr_endline ">>>>";
           prerr_string str;
           prerr_endline ">>>>";
-          IO.bind (really_output io str 0 (String.length str)) (fun () -> loop r)
+          IO.bind (really_output io str 0 (String.length str)) (fun () -> loop (k ()))
       | Need k ->
           IO.bind
             (IO.input io buf 0 (String.length buf))
@@ -156,8 +157,8 @@ module MakeRun (IO : CONTROL) = struct
                   prerr_endline "<<<<";
                   prerr_string (String.sub buf 0 n);
                   prerr_endline "<<<<";
-                  Buffer.add_substring b buf 0 n;
+                  Buffer.add_subbytes st.in_buf buf 0 n;
                   loop (k More))
     in
-    loop (run c s b i)
+    loop (run c st)
 end

@@ -82,7 +82,7 @@ let id_handler s =
   loop s.rsp_info.rsp_extension_list
 
 let id params =
-  ImapCore.std_command (id_sender params) id_handler
+  ImapCore.std_command (id_sender params) >> gets id_handler
 
 let id_basic name version =
   let get l n =

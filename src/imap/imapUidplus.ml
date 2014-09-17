@@ -111,7 +111,7 @@ let uid_expunge set =
     let open ImapSend in
     raw "UID EXPUNGE" >> char ' ' >> message_set set
   in
-  ImapCore.std_command sender (fun _ -> ())
+  ImapCore.std_command sender
 
 let extract_copy_uid s =
   let rec loop =

@@ -1,6 +1,6 @@
 OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
-all: imap unix test
+all: imap
 
 imap: src/imap/imap.cma
 

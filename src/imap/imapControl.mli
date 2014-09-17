@@ -24,22 +24,22 @@ open ImapTypes
 open ImapTypesPrivate
 
 type ('a, 'state, 'err) result =
-    Ok of 'a * 'state * int
+  | Ok of 'a * 'state
   | Fail of 'err
   | Need of (input -> ('a, 'state, 'err) result)
-  | Flush of string * ('a, 'state, 'err) result
+  | Flush of (unit -> ('a, 'state, 'err) result)
 
 type ('a, 'state, 'control) control
 
-val flush : (unit, _, _) control
+val flush : (unit, state, _) control
 
 val bind : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> ('b, 'state, 'err) control
 
 val fail : 'err -> (_, _, 'err) control
 
-val liftP : 'a parser -> ('a, _, error) control
+val liftP : 'a parser -> ('a, state, error) control
 
-val send : string -> (unit, _, _) control
+val send : string -> (unit, state, _) control
 
 val ret : 'a -> ('a, _, _) control
 
@@ -75,5 +75,5 @@ module type CONTROL = sig
 end
 
 module MakeRun (IO : CONTROL) : sig
-  val run : ('a, 'state, IO.error) control -> IO.io -> 'state -> Buffer.t -> int -> ('a * 'state * int) IO.t
+  val run : ('a, state, IO.error) control -> IO.io -> state -> ('a * state) IO.t
 end

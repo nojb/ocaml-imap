@@ -74,7 +74,7 @@ let enable_handler s =
   loop s.rsp_info.rsp_extension_list
 
 let enable caps =
-  ImapCore.std_command (enable_sender caps) enable_handler
+  ImapCore.std_command (enable_sender caps) >> gets enable_handler
 
 let _ =
   register_extension {ext_parser = enable_parser; ext_printer = enable_printer}

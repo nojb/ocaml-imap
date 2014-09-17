@@ -513,7 +513,10 @@ type state = {
   cap_info : capability list;
   imap_response : string;
   current_tag : string option;
-  next_tag : int
+  next_tag : int;
+  out_buf : Buffer.t;
+  in_buf : Buffer.t;
+  in_pos : int
 }
 
 type error =

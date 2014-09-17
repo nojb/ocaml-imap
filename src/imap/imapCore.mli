@@ -50,5 +50,5 @@ val fresh_state : state
 
 val greeting : ([ `NeedsAuth | `PreAuth ], state, error) control
 
-val std_command : (unit, state, error) control -> (state -> 'a) -> 'a command
+val std_command : (unit, state, error) control -> unit command
 
