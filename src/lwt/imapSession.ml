@@ -175,9 +175,9 @@ type fetch_request_type =
   | Sequence
 
 type flags_request_kind =
-  [ `Add
-  | `Remove
-  | `Set ]
+  | Add
+  | Remove
+  | Set
 
 type workaround =
   | Gmail
@@ -244,7 +244,7 @@ type error =
   | GmailTooManySimultaneousConnections
   | MobileMeMoved
   | YahooUnavailable
-  | ErrorNonExistantFolder
+  | NonExistantFolder
   | Rename
   | Delete
   | Create
@@ -364,10 +364,6 @@ type error =
 (*   if by_uid then *)
 (*     if  *)
 
-(* open ImapControl *)
-
-(* let lift m = lift (fun st -> st.imap_state) (fun st imap_state -> {st with imap_state}) m *)
-
 exception Error of error
 
 let connect s =
@@ -387,30 +383,33 @@ let login s =
   s.state <- LOGGEDIN;
   Lwt.return ()
 
-(* let get_mod_sequence_value state = *)
-(*   let open ImapCondstore in *)
-(*   let rec loop = function *)
-(*     | [] -> Uint64.zero *)
-(*     | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n *)
-(*     | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Uint64.zero *)
-(*     | _ :: rest -> loop rest *)
-(*   in *)
-(*   loop state.rsp_info.rsp_extension_list *)
+let get_mod_sequence_value state =
+  let open ImapCondstore in
+  let rec loop = function
+    | [] -> Uint64.zero
+    | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n
+    | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Uint64.zero
+    | _ :: rest -> loop rest
+  in
+  loop state.rsp_info.rsp_extension_list
 
-(* let select folder : (unit, session, error) control = *)
-(*   try_bind *)
-(*     (lift (ImapCommands.select folder)) *)
-(*     (fun _ -> *)
-(*        modify (fun st -> {st with uid_next = st.imap_state.sel_info.sel_uidnext; *)
-(*                                   uid_validity = st.imap_state.sel_info.sel_uidvalidity; *)
-(*                                   state = SELECTED; *)
-(*                                   current_folder = Some folder; *)
-(*                                   folder_msg_count = st.imap_state.sel_info.sel_exists; *)
-(*                                   first_unseen_uid = st.imap_state.sel_info.sel_first_unseen; *)
-(*                                   mod_sequence_value = get_mod_sequence_value st.imap_state})) *)
-(*     (function *)
-(*       | ParseError -> fail `Parse *)
-(*       | _ -> modify (fun st -> {st with state = LOGGEDIN})) *)
+let select s folder =
+  try_lwt
+    lwt _ = run s (ImapCommands.select folder) in
+    s.uid_next <- s.imap_state.sel_info.sel_uidnext;
+    s.uid_validity <- s.imap_state.sel_info.sel_uidvalidity;
+    s.state <- SELECTED;
+    s.current_folder <- Some folder;
+    s.folder_msg_count <- s.imap_state.sel_info.sel_exists;
+    s.first_unseen_uid <- s.imap_state.sel_info.sel_first_unseen;
+    s.mod_sequence_value <- get_mod_sequence_value s.imap_state;
+    Lwt.return ()
+  with
+  | ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  | _ ->
+      s.state <- LOGGEDIN;
+      Lwt.fail (Error NonExistantFolder)
 
 let enable_feature s feature =
   try_lwt
