@@ -100,65 +100,65 @@ let (>>=) = bind
 
 let (>>) m1 m2 = m1 >>= fun _ -> m2
 
-let lift f g m st =
-  let rec loop = function
-    | Ok (x, state) -> Ok (x, g st state)
-    | Fail err -> Fail err
-    | Need k -> Need (fun inp -> loop (k inp))
-    | Flush k -> Flush (fun () -> loop (k ()))
-  in
-  loop (m (f st))
+(* let lift f g m st = *)
+(*   let rec loop = function *)
+(*     | Ok (x, state) -> Ok (x, g st state) *)
+(*     | Fail err -> Fail err *)
+(*     | Need k -> Need (fun inp -> loop (k inp)) *)
+(*     | Flush k -> Flush (fun () -> loop (k ())) *)
+(*   in *)
+(*   loop (m (f st)) *)
 
 let run m st =
   Buffer.clear st.out_buf;
   m st
 
-module type CONTROL = sig
-  type error
-  type 'a t
-  val ret : 'a -> 'a t
-  val bind : 'a t -> ('a -> 'b t) -> 'b t
-  val fail : error -> _ t
+(* module type CONTROL = sig *)
+(*   type error *)
+(*   type 'a t *)
+(*   val ret : 'a -> 'a t *)
+(*   val bind : 'a t -> ('a -> 'b t) -> 'b t *)
+(*   val fail : error -> _ t *)
 
-  type io
+(*   type io *)
 
-  val input : io -> string -> int -> int -> int t
-  val output : io -> string -> int -> int -> int t
-end
+(*   val input : io -> string -> int -> int -> int t *)
+(*   val output : io -> string -> int -> int -> int t *)
+(* end *)
 
-module MakeRun (IO : CONTROL) = struct
-  let really_output io buf pos len =
-    let rec loop pos len =
-      if len <= 0 then IO.ret ()
-      else IO.bind (IO.output io buf pos len) (fun n -> loop (pos + n) (len - n))
-    in
-    loop pos len
-  let run c io st =
-    let buf = Bytes.create 65536 in
-    let rec loop = function
-      | Ok (x, st) ->
-          IO.ret (x, st)
-      | Fail err ->
-          IO.fail err
-      | Flush k ->
-          let str = Buffer.contents st.out_buf in
-          Buffer.clear st.out_buf;
-          prerr_endline ">>>>";
-          prerr_string str;
-          prerr_endline ">>>>";
-          IO.bind (really_output io str 0 (String.length str)) (fun () -> loop (k ()))
-      | Need k ->
-          IO.bind
-            (IO.input io buf 0 (String.length buf))
-            (function
-              | 0 ->
-                  loop (k End)
-              | _ as n ->
-                  prerr_endline "<<<<";
-                  prerr_string (String.sub buf 0 n);
-                  prerr_endline "<<<<";
-                  Buffer.add_subbytes st.in_buf buf 0 n;
-                  loop (k More))
-    in
-    loop (run c st)
-end
+(* module MakeRun (IO : CONTROL) = struct *)
+(*   let really_output io buf pos len = *)
+(*     let rec loop pos len = *)
+(*       if len <= 0 then IO.ret () *)
+(*       else IO.bind (IO.output io buf pos len) (fun n -> loop (pos + n) (len - n)) *)
+(*     in *)
+(*     loop pos len *)
+(*   let run c io st = *)
+(*     let buf = Bytes.create 65536 in *)
+(*     let rec loop = function *)
+(*       | Ok (x, st) -> *)
+(*           IO.ret (x, st) *)
+(*       | Fail err -> *)
+(*           IO.fail err *)
+(*       | Flush k -> *)
+(*           let str = Buffer.contents st.out_buf in *)
+(*           Buffer.clear st.out_buf; *)
+(*           prerr_endline ">>>>"; *)
+(*           prerr_string str; *)
+(*           prerr_endline ">>>>"; *)
+(*           IO.bind (really_output io str 0 (String.length str)) (fun () -> loop (k ())) *)
+(*       | Need k -> *)
+(*           IO.bind *)
+(*             (IO.input io buf 0 (String.length buf)) *)
+(*             (function *)
+(*               | 0 -> *)
+(*                   loop (k End) *)
+(*               | _ as n -> *)
+(*                   prerr_endline "<<<<"; *)
+(*                   prerr_string (String.sub buf 0 n); *)
+(*                   prerr_endline "<<<<"; *)
+(*                   Buffer.add_subbytes st.in_buf buf 0 n; *)
+(*                   loop (k More)) *)
+(*     in *)
+(*     loop (run c st) *)
+(* end *)

@@ -59,21 +59,21 @@ val (>>=) : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> 
 
 val (>>) : (_, 'state, 'err) control -> ('a, 'state, 'err) control -> ('a, 'state, 'err) control
 
-val lift : ('state -> 'state1) -> ('state -> 'state1 -> 'state) -> ('a, 'state1, 'err) control -> ('a, 'state, 'err) control
+(* val lift : ('state -> 'state1) -> ('state -> 'state1 -> 'state) -> ('a, 'state1, 'err) control -> ('a, 'state, 'err) control *)
 
-(* val run : ('a, 'state, 'err) control -> 'state -> Buffer.t -> int -> ('a, 'state, 'err) result *)
+val run : ('a, state, 'err) control -> state -> ('a, state, 'err) result
 
-module type CONTROL = sig
-  type error
-  type 'a t
-  val ret : 'a -> 'a t
-  val bind : 'a t -> ('a -> 'b t) -> 'b t
-  val fail : error -> _ t
-  type io
-  val input : io -> string -> int -> int -> int t
-  val output : io -> string -> int -> int -> int t
-end
+(* module type CONTROL = sig *)
+(*   type error *)
+(*   type 'a t *)
+(*   val ret : 'a -> 'a t *)
+(*   val bind : 'a t -> ('a -> 'b t) -> 'b t *)
+(*   val fail : error -> _ t *)
+(*   type io *)
+(*   val input : io -> string -> int -> int -> int t *)
+(*   val output : io -> string -> int -> int -> int t *)
+(* end *)
 
-module MakeRun (IO : CONTROL) : sig
-  val run : ('a, state, IO.error) control -> IO.io -> state -> ('a * state) IO.t
-end
+(* module MakeRun (IO : CONTROL) : sig *)
+(*   val run : ('a, state, IO.error) control -> IO.io -> state -> ('a * state) IO.t *)
+(* end *)

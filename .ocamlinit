@@ -10,3 +10,7 @@
 #directory "_build/src/lwt"
 #directory "_build/src/async"
 #directory "_build/src/other"
+#load_rec "imap.cma"
+#require "lwt.ssl"
+#require "lwt.syntax"
+#load_rec "imapSession.cma"
