@@ -411,6 +411,37 @@ let select s folder =
       s.state <- LOGGEDIN;
       Lwt.fail (Error NonExistantFolder)
 
+let cap = function
+  | CAPABILITY_NAME name ->
+      begin match String.uppercase name with
+        | "STARTTLS" -> Some StartTLS
+        | "ID" -> Some Id
+        | "XLIST" -> Some XList
+        | "X-GM-EXT-1" -> Some Gmail
+        | "IDLE" -> Some Idle
+        | "CONDSTORE" -> Some Condstore
+        | "QRESYNC" -> Some QResync
+        | "XOAUTH2" -> Some XOAuth2
+        | "COMPRESS=DEFLATE" -> Some CompressDeflate
+        | "NAMESPACE" -> Some Namespace
+        | "CHILDREN" -> Some Children
+        | _ -> None
+      end
+  | CAPABILITY_AUTH_TYPE name ->
+      begin match String.uppercase name with
+        | "PLAIN" -> Some (Auth Plain)
+        | "LOGIN" -> Some (Auth Login)
+        | _ -> None
+      end
+
+let capability s =
+  try_lwt
+    lwt caps = run s ImapCommands.capability in
+    Lwt.return (List.fold_left (fun l c -> match cap c with Some c -> c :: l | None -> l) [] caps)
+  with
+  | ErrorP ParseError -> Lwt.fail (Error Parse)
+  | _ -> Lwt.fail (Error Capability)
+
 let enable_feature s feature =
   try_lwt
     lwt _ = run s (ImapEnable.enable [CAPABILITY_NAME feature]) in
