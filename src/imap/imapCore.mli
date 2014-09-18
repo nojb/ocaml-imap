@@ -36,11 +36,11 @@ val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
 
 val response_store : state -> response -> state
 
-val handle_response : response -> (unit, state, error) control
+val handle_response : response -> unit command
 
 (* val debug : bool ref *)
 
-val next_tag : string command
+val send_tag : unit command
 
 (** {2 IMAP sessions} *)
 
@@ -48,7 +48,7 @@ val fresh_selection_info : selection_info
 
 val fresh_state : state
 
-val greeting : ([ `NeedsAuth | `PreAuth ], state, error) control
+val greeting : [ `NeedsAuth | `PreAuth ] command
 
-val std_command : (unit, state, error) control -> unit command
+val std_command : unit command -> unit command
 

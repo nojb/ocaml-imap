@@ -253,15 +253,14 @@ let handle_response r =
   | RESP_DONE_FATAL _ ->
       fail Bye
 
-let next_tag =
+let send_tag =
   gets (fun s -> s.next_tag) >>= fun tag ->
   let ctag = string_of_int tag in
   modify (fun s -> {s with current_tag = Some ctag; next_tag = tag+1}) >>
-  ret ctag
+  send ctag
 
 let std_command sender =
-  next_tag >>= fun tag ->
-  send tag >>
+  send_tag >>
   send " " >>
   sender >>
   send "\r\n" >>

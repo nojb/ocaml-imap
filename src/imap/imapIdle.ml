@@ -25,8 +25,7 @@ open ImapControl
 let idle =
   let sender =
     let open ImapSend in
-    ImapCore.next_tag >>= fun tag ->
-    raw tag >> char ' ' >> raw "IDLE" >> crlf
+    ImapCore.send_tag >> char ' ' >> raw "IDLE" >> crlf
   in
   sender >>
   flush >>

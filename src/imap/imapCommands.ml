@@ -61,8 +61,7 @@ let authenticate auth =
   in
   let auth_sender =
     let open ImapSend in
-    next_tag >>= fun tag ->
-    raw tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.ImapAuth.name >> crlf
+    send_tag >> char ' ' >> raw "AUTHENTICATE" >> char ' ' >> string auth.ImapAuth.name >> crlf
   in
   auth_sender >>
   flush >>
