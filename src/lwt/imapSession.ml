@@ -412,11 +412,12 @@ let login s =
 (*       | ParseError -> fail `Parse *)
 (*       | _ -> modify (fun st -> {st with state = LOGGEDIN})) *)
 
-(* let enable_feature (feature : string) = *)
-(*   try_bind *)
-(*     (lift (ImapEnable.enable [CAPABILITY_NAME feature])) *)
-(*     (fun _ -> ret true) *)
-(*     (fun _ -> ret false) *)
+let enable_feature s feature =
+  try_lwt
+    lwt _ = run s (ImapEnable.enable [CAPABILITY_NAME feature]) in
+    Lwt.return true
+  with
+  | _ -> Lwt.return false
 
 (* let uid_next s = *)
 (*   s.uid_next *)
