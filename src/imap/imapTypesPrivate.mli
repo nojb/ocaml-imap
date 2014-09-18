@@ -42,7 +42,7 @@ type resp_text_code =
   | RESP_TEXT_CODE_UNSEEN of Uint32.t
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE *)
   | RESP_TEXT_CODE_EXTENSION of extension_data
-  | RESP_TEXT_CODE_OTHER of (string * string)
+  | RESP_TEXT_CODE_OTHER of (string * string option)
   | RESP_TEXT_CODE_NONE
   
 (** response code, human readable text *)

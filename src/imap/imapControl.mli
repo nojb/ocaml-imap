@@ -53,7 +53,7 @@ val put : 'state -> (unit, 'state, _) control
 
 val catch : ('a, 'state, 'err) control -> ('err -> ('a, 'state, 'err) control) -> ('a, 'state, 'err) control
 
-val try_bind : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err1) control) -> ('err -> ('b, 'state, 'err1) control) -> ('b, 'state, 'err1) control
+(* val try_bind : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err1) control) -> ('err -> ('b, 'state, 'err1) control) -> ('b, 'state, 'err1) control *)
 
 val (>>=) : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> ('b, 'state, 'err) control
 

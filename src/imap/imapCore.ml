@@ -47,7 +47,7 @@ let fresh_response_info = {
   rsp_expunged = [];
   rsp_fetch_list = [];
   rsp_extension_list = [];
-  rsp_other = ("", "")
+  rsp_other = ("", None)
 }
 
 let fresh_selection_info = {

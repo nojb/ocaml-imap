@@ -504,7 +504,7 @@ type response_info = {
   rsp_expunged : Uint32.t list;
   rsp_fetch_list : msg_att list;
   rsp_extension_list : extension_data list;
-  rsp_other : string * string
+  rsp_other : string * string option
 }
 
 type state = {

@@ -109,8 +109,10 @@ let resp_text_code_print ppf r =
         (* fprintf ppf "compression-active" *)
     | RESP_TEXT_CODE_EXTENSION e ->
         extension_print ppf e
-    | RESP_TEXT_CODE_OTHER (k, v) ->
-        fprintf ppf "(other %s %s)" k v
+    | RESP_TEXT_CODE_OTHER (k, None) ->
+        fprintf ppf "(other %s)" (String.lowercase k)
+    | RESP_TEXT_CODE_OTHER (k, Some v) ->
+        fprintf ppf "(other %s %s)" (String.lowercase k) (String.lowercase v)
     | RESP_TEXT_CODE_NONE ->
         fprintf ppf "none"
   in

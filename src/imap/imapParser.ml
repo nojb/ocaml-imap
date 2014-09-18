@@ -225,11 +225,10 @@ resp-specials   = "]"
 
 list-wildcards  = "%" / "*"
 *)
-let is_atom_char =
-  function
-    '\x80' .. '\xff'
+let is_atom_char = function
+  | '\x80' .. '\xff'
   | '(' | ')' | '{' | ' ' | '\x00' .. '\x1f'
-  | '\x7f' | '%' | '*' | '\\' | '\"' -> false
+  | '\x7f' | '%' | '*' | '\\' | '\"' | ']' -> false
   | _ -> true
 
 let atom =
@@ -240,9 +239,8 @@ TEXT-CHAR       = <any CHAR except CR and LF>
 
 text            = 1*TEXT-CHAR
 *)
-let is_text_char =
-  function
-    '\r' | '\n' | '\x80' .. '\xff' -> false
+let is_text_char = function
+  | '\r' | '\n' | '\x80' .. '\xff' -> false
   | _ -> true
 
 let text =
@@ -277,9 +275,8 @@ let digits2 =
 let digits4 =
   pos >>= fun i -> digit >> digit >> digit >> digit >> app int_of_string (take_from i)
 
-let is_base64_char =
-  function
-    'a' .. 'z' | 'A' .. 'Z'
+let is_base64_char = function
+  | 'a' .. 'z' | 'A' .. 'Z'
   | '0' .. '9' | '+' | '-' -> true
   | _ -> false
 
@@ -298,9 +295,8 @@ let base64 =
 
 let test p s =
   let b = Buffer.create 0 in
-  let rec loop i =
-    function
-      Ok (x, _) -> x
+  let rec loop i = function
+    | Ok (x, _) -> x
     | Fail _ -> failwith "parsing error"
     | Need k ->
         if i >= String.length s then
@@ -317,9 +313,8 @@ let test p s =
 
 let extension_parser calling_parser =
   let open ImapExtension in
-  let rec loop =
-    function
-      [] -> fail
+  let rec loop = function
+    | [] -> fail
     | p :: rest ->
         alt (p.ext_parser calling_parser) (loop rest)
   in
@@ -481,10 +476,8 @@ resp-text-code  = "ALERT" /
                   "UNSEEN" SP nz-number /
                   atom [SP 1*<any TEXT-CHAR except "]">]
 *)
-let is_other_char =
-  function
-    '\r' | '\n' | '\x80' .. '\xff' -> false
-  | _ -> true
+let is_text_other_char c =
+  is_text_char c && (c <> ']')
 
 let resp_text_code =
   let alert = str "ALERT" >> ret RESP_TEXT_CODE_ALERT in
@@ -501,36 +494,32 @@ let resp_text_code =
     char ')' >>
     ret (RESP_TEXT_CODE_PERMANENTFLAGS flags)
   in
+  let read_only = str "READ-ONLY" >> ret RESP_TEXT_CODE_READ_ONLY in
+  let read_write = str "READ-WRITE" >> ret RESP_TEXT_CODE_READ_WRITE in
+  let trycreate = str "TRYCREATE" >> ret RESP_TEXT_CODE_TRYCREATE in
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
-  let other =
-    atom >>= fun a -> opt (char ' ' >> accum is_other_char) "" >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s))
+  let extension =
+    extension_parser ImapExtension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e ->
+    ret (RESP_TEXT_CODE_EXTENSION e)
   in
-  altn [
-    alert;
-    badcharset;
-    capability;
-    parse;
-    permanentflags;
-    (str "READ-ONLY" >> ret RESP_TEXT_CODE_READ_ONLY);
-    (str "READ-WRITE" >> ret RESP_TEXT_CODE_READ_WRITE);
-    (str "TRYCREATE" >> ret RESP_TEXT_CODE_TRYCREATE);
-    uidnext;
-    uidvalidity;
-    unseen;
+  let other =
+    atom >>= fun a -> opt (char ' ' >> some (accum is_text_other_char)) None
+    >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s))
+  in
+  altn
+    [alert; badcharset; capability; parse; permanentflags; read_only;
+     read_write; trycreate; uidnext; uidvalidity; unseen; extension; other]
     (* (str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE); *)
-    (extension_parser ImapExtension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e));
-    other
-  ]
 
 (*
 resp-text       = ["[" resp-text-code "]" SP] text
 *)
 let resp_text =
-  opt (char '[' >> resp_text_code >>= fun rsp_code -> char ']' >> ret (Some rsp_code)) None >>=
-  function
-    None ->
+  opt (char '[' >> resp_text_code >>= fun rsp_code -> char ']' >> ret (Some rsp_code)) None
+  >>= function
+  | None ->
       opt text "" >>= fun rsp_text -> ret {rsp_code = RESP_TEXT_CODE_NONE; rsp_text}
   | Some rsp_code ->
       (* we make the space optional if there is no resp_text_code - Gimap needs this. *)
