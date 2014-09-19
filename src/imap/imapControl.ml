@@ -27,22 +27,22 @@ type ('a, 'state, 'err) result =
   | Ok of 'a * 'state
   | Fail of 'err * 'state
   | Need of (input -> ('a, 'state, 'err) result)
-  | Flush of (unit -> ('a, 'state, 'err) result)
+  | Flush of string * (unit -> ('a, 'state, 'err) result)
 
 type ('a, 'state, 'err) control =
   'state -> ('a, 'state, 'err) result
 
 let flush st =
-  (* let str = Buffer.contents buf in *)
-  (* Buffer.clear st.out_buf; *)
-  Flush (fun () -> Ok ((), st))
+  let str = String.concat "" (List.rev st.out_buf) in
+  let st = {st with out_buf = []} in
+  Flush (str, fun () -> Ok ((), st))
 
 let bind m f st =
   let rec loop = function
     | Ok (x, st) -> f x st
     | Fail _ as x -> x
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush k -> Flush (fun () -> loop (k ()))
+    | Flush (str, k) -> Flush (str, fun () -> loop (k ()))
   in
   loop (m st)
 
@@ -58,8 +58,7 @@ let liftP p st =
   loop (p st.in_buf st.in_pos)
       
 let send s st =
-  Buffer.add_string st.out_buf s;
-  Ok ((), st)
+  Ok ((), {st with out_buf = s :: st.out_buf})
 
 let ret x st =
   Ok (x, st)
@@ -81,7 +80,7 @@ let catch f g st =
     | Ok _ as ok -> ok
     | Fail (err, st) -> g err st
     | Need k -> Need (fun inp -> loop (k inp))
-    | Flush k -> Flush (fun () -> loop (k ()))
+    | Flush (str, k) -> Flush (str, fun () -> loop (k ()))
   in
   loop (f st)
 
@@ -108,7 +107,7 @@ let (>>) m1 m2 = m1 >>= fun _ -> m2
 (*   loop (m (f st)) *)
 
 let run m st =
-  Buffer.clear st.out_buf;
+  assert (List.length st.out_buf = 0);
   m st
 
 (* module type CONTROL = sig *)

@@ -70,12 +70,10 @@ let run s c =
     | Fail (err, st) ->
         s.imap_state <- st;
         Lwt.fail (ErrorP err)
-    | Flush k ->
-        let str = Buffer.contents out_buf in
+    | Flush (str, k) ->
         prerr_endline ">>>>";
         prerr_string str;
         prerr_endline ">>>>";
-        Buffer.clear out_buf;
         lwt () = fully_write s.sock str 0 (String.length str) in
         loop out_buf in_buf (k ())
     | Need k ->

@@ -212,7 +212,7 @@ let fresh_state = {
   imap_response = "";
   current_tag = None;
   next_tag = 0;
-  out_buf = Buffer.create 0;
+  out_buf = [];
   in_buf = Buffer.create 0;
   in_pos = 0
 }
