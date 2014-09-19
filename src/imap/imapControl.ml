@@ -51,9 +51,16 @@ let fail err st =
     
 let liftP p st =
   let rec loop = function
-    | ImapTypesPrivate.Ok (x, i) -> Ok (x, {st with in_pos = i})
-    | ImapTypesPrivate.Fail _ -> Fail (ParseError, st)
-    | ImapTypesPrivate.Need k -> Need (fun inp -> loop (k inp))
+    | ImapTypesPrivate.Ok (x, i) ->
+        let rest = Buffer.sub st.in_buf i (Buffer.length st.in_buf - i) in
+        Buffer.clear st.in_buf;
+        Buffer.add_string st.in_buf rest;
+        let st = {st with in_pos = 0} in
+        Ok (x, st)
+    | ImapTypesPrivate.Fail _ ->
+        Fail (ParseError, st)
+    | ImapTypesPrivate.Need k ->
+        Need (fun inp -> loop (k inp))
   in
   loop (p st.in_buf st.in_pos)
       
