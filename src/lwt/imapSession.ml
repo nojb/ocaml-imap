@@ -35,12 +35,13 @@ let _ =
 
 type state =
   | DISCONNECTED
+  | CONNECTED
   | LOGGEDIN
   | SELECTED
 
 type session = {
   mutable imap_state : ImapTypes.state;
-  sock : Lwt_ssl.socket;
+  mutable sock : Lwt_ssl.socket option;
   mutable state : state;
   mutable current_folder : string option;
   mutable uid_next : Uint32.t;
@@ -50,8 +51,25 @@ type session = {
   mutable first_unseen_uid : Uint32.t;
   mutable condstore_enabled : bool;
   username : string;
-  password : string
+  password : string;
+  host : string;
+  port : int;
+  mutable should_disconnect : bool;
+  mut : Lwt_mutex.t;
+  mutable num_ops : int
 }
+
+let use s f =
+  lwt () = Lwt_mutex.lock s.mut in
+  try_lwt
+    s.num_ops <- s.num_ops + 1; f ()
+  finally
+    s.num_ops <- s.num_ops - 1;
+    Lwt_mutex.unlock s.mut;
+    Lwt.return ()
+
+let operations_count s =
+  s.num_ops
 
 exception ErrorP of error
 
@@ -64,6 +82,11 @@ let _ =
           None)
 
 let fully_write sock buf pos len =
+  lwt sock =
+    match sock with
+    | Some sock -> Lwt.return sock
+    | None -> assert_lwt false
+  in
   let rec loop pos len =
     if len <= 0 then
       Lwt.return ()
@@ -72,6 +95,14 @@ let fully_write sock buf pos len =
       loop (pos + n) (len - n)
   in
   loop pos len
+
+let read sock buf pos len =
+  lwt sock =
+    match sock with
+    | Some sock -> Lwt.return sock
+    | None -> assert_lwt false
+  in
+  Lwt_ssl.read sock buf pos len
 
 let run s c =
   let open ImapControl in
@@ -88,7 +119,7 @@ let run s c =
         lwt () = fully_write s.sock str 0 (String.length str) in
         loop in_buf (k ())
     | Need k ->
-        match_lwt Lwt_ssl.read s.sock buf 0 (String.length buf) with
+        match_lwt read s.sock buf 0 (String.length buf) with
         | 0 ->
             loop in_buf (k End)
         | _ as n ->
@@ -114,29 +145,24 @@ let run s c =
 (*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
 (*       ctx *)
 
-let fresh_session sock username password = {
-  imap_state = ImapCore.fresh_state;
-  state = DISCONNECTED;
-  current_folder = None;
-  uid_next = Uint32.zero;
-  uid_validity = Uint32.zero;
-  mod_sequence_value = Uint64.zero;
-  folder_msg_count = None;
-  first_unseen_uid = Uint32.zero;
-  condstore_enabled = false;
-  username;
-  password;
-  sock
-}
-
-let create_session ?(ssl_method = Ssl.TLSv1) ?(port=993) host username password =
-  let he = Unix.gethostbyname host in
-  let sockaddr = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
-  let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-  lwt () = Lwt_unix.connect fd sockaddr in
-  let context = Ssl.create_context ssl_method Ssl.Client_context in
-  lwt sock = Lwt_ssl.ssl_connect fd context in
-  Lwt.return (fresh_session sock username password)
+let create_session ?(port=993) host username password =
+  {imap_state = ImapCore.fresh_state;
+   sock = None;
+   state = DISCONNECTED;
+   current_folder = None;
+   uid_next = Uint32.zero;
+   uid_validity = Uint32.zero;
+   mod_sequence_value = Uint64.zero;
+   folder_msg_count = None;
+   first_unseen_uid = Uint32.zero;
+   condstore_enabled = false;
+   username;
+   password;
+   host;
+   port;
+   should_disconnect = false;
+   mut = Lwt_mutex.create ();
+   num_ops = 0}
 
 type folder_flag =
   | Marked
@@ -383,11 +409,47 @@ type folder_status = {
 
 exception Error of error
 
-let connect s =
+let connect ?(ssl_method = Ssl.TLSv1) s =
+  lwt () = assert_lwt (s.state = DISCONNECTED) in
   try_lwt
-    run s ImapCore.greeting
+    let he = Unix.gethostbyname s.host in
+    let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), s.port) in
+    let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+    lwt () = Lwt_unix.connect fd sa in
+    let context = Ssl.create_context ssl_method Ssl.Client_context in
+    lwt sock = Lwt_ssl.ssl_connect fd context in
+    s.sock <- Some sock;
+    lwt _ = run s ImapCore.greeting in
+    s.state <- CONNECTED;
+    Lwt.return ()
   with
   | _ -> Lwt.fail (Error Connection)
+
+let disconnect s =
+  try_lwt
+    match s.sock with
+    | Some sock ->
+        lwt () = Lwt_ssl.close sock in
+        s.sock <- None;
+        s.state <- DISCONNECTED;
+        Lwt.return ()
+    | None ->
+        Lwt.return ()
+  with
+  | _ -> Lwt.return ()
+      
+let connect_if_needed s =
+  lwt () =
+    if s.should_disconnect then
+      disconnect s
+    else
+      Lwt.return ()
+  in
+  match s.state with
+  | DISCONNECTED ->
+      connect s
+  | _ ->
+      Lwt.return ()
 
 let login s =
   lwt () =
@@ -400,6 +462,14 @@ let login s =
   s.state <- LOGGEDIN;
   Lwt.return ()
 
+let login_if_needed s =
+  lwt () = connect_if_needed s in
+  match s.state with
+  | CONNECTED ->
+      login s
+  | _ ->
+      Lwt.return ()
+
 let get_mod_sequence_value state =
   let open ImapCondstore in
   let rec loop = function
@@ -411,6 +481,7 @@ let get_mod_sequence_value state =
   loop state.rsp_info.rsp_extension_list
 
 let select s folder =
+  lwt () = assert_lwt (s.state = LOGGEDIN || s.state = SELECTED) in
   try_lwt
     lwt _ = run s (ImapCommands.select folder) in
     s.uid_next <- s.imap_state.sel_info.sel_uidnext;
@@ -428,8 +499,26 @@ let select s folder =
       s.state <- LOGGEDIN;
       Lwt.fail (Error NonExistantFolder)
 
+let select_if_needed s folder =
+  lwt () = login_if_needed s in
+  match s.state with
+  | SELECTED ->
+      lwt current_folder = (* FIXME *)
+        match s.current_folder with
+        | Some f -> Lwt.return f
+        | None -> assert_lwt false
+      in
+      if String.lowercase current_folder <> String.lowercase folder then
+        select s folder
+      else
+        Lwt.return ()
+  | LOGGEDIN ->
+      select s folder
+  | _ ->
+      Lwt.return () (* FIXME assert_lwt false *)
+
 let folder_status s folder =
-  lwt () = assert_lwt (s.state = LOGGEDIN || s.state = SELECTED) in
+  lwt () = login_if_needed s in
   let status_att_list : status_att list =
     STATUS_ATT_UNSEEN :: STATUS_ATT_MESSAGES :: STATUS_ATT_RECENT ::
     STATUS_ATT_UIDNEXT :: STATUS_ATT_UIDVALIDITY ::
@@ -471,6 +560,16 @@ let folder_status s folder =
           Lwt.fail (Error Parse)
       | _ ->
           Lwt.fail (Error NonExistantFolder)
+
+let rename_folder s folder other_name =
+  lwt () = select_if_needed s "INBOX" in
+  try_lwt
+    run s (ImapCommands.rename folder other_name)
+  with
+  | ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  | _ ->
+      Lwt.fail (Error Rename)
 
 let cap = function
   | CAPABILITY_NAME name ->
