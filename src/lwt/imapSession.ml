@@ -48,6 +48,7 @@ type session = {
   mutable mod_sequence_value : Uint64.t;
   mutable folder_msg_count : int option;
   mutable first_unseen_uid : Uint32.t;
+  mutable condstore_enabled : bool;
   username : string;
   password : string
 }
@@ -114,6 +115,7 @@ let fresh_session sock username password = {
   mod_sequence_value = Uint64.zero;
   folder_msg_count = None;
   first_unseen_uid = Uint32.zero;
+  condstore_enabled = false;
   username;
   password;
   sock
@@ -272,6 +274,15 @@ type error =
   | NoRecipient
   | Noop
 
+type folder_status = {
+  unseen_count : int;
+  message_count : int;
+  recent_count : int;
+  uid_next : Uint32.t;
+  uid_validity : Uint32.t;
+  highest_mod_seq_value : Uint64.t
+}
+
 (* let flag_from_lep = function *)
 (*   | FLAG_ANSWERED -> Some Answered *)
 (*   | FLAG_FLAGGED -> Some Flagged *)
@@ -408,6 +419,50 @@ let select s folder =
   | _ ->
       s.state <- LOGGEDIN;
       Lwt.fail (Error NonExistantFolder)
+
+let folder_status s folder =
+  lwt () = assert_lwt (s.state = LOGGEDIN || s.state = SELECTED) in
+  let status_att_list : status_att list =
+    STATUS_ATT_UNSEEN :: STATUS_ATT_MESSAGES :: STATUS_ATT_RECENT ::
+    STATUS_ATT_UIDNEXT :: STATUS_ATT_UIDVALIDITY ::
+    (if s.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: [] else [])
+  in
+  try_lwt
+    lwt status = run s (ImapCommands.status folder status_att_list) in
+    let fs = {unseen_count = 0;
+              message_count = 0;
+              recent_count = 0;
+              uid_next = Uint32.zero;
+              uid_validity = Uint32.zero;
+              highest_mod_seq_value = Uint64.zero}
+    in
+    let rec loop fs = function
+      | [] ->
+          fs
+      | STATUS_ATT_MESSAGES message_count :: rest ->
+          loop {fs with message_count} rest
+      | STATUS_ATT_RECENT recent_count :: rest ->
+          loop {fs with recent_count} rest
+      | STATUS_ATT_UIDNEXT uid_next :: rest ->
+          loop {fs with uid_next} rest
+      | STATUS_ATT_UIDVALIDITY uid_validity :: rest ->
+          loop {fs with uid_validity} rest
+      | STATUS_ATT_UNSEEN unseen_count :: rest ->
+          loop {fs with unseen_count} rest
+      | STATUS_ATT_HIGHESTMODSEQ highest_mod_seq_value :: rest ->
+          loop {fs with highest_mod_seq_value} rest
+      | _ :: rest ->
+          loop fs rest
+    in
+    Lwt.return (loop fs status.st_info_list)
+  with
+  | exn ->
+      lwt () = Lwt_log.debug ~exn "status error" in
+      match exn with
+      | ErrorP ParseError ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          Lwt.fail (Error NonExistantFolder)
 
 let cap = function
   | CAPABILITY_NAME name ->
