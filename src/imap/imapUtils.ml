@@ -140,3 +140,35 @@ let decode_mutf7 s =
   in
   tr_ascii 0;
   Buffer.contents b
+
+let timegm tm =
+  let seconds_per_minute = 60. in
+  let seconds_per_hour = 60. *. seconds_per_minute in
+  let seconds_per_day = 24. *. seconds_per_hour in
+  let days_of_month = function
+      0 -> 31. | 1 -> 28. | 2 -> 31. | 3 -> 30. | 4 -> 31. | 5 -> 30.
+    | 6 -> 31. | 7 -> 31. | 8 -> 30. | 9 -> 31. | 10 -> 30. | 11 -> 31.
+    | _ -> assert false
+  in
+  let is_leap_year year =
+    year mod 4 = 0 && (year mod 100 <> 0 || year mod 400 = 0)
+  in
+  let rec loop secs y =
+    if y >= (tm.Unix.tm_year + 1900) then secs
+    else loop (secs +. (if is_leap_year y then 366. else 365.) *. seconds_per_day) (y + 1)
+  in
+  let secs = loop 0. 1970 in
+  let rec loop secs m =
+    if m >= tm.Unix.tm_mon then
+      secs
+    else
+      let secs = secs +. days_of_month m *. seconds_per_day in
+      let secs = if m = 1 && is_leap_year (1900 + tm.Unix.tm_year) then secs +. seconds_per_day else secs in
+      loop secs (m + 1)
+  in
+  let secs = loop secs 0 in
+  let secs = secs +. float (tm.Unix.tm_mday - 1) *. seconds_per_day in
+  let secs = secs +. float tm.Unix.tm_hour *. seconds_per_hour in
+  let secs = secs +. float tm.Unix.tm_min *. seconds_per_minute in
+  let secs = secs +. float tm.Unix.tm_sec in
+  secs

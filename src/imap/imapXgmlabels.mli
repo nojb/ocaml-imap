@@ -23,6 +23,9 @@
 open ImapTypes
 open ImapCore
 
+type extension_data +=
+     XGMLABELS_XGMLABELS of string list
+
 val fetch_att_xgmlabels : fetch_att
 
 val uid_store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command

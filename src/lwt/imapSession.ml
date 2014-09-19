@@ -165,7 +165,7 @@ let create_session ?(port=993) host username password =
    num_ops = 0}
 
 type folder_flag =
-  | Marked
+    Marked
   | Unmarked
   | NoSelect
   | NoInferiors
@@ -180,7 +180,7 @@ type folder_flag =
   | Archive
 
 type message_flag =
-  | Seen
+    Seen
   | Answered
   | Flagged
   | Deleted
@@ -191,7 +191,7 @@ type message_flag =
   | Submitted
 
 type messages_request_kind =
-  | Uid
+    Uid
   | Flags
   | Headers
   | Structure
@@ -205,21 +205,21 @@ type messages_request_kind =
   | Size
 
 type fetch_request_type =
-  | UID
+    UID
   | Sequence
 
 type flags_request_kind =
-  | Add
+    Add
   | Remove
   | Set
 
 type workaround =
-  | Gmail
+    Gmail
   | Yahoo
   | Exchange2003
 
 type auth_capability =
-  | Anonymous
+    Anonymous
   | CRAMMD5
   | DigestMD5
   | External
@@ -233,7 +233,7 @@ type auth_capability =
   | SRP
 
 type capability =
-  | ACL
+    ACL
   | Binary
   | Catenate
   | Children
@@ -259,7 +259,7 @@ type capability =
   | Gmail
 
 type encoding =
-  | Bit7
+    Bit7
   | Bit8
   | Binary
   | Base64
@@ -268,7 +268,7 @@ type encoding =
   | UUEncode
 
 type error =
-  | Connection
+    Connection
   | TLSNotAvailable
   | Parse
   | Certificate
@@ -317,95 +317,34 @@ type folder_status = {
   highest_mod_seq_value : Uint64.t
 }
 
-(* let flag_from_lep = function *)
-(*   | FLAG_ANSWERED -> Some Answered *)
-(*   | FLAG_FLAGGED -> Some Flagged *)
-(*   | FLAG_DELETED -> Some Deleted *)
-(*   | FLAG_SEEN -> Some Seen *)
-(*   | FLAG_DRAFT -> Some Draft *)
-(*   | FLAG_KEYWORD "$Forwarded" -> Some Forwarded *)
-(*   | FLAG_KEYWORD "$MDNSent" -> Some MDNSent *)
-(*   | FLAG_KEYWORD "$SubmitPending" -> Some SubmitPending *)
-(*   | FLAG_KEYWORD "$Submitted" -> Some Submitted *)
-(*   | _ -> None *)
+type address = {
+  display_name : string;
+  mailbox : string;
+}
 
-(* let flags_from_lep_att_dynamic att_list = *)
-(*   let rec loop = function *)
-(*     | [] -> [] *)
-(*     | FLAG_FETCH_OTHER fl :: rest -> *)
-(*         let fl = *)
-(*           match flag_from_lep fl with *)
-(*           | Some fl -> fl :: loop rest *)
-(*           | None -> loop rest *)
-(*         in *)
-(*         fl *)
-(*     | _ :: rest -> *)
-(*         loop rest *)
-(*   in *)
-(*   loop att_list *)
+type header = {
+  message_id : string;
+  references : string list;
+  in_reply_to : string list;
+  sender : address;
+  from : address;
+  to_ : address list;
+  cc : address list;
+  bcc : address list;
+  reply_to : address list;
+  subject : string
+}
 
-(* let is_known_custom_flag = function *)
-(*   | "$MDNSent" *)
-(*   | "$Forwarded" *)
-(*   | "$SubmitPending" *)
-(*   | "$Submitted" -> true *)
-(*   | _ -> false *)
-
-(* let custom_flags_from_lep_att_dynamic att_list = *)
-(*   let rec loop = function *)
-(*     | [] -> [] *)
-(*     | FLAG_FETCH_OTHER (FLAG_KEYWORD kw) :: rest when not (is_known_custom_flag kw) -> *)
-(*         kw :: loop rest *)
-(*     | _ :: rest -> *)
-(*         loop rest *)
-(*   in *)
-(*   loop att_list *)
-
-(* let fetch_messages folder rk by_uid set modseq map startuid = *)
-(*   let headers = ref [] in *)
-(*   let fetch_atts = *)
-(*     List.map (function *)
-(*         | `Flags -> *)
-(*             Some FETCH_ATT_FLAGS *)
-(*         | `GmailLabels -> *)
-(*             Some ImapXgmlabels.fetch_att_xgmlabels *)
-(*         | `GmailThreadId -> *)
-(*             failwith "fetch gmail thread id not implemented" *)
-(*         | `GmailMessageId -> *)
-(*             Some ImapXgmmsgid.fetch_att_xgmmsgid *)
-(*         | `FullHeaders -> *)
-(*             headers := *)
-(*               "Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" :: *)
-(*               "To" :: "Cc" :: "Message-ID" :: "References" :: "In-Reply-To" :: !headers; *)
-(*             None *)
-(*         | `Headers -> *)
-(*             headers := "References" :: !headers; *)
-(*             Some FETCH_ATT_ENVELOPE *)
-(*         | `HeaderSubject -> *)
-(*             headers := "References" :: "Subject" :: !headers; *)
-(*             Some FETCH_ATT_ENVELOPE *)
-(*         | `Size -> *)
-(*             Some FETCH_ATT_RFC822_SIZE *)
-(*         | `Structure -> *)
-(*             needs_body := true; *)
-(*             Some FETCH_ATT_RFC822_BODYSTRUCTURE *)
-(*         | `InternalDate -> *)
-(*             Some FETCH_ATT_INTERNALDATE *)
-(*         | `ExtraHeaders extra -> *)
-(*             headers := extra @ !headers) *)
-(*       rk *)
-(*   in *)
-(*   let fetch_atts = *)
-(*     if List.length !headers > 0 then *)
-(*       FETCH_ATT_BODY_PEEK_SECTION *)
-(*         (Some (SECTION_SPEC_SECTION_MSGTEXT (SECTION_MSGTEXT_HEADER_FIELDS !headers))) :: *)
-(*       fetch_atts *)
-(*     else *)
-(*       fetch_atts *)
-(*   in *)
-(*   Commands. *)
-(*   if by_uid then *)
-(*     if  *)
+type message = {
+  uid : Uint32.t;
+  size : int;
+  mod_seq_value : Uint64.t;
+  gmail_labels : string list;
+  gmail_message_id : Uint64.t;
+  gmail_thread_id : Uint64.t;
+  flags : message_flag list;
+  internal_date : float
+}
 
 exception Error of error
 
@@ -566,38 +505,186 @@ let rename_folder s folder other_name =
   try_lwt
     run s (ImapCommands.rename folder other_name)
   with
-  | ErrorP ParseError ->
+    ErrorP ParseError ->
       Lwt.fail (Error Parse)
   | _ ->
       Lwt.fail (Error Rename)
 
-let cap = function
-  | CAPABILITY_NAME name ->
-      begin match String.uppercase name with
-        | "STARTTLS" -> Some StartTLS
-        | "ID" -> Some Id
-        | "XLIST" -> Some XList
-        | "X-GM-EXT-1" -> Some Gmail
-        | "IDLE" -> Some Idle
-        | "CONDSTORE" -> Some Condstore
-        | "QRESYNC" -> Some QResync
-        | "XOAUTH2" -> Some XOAuth2
-        | "COMPRESS=DEFLATE" -> Some CompressDeflate
-        | "NAMESPACE" -> Some Namespace
-        | "CHILDREN" -> Some Children
-        | _ -> None
-      end
-  | CAPABILITY_AUTH_TYPE name ->
-      begin match String.uppercase name with
-        | "PLAIN" -> Some (Auth Plain)
-        | "LOGIN" -> Some (Auth Login)
-        | _ -> None
-      end
+let flags_from_lep_att_dynamic att_list =
+  let rec loop acc = function
+      [] ->
+        List.rev acc
+    | FLAG_FETCH_OTHER flag :: rest ->
+        begin
+          match flag with
+            FLAG_ANSWERED -> loop (Answered :: acc) rest
+          | FLAG_FLAGGED  -> loop (Flagged :: acc) rest
+          | FLAG_DELETED  -> loop (Deleted :: acc) rest
+          | FLAG_SEEN     -> loop (Seen :: acc) rest
+          | FLAG_DRAFT    -> loop (Draft :: acc) rest
+          | FLAG_KEYWORD "$Forwarded"     -> loop (Forwarded :: acc) rest
+          | FLAG_KEYWORD "$MDNSent"       -> loop (MDNSent :: acc) rest
+          | FLAG_KEYWORD "$SubmitPending" -> loop (SubmitPending :: acc) rest
+          | FLAG_KEYWORD "$Submitted"     -> loop (Submitted :: acc) rest
+          | _ -> loop acc rest
+        end
+    | _ :: rest ->
+        loop acc rest
+  in
+  loop [] att_list
+
+(* let is_known_custom_flag = function *)
+(*   | "$MDNSent" *)
+(*   | "$Forwarded" *)
+(*   | "$SubmitPending" *)
+(*   | "$Submitted" -> true *)
+(*   | _ -> false *)
+
+(* let custom_flags_from_lep_att_dynamic att_list = *)
+(*   let rec loop = function *)
+(*     | [] -> [] *)
+(*     | FLAG_FETCH_OTHER (FLAG_KEYWORD kw) :: rest when not (is_known_custom_flag kw) -> *)
+(*         kw :: loop rest *)
+(*     | _ :: rest -> *)
+(*         loop rest *)
+(*   in *)
+(*   loop att_list *)
+
+let header_from_imap env =
+  assert false
+
+let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
+  
+  lwt () = select_if_needed s folder in
+  
+  (* let needs_body = ref false in *)
+  
+  let fetch_atts, headers =
+    let rec loop acc headers = function
+        [] ->
+          acc, headers
+      | Uid :: rest ->
+          loop (FETCH_ATT_UID :: acc) headers rest
+      | Flags :: rest ->
+          loop (FETCH_ATT_FLAGS :: acc) headers rest
+      | GmailLabels :: rest ->
+          loop (ImapXgmlabels.fetch_att_xgmlabels :: acc) headers rest
+      | GmailThreadID :: rest ->
+          failwith "fetch gmail thread id not implemented"
+      | GmailMessageID :: rest ->
+          loop (ImapXgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
+      | FullHeaders :: rest ->
+          loop acc
+            ("Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" ::
+             "To" :: "Cc" :: "Message-ID" :: "References" :: "In-Reply-To" :: headers)
+            rest
+      | Headers :: rest ->
+          loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: headers) rest
+      | HeaderSubject :: rest ->
+          loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: "Subject" :: headers) rest
+      | Size :: rest ->
+          loop (FETCH_ATT_RFC822_SIZE :: acc) headers rest
+      | Structure :: rest ->
+          loop (FETCH_ATT_BODYSTRUCTURE :: acc) headers rest
+      | InternalDate :: rest ->
+          loop (FETCH_ATT_INTERNALDATE :: acc) headers rest
+      | ExtraHeaders extra :: rest ->
+          loop acc (extra @ headers) rest
+    in
+    loop [] [] request_kind
+  in
+  
+  let needs_headers = List.length headers > 0 in
+  
+  let fetch_atts =
+    if needs_headers then
+      FETCH_ATT_BODY_PEEK_SECTION
+        (Some (SECTION_SPEC_SECTION_MSGTEXT (SECTION_MSGTEXT_HEADER_FIELDS headers)), None) :: fetch_atts
+    else
+      fetch_atts
+  in
+
+  let rec loop msg = function
+      [] ->
+        msg
+    | MSG_ATT_ITEM_DYNAMIC flags :: rest ->
+        let flags = flags_from_lep_att_dynamic flags in
+        loop {msg with flags} rest
+    | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: rest ->
+        loop {msg with uid} rest
+    | MSG_ATT_ITEM_STATIC (MSG_ATT_RFC822_SIZE size) :: rest ->
+        loop {msg with size} rest
+    | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) :: rest ->
+        let tm = (* http://stackoverflow.com/a/12353013 *)
+          {Unix.tm_year = dt.dt_year - 1900;
+           tm_mon = dt.dt_month - 1;
+           tm_mday = dt.dt_day;
+           tm_hour = dt.dt_hour;
+           tm_min = dt.dt_min;
+           tm_sec = dt.dt_sec;
+           tm_wday = 0;
+           tm_yday = 0;
+           tm_isdst = false}
+        in
+        let t = ImapUtils.timegm tm in
+        let zone_hour = if dt.dt_zone >= 0 then dt.dt_zone / 100 else -(-dt.dt_zone / 100) in
+        let zone_min = if dt.dt_zone >= 0 then dt.dt_zone mod 100 else -(-dt.dt_zone mod 100) in
+        let internal_date = t -. float zone_hour *. 3600. -. float zone_min *. 60. in
+        loop {msg with internal_date} rest
+    (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
+    (* loop {msg with header = header_from_imap env} rest *)
+    | MSG_ATT_ITEM_EXTENSION (ImapCondstore.CONDSTORE_FETCH_DATA_MODSEQ mod_seq_value) :: rest ->
+        loop {msg with mod_seq_value} rest
+    | MSG_ATT_ITEM_EXTENSION (ImapXgmlabels.XGMLABELS_XGMLABELS gmail_labels) :: rest ->
+        loop {msg with gmail_labels} rest
+    | MSG_ATT_ITEM_EXTENSION (ImapXgmmsgid.XGMMSGID_MSGID gmail_message_id) :: rest ->
+        loop {msg with gmail_message_id} rest
+    | _ :: rest -> (* FIXME *)
+        loop msg rest
+  in
+  
+  let msg =
+    loop {uid = Uint32.zero; size = 0; mod_seq_value = Uint64.zero;
+          gmail_labels = []; gmail_message_id = Uint64.zero; gmail_thread_id = Uint64.zero;
+          flags = []; internal_date = 0.0}
+  in
+  
+  if fetch_by_uid then
+    lwt result = run s (ImapCommands.uid_fetch imapset fetch_atts) in
+    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
+  else
+    lwt result = run s (ImapCommands.fetch imapset fetch_atts) in
+    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
 
 let capability s =
   try_lwt
     lwt caps = run s ImapCommands.capability in
-    Lwt.return (List.fold_left (fun l c -> match cap c with Some c -> c :: l | None -> l) [] caps)
+    let rec loop acc = function
+        [] ->
+          List.rev acc
+      | CAPABILITY_NAME name :: rest ->
+          begin match String.uppercase name with
+              "STARTTLS"         -> loop (StartTLS :: acc) rest
+            | "ID"               -> loop (Id :: acc) rest
+            | "XLIST"            -> loop (XList :: acc) rest
+            | "X-GM-EXT-1"       -> loop (Gmail :: acc) rest
+            | "IDLE"             -> loop (Idle :: acc) rest
+            | "CONDSTORE"        -> loop (Condstore :: acc) rest
+            | "QRESYNC"          -> loop (QResync :: acc) rest
+            | "XOAUTH2"          -> loop (XOAuth2 :: acc) rest
+            | "COMPRESS=DEFLATE" -> loop (CompressDeflate :: acc) rest
+            | "NAMESPACE"        -> loop (Namespace :: acc) rest
+            | "CHILDREN"         -> loop (Children :: acc) rest
+            | _                  -> loop acc rest
+          end
+      | CAPABILITY_AUTH_TYPE name :: rest ->
+          begin match String.uppercase name with
+            | "PLAIN" -> loop (Auth Plain :: acc) rest
+            | "LOGIN" -> loop (Auth Login :: acc) rest
+            | _ -> loop acc rest
+          end
+    in
+    Lwt.return (loop [] caps)
   with
   | ErrorP ParseError -> Lwt.fail (Error Parse)
   | _ -> Lwt.fail (Error Capability)

@@ -32,3 +32,5 @@ val base64_decode : string -> string
 
 val encode_mutf7 : string -> string
 val decode_mutf7 : string -> string
+
+val timegm : Unix.tm -> float
