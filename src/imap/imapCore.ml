@@ -24,14 +24,13 @@ open ImapTypes
 open ImapTypesPrivate
 open ImapControl
 
-let string_of_error =
-  function
-    Bad -> "Server did not understand request"
-  | BadTag -> "Incorrect tag in reply"
-  | No -> "Server denied request"
-  | Bye -> "Server closed the connection"
-  | ParseError -> "Parser error"
-  | Auth_error -> "Authentication error"
+let string_of_error = function
+  | Bad -> "server did not understand request"
+  | BadTag -> "incorrect tag in reply"
+  | No -> "server denied request"
+  | Bye -> "server terminated the connection"
+  | ParseError -> "parser error"
+  | Auth_error -> "authentication error"
 
 type 'a command = ('a, state, error) control
 

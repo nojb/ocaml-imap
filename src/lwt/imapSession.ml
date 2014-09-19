@@ -55,6 +55,14 @@ type session = {
 
 exception ErrorP of error
 
+let _ =
+  Printexc.register_printer
+    (function
+      | ErrorP err ->
+          Some (ImapCore.string_of_error err)
+      | _ ->
+          None)
+
 let fully_write sock buf pos len =
   let rec loop pos len =
     if len <= 0 then
