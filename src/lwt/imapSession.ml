@@ -22,6 +22,9 @@
 
 open ImapTypes
 
+let _ =
+  Lwt_log.Section.set_level Lwt_log.Section.main Lwt_log.Debug
+
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
@@ -63,7 +66,7 @@ let fully_write sock buf pos len =
 let run s c =
   let open ImapControl in
   let buf = Bytes.create 65536 in
-  let rec loop out_buf in_buf = function
+  let rec loop in_buf = function
     | Ok (x, st) ->
         s.imap_state <- st;
         Lwt.return x
@@ -71,23 +74,19 @@ let run s c =
         s.imap_state <- st;
         Lwt.fail (ErrorP err)
     | Flush (str, k) ->
-        prerr_endline ">>>>";
-        prerr_string str;
-        prerr_endline ">>>>";
+        lwt () = Lwt_log.debug_f ">>>>\n%s>>>>\n" str in
         lwt () = fully_write s.sock str 0 (String.length str) in
-        loop out_buf in_buf (k ())
+        loop in_buf (k ())
     | Need k ->
         match_lwt Lwt_ssl.read s.sock buf 0 (String.length buf) with
         | 0 ->
-            loop out_buf in_buf (k End)
+            loop in_buf (k End)
         | _ as n ->
-            prerr_endline "<<<<";
-            prerr_string (String.sub buf 0 n);
-            prerr_endline "<<<<";
+            lwt () = Lwt_log.debug_f "<<<<\n%s<<<<\n" (String.sub buf 0 n) in
             Buffer.add_substring in_buf buf 0 n;
-            loop out_buf in_buf (k More)
+            loop in_buf (k More)
   in
-  loop s.imap_state.out_buf s.imap_state.in_buf (run c s.imap_state)
+  loop s.imap_state.in_buf (run c s.imap_state)
   
 (* let ssl_context ssl_method ca_file = *)
 (*   let version = *)
