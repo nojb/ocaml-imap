@@ -65,8 +65,10 @@ let run s c =
   let buf = Bytes.create 65536 in
   let rec loop out_buf in_buf = function
     | Ok (x, st) ->
-        Lwt.return (x, st)
-    | Fail err ->
+        s.imap_state <- st;
+        Lwt.return x
+    | Fail (err, st) ->
+        s.imap_state <- st;
         Lwt.fail (ErrorP err)
     | Flush k ->
         let str = Buffer.contents out_buf in
@@ -87,10 +89,8 @@ let run s c =
             Buffer.add_substring in_buf buf 0 n;
             loop out_buf in_buf (k More)
   in
-  lwt x, st = loop s.imap_state.out_buf s.imap_state.in_buf (run c s.imap_state) in
-  s.imap_state <- st;
-  Lwt.return x
-
+  loop s.imap_state.out_buf s.imap_state.in_buf (run c s.imap_state)
+  
 (* let ssl_context ssl_method ca_file = *)
 (*   let version = *)
 (*     match version with *)

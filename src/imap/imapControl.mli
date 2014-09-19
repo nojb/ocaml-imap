@@ -25,7 +25,7 @@ open ImapTypesPrivate
 
 type ('a, 'state, 'err) result =
   | Ok of 'a * 'state
-  | Fail of 'err
+  | Fail of 'err * 'state
   | Need of (input -> ('a, 'state, 'err) result)
   | Flush of (unit -> ('a, 'state, 'err) result)
 

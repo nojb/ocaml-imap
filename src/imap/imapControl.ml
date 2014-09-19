@@ -25,7 +25,7 @@ open ImapTypesPrivate
   
 type ('a, 'state, 'err) result =
   | Ok of 'a * 'state
-  | Fail of 'err
+  | Fail of 'err * 'state
   | Need of (input -> ('a, 'state, 'err) result)
   | Flush of (unit -> ('a, 'state, 'err) result)
 
@@ -38,8 +38,7 @@ let flush st =
   Flush (fun () -> Ok ((), st))
 
 let bind m f st =
-  let rec loop =
-    function
+  let rec loop = function
     | Ok (x, st) -> f x st
     | Fail _ as x -> x
     | Need k -> Need (fun inp -> loop (k inp))
@@ -47,14 +46,13 @@ let bind m f st =
   in
   loop (m st)
 
-let fail err _ =
-  Fail err
+let fail err st =
+  Fail (err, st)
     
 let liftP p st =
-  let rec loop =
-    function
-      ImapTypesPrivate.Ok (x, i) -> Ok (x, {st with in_pos = i})
-    | ImapTypesPrivate.Fail _ -> Fail ParseError
+  let rec loop = function
+    | ImapTypesPrivate.Ok (x, i) -> Ok (x, {st with in_pos = i})
+    | ImapTypesPrivate.Fail _ -> Fail (ParseError, st)
     | ImapTypesPrivate.Need k -> Need (fun inp -> loop (k inp))
   in
   loop (p st.in_buf st.in_pos)
@@ -81,20 +79,20 @@ let put st _ =
 let catch f g st =
   let rec loop = function
     | Ok _ as ok -> ok
-    | Fail err -> g err st
+    | Fail (err, st) -> g err st
     | Need k -> Need (fun inp -> loop (k inp))
     | Flush k -> Flush (fun () -> loop (k ()))
   in
   loop (f st)
 
-let try_bind m f g st =
-  let rec loop = function
-    | Ok (x, st) -> f x st
-    | Fail err -> g err st
-    | Need k -> Need (fun inp -> loop (k inp))
-    | Flush k -> Flush (fun () -> loop (k ()))
-  in
-  loop (m st)
+(* let try_bind m f g st = *)
+(*   let rec loop = function *)
+(*     | Ok (x, st) -> f x st *)
+(*     | Fail err -> g err st *)
+(*     | Need k -> Need (fun inp -> loop (k inp)) *)
+(*     | Flush k -> Flush (fun () -> loop (k ())) *)
+(*   in *)
+(*   loop (m st) *)
 
 let (>>=) = bind
 
