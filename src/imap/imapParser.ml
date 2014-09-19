@@ -1029,20 +1029,17 @@ msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
                     ; MUST NOT change for a message
 *)
 let msg_att_static =
-  (* let body = *)
-  (*   let section_ (sec : ImapTypes.section_spec) = *)
-  (*     opt (char '<' >> number' >>= fun x -> char '>' >> return x) >>= begin function *)
-  (*       | Some n -> return (`PARTIAL (sec, n)) *)
-  (*       | None -> return (sec :> msg_att_section) *)
-  (*     end >>= fun sec -> *)
-  (*     char ' ' >> nstring' >>= fun s -> *)
-  (*     return (`BODYSECTION (sec, s)) *)
-  (*   in *)
-  (*   alt [ *)
-  (*     (char ' ' >> ImapMime.body >>= fun b -> return (`BODY b)); *)
-  (*     (section >>= section_) *)
-  (*   ] *)
-  (* in *)
+  let body_ =
+    let section_ sec_section =
+      opt (char '<' >> some number' >>= fun x -> char '>' >> ret x) None >>= fun sec_origin_octet ->
+      char ' ' >> nstring' >>= fun sec_body_part ->
+      ret (MSG_ATT_BODY_SECTION {sec_section; sec_origin_octet; sec_body_part})
+    in
+    altn [
+      (char ' ' >> delay body () >>= fun b -> ret (MSG_ATT_BODY b));
+      (section >>= section_)
+    ]
+  in
   altn [
     (str "ENVELOPE" >> char ' ' >> envelope >>= fun e -> ret (MSG_ATT_ENVELOPE e));
     (str "INTERNALDATE" >> char ' ' >> date_time >>= fun dt -> ret (MSG_ATT_INTERNALDATE dt));
@@ -1051,8 +1048,8 @@ let msg_att_static =
     (str "RFC822.SIZE" >> char ' ' >> number' >>= fun n -> ret (MSG_ATT_RFC822_SIZE n));
     (str "RFC822" >> char ' ' >> nstring' >>= fun s -> ret (MSG_ATT_RFC822 s));
     (str "BODYSTRUCTURE" >> char ' ' >> delay body () >>= fun b -> ret (MSG_ATT_BODYSTRUCTURE b));
-    (* str "BODY" >> body; *)
-    (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID uid));
+    (str "BODY" >> body_);
+    (str "UID" >> char ' ' >> nz_number >>= fun uid -> ret (MSG_ATT_UID uid))
   (*   (str "X-GM-THRID" >> char ' ' >> uint64 >>= fun n -> ret (MSG_ATT_X_GM_THRID (Gthrid.of_uint64 n))) *)
   ]
 

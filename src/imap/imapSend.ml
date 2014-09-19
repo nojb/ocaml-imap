@@ -193,7 +193,7 @@ let fetch_att =
   | FETCH_ATT_BODY_SECTION (sec, None) -> raw "BODY" >> space >> section sec
   | FETCH_ATT_BODY_SECTION (sec, Some (ofs, len)) ->
       raw "BODY" >> space >> section sec >> char '<' >> int ofs >> char '.' >> int len >> char '>'
-  | FETCH_ATT_BODY_PEEK_SECTION (sec, None) -> raw "BODY.PEEK" >> space >> section sec
+  | FETCH_ATT_BODY_PEEK_SECTION (sec, None) -> raw "BODY.PEEK" >> section sec
   | FETCH_ATT_BODY_PEEK_SECTION (sec, Some (ofs, len)) ->
       raw "BODY.PEEK" >> space >> section sec >> char '<' >> int ofs >> char '.' >> int len >> char '>'
   | FETCH_ATT_BODYSTRUCTURE -> raw "BODYSTRUCTURE"

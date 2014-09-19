@@ -363,9 +363,8 @@ type date_time = {
 
 type msg_att_body_section = {
   sec_section : section;
-  sec_origin_octet : int;
-  sec_body_part : string;
-  sec_length : int
+  sec_origin_octet : int option;
+  sec_body_part : string
 }
 
 type msg_att_static =

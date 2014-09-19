@@ -656,6 +656,29 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     lwt result = run s (ImapCommands.fetch imapset fetch_atts) in
     Lwt.return (List.map (fun (atts, _) -> msg atts) result)
 
+let fetch_message_by_uid s folder uid =
+  lwt () = select_if_needed s folder in
+  try_lwt
+    let fetch_att = FETCH_ATT_BODY_PEEK_SECTION (None, None) in
+    match_lwt run s (ImapCommands.uid_fetch (ImapSet.single uid) [fetch_att]) with
+    | (result, _) :: [] ->
+        let rec loop = function
+            [] ->
+              assert false
+          | MSG_ATT_ITEM_STATIC (MSG_ATT_BODY_SECTION {sec_body_part}) :: _ ->
+              sec_body_part
+          | _ :: rest ->
+              loop rest
+        in
+        Lwt.return (loop result)
+    | _ ->
+        assert_lwt false
+  with
+  | ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  | _ ->
+      Lwt.fail (Error Fetch)
+
 let capability s =
   try_lwt
     lwt caps = run s ImapCommands.capability in
