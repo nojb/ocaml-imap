@@ -34,7 +34,7 @@ let _ =
   Ssl.init ()
 
 type state =
-  | DISCONNECTED
+    DISCONNECTED
   | CONNECTED
   | LOGGEDIN
   | SELECTED
@@ -362,12 +362,12 @@ let connect ?(ssl_method = Ssl.TLSv1) s =
     s.state <- CONNECTED;
     Lwt.return ()
   with
-  | _ -> Lwt.fail (Error Connection)
+    _ -> Lwt.fail (Error Connection)
 
 let disconnect s =
   try_lwt
     match s.sock with
-    | Some sock ->
+      Some sock ->
         lwt () = Lwt_ssl.close sock in
         s.sock <- None;
         s.state <- DISCONNECTED;
@@ -407,7 +407,7 @@ let login s =
 let login_if_needed s =
   lwt () = connect_if_needed s in
   match s.state with
-  | CONNECTED ->
+    CONNECTED ->
       login s
   | _ ->
       Lwt.return ()
@@ -415,7 +415,7 @@ let login_if_needed s =
 let get_mod_sequence_value state =
   let open ImapCondstore in
   let rec loop = function
-    | [] -> Uint64.zero
+      [] -> Uint64.zero
     | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n
     | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Uint64.zero
     | _ :: rest -> loop rest
@@ -447,7 +447,7 @@ let select s folder =
 let select_if_needed s folder =
   lwt () = login_if_needed s in
   match s.state with
-  | SELECTED ->
+    SELECTED ->
       lwt current_folder = (* FIXME *)
         match s.current_folder with
         | Some f -> Lwt.return f
@@ -479,7 +479,7 @@ let folder_status s folder =
               highest_mod_seq_value = Uint64.zero}
     in
     let rec loop fs = function
-      | [] ->
+        [] ->
           fs
       | STATUS_ATT_MESSAGES message_count :: rest ->
           loop {fs with message_count} rest
@@ -778,7 +778,8 @@ let capability s =
         [] ->
           List.rev acc
       | CAPABILITY_NAME name :: rest ->
-          begin match String.uppercase name with
+          begin
+            match String.uppercase name with
               "STARTTLS"         -> loop (StartTLS :: acc) rest
             | "ID"               -> loop (Id :: acc) rest
             | "XLIST"            -> loop (XList :: acc) rest
@@ -793,8 +794,9 @@ let capability s =
             | _                  -> loop acc rest
           end
       | CAPABILITY_AUTH_TYPE name :: rest ->
-          begin match String.uppercase name with
-            | "PLAIN" -> loop (Auth Plain :: acc) rest
+          begin
+            match String.uppercase name with
+              "PLAIN" -> loop (Auth Plain :: acc) rest
             | "LOGIN" -> loop (Auth Login :: acc) rest
             | _ -> loop acc rest
           end
