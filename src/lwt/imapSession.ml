@@ -385,7 +385,7 @@ let connect_if_needed s =
       Lwt.return ()
   in
   match s.state with
-  | DISCONNECTED ->
+    DISCONNECTED ->
       connect s
   | _ ->
       Lwt.return ()
@@ -395,8 +395,11 @@ let login s =
     try_lwt
       run s (ImapCommands.login s.username s.password)
     with
-    | ErrorP ParseError -> Lwt.fail (Error Parse)
-    | _ -> Lwt.fail (Error Authentication)
+      exn ->
+        lwt () = Lwt_log.debug ~exn "login error" in
+        match exn with
+          ErrorP (ParseError _) -> Lwt.fail (Error Parse)
+        | _ -> Lwt.fail (Error Authentication)
   in
   s.state <- LOGGEDIN;
   Lwt.return ()
@@ -432,11 +435,14 @@ let select s folder =
     s.mod_sequence_value <- get_mod_sequence_value s.imap_state;
     Lwt.return ()
   with
-  | ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  | _ ->
-      s.state <- LOGGEDIN;
-      Lwt.fail (Error NonExistantFolder)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "select error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          s.state <- LOGGEDIN;
+          Lwt.fail (Error NonExistantFolder)
 
 let select_if_needed s folder =
   lwt () = login_if_needed s in
@@ -492,10 +498,10 @@ let folder_status s folder =
     in
     Lwt.return (loop fs status.st_info_list)
   with
-  | exn ->
+    exn ->
       lwt () = Lwt_log.debug ~exn "status error" in
       match exn with
-      | ErrorP ParseError ->
+        ErrorP (ParseError _) ->
           Lwt.fail (Error Parse)
       | _ ->
           Lwt.fail (Error NonExistantFolder)
@@ -505,10 +511,13 @@ let rename_folder s folder other_name =
   try_lwt
     run s (ImapCommands.rename folder other_name)
   with
-    ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  | _ ->
-      Lwt.fail (Error Rename)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "rename error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          Lwt.fail (Error Rename)
 
 let delete_folder s ~folder =
 
@@ -519,10 +528,13 @@ let delete_folder s ~folder =
     run s (ImapCommands.delete folder)
 
   with
-    ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  | _ ->
-      Lwt.fail (Error Delete)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "delete error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          Lwt.fail (Error Delete)
 
 let create_folder s ~folder =
 
@@ -533,10 +545,13 @@ let create_folder s ~folder =
     run s (ImapCommands.create folder)
 
   with
-    ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  | _ ->
-      Lwt.fail (Error Create)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "create error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          Lwt.fail (Error Create)
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function
@@ -704,10 +719,13 @@ let fetch_message_by_uid s folder uid =
     | _ ->
         assert_lwt false
   with
-  | ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  | _ ->
-      Lwt.fail (Error Fetch)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "fetch error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      | _ ->
+          Lwt.fail (Error Fetch)
 
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   
@@ -743,12 +761,15 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
 
     Lwt.return result
   with
-  | ErrorP ParseError ->
-      Lwt.fail (Error Parse)
-  (* | StreamError -> *)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "fetch error" in
+      match exn with
+        ErrorP (ParseError _) ->
+          Lwt.fail (Error Parse)
+      (* | StreamError -> *)
       (* Lwt.fail (Error Connection) *)
-  | _ ->
-      Lwt.fail (Error Fetch)
+      | _ ->
+          Lwt.fail (Error Fetch)
   
 let capability s =
   try_lwt
@@ -780,8 +801,11 @@ let capability s =
     in
     Lwt.return (loop [] caps)
   with
-  | ErrorP ParseError -> Lwt.fail (Error Parse)
-  | _ -> Lwt.fail (Error Capability)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "capability error" in
+      match exn with
+        ErrorP (ParseError _) -> Lwt.fail (Error Parse)
+      | _ -> Lwt.fail (Error Capability)
 
 let enable_feature s feature =
   try_lwt

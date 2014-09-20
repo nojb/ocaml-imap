@@ -29,7 +29,7 @@ let string_of_error = function
   | BadTag -> "incorrect tag in reply"
   | No -> "server denied request"
   | Bye -> "server terminated the connection"
-  | ParseError -> "parser error"
+  | ParseError (context, i) -> Printf.sprintf "parser error near char %i of (...) %S (...)" i context
   | Auth_error -> "authentication error"
 
 type 'a command = ('a, state, error) control

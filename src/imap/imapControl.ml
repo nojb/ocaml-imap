@@ -57,8 +57,11 @@ let liftP p st =
         Buffer.add_string st.in_buf rest;
         let st = {st with in_pos = 0} in
         Ok (x, st)
-    | ImapTypesPrivate.Fail _ ->
-        Fail (ParseError, st)
+    | ImapTypesPrivate.Fail i ->
+        let start = max 0 (i - 10) in
+        let finish = min (Buffer.length st.in_buf) (i + 10) in
+        let context = Buffer.sub st.in_buf start (finish - start) in
+        Fail (ParseError (context, i - start), st)
     | ImapTypesPrivate.Need k ->
         Need (fun inp -> loop (k inp))
   in

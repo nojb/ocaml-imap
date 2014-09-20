@@ -523,7 +523,7 @@ type error =
   | BadTag
   | No
   | Bye
-  | ParseError
+  | ParseError of string * int
   | Auth_error
 
 type input =
