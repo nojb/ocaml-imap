@@ -515,7 +515,18 @@ let folder_status s folder =
      highest_mod_seq_value = Uint64.zero}
   in
   Lwt.return (loop fs status.st_info_list)
-  
+
+let noop s =
+  lwt ci = login_if_needed s in
+  try_lwt
+    run ci ImapCommands.noop
+  with
+    StreamError ->
+      lwt () = disconnect s in
+      raise_lwt (Error Connection)
+  | _ ->
+      raise_lwt (Error Noop)
+
 let rename_folder s folder other_name =
   lwt ci, _ = select_if_needed s "INBOX" in
   try_lwt
