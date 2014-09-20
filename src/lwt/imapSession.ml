@@ -37,17 +37,16 @@ type connected_info = {
   mutable imap_state : ImapTypes.state;
   sock : Lwt_ssl.socket;
   mutable condstore_enabled : bool;
-  mut : Lwt_mutex.t;
-  mutable num_ops : int
+  mutex : Lwt_mutex.t
 }
 
 type selected_info = {
   current_folder : string;
-  mutable uid_next : Uint32.t;
-  mutable uid_validity : Uint32.t;
-  mutable mod_sequence_value : Uint64.t;
-  mutable folder_msg_count : int option;
-  mutable first_unseen_uid : Uint32.t
+  uid_next : Uint32.t;
+  uid_validity : Uint32.t;
+  mod_sequence_value : Uint64.t;
+  folder_msg_count : int option;
+  first_unseen_uid : Uint32.t
 }
 
 type state =
@@ -63,18 +62,6 @@ type session = {
   host : string;
   port : int
 }
-
-let use s f =
-  lwt () = Lwt_mutex.lock s.mut in
-  try_lwt
-    s.num_ops <- s.num_ops + 1; f ()
-  finally
-    s.num_ops <- s.num_ops - 1;
-    Lwt_mutex.unlock s.mut;
-    Lwt.return ()
-
-let operations_count s =
-  s.num_ops
 
 exception ErrorP of error
 
@@ -350,11 +337,10 @@ let connect ?(ssl_method = Ssl.TLSv1) s =
     let context = Ssl.create_context ssl_method Ssl.Client_context in
     lwt sock = Lwt_ssl.ssl_connect fd context in
     let ci =
-      {imap_state = ImapCore.fresh_state;
-       sock;
-       condstore_enabled = false;
-       mut = Lwt_mutex.create ();
-       num_ops = 0}
+      { imap_state = ImapCore.fresh_state;
+        sock;
+        condstore_enabled = false;
+        mutex = Lwt_mutex.create () }
     in
     lwt _ = run ci ImapCore.greeting in
     s.state <- CONNECTED ci;
