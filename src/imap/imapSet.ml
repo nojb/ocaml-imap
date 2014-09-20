@@ -37,7 +37,10 @@ let single_int n =
   single (Uint32.of_int n)
 
 let interval n m =
-  [(n, m)]
+  if Uint32.compare n m <= 0 then
+    [(n, m)]
+  else
+    [(m, n)]
 
 let from n =
   [(n, Uint32.max_int)]
@@ -57,7 +60,10 @@ let add n set =
 (*     N.compare x y *)
 
 let add_interval n m set =
-  (n, m) :: set
+  if Uint32.compare n m <= 0 then
+    (n, m) :: set
+  else
+    (m, n) :: set
 
 let union s1 s2 =
   List.fold_right (fun r s2 -> r :: s2) s1 s2
@@ -77,6 +83,27 @@ let of_list l = (* FIXME find ranges of contiguous messages *)
   match l with
     [] -> []
   | x :: rest -> loop x x rest
+
+let rec iter2 f s1 s2 =
+  match s1, s2 with
+    [], [] -> ()
+  | (l1, r1) :: s1, (l2, r2) :: s2 ->
+      let rec loop l1 l2 =
+        if Uint32.compare l1 r1 > 0 then
+          if Uint32.compare l2 r2 > 0 then
+            iter2 f s1 s2
+          else
+            iter2 f s1 ((l2, r2) :: s2)
+        else if Uint32.compare l2 r2 > 0 then
+          iter2 f ((l1, r1) :: s1) s2
+        else begin
+          f l1 l2;
+          loop (Uint32.succ l1) (Uint32.succ l2)
+        end
+      in
+      loop l1 l2
+  | _ ->
+      invalid_arg "ImapSet.iter2"
 
 (* let rec iter f = function *)
 (*   | [] -> () *)

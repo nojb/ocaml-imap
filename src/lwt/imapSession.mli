@@ -211,6 +211,15 @@ type message = {
 
 exception Error of error
 
+val create_session :
+  ?port:int ->
+  host:string ->
+  username:string ->
+  password:string ->
+  unit -> session
+    (** Creates a new IMAP session with given host, username & password.
+        Default port is 993. *)
+
 val disconnect :
   session -> unit Lwt.t
     (** Disconnects from the server. *)
@@ -243,6 +252,15 @@ val create_folder :
   session ->
   folder:string -> unit Lwt.t
     (** Creates a new folder. *)
+
+val copy_messages :
+  session ->
+  folder:string ->
+  uids:ImapSet.t ->
+  dest:string ->
+  (Uint32.t, Uint32.t) Hashtbl.t Lwt.t
+    (** Copy messages between two folders.  Returns the mapping between old UIDs
+        and new UIDs. *)
 
 val expunge :
   session ->

@@ -144,7 +144,7 @@ let run s c =
 (*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
 (*       ctx *)
 
-let create_session ?(port=993) host username password =
+let create_session ?(port = 993) ~host ~username ~password () =
   { state = DISCONNECTED;
     username;
     password;
@@ -654,6 +654,24 @@ let create_folder s ~folder =
           raise_lwt (Error Parse)
       | _ ->
           raise_lwt (Error Create)
+
+let copy_messages s ~folder ~uids ~dest =
+  lwt ci, _ = select_if_needed s folder in
+  lwt uidvalidity, src_uid, dst_uid =
+    try_lwt
+      run ci (ImapUidplus.uidplus_uid_copy uids dest)
+    with
+      StreamError ->
+        lwt () = disconnect s in
+        raise_lwt (Error Connection)
+    | ErrorP (ParseError _) ->
+        raise_lwt (Error Parse)
+    | _ ->
+        raise_lwt (Error Copy)
+  in
+  let h = Hashtbl.create 0 in
+  ImapSet.iter2 (Hashtbl.add h) src_uid dst_uid;
+  Lwt.return h
 
 let expunge s ~folder =
   lwt ci, _ = select_if_needed s folder in
