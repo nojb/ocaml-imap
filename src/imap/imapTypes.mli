@@ -463,7 +463,7 @@ type mbx_list_flags = {
 type mailbox_list = {
   mb_flag : mbx_list_flags;
   (** List of mailbox flags *)
-  mb_delimiter : char;
+  mb_delimiter : char option;
   (** Delimiter of the mailbox path, '\000' if not present *)
   mb_name : string
   (** Name of the mailbox *)

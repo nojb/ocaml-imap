@@ -195,8 +195,10 @@ let mbx_list_flags_print ppf flags =
   fprintf ppf "@[<2>(mbx-list-flags%a%a)@]" sflag flags.mbf_sflag p flags.mbf_oflags 
 
 let mailbox_list_print ppf r =
-  fprintf ppf "@[<2>(mailbox-list%a@ (dir-separator %C)@ (mailbox %S))@]"
-    mbx_list_flags_print r.mb_flag r.mb_delimiter r.mb_name
+  fprintf ppf "@[<2>(mailbox-list%a@ (dir-separator %s)@ (mailbox %S))@]"
+    mbx_list_flags_print r.mb_flag
+    (match r.mb_delimiter with None -> "none" | Some c -> Printf.sprintf "%C" c)
+    r.mb_name
 
 let status_info_print ppf r =
   let p ppf =

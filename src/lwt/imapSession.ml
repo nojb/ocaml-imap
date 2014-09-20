@@ -145,11 +145,11 @@ let run s c =
 (*       ctx *)
 
 let create_session ?(port=993) host username password =
-  {state = DISCONNECTED;
-   username;
-   password;
-   host;
-   port}
+  { state = DISCONNECTED;
+    username;
+    password;
+    host;
+    port }
    
 type folder_flag =
     Marked
@@ -303,6 +303,11 @@ type folder_status = {
   uid_validity : Uint32.t;
   highest_mod_seq_value : Uint64.t
 }
+
+type folder =
+  { path : string;
+    delimiter : char option;
+    flags : folder_flag list }
 
 type address = {
   display_name : string;
@@ -526,6 +531,81 @@ let noop s =
       raise_lwt (Error Connection)
   | _ ->
       raise_lwt (Error Noop)
+
+let mb_keyword_flag =
+  [ "Inbox", Inbox;
+    "AllMail", AllMail;
+    "Sent", SentMail;
+    "Spam", Spam;
+    "Starred", Starred;
+    "Trash", Trash;
+    "Important", Important;
+    "Drafts", Drafts;
+    "Archive", Archive;
+    "All", AllMail;
+    "Junk", Spam;
+    "Flagged", Starred ]
+
+let imap_mailbox_flags_to_flags imap_flags =
+  let flags =
+    match imap_flags.mbf_sflag with
+      None ->
+        []
+    | Some MBX_LIST_SFLAG_NOSELECT ->
+        NoSelect :: []
+    | Some MBX_LIST_SFLAG_MARKED ->
+        Marked :: []
+    | Some MBX_LIST_SFLAG_UNMARKED ->
+        Unmarked :: []
+  in
+  let mb_keyword_flag = List.map (fun (k, v) -> (String.uppercase k, v)) mb_keyword_flag in
+  List.fold_left (fun l imap_oflag ->
+      match imap_oflag with
+        MBX_LIST_OFLAG_NOINFERIORS ->
+          NoInferiors :: l
+      | MBX_LIST_OFLAG_EXT of_flag_ext ->
+          let of_flag_ext = String.uppercase of_flag_ext in
+          try List.assoc of_flag_ext mb_keyword_flag :: l with Not_found -> l)
+    flags imap_flags.mbf_oflags
+
+(* let fetch_delimiter_if_needed s = *)
+(*   lwt ci = connect_if_needed s in *)
+(*   match ci.delimiter with *)
+(*     None -> *)
+(*       lwt imap_folders = *)
+(*         try_lwt *)
+(*           run ci (ImapCommands.list "" "") *)
+(*         with *)
+(*           StreamError -> *)
+(*             lwt () = disconnect s in *)
+(*             raise_lwt (Error Connection) *)
+(*         | _ -> *)
+(*             None *)
+(*   | Some c -> *)
+(*       Lwt.return c *)
+        
+
+let fetch_all_folders s =
+  let results mb_list =
+    let flags = imap_mailbox_flags_to_flags mb_list.mb_flag in
+    let path = if String.uppercase mb_list.mb_name = "INBOX" then "INBOX" else mb_list.mb_name in
+    { path; delimiter = mb_list.mb_delimiter; flags }
+  in
+  lwt ci = login_if_needed s in
+  lwt imap_folders =
+    try_lwt
+      (* lwt delimiter = fetch_delimiter_if_needed ci in *)
+      run ci (ImapCommands.list "" "*")
+    with
+      StreamError ->
+        lwt () = disconnect s in
+        raise_lwt (Error Connection)
+    | ErrorP (ParseError _) ->
+        raise_lwt (Error Parse)
+    | _ ->
+        raise_lwt (Error NonExistantFolder)
+  in
+  Lwt.return (List.map results imap_folders)
 
 let rename_folder s folder other_name =
   lwt ci, _ = select_if_needed s "INBOX" in

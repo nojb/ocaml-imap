@@ -594,7 +594,7 @@ let mailbox_list =
   char '(' >>
   opt mbx_list_flags {mbf_sflag = None; mbf_oflags = []} >>= fun mb_flag ->
   char ')' >> char ' ' >>
-  alt quoted_char (nil >> ret '\000') >>= fun mb_delimiter ->
+  alt (some quoted_char) (nil >> ret None) >>= fun mb_delimiter ->
   char ' ' >> mailbox >>= fun mb_name ->
   ret {mb_flag; mb_delimiter; mb_name}
 
