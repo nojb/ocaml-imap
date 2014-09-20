@@ -901,6 +901,60 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   extract_uid fetch_result;
   Lwt.return result
 
+let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
+  lwt ci, _ = select_if_needed s folder in
+  let imap_flag_of_flag = function
+      Seen ->
+        FLAG_SEEN
+    | Answered ->
+        FLAG_ANSWERED
+    | Flagged ->
+        FLAG_FLAGGED
+    | Deleted ->
+        FLAG_DELETED
+    | Draft ->
+        FLAG_DRAFT
+    | MDNSent ->
+        FLAG_KEYWORD "$MDNSent"
+    | Forwarded ->
+        FLAG_KEYWORD "$Forwarded"
+    | SubmitPending ->
+        FLAG_KEYWORD "$SubmitPending"
+    | Submitted ->
+        FLAG_KEYWORD "$Submitted"
+  in
+  let imap_flags = List.map (fun fl -> FLAG_KEYWORD fl) customflags in
+  let imap_flags = List.fold_left (fun l fl -> imap_flag_of_flag fl :: l) imap_flags flags in
+  let fl_sign =
+    match kind with
+      Set -> STORE_ATT_FLAGS_SET
+    | Add -> STORE_ATT_FLAGS_ADD
+    | Remove -> STORE_ATT_FLAGS_REMOVE
+  in
+  let store_att_flags = { fl_sign; fl_silent = true; fl_flag_list = imap_flags } in
+  try_lwt
+    run ci (ImapCommands.uid_store uids store_att_flags)
+  with
+    exn ->
+      lwt () = Lwt_log.debug ~exn "store_flags error" in
+      match exn with
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
+          raise_lwt (Error Parse)
+      | _ ->
+          raise_lwt (Error Store)
+
+let add_flags s ~folder ~uids ~flags ?customflags () =
+  store_flags s ~folder ~uids ~kind:Add ~flags ?customflags ()
+    
+let remove_flags s ~folder ~uids ~flags ?customflags () =
+  store_flags s ~folder ~uids ~kind:Remove ~flags ?customflags ()
+    
+let set_flags s ~folder ~uids ~flags ?customflags () =
+  store_flags s ~folder ~uids ~kind:Set ~flags ?customflags ()
+
 let store_labels s ~folder ~uids ~kind ~labels =
   let fl_sign =
     match kind with

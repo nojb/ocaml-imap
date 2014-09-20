@@ -272,7 +272,34 @@ val fetch_message_by_uid :
   folder:string ->
   uid:Uint32.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
-  
+
+val add_flags :
+  session ->
+  folder:string ->
+  uids:ImapSet.t ->
+  flags:message_flag list ->
+  ?customflags:string list ->
+  unit -> unit Lwt.t
+    (** Add message flags. *)
+
+val remove_flags :
+  session ->
+  folder:string ->
+  uids:ImapSet.t ->
+  flags:message_flag list ->
+  ?customflags:string list ->
+  unit -> unit Lwt.t
+    (** Remove message flags. *)
+
+val set_flags :
+  session ->
+  folder:string ->
+  uids:ImapSet.t ->
+  flags:message_flag list ->
+  ?customflags:string list ->
+  unit -> unit Lwt.t
+    (** Set message flags. *)
+
 val add_labels :
   session ->
   folder:string ->

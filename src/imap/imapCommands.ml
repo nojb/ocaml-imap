@@ -195,3 +195,9 @@ let fetch =
 
 let uid_fetch =
   ImapCondstore.uid_fetch
+
+let store =
+  ImapCondstore.store
+
+let uid_store =
+  ImapCondstore.uid_store

@@ -97,6 +97,10 @@ val fetch : ImapSet.t -> fetch_type -> msg_att list command
 
 val uid_fetch : ImapSet.t -> fetch_type -> msg_att list command
 
+val store : ImapSet.t -> store_att_flags -> unit command
+
+val uid_store : ImapSet.t -> store_att_flags -> unit command
+
 val copy : ImapSet.t -> string -> unit command
     
 val uid_copy : ImapSet.t -> string -> unit command
