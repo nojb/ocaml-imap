@@ -387,7 +387,8 @@ let login s =
           exn ->
             lwt () = Lwt_log.debug ~exn "login error" in
             match exn with
-              ErrorP (ParseError _) -> raise_lwt (Error Parse)
+              StreamError -> lwt () = disconnect s in raise_lwt (Error Connection)
+            | ErrorP (ParseError _) -> raise_lwt (Error Parse)
             | _ -> raise_lwt (Error Authentication)
       in
       s.state <- LOGGEDIN ci;
@@ -427,7 +428,10 @@ let select s folder =
           exn ->
             lwt () = Lwt_log.debug ~exn "select error" in
             match exn with
-              ErrorP (ParseError _) ->
+              StreamError ->
+                lwt () = disconnect s in
+                raise_lwt (Error Connection)
+            | ErrorP (ParseError _) ->
                 raise_lwt (Error Parse)
             | _ ->
                 s.state <- LOGGEDIN ci;
@@ -494,7 +498,10 @@ let folder_status s folder =
       exn ->
         lwt () = Lwt_log.debug ~exn "status error" in
         match exn with
-          ErrorP (ParseError _) ->
+          StreamError ->
+            lwt () = disconnect s in
+            raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
             raise_lwt (Error Parse)
         | _ ->
             raise_lwt (Error NonExistantFolder)
@@ -517,7 +524,10 @@ let rename_folder s folder other_name =
     exn ->
       lwt () = Lwt_log.debug ~exn "rename error" in
       match exn with
-        ErrorP (ParseError _) ->
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
           raise_lwt (Error Parse)
       | _ ->
           raise_lwt (Error Rename)
@@ -530,7 +540,10 @@ let delete_folder s ~folder =
     exn ->
       lwt () = Lwt_log.debug ~exn "delete error" in
       match exn with
-        ErrorP (ParseError _) ->
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
           raise_lwt (Error Parse)
       | _ ->
           raise_lwt (Error Delete)
@@ -543,7 +556,10 @@ let create_folder s ~folder =
     exn ->
       lwt () = Lwt_log.debug ~exn "create error" in
       match exn with
-        ErrorP (ParseError _) ->
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
           raise_lwt (Error Parse)
       | _ ->
           raise_lwt (Error Create)
@@ -711,7 +727,10 @@ let fetch_message_by_uid s folder uid =
     exn ->
       lwt () = Lwt_log.debug ~exn "fetch error" in
       match exn with
-        ErrorP (ParseError _) ->
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
           raise_lwt (Error Parse)
       | _ ->
           raise_lwt (Error Fetch)
@@ -743,10 +762,11 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
       exn ->
         lwt () = Lwt_log.debug ~exn "fetch error" in
         match exn with
-          ErrorP (ParseError _) ->
+          StreamError ->
+            lwt () = disconnect s in
+            raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
             raise_lwt (Error Parse)
-        (* | StreamError -> *)
-        (* raise_lwt (Error Connection) *)
         | _ ->
             raise_lwt (Error Fetch)
   in
@@ -764,12 +784,15 @@ let store_labels s ~folder ~uids ~kind ~labels =
   try_lwt
     run ci (ImapXgmlabels.uid_store_xgmlabels uids fl_sign true labels)
   with
-  (* Stream -> disconnect ...*)
     exn ->
       lwt () = Lwt_log.debug ~exn "store_labels error" in
       match exn with
-        ErrorP (ParseError _) -> raise_lwt (Error Parse)
-      | _ -> raise_lwt (Error Store)
+        StreamError ->
+          lwt () = disconnect s in raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
+          raise_lwt (Error Parse)
+      | _ ->
+          raise_lwt (Error Store)
 
 let add_labels s ~folder ~uids ~labels =
   store_labels s ~folder ~uids ~kind:Add ~labels
@@ -789,8 +812,13 @@ let capability s =
       exn ->
         lwt () = Lwt_log.debug ~exn "capability error" in
         match exn with
-          ErrorP (ParseError _) -> raise_lwt (Error Parse)
-        | _ -> raise_lwt (Error Capability)
+          StreamError ->
+            lwt () = disconnect s in
+            raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
+            raise_lwt (Error Parse)
+        | _ ->
+            raise_lwt (Error Capability)
   in
   let rec loop acc = function
       [] ->
