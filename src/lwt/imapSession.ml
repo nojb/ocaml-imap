@@ -241,6 +241,44 @@ type encoding =
   | Other
   | UUEncode
 
+type search_key =
+    All
+  | From of string
+  | To of string
+  | Cc of string
+  | Bcc of string
+  | Recipient of string
+  (** Recipient is the combination of To, Cc and Bcc *)
+  | Subject of string
+  | Content of string
+  | Body of string
+  | UIDs of ImapSet.t
+  | Header of string * string
+  | Read
+  | Unread
+  | Flagged
+  | Unflagged
+  | Answered
+  | Unanswered
+  | Draft
+  | Undraft
+  | Deleted
+  | Spam
+  | BeforeDate of float
+  | OnDate of float
+  | SinceDate of float
+  | BeforeReceiveDate of float
+  | OnReceiveDate of float
+  | SinceReceiveDate of float
+  | SizeLarger of int
+  | SizeSmaller of int
+  | GmailThreadID of Uint64.t
+  | GmailMessageID of Uint64.t
+  | GmailRaw of string
+  | Or of search_key * search_key
+  | And of search_key * search_key
+  | Not of search_key
+
 type error =
     Connection
   | TLSNotAvailable
@@ -679,7 +717,7 @@ let expunge s ~folder =
           raise_lwt (Error Expunge)
 
 let flags_from_lep_att_dynamic att_list =
-  let rec loop acc = function
+  let rec loop (acc : message_flag list) = function
       [] ->
         List.rev acc
     | FLAG_FETCH_OTHER flag :: rest ->
@@ -886,6 +924,71 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   in
   extract_uid fetch_result;
   Lwt.return result
+
+let rec imap_search_key_from_search_key = function
+    All ->
+      SEARCH_KEY_ALL
+  | From str ->
+      SEARCH_KEY_FROM str
+  | To str ->
+      SEARCH_KEY_TO str
+  | Cc str ->
+      SEARCH_KEY_CC str
+  | Bcc str ->
+      SEARCH_KEY_BCC str
+  | Recipient str ->
+      SEARCH_KEY_OR (SEARCH_KEY_TO str, SEARCH_KEY_OR (SEARCH_KEY_CC str, SEARCH_KEY_BCC str))
+  | Subject str ->
+      SEARCH_KEY_SUBJECT str
+  | Content str ->
+      SEARCH_KEY_TEXT str
+  | Body str ->
+      SEARCH_KEY_BODY str
+  | UIDs imapset ->
+      SEARCH_KEY_INSET imapset
+  | Header (k, v) ->
+      SEARCH_KEY_HEADER (k, v)
+  | Read ->
+      SEARCH_KEY_SEEN
+  | Unread ->
+      SEARCH_KEY_UNSEEN
+  | Flagged ->
+      SEARCH_KEY_FLAGGED
+  | Unflagged ->
+      SEARCH_KEY_UNFLAGGED
+  | Answered ->
+      SEARCH_KEY_ANSWERED
+  | Unanswered ->
+      SEARCH_KEY_UNANSWERED
+  | Draft ->
+      SEARCH_KEY_DRAFT
+  | Undraft ->
+      SEARCH_KEY_UNDRAFT
+  | Deleted ->
+      SEARCH_KEY_DELETED
+  | Spam ->
+      SEARCH_KEY_KEYWORD "Junk"
+
+let search s ~folder ~key =
+  (* let charset =  FIXME yahoo *)
+  let key = imap_search_key_from_search_key key in
+  lwt ci, _ = select_if_needed s folder in
+  lwt result_list =
+    try_lwt
+      run ci (ImapCommands.uid_search key)
+    with
+      exn ->
+        lwt () = Lwt_log.debug ~exn "search error" in
+        match exn with
+          StreamError ->
+            lwt () = disconnect s in
+            raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
+            raise_lwt (Error Parse)
+        | _ ->
+            raise_lwt (Error Fetch)
+  in
+  Lwt.return result_list
 
 let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
   lwt ci, _ = select_if_needed s folder in

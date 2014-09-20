@@ -62,20 +62,6 @@ type messages_request_kind =
   | ExtraHeaders of string list
   | Size
 
-type fetch_request_type =
-    UID
-  | Sequence
-
-type flags_request_kind =
-    Add
-  | Remove
-  | Set
-
-type workaround =
-    Gmail
-  | Yahoo
-  | Exchange2003
-
 type auth_capability =
     Anonymous
   | CRAMMD5
@@ -124,6 +110,44 @@ type encoding =
   | QuotedPrintable
   | Other
   | UUEncode
+
+type search_key =
+    All
+  | From of string
+  | To of string
+  | Cc of string
+  | Bcc of string
+  | Recipient of string
+  (** Recipient is the combination of To, Cc and Bcc *)
+  | Subject of string
+  | Content of string
+  | Body of string
+  | UIDs of ImapSet.t
+  | Header of string * string
+  | Read
+  | Unread
+  | Flagged
+  | Unflagged
+  | Answered
+  | Unanswered
+  | Draft
+  | Undraft
+  | Deleted
+  | Spam
+  | BeforeDate of float
+  | OnDate of float
+  | SinceDate of float
+  | BeforeReceiveDate of float
+  | OnReceiveDate of float
+  | SinceReceiveDate of float
+  | SizeLarger of int
+  | SizeSmaller of int
+  | GmailThreadID of Uint64.t
+  | GmailMessageID of Uint64.t
+  | GmailRaw of string
+  | Or of search_key * search_key
+  | And of search_key * search_key
+  | Not of search_key
 
 type error =
     Connection
@@ -272,6 +296,13 @@ val fetch_message_by_uid :
   folder:string ->
   uid:Uint32.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
+
+val search :
+  session ->
+  folder:string ->
+  key:search_key -> Uint32.t list Lwt.t
+    (** Search for messages satisfying [key].  Returns the UIDs of matching
+        messages. *)
 
 val add_flags :
   session ->
