@@ -607,10 +607,10 @@ let fetch_all_folders s =
   in
   Lwt.return (List.map results imap_folders)
 
-let rename_folder s folder other_name =
+let rename_folder s ~folder ~new_name =
   lwt ci, _ = select_if_needed s "INBOX" in
   try_lwt
-    run ci (ImapCommands.rename folder other_name)
+    run ci (ImapCommands.rename folder new_name)
   with
     exn ->
       lwt () = Lwt_log.debug ~exn "rename error" in
@@ -807,7 +807,7 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     lwt result = run ci (ImapCommands.fetch imapset fetch_type) in
     Lwt.return (List.map (fun (atts, _) -> msg atts) result)
   
-let fetch_message_by_uid s folder uid =
+let fetch_message_by_uid s ~folder ~uid =
   let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
   let extract_body = function
       (result, _) :: [] ->
