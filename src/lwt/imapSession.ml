@@ -33,30 +33,35 @@ let _ =
   prerr_endline "Initialising SSL...";
   Ssl.init ()
 
-type state =
-    DISCONNECTED
-  | CONNECTED
-  | LOGGEDIN
-  | SELECTED
-
-type session = {
+type connected_info = {
   mutable imap_state : ImapTypes.state;
-  mutable sock : Lwt_ssl.socket option;
-  mutable state : state;
-  mutable current_folder : string option;
+  sock : Lwt_ssl.socket;
+  mutable condstore_enabled : bool;
+  mut : Lwt_mutex.t;
+  mutable num_ops : int
+}
+
+type selected_info = {
+  current_folder : string;
   mutable uid_next : Uint32.t;
   mutable uid_validity : Uint32.t;
   mutable mod_sequence_value : Uint64.t;
   mutable folder_msg_count : int option;
-  mutable first_unseen_uid : Uint32.t;
-  mutable condstore_enabled : bool;
+  mutable first_unseen_uid : Uint32.t
+}
+
+type state =
+    DISCONNECTED
+  | CONNECTED of connected_info
+  | LOGGEDIN of connected_info
+  | SELECTED of connected_info * selected_info
+
+type session = {
+  mutable state : state;
   username : string;
   password : string;
   host : string;
-  port : int;
-  mutable should_disconnect : bool;
-  mut : Lwt_mutex.t;
-  mutable num_ops : int
+  port : int
 }
 
 let use s f =
@@ -82,11 +87,6 @@ let _ =
           None)
 
 let fully_write sock buf pos len =
-  lwt sock =
-    match sock with
-    | Some sock -> Lwt.return sock
-    | None -> assert_lwt false
-  in
   let rec loop pos len =
     if len <= 0 then
       Lwt.return ()
@@ -97,11 +97,6 @@ let fully_write sock buf pos len =
   loop pos len
 
 let read sock buf pos len =
-  lwt sock =
-    match sock with
-    | Some sock -> Lwt.return sock
-    | None -> assert_lwt false
-  in
   Lwt_ssl.read sock buf pos len
 
 let run s c =
@@ -146,24 +141,12 @@ let run s c =
 (*       ctx *)
 
 let create_session ?(port=993) host username password =
-  {imap_state = ImapCore.fresh_state;
-   sock = None;
-   state = DISCONNECTED;
-   current_folder = None;
-   uid_next = Uint32.zero;
-   uid_validity = Uint32.zero;
-   mod_sequence_value = Uint64.zero;
-   folder_msg_count = None;
-   first_unseen_uid = Uint32.zero;
-   condstore_enabled = false;
+  {state = DISCONNECTED;
    username;
    password;
    host;
-   port;
-   should_disconnect = false;
-   mut = Lwt_mutex.create ();
-   num_ops = 0}
-
+   port}
+   
 type folder_flag =
     Marked
   | Unmarked
@@ -349,7 +332,7 @@ type message = {
 exception Error of error
 
 let connect ?(ssl_method = Ssl.TLSv1) s =
-  lwt () = assert_lwt (s.state = DISCONNECTED) in
+  lwt () = assert_lwt (match s.state with DISCONNECTED -> true | _ -> false) in
   try_lwt
     let he = Unix.gethostbyname s.host in
     let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), s.port) in
@@ -357,33 +340,31 @@ let connect ?(ssl_method = Ssl.TLSv1) s =
     lwt () = Lwt_unix.connect fd sa in
     let context = Ssl.create_context ssl_method Ssl.Client_context in
     lwt sock = Lwt_ssl.ssl_connect fd context in
-    s.sock <- Some sock;
-    lwt _ = run s ImapCore.greeting in
-    s.state <- CONNECTED;
+    let ci =
+      {imap_state = ImapCore.fresh_state;
+       sock;
+       condstore_enabled = false;
+       mut = Lwt_mutex.create ();
+       num_ops = 0}
+    in
+    lwt _ = run ci ImapCore.greeting in
+    s.state <- CONNECTED ci;
     Lwt.return ()
   with
     _ -> Lwt.fail (Error Connection)
 
 let disconnect s =
-  try_lwt
-    match s.sock with
-      Some sock ->
-        lwt () = Lwt_ssl.close sock in
-        s.sock <- None;
-        s.state <- DISCONNECTED;
-        Lwt.return ()
-    | None ->
-        Lwt.return ()
-  with
-  | _ -> Lwt.return ()
+  match s.state with
+    CONNECTED ci
+  | LOGGEDIN ci
+  | SELECTED (ci, _) ->
+      lwt () = try_lwt Lwt_ssl.close ci.sock with _ -> Lwt.return () in
+      s.state <- DISCONNECTED;
+      Lwt.return ()
+  | DISCONNECTED ->
+      Lwt.return ()
       
 let connect_if_needed s =
-  lwt () =
-    if s.should_disconnect then
-      disconnect s
-    else
-      Lwt.return ()
-  in
   match s.state with
     DISCONNECTED ->
       connect s
@@ -391,23 +372,27 @@ let connect_if_needed s =
       Lwt.return ()
 
 let login s =
-  lwt () =
-    try_lwt
-      run s (ImapCommands.login s.username s.password)
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "login error" in
-        match exn with
-          ErrorP (ParseError _) -> Lwt.fail (Error Parse)
-        | _ -> Lwt.fail (Error Authentication)
-  in
-  s.state <- LOGGEDIN;
-  Lwt.return ()
+  match s.state with
+    CONNECTED ci ->
+      lwt () =
+        try_lwt
+          run ci (ImapCommands.login s.username s.password)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "login error" in
+            match exn with
+              ErrorP (ParseError _) -> Lwt.fail (Error Parse)
+            | _ -> Lwt.fail (Error Authentication)
+      in
+      s.state <- LOGGEDIN ci;
+      Lwt.return ()
+  | _ ->
+      assert_lwt false
 
 let login_if_needed s =
   lwt () = connect_if_needed s in
   match s.state with
-    CONNECTED ->
+    CONNECTED _ ->
       login s
   | _ ->
       Lwt.return ()
@@ -423,135 +408,162 @@ let get_mod_sequence_value state =
   loop state.rsp_info.rsp_extension_list
 
 let select s folder =
-  lwt () = assert_lwt (s.state = LOGGEDIN || s.state = SELECTED) in
-  try_lwt
-    lwt _ = run s (ImapCommands.select folder) in
-    s.uid_next <- s.imap_state.sel_info.sel_uidnext;
-    s.uid_validity <- s.imap_state.sel_info.sel_uidvalidity;
-    s.state <- SELECTED;
-    s.current_folder <- Some folder;
-    s.folder_msg_count <- s.imap_state.sel_info.sel_exists;
-    s.first_unseen_uid <- s.imap_state.sel_info.sel_first_unseen;
-    s.mod_sequence_value <- get_mod_sequence_value s.imap_state;
-    Lwt.return ()
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "select error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          s.state <- LOGGEDIN;
-          Lwt.fail (Error NonExistantFolder)
+  match s.state with
+    LOGGEDIN ci
+  | SELECTED (ci, _) ->
+      lwt () =
+        try_lwt
+          run ci (ImapCommands.select folder)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "select error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                s.state <- LOGGEDIN ci;
+                Lwt.fail (Error NonExistantFolder)
+      in
+      let st = ci.imap_state in
+      let si =
+        {current_folder = folder;
+         uid_next = st.sel_info.sel_uidnext;
+         uid_validity = st.sel_info.sel_uidvalidity;
+         folder_msg_count = st.sel_info.sel_exists;
+         first_unseen_uid = st.sel_info.sel_first_unseen;
+         mod_sequence_value = get_mod_sequence_value st}
+      in
+      s.state <- SELECTED (ci, si);
+      Lwt.return ()
+  | _ ->
+      assert_lwt false
 
 let select_if_needed s folder =
   lwt () = login_if_needed s in
   match s.state with
-    SELECTED ->
-      lwt current_folder = (* FIXME *)
-        match s.current_folder with
-        | Some f -> Lwt.return f
-        | None -> assert_lwt false
-      in
-      if String.lowercase current_folder <> String.lowercase folder then
+    SELECTED (_, si)->
+      if String.lowercase si.current_folder <> String.lowercase folder then
         select s folder
       else
         Lwt.return ()
-  | LOGGEDIN ->
+  | LOGGEDIN _ ->
       select s folder
   | _ ->
       Lwt.return () (* FIXME assert_lwt false *)
 
 let folder_status s folder =
-  lwt () = login_if_needed s in
   let status_att_list : status_att list =
     STATUS_ATT_UNSEEN :: STATUS_ATT_MESSAGES :: STATUS_ATT_RECENT ::
-    STATUS_ATT_UIDNEXT :: STATUS_ATT_UIDVALIDITY ::
-    (if s.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: [] else [])
+    STATUS_ATT_UIDNEXT :: STATUS_ATT_UIDVALIDITY :: []
   in
-  try_lwt
-    lwt status = run s (ImapCommands.status folder status_att_list) in
-    let fs = {unseen_count = 0;
-              message_count = 0;
-              recent_count = 0;
-              uid_next = Uint32.zero;
-              uid_validity = Uint32.zero;
-              highest_mod_seq_value = Uint64.zero}
-    in
-    let rec loop fs = function
-        [] ->
-          fs
-      | STATUS_ATT_MESSAGES message_count :: rest ->
-          loop {fs with message_count} rest
-      | STATUS_ATT_RECENT recent_count :: rest ->
-          loop {fs with recent_count} rest
-      | STATUS_ATT_UIDNEXT uid_next :: rest ->
-          loop {fs with uid_next} rest
-      | STATUS_ATT_UIDVALIDITY uid_validity :: rest ->
-          loop {fs with uid_validity} rest
-      | STATUS_ATT_UNSEEN unseen_count :: rest ->
-          loop {fs with unseen_count} rest
-      | STATUS_ATT_HIGHESTMODSEQ highest_mod_seq_value :: rest ->
-          loop {fs with highest_mod_seq_value} rest
-      | _ :: rest ->
-          loop fs rest
-    in
-    Lwt.return (loop fs status.st_info_list)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "status error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          Lwt.fail (Error NonExistantFolder)
+  let rec loop fs = function
+      [] ->
+        fs
+    | STATUS_ATT_MESSAGES message_count :: rest ->
+        loop {fs with message_count} rest
+    | STATUS_ATT_RECENT recent_count :: rest ->
+        loop {fs with recent_count} rest
+    | STATUS_ATT_UIDNEXT uid_next :: rest ->
+        loop {fs with uid_next} rest
+    | STATUS_ATT_UIDVALIDITY uid_validity :: rest ->
+        loop {fs with uid_validity} rest
+    | STATUS_ATT_UNSEEN unseen_count :: rest ->
+        loop {fs with unseen_count} rest
+    | STATUS_ATT_HIGHESTMODSEQ highest_mod_seq_value :: rest ->
+        loop {fs with highest_mod_seq_value} rest
+    | _ :: rest ->
+        loop fs rest
+  in
+  lwt () = login_if_needed s in
+  match s.state with
+    LOGGEDIN ci
+  | SELECTED (ci, _) ->
+      let status_att_list : status_att list =
+        if ci.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: status_att_list else status_att_list
+      in
+      lwt status =
+        try_lwt
+          run ci (ImapCommands.status folder status_att_list)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "status error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                Lwt.fail (Error NonExistantFolder)
+      in
+      let fs =
+        {unseen_count = 0;
+         message_count = 0;
+         recent_count = 0;
+         uid_next = Uint32.zero;
+         uid_validity = Uint32.zero;
+         highest_mod_seq_value = Uint64.zero}
+      in
+      Lwt.return (loop fs status.st_info_list)
+  | _ ->
+      assert_lwt false
 
 let rename_folder s folder other_name =
   lwt () = select_if_needed s "INBOX" in
-  try_lwt
-    run s (ImapCommands.rename folder other_name)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "rename error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          Lwt.fail (Error Rename)
+  match s.state with
+    SELECTED (ci, _) ->
+      lwt () =
+        try_lwt
+          run ci (ImapCommands.rename folder other_name)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "rename error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                Lwt.fail (Error Rename)
+      in
+      Lwt.return_unit
+  | _ ->
+      assert_lwt false
 
 let delete_folder s ~folder =
-
   lwt () = select_if_needed s "INBOX" in
-
-  try_lwt
-
-    run s (ImapCommands.delete folder)
-
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "delete error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          Lwt.fail (Error Delete)
+  match s.state with
+    SELECTED (ci, _) ->
+      lwt () =
+        try_lwt
+          run ci (ImapCommands.delete folder)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "delete error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                Lwt.fail (Error Delete)
+      in
+      Lwt.return_unit
+  | _ ->
+      assert_lwt false
 
 let create_folder s ~folder =
-
   lwt () = select_if_needed s "INBOX" in
-
-  try_lwt
-
-    run s (ImapCommands.create folder)
-
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "create error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          Lwt.fail (Error Create)
+  match s.state with
+    SELECTED (ci, _) ->
+      lwt () =
+        try_lwt
+          run ci (ImapCommands.create folder)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "create error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                Lwt.fail (Error Create)
+      in
+      Lwt.return_unit
+  | _ ->
+      assert_lwt false
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function
@@ -597,11 +609,7 @@ let header_from_imap env =
   assert false
 
 let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
-  
-  lwt () = select_if_needed s folder in
-  
-  (* let needs_body = ref false in *)
-  
+  (* let needs_body = ref false in *)  
   let fetch_atts, headers =
     let rec loop acc headers = function
         [] ->
@@ -636,9 +644,7 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     in
     loop [] [] request_kind
   in
-  
   let needs_headers = List.length headers > 0 in
-  
   let fetch_atts =
     if needs_headers then
       FETCH_ATT_BODY_PEEK_SECTION
@@ -646,7 +652,6 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     else
       fetch_atts
   in
-
   let rec loop msg = function
       [] ->
         msg
@@ -685,28 +690,28 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     | _ :: rest -> (* FIXME *)
         loop msg rest
   in
-  
   let msg =
     loop {uid = Uint32.zero; size = 0; mod_seq_value = Uint64.zero;
           gmail_labels = []; gmail_message_id = Uint64.zero; gmail_thread_id = Uint64.zero;
           flags = []; internal_date = 0.0}
   in
-
   let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
-  
-  if fetch_by_uid then
-    lwt result = run s (ImapCommands.uid_fetch imapset fetch_type) in
-    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
-  else
-    lwt result = run s (ImapCommands.fetch imapset fetch_type) in
-    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
+  lwt () = select_if_needed s folder in
+  match s.state with
+    SELECTED (ci, _) ->
+      if fetch_by_uid then
+        lwt result = run ci (ImapCommands.uid_fetch imapset fetch_type) in
+        Lwt.return (List.map (fun (atts, _) -> msg atts) result)
+      else
+        lwt result = run ci (ImapCommands.fetch imapset fetch_type) in
+        Lwt.return (List.map (fun (atts, _) -> msg atts) result)
+  | _ ->
+      assert_lwt false
 
 let fetch_message_by_uid s folder uid =
-  lwt () = select_if_needed s folder in
-  try_lwt
-    let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
-    match_lwt run s (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type) with
-    | (result, _) :: [] ->
+  let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
+  let extract_body = function
+      (result, _) :: [] ->
         let rec loop = function
             [] ->
               assert false
@@ -715,61 +720,70 @@ let fetch_message_by_uid s folder uid =
           | _ :: rest ->
               loop rest
         in
-        Lwt.return (loop result)
+        loop result
     | _ ->
-        assert_lwt false
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "fetch error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      | _ ->
-          Lwt.fail (Error Fetch)
+        assert false
+  in
+  lwt () = select_if_needed s folder in
+  match s.state with
+    SELECTED (ci, _) ->
+      lwt result =
+        try_lwt
+          lwt result = run ci (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type) in
+          Lwt.return (extract_body result)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "fetch error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            | _ ->
+                Lwt.fail (Error Fetch)
+      in
+      Lwt.return result
+  | _ ->
+      assert_lwt false
 
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
-  
-  lwt () = select_if_needed s folder in
-
   let result = Hashtbl.create 0 in
-
   let imap_set = ImapSet.interval from_uid to_uid in
-
   let fetch_type = FETCH_TYPE_FETCH_ATT FETCH_ATT_UID in
-
-  try_lwt
-    
-    lwt fetch_result = run s (ImapCommands.uid_fetch imap_set fetch_type) in
-
-    let rec loop = function
-        [] ->
-          ()
-      | (att_item, att_number) :: rest ->
-          let rec loop1 = function
-              [] ->
-                loop rest
-            | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: _ ->
-                if Uint32.compare uid from_uid >= 0 then
-                  Hashtbl.add result att_number uid;
-                loop rest
-            | _ :: rest ->
-                loop1 rest
-          in
-          loop1 att_item
-    in
-    loop fetch_result;
-
-    Lwt.return result
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "fetch error" in
-      match exn with
-        ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
-      (* | StreamError -> *)
-      (* Lwt.fail (Error Connection) *)
-      | _ ->
-          Lwt.fail (Error Fetch)
+  let rec extract_uid = function
+      [] ->
+        ()
+    | (att_item, att_number) :: rest ->
+        let rec loop = function
+            [] ->
+              extract_uid rest
+          | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: _ ->
+              if Uint32.compare uid from_uid >= 0 then Hashtbl.add result att_number uid;
+              extract_uid rest
+          | _ :: rest ->
+              loop rest
+        in
+        loop att_item
+  in
+  lwt () = select_if_needed s folder in
+  match s.state with
+    SELECTED (ci, _) ->
+      lwt fetch_result =
+        try_lwt
+          run ci (ImapCommands.uid_fetch imap_set fetch_type)
+        with
+          exn ->
+            lwt () = Lwt_log.debug ~exn "fetch error" in
+            match exn with
+              ErrorP (ParseError _) ->
+                Lwt.fail (Error Parse)
+            (* | StreamError -> *)
+            (* Lwt.fail (Error Connection) *)
+            | _ ->
+                Lwt.fail (Error Fetch)
+      in
+      extract_uid fetch_result;
+      Lwt.return result
+  | _ ->
+      assert_lwt false
   
 let capability s =
   try_lwt
