@@ -224,7 +224,7 @@ let fetch_aux cmd set changedsince attrs =
       | Some modseq ->
           char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')'
     in
-    raw cmd >> char ' ' >> message_set set >> char ' ' >> list fetch_att attrs >> changedsince
+    raw cmd >> char ' ' >> message_set set >> char ' ' >> fetch_type attrs >> changedsince
   in
   let cmd_handler s = s.rsp_info.rsp_fetch_list in
   ImapCore.std_command cmd >> gets cmd_handler

@@ -201,7 +201,14 @@ let fetch_att =
   | FETCH_ATT_FLAGS -> raw "FLAGS"
   | FETCH_ATT_EXTENSION s -> raw s
   (* | `X_GM_MSGID -> raw "X-GM-MSGID" *)
-  (* | `X_GM_THRID -> raw "X-GM-THRID" *)
+(* | `X_GM_THRID -> raw "X-GM-THRID" *)
+
+let fetch_type = function
+    FETCH_TYPE_ALL -> send "ALL"
+  | FETCH_TYPE_FULL -> send "FULL"
+  | FETCH_TYPE_FAST -> send "FAST"
+  | FETCH_TYPE_FETCH_ATT att -> fetch_att att
+  | FETCH_TYPE_FETCH_ATT_LIST attl -> list fetch_att attl
 
 let day_month_year (dd, mmm, yyyy) =
   let month_names =

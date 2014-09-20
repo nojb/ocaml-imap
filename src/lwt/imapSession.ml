@@ -648,19 +648,21 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
           gmail_labels = []; gmail_message_id = Uint64.zero; gmail_thread_id = Uint64.zero;
           flags = []; internal_date = 0.0}
   in
+
+  let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
   
   if fetch_by_uid then
-    lwt result = run s (ImapCommands.uid_fetch imapset fetch_atts) in
+    lwt result = run s (ImapCommands.uid_fetch imapset fetch_type) in
     Lwt.return (List.map (fun (atts, _) -> msg atts) result)
   else
-    lwt result = run s (ImapCommands.fetch imapset fetch_atts) in
+    lwt result = run s (ImapCommands.fetch imapset fetch_type) in
     Lwt.return (List.map (fun (atts, _) -> msg atts) result)
 
 let fetch_message_by_uid s folder uid =
   lwt () = select_if_needed s folder in
   try_lwt
-    let fetch_att = FETCH_ATT_BODY_PEEK_SECTION (None, None) in
-    match_lwt run s (ImapCommands.uid_fetch (ImapSet.single uid) [fetch_att]) with
+    let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
+    match_lwt run s (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type) with
     | (result, _) :: [] ->
         let rec loop = function
             [] ->
@@ -679,6 +681,47 @@ let fetch_message_by_uid s folder uid =
   | _ ->
       Lwt.fail (Error Fetch)
 
+let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
+  
+  lwt () = select_if_needed s folder in
+
+  let result = Hashtbl.create 0 in
+
+  let imap_set = ImapSet.interval from_uid to_uid in
+
+  let fetch_type = FETCH_TYPE_FETCH_ATT FETCH_ATT_UID in
+
+  try_lwt
+    
+    lwt fetch_result = run s (ImapCommands.uid_fetch imap_set fetch_type) in
+
+    let rec loop = function
+        [] ->
+          ()
+      | (att_item, att_number) :: rest ->
+          let rec loop1 = function
+              [] ->
+                loop rest
+            | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: _ ->
+                if Uint32.compare uid from_uid >= 0 then
+                  Hashtbl.add result att_number uid;
+                loop rest
+            | _ :: rest ->
+                loop1 rest
+          in
+          loop1 att_item
+    in
+    loop fetch_result;
+
+    Lwt.return result
+  with
+  | ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  (* | StreamError -> *)
+      (* Lwt.fail (Error Connection) *)
+  | _ ->
+      Lwt.fail (Error Fetch)
+  
 let capability s =
   try_lwt
     lwt caps = run s ImapCommands.capability in

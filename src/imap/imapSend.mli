@@ -85,6 +85,8 @@ val flag : flag -> t
 val fetch_att : fetch_att -> t
 (** Sends an IMAP fetch attribute. *)
 
+val fetch_type : fetch_type -> t
+
 val search_key_need_to_send_charset : search_key -> bool
 
 val search_key : search_key -> t
