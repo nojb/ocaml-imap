@@ -469,7 +469,7 @@ let select_if_needed s folder =
   | _ ->
       assert_lwt false
 
-let folder_status s folder =
+let folder_status s ~folder =
   let status_att_list : status_att list =
     STATUS_ATT_UNSEEN :: STATUS_ATT_MESSAGES :: STATUS_ATT_RECENT ::
     STATUS_ATT_UIDNEXT :: STATUS_ATT_UIDVALIDITY :: []
@@ -954,8 +954,9 @@ let capability s =
   Lwt.return (loop [] caps)
 
 let enable_feature s feature =
+  lwt ci = connect_if_needed s in
   try_lwt
-    lwt _ = run s (ImapEnable.enable [CAPABILITY_NAME feature]) in
+    lwt _ = run ci (ImapEnable.enable [CAPABILITY_NAME feature]) in
     Lwt.return true
   with
   | _ -> Lwt.return false
@@ -965,18 +966,18 @@ let uid_next s =
     SELECTED (_, si) ->
       si.uid_next
   | _ ->
-      assert false
+      invalid_arg "uid_next"
 
 let uid_validity s =
   match s.state with
     SELECTED (_, si) ->
       si.uid_validity
   | _ ->
-      assert false
+      invalid_arg "uid_validity"
 
 let mod_sequence_value s =
   match s.state with
     SELECTED (_, si) ->
       si.mod_sequence_value
   | _ ->
-      assert false
+      invalid_arg "mod_sequence_value"
