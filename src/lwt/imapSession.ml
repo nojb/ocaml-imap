@@ -564,6 +564,19 @@ let create_folder s ~folder =
       | _ ->
           raise_lwt (Error Create)
 
+let expunge s ~folder =
+  lwt ci, _ = select_if_needed s folder in
+  try_lwt
+    run ci ImapCommands.expunge
+  with
+    StreamError ->
+      lwt () = disconnect s in
+      raise_lwt (Error Connection)
+  | ErrorP (ParseError _) ->
+      raise_lwt (Error Parse)
+  | _ ->
+      raise_lwt (Error Expunge)
+
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function
       [] ->
