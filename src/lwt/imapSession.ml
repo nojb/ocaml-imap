@@ -510,6 +510,34 @@ let rename_folder s folder other_name =
   | _ ->
       Lwt.fail (Error Rename)
 
+let delete_folder s ~folder =
+
+  lwt () = select_if_needed s "INBOX" in
+
+  try_lwt
+
+    run s (ImapCommands.delete folder)
+
+  with
+    ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  | _ ->
+      Lwt.fail (Error Delete)
+
+let create_folder s ~folder =
+
+  lwt () = select_if_needed s "INBOX" in
+
+  try_lwt
+
+    run s (ImapCommands.create folder)
+
+  with
+    ErrorP ParseError ->
+      Lwt.fail (Error Parse)
+  | _ ->
+      Lwt.fail (Error Create)
+
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function
       [] ->
