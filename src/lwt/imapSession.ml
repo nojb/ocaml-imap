@@ -661,13 +661,16 @@ let copy_messages s ~folder ~uids ~dest =
     try_lwt
       run ci (ImapUidplus.uidplus_uid_copy uids dest)
     with
-      StreamError ->
-        lwt () = disconnect s in
-        raise_lwt (Error Connection)
-    | ErrorP (ParseError _) ->
-        raise_lwt (Error Parse)
-    | _ ->
-        raise_lwt (Error Copy)
+      exn ->
+        lwt () = Lwt_log.debug ~exn "copy error" in
+        match exn with
+          StreamError ->
+            lwt () = disconnect s in
+            raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
+            raise_lwt (Error Parse)
+        | _ ->
+            raise_lwt (Error Copy)
   in
   let h = Hashtbl.create 0 in
   ImapSet.iter2 (Hashtbl.add h) src_uid dst_uid;
@@ -678,13 +681,16 @@ let expunge s ~folder =
   try_lwt
     run ci ImapCommands.expunge
   with
-    StreamError ->
-      lwt () = disconnect s in
-      raise_lwt (Error Connection)
-  | ErrorP (ParseError _) ->
-      raise_lwt (Error Parse)
-  | _ ->
-      raise_lwt (Error Expunge)
+    exn ->
+      lwt () = Lwt_log.debug ~exn "expunge error" in
+      match exn with
+        StreamError ->
+          lwt () = disconnect s in
+          raise_lwt (Error Connection)
+      | ErrorP (ParseError _) ->
+          raise_lwt (Error Parse)
+      | _ ->
+          raise_lwt (Error Expunge)
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function

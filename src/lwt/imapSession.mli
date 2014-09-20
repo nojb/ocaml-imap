@@ -273,12 +273,6 @@ val fetch_message_by_uid :
   uid:Uint32.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
   
-val fetch_number_uid_mapping :
-  session ->
-  folder:string ->
-  from_uid:Uint32.t ->
-  to_uid:Uint32.t -> (Uint32.t, Uint32.t) Hashtbl.t Lwt.t
-
 val add_labels :
   session ->
   folder:string ->
@@ -304,11 +298,12 @@ val capability :
   session -> capability list Lwt.t
     (** Requests capabilities of the server. *)
     
-val enable_feature :
-  session -> string -> bool Lwt.t
-
 val uid_next : session -> Uint32.t
+    (** The UIDNext value of the currently selected folder.  Raises
+        [Invalid_argument "uid_next"] if no folder is currently selected. *)
 
 val uid_validity : session -> Uint32.t
+    (** The UIDValidity value of the currently selected folder.  Raises
+        [Invalid_argument "uid_validity"] if no folder is currently selected. *)
 
 val mod_sequence_value : session -> Uint64.t
