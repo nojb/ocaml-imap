@@ -78,11 +78,15 @@ let operations_count s =
 
 exception ErrorP of error
 
+exception StreamError
+
 let _ =
   Printexc.register_printer
     (function
       | ErrorP err ->
           Some (ImapCore.string_of_error err)
+      | StreamError ->
+          Some "input/output error"
       | _ ->
           None)
 
@@ -91,13 +95,13 @@ let fully_write sock buf pos len =
     if len <= 0 then
       Lwt.return ()
     else
-      lwt n = Lwt_ssl.write sock buf pos len in
+      lwt n = try_lwt Lwt_ssl.write sock buf pos len with _ -> raise_lwt StreamError in
       loop (pos + n) (len - n)
   in
   loop pos len
 
 let read sock buf pos len =
-  Lwt_ssl.read sock buf pos len
+  try_lwt Lwt_ssl.read sock buf pos len with _ -> raise_lwt StreamError
 
 let run s c =
   let open ImapControl in
@@ -108,7 +112,7 @@ let run s c =
         Lwt.return x
     | Fail (err, st) ->
         s.imap_state <- st;
-        Lwt.fail (ErrorP err)
+        raise_lwt (ErrorP err)
     | Flush (str, k) ->
         lwt () = Lwt_log.debug_f ">>>>\n%s>>>>\n" str in
         lwt () = fully_write s.sock str 0 (String.length str) in
@@ -351,7 +355,7 @@ let connect ?(ssl_method = Ssl.TLSv1) s =
     s.state <- CONNECTED ci;
     Lwt.return ci
   with
-    _ -> Lwt.fail (Error Connection)
+    _ -> raise_lwt (Error Connection)
 
 let disconnect s =
   match s.state with
@@ -383,8 +387,8 @@ let login s =
           exn ->
             lwt () = Lwt_log.debug ~exn "login error" in
             match exn with
-              ErrorP (ParseError _) -> Lwt.fail (Error Parse)
-            | _ -> Lwt.fail (Error Authentication)
+              ErrorP (ParseError _) -> raise_lwt (Error Parse)
+            | _ -> raise_lwt (Error Authentication)
       in
       s.state <- LOGGEDIN ci;
       Lwt.return ci
@@ -424,10 +428,10 @@ let select s folder =
             lwt () = Lwt_log.debug ~exn "select error" in
             match exn with
               ErrorP (ParseError _) ->
-                Lwt.fail (Error Parse)
+                raise_lwt (Error Parse)
             | _ ->
                 s.state <- LOGGEDIN ci;
-                Lwt.fail (Error NonExistantFolder)
+                raise_lwt (Error NonExistantFolder)
       in
       let st = ci.imap_state in
       let si =
@@ -491,9 +495,9 @@ let folder_status s folder =
         lwt () = Lwt_log.debug ~exn "status error" in
         match exn with
           ErrorP (ParseError _) ->
-            Lwt.fail (Error Parse)
+            raise_lwt (Error Parse)
         | _ ->
-            Lwt.fail (Error NonExistantFolder)
+            raise_lwt (Error NonExistantFolder)
   in
   let fs =
     {unseen_count = 0;
@@ -514,9 +518,9 @@ let rename_folder s folder other_name =
       lwt () = Lwt_log.debug ~exn "rename error" in
       match exn with
         ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
+          raise_lwt (Error Parse)
       | _ ->
-          Lwt.fail (Error Rename)
+          raise_lwt (Error Rename)
   
 let delete_folder s ~folder =
   lwt ci, _ = select_if_needed s "INBOX" in
@@ -527,9 +531,9 @@ let delete_folder s ~folder =
       lwt () = Lwt_log.debug ~exn "delete error" in
       match exn with
         ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
+          raise_lwt (Error Parse)
       | _ ->
-          Lwt.fail (Error Delete)
+          raise_lwt (Error Delete)
   
 let create_folder s ~folder =
   lwt ci, _ = select_if_needed s "INBOX" in
@@ -540,9 +544,9 @@ let create_folder s ~folder =
       lwt () = Lwt_log.debug ~exn "create error" in
       match exn with
         ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
+          raise_lwt (Error Parse)
       | _ ->
-          Lwt.fail (Error Create)
+          raise_lwt (Error Create)
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop acc = function
@@ -708,9 +712,9 @@ let fetch_message_by_uid s folder uid =
       lwt () = Lwt_log.debug ~exn "fetch error" in
       match exn with
         ErrorP (ParseError _) ->
-          Lwt.fail (Error Parse)
+          raise_lwt (Error Parse)
       | _ ->
-          Lwt.fail (Error Fetch)
+          raise_lwt (Error Fetch)
   
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   let result = Hashtbl.create 0 in
@@ -740,52 +744,82 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
         lwt () = Lwt_log.debug ~exn "fetch error" in
         match exn with
           ErrorP (ParseError _) ->
-            Lwt.fail (Error Parse)
+            raise_lwt (Error Parse)
         (* | StreamError -> *)
-        (* Lwt.fail (Error Connection) *)
+        (* raise_lwt (Error Connection) *)
         | _ ->
-            Lwt.fail (Error Fetch)
+            raise_lwt (Error Fetch)
   in
   extract_uid fetch_result;
   Lwt.return result
-  
-let capability s =
+
+let store_labels s ~folder ~uids ~kind ~labels =
+  let fl_sign =
+    match kind with
+      Add -> STORE_ATT_FLAGS_ADD
+    | Remove -> STORE_ATT_FLAGS_REMOVE
+    | Set -> STORE_ATT_FLAGS_SET
+  in
+  lwt ci, _ = select_if_needed s folder in
   try_lwt
-    lwt caps = run s ImapCommands.capability in
-    let rec loop acc = function
-        [] ->
-          List.rev acc
-      | CAPABILITY_NAME name :: rest ->
-          begin
-            match String.uppercase name with
-              "STARTTLS"         -> loop (StartTLS :: acc) rest
-            | "ID"               -> loop (Id :: acc) rest
-            | "XLIST"            -> loop (XList :: acc) rest
-            | "X-GM-EXT-1"       -> loop (Gmail :: acc) rest
-            | "IDLE"             -> loop (Idle :: acc) rest
-            | "CONDSTORE"        -> loop (Condstore :: acc) rest
-            | "QRESYNC"          -> loop (QResync :: acc) rest
-            | "XOAUTH2"          -> loop (XOAuth2 :: acc) rest
-            | "COMPRESS=DEFLATE" -> loop (CompressDeflate :: acc) rest
-            | "NAMESPACE"        -> loop (Namespace :: acc) rest
-            | "CHILDREN"         -> loop (Children :: acc) rest
-            | _                  -> loop acc rest
-          end
-      | CAPABILITY_AUTH_TYPE name :: rest ->
-          begin
-            match String.uppercase name with
-              "PLAIN" -> loop (Auth Plain :: acc) rest
-            | "LOGIN" -> loop (Auth Login :: acc) rest
-            | _ -> loop acc rest
-          end
-    in
-    Lwt.return (loop [] caps)
+    run ci (ImapXgmlabels.uid_store_xgmlabels uids fl_sign true labels)
   with
+  (* Stream -> disconnect ...*)
     exn ->
-      lwt () = Lwt_log.debug ~exn "capability error" in
+      lwt () = Lwt_log.debug ~exn "store_labels error" in
       match exn with
-        ErrorP (ParseError _) -> Lwt.fail (Error Parse)
-      | _ -> Lwt.fail (Error Capability)
+        ErrorP (ParseError _) -> raise_lwt (Error Parse)
+      | _ -> raise_lwt (Error Store)
+
+let add_labels s ~folder ~uids ~labels =
+  store_labels s ~folder ~uids ~kind:Add ~labels
+
+let remove_labels s ~folder ~uids ~labels =
+  store_labels s ~folder ~uids ~kind:Remove ~labels
+
+let set_labels s ~folder ~uids ~labels =
+  store_labels s ~folder ~uids ~kind:Set ~labels
+
+let capability s =
+  lwt ci = connect_if_needed s in
+  lwt caps =
+    try_lwt
+      run ci ImapCommands.capability
+    with
+      exn ->
+        lwt () = Lwt_log.debug ~exn "capability error" in
+        match exn with
+          ErrorP (ParseError _) -> raise_lwt (Error Parse)
+        | _ -> raise_lwt (Error Capability)
+  in
+  let rec loop acc = function
+      [] ->
+        List.rev acc
+    | CAPABILITY_NAME name :: rest ->
+        begin
+          match String.uppercase name with
+            "STARTTLS"         -> loop (StartTLS :: acc) rest
+          | "ID"               -> loop (Id :: acc) rest
+          | "XLIST"            -> loop (XList :: acc) rest
+          | "X-GM-EXT-1"       -> loop (Gmail :: acc) rest
+          | "IDLE"             -> loop (Idle :: acc) rest
+          | "CONDSTORE"        -> loop (Condstore :: acc) rest
+          | "QRESYNC"          -> loop (QResync :: acc) rest
+          | "XOAUTH2"          -> loop (XOAuth2 :: acc) rest
+          | "COMPRESS=DEFLATE" -> loop (CompressDeflate :: acc) rest
+          | "NAMESPACE"        -> loop (Namespace :: acc) rest
+          | "CHILDREN"         -> loop (Children :: acc) rest
+          | _                  -> loop acc rest
+        end
+    | CAPABILITY_AUTH_TYPE name :: rest ->
+        begin
+          match String.uppercase name with
+            "PLAIN" -> loop (Auth Plain :: acc) rest
+          | "LOGIN" -> loop (Auth Login :: acc) rest
+          | _ -> loop acc rest
+        end
+  in
+  Lwt.return (loop [] caps)
 
 let enable_feature s feature =
   try_lwt
@@ -794,11 +828,23 @@ let enable_feature s feature =
   with
   | _ -> Lwt.return false
 
-(* let uid_next s = *)
-(*   s.uid_next *)
+let uid_next s =
+  match s.state with
+    SELECTED (_, si) ->
+      si.uid_next
+  | _ ->
+      assert false
 
-(* let uid_validity s = *)
-(*   s.uid_validity *)
+let uid_validity s =
+  match s.state with
+    SELECTED (_, si) ->
+      si.uid_validity
+  | _ ->
+      assert false
 
-(* let mod_sequence_value s = *)
-(*   s.mod_sequence_value *)
+let mod_sequence_value s =
+  match s.state with
+    SELECTED (_, si) ->
+      si.mod_sequence_value
+  | _ ->
+      assert false
