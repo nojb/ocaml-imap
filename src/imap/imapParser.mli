@@ -24,8 +24,9 @@
 
 open ImapTypes
   
-type 'a t =
-  'a parser
+type 'a t
+
+val run : 'a t -> Buffer.t -> int -> 'a parse_result
 
 val bind : 'a t -> ('a -> 'b t) -> 'b t
 val alt : 'a t -> 'a t -> 'a t
@@ -72,7 +73,7 @@ val sequence_set : ImapSet.t t
 val capability : capability t
 
 type extension_parser =
-  { parse : 'a. 'a extension_kind -> 'a parser }
+  { parse : 'a. 'a extension_kind -> 'a t }
 
 val register_parser : extension_parser -> unit
 

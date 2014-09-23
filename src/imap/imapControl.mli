@@ -36,7 +36,7 @@ val bind : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> (
 
 val fail : 'err -> (_, _, 'err) control
 
-val liftP : 'a parser -> ('a, state, error) control
+val liftP : 'a ImapParser.t -> ('a, state, error) control
 
 val send : string -> (unit, state, _) control
 

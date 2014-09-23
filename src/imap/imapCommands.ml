@@ -116,7 +116,7 @@ module Condstore = struct
   permsg-modsequence  = mod-sequence-value
                             ;; per message mod-sequence
   *)
-  let condstore_parse : type a. a extension_kind -> a parser = fun kind ->
+  let condstore_parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
     let mod_sequence_value =
       accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
@@ -489,7 +489,7 @@ module Enable = struct
 response-data =/ "*" SP enable-data CRLF
 enable-data   = "ENABLED" *(SP capability)
 *)
-  let enable_parser : type a. a extension_kind -> a parser =
+  let enable_parser : type a. a extension_kind -> a ImapParser.t =
     let open ImapParser in
     function
       RESPONSE_DATA ->
@@ -579,7 +579,7 @@ module Id = struct
       [] -> nil
     | xs -> list param_sender params
 
-  let id_parser : type a. a extension_kind -> a parser = fun kind ->
+  let id_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
     let id_params =
       astring >>= fun k ->

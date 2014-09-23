@@ -64,7 +64,7 @@ let uidplus_printer : type a. a extension_kind -> a -> _ option =
   | _ ->
       function _ -> None
 
-let uidplus_parser : type a. a extension_kind -> a parser = fun kind ->
+let uidplus_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
   let open ImapParser in
   let uid_range =
     uniqueid >>= fun x ->

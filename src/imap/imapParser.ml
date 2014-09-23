@@ -23,7 +23,9 @@
 open ImapTypes
   
 type 'a t =
-  'a parser
+    Buffer.t -> int -> 'a parse_result
+
+let run p b i = p b i
 
 let bind p f b i =
   let rec loop =
@@ -149,7 +151,7 @@ let crlf =
   str "\r\n" >> ret ()
 
 type extension_parser =
-  { parse : 'a. 'a extension_kind -> 'a parser }
+  { parse : 'a. 'a extension_kind -> 'a t }
 
 let extension_list = ref []
 
@@ -317,10 +319,10 @@ let test p s =
 
 (** IMAP PARSER *)
 
-let extension_parser : type a. a extension_kind -> a parser = fun kind ->
+let extension_parser : type a. a extension_kind -> a t = fun kind ->
   List.fold_right (fun p q -> alt (p.parse kind) q) !extension_list fail
 
-let extension_parser : type a. a extension_kind -> a parser = fun kind ->
+let extension_parser : type a. a extension_kind -> a t = fun kind ->
   delay extension_parser kind
     
 (*

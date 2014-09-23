@@ -41,7 +41,7 @@ let xgmmsgid_printer : type a. a extension_kind -> a -> _ option =
   | _ ->
       function _ -> None
 
-let xgmmsgid_parser : type a. a extension_kind -> a parser = fun kind ->
+let xgmmsgid_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
   let open ImapParser in
   match kind with
     FETCH_DATA ->

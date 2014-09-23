@@ -645,5 +645,3 @@ type 'a parse_result =
   | Fail of int
   | Need of (input -> 'a parse_result)
 
-type 'a parser =
-  Buffer.t -> int -> 'a parse_result

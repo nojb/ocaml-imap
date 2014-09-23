@@ -64,7 +64,7 @@ let liftP p st =
     | ImapTypes.Need k ->
         Need (fun inp -> loop (k inp))
   in
-  loop (p st.in_buf st.in_pos)
+  loop (ImapParser.run p st.in_buf st.in_pos)
       
 let send s st =
   Ok ((), {st with out_buf = s :: st.out_buf})
