@@ -847,3 +847,78 @@ module Xgmlabels = struct
     ImapPrint.(register_printer {print = xgmlabels_printer});
     ImapParser.(register_parser {parse = xgmlabels_parser})
 end
+
+module Namespace = struct
+  type namespace_extension =
+    string * string list
+  type namespace_info =
+    { ns_prefix : string;
+      ns_delimiter : char option;
+      ns_extensions : namespace_extension list }
+  type namespace_item =
+    namespace_info list
+  type namespace_data =
+    { ns_personal : namespace_item;
+      ns_other : namespace_item;
+      ns_shared : namespace_item }
+  type response_data_extension +=
+       NAMESPACE of namespace_data
+
+(*
+Namespace_Response_Extension = SP string SP "(" string *(SP string) ")"
+*)
+  
+(*
+Namespace = nil / "(" 1*( "(" string SP  (<"> QUOTED_CHAR <"> /
+      nil) *(Namespace_Response_Extension) ")" ) ")"
+*)
+
+(*
+Namespace_Response = "*" SP "NAMESPACE" SP Namespace SP Namespace SP
+      Namespace
+
+      ; The first Namespace is the Personal Namespace(s)
+      ; The second Namespace is the Other Users' Namespace(s)
+      ; The third Namespace is the Shared Namespace(s)
+*)
+
+  let parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    let namespace_extension =
+      char ' ' >> imap_string >>= fun k -> char ' ' >> char '(' >>
+      sep1 (char ' ') imap_string >>= fun vs -> char ')' >>
+      ret (k, vs)
+    in
+    let namespace_item =
+      char '(' >>
+      rep1 (char '(' >> imap_string >>= fun ns_prefix ->
+            char ' ' >> alt (some quoted_char) (nil >> ret None) >>= fun ns_delimiter ->
+            rep namespace_extension >>= fun ns_extensions ->
+            char ')' >>
+            ret {ns_prefix; ns_delimiter; ns_extensions}) >>= fun r ->
+      char ')' >>
+      ret r
+    in
+    match kind with
+      RESPONSE_DATA ->
+        str "NAMESPACE" >>
+        char ' ' >> namespace_item >>= fun ns_personal ->
+        char ' ' >> namespace_item >>= fun ns_other ->
+        char ' ' >> namespace_item >>= fun ns_shared ->
+        ret (NAMESPACE {ns_personal; ns_other; ns_shared})
+    | _ ->
+        fail
+  let extract st =
+    let rec loop = function
+        [] ->
+          fail ExtensionError
+      | EXTENSION_DATA (RESPONSE_DATA, NAMESPACE ns) :: _ ->
+          ret ns
+      | _ :: rest ->
+          loop rest
+    in
+    loop st.rsp_info.rsp_extension_list
+  let namespace = std_command (send "NAMESPACE") >> get >>= extract
+  let _ =
+    ImapParser.(register_parser {parse})
+end

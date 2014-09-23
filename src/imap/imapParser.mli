@@ -48,6 +48,7 @@ val char : char -> char t
 val str : string -> string t (* case-insensitive *)
 val accum : (char -> bool) -> string t
 val crlf : unit t
+val quoted_char : char t
 val number : Uint32.t t
 val number' : int t
 val literal : string t

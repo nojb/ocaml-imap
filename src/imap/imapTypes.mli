@@ -635,6 +635,7 @@ type error =
   | Bye
   | ParseError of string * int
   | Auth_error
+  | ExtensionError
 
 type input =
     End

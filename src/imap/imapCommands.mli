@@ -179,3 +179,19 @@ module Xgmlabels : sig
 
   val store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command
 end
+
+module Namespace : sig
+  type namespace_extension =
+    string * string list
+  type namespace_info =
+    { ns_prefix : string;
+      ns_delimiter : char option;
+      ns_extensions : namespace_extension list }
+  type namespace_item =
+    namespace_info list
+  type namespace_data =
+    { ns_personal : namespace_item;
+      ns_other : namespace_item;
+      ns_shared : namespace_item }
+  val namespace : namespace_data command
+end

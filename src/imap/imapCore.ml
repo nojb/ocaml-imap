@@ -30,6 +30,7 @@ let string_of_error = function
   | Bye -> "server terminated the connection"
   | ParseError (context, i) -> Printf.sprintf "parser error near char %i of (...) %S (...)" i context
   | Auth_error -> "authentication error"
+  | ExtensionError -> "extension error"
 
 type 'a command = ('a, state, error) control
 
