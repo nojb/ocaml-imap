@@ -228,33 +228,30 @@ type fetch_type =
 
 (** {MIME} *)
 
-type address = {
-  ad_personal_name : string;
-  ad_source_route : string;
-  ad_mailbox_name : string;
-  ad_host_name : string
-}
+type address =
+  { ad_personal_name : string;
+    ad_source_route : string;
+    ad_mailbox_name : string;
+    ad_host_name : string }
 
-type envelope = {
-  env_date : string;
-  env_subject : string;
-  env_from : address list;
-  env_sender : address list;
-  env_reply_to : address list;
-  env_to : address list;
-  env_cc : address list;
-  env_bcc : address list;
-  env_in_reply_to : string;
-  env_message_id : string
-}
+type envelope =
+  { env_date : string;
+    env_subject : string;
+    env_from : address list;
+    env_sender : address list;
+    env_reply_to : address list;
+    env_to : address list;
+    env_cc : address list;
+    env_bcc : address list;
+    env_in_reply_to : string;
+    env_message_id : string }
 
 type body_fld_param =
   (string * string) list
 
-type body_fld_dsp = {
-  dsp_type : string;
-  dsp_attributes : body_fld_param
-}
+type body_fld_dsp =
+  { dsp_type : string;
+    dsp_attributes : body_fld_param }
 
 type body_fld_lang =
     BODY_FLD_LANG_SINGLE of string option
@@ -286,62 +283,54 @@ type body_extension =
   | BODY_EXTENSION_NUMBER of Uint32.t
   | BODY_EXTENSION_NSTRING of string option
 
-type body_ext_mpart = {
-  bd_parameter : body_fld_param;
-  bd_disposition : body_fld_dsp option;
-  bd_language : body_fld_lang option;
-  bd_loc : string option;
-  bd_extension_list : body_extension list
-}
+type body_ext_mpart =
+  { bd_parameter : body_fld_param;
+    bd_disposition : body_fld_dsp option;
+    bd_language : body_fld_lang option;
+    bd_loc : string option;
+    bd_extension_list : body_extension list }
 
-type body_ext_1part = {
-  bd_md5 : string option;
-  bd_disposition : body_fld_dsp option;
-  bd_language : body_fld_lang option;
-  bd_loc : string option;
-  bd_extension_list : body_extension list
-}
+type body_ext_1part =
+  { bd_md5 : string option;
+    bd_disposition : body_fld_dsp option;
+    bd_language : body_fld_lang option;
+    bd_loc : string option;
+    bd_extension_list : body_extension list }
 
-type body_fields = {
-  bd_parameter : body_fld_param;
-  bd_id : string option;
-  bd_description : string option;
-  bd_encoding : body_fld_enc;
-  bd_size : int
-}
+type body_fields =
+  { bd_parameter : body_fld_param;
+    bd_id : string option;
+    bd_description : string option;
+    bd_encoding : body_fld_enc;
+    bd_size : int }
 
-type body_type_text = {
-  bd_media_text : string;
-  bd_fields : body_fields;
-  bd_lines : int
-}
+type body_type_text =
+  { bd_media_text : string;
+    bd_fields : body_fields;
+    bd_lines : int }
 
-type body_type_basic = {
-  bd_media_basic : media_basic;
-  bd_fields : body_fields
-}
+type body_type_basic =
+  { bd_media_basic : media_basic;
+    bd_fields : body_fields }
 
-type body_type_msg = {
-  bd_fields : body_fields;
-  bd_envelope : envelope;
-  bd_body : body
-}
+type body_type_msg =
+  { bd_fields : body_fields;
+    bd_envelope : envelope;
+    bd_body : body }
 
 and body_type_1part_data =
     BODY_TYPE_1PART_BASIC of body_type_basic
   | BODY_TYPE_1PART_MSG of body_type_msg
   | BODY_TYPE_1PART_TEXT of body_type_text
 
-and body_type_1part = {
-  bd_data : body_type_1part_data;
-  bd_ext_1part : body_ext_1part
-}
+and body_type_1part =
+  { bd_data : body_type_1part_data;
+    bd_ext_1part : body_ext_1part }
 
-and body_type_mpart = {
-  bd_list : body list;
-  bd_media_subtype : string;
-  bd_ext_mpart : body_ext_mpart
-}
+and body_type_mpart =
+  { bd_list : body list;
+    bd_media_subtype : string;
+    bd_ext_mpart : body_ext_mpart }
 
 and body =
     BODY_1PART of body_type_1part
@@ -349,21 +338,19 @@ and body =
 
 (** {3 Responses} *)
   
-type date_time = {
-  dt_day : int;
-  dt_month : int;
-  dt_year : int;
-  dt_hour : int;
-  dt_min : int;
-  dt_sec : int;
-  dt_zone : int
-}
+type date_time =
+  { dt_day : int;
+    dt_month : int;
+    dt_year : int;
+    dt_hour : int;
+    dt_min : int;
+    dt_sec : int;
+    dt_zone : int }
 
-type msg_att_body_section = {
-  sec_section : section;
-  sec_origin_octet : int option;
-  sec_body_part : string
-}
+type msg_att_body_section =
+  { sec_section : section;
+    sec_origin_octet : int option;
+    sec_body_part : string }
 
 type msg_att_static =
     MSG_ATT_ENVELOPE of envelope
@@ -398,11 +385,10 @@ type store_att_flags_sign =
   | STORE_ATT_FLAGS_ADD
   | STORE_ATT_FLAGS_REMOVE
 
-type store_att_flags = {
-  fl_sign : store_att_flags_sign;
-  fl_silent : bool;
-  fl_flag_list : flag list
-}
+type store_att_flags =
+  { fl_sign : store_att_flags_sign;
+    fl_silent : bool;
+    fl_flag_list : flag list }
 
 (** {2 STATUS command} *)
 
@@ -437,10 +423,9 @@ type status_info =
 
 (** {2 LIST/LSUB commands} *)
 
-type mailbox_data_status = {
-  st_mailbox : string;
-  st_info_list : status_info list
-}
+type mailbox_data_status =
+  { st_mailbox : string;
+    st_info_list : status_info list }
 
 (** The type of mailbox single flags *)
 type mbx_list_sflag =
@@ -454,22 +439,20 @@ type mbx_list_oflag =
   | MBX_LIST_OFLAG_EXT of string
 
 (** Mailbox flag *)
-type mbx_list_flags = {
-  mbf_sflag : mbx_list_sflag option;
+type mbx_list_flags =
+  { mbf_sflag : mbx_list_sflag option;
   (** Mailbox single flag *)
-  mbf_oflags : mbx_list_oflag list
+    mbf_oflags : mbx_list_oflag list }
   (** List of "mailbox other flag" *)
-}
 
 (** List of mailbox flags *)
-type mailbox_list = {
-  mb_flag : mbx_list_flags;
+type mailbox_list =
+  { mb_flag : mbx_list_flags;
   (** List of mailbox flags *)
-  mb_delimiter : char option;
+    mb_delimiter : char option;
   (** Delimiter of the mailbox path, '\000' if not present *)
-  mb_name : string
+    mb_name : string }
   (** Name of the mailbox *)
-}
 
 (** {2 CAPABILITY command} *)
 
@@ -507,17 +490,15 @@ type resp_text_code =
   | RESP_TEXT_CODE_NONE
   
 (** response code, human readable text *)
-type resp_text = {
-  rsp_code : resp_text_code;
-  rsp_text : string
-}
+type resp_text =
+  { rsp_code : resp_text_code;
+    rsp_text : string }
 
 (** {2 Untagged responses} *)
 
-type 'resp_type resp_cond = {
-  rsp_type : 'resp_type;
-  rsp_text : resp_text
-}
+type 'resp_type resp_cond =
+  { rsp_type : 'resp_type;
+    rsp_text : resp_text }
 
 (** Authentication condition responses *)
 type resp_cond_auth_type =
@@ -574,10 +555,9 @@ type response_data =
 
 (** {2 Tagged responses} *)
   
-type response_tagged = {
-  rsp_tag : string;
-  rsp_cond_state : resp_cond_state
-}
+type response_tagged =
+  { rsp_tag : string;
+    rsp_cond_state : resp_cond_state }
 
 (** Ending response *)
 type response_done =
@@ -592,10 +572,9 @@ type cont_req_or_resp_data =
     RESP_CONT_REQ of continue_req
   | RESP_CONT_DATA of response_data
 
-type response = {
-  rsp_cont_req_or_resp_data_list : cont_req_or_resp_data list;
-  rsp_resp_done : response_done
-}
+type response =
+  { rsp_cont_req_or_resp_data_list : cont_req_or_resp_data list;
+    rsp_resp_done : response_done }
 
 (** {2 Greeting response} *)
 
@@ -603,17 +582,16 @@ type greeting =
     GREETING_RESP_COND_AUTH of resp_cond_auth
   | GREETING_RESP_COND_BYE of resp_cond_bye
 
-type selection_info = {
-  sel_perm_flags : flag_perm list;
-  sel_perm : mailbox_perm;
-  sel_uidnext : Uint32.t;
-  sel_uidvalidity : Uint32.t;
-  sel_first_unseen : Uint32.t;
-  sel_flags : flag list;
-  sel_exists : int option;
-  sel_recent : int option;
-  sel_unseen : int
-}
+type selection_info =
+  { sel_perm_flags : flag_perm list;
+    sel_perm : mailbox_perm;
+    sel_uidnext : Uint32.t;
+    sel_uidvalidity : Uint32.t;
+    sel_first_unseen : Uint32.t;
+    sel_flags : flag list;
+    sel_exists : int option;
+    sel_recent : int option;
+    sel_unseen : int }
 
 type _ extension_kind =
     RESPONSE_DATA : response_data_extension extension_kind
@@ -625,32 +603,30 @@ type _ extension_kind =
 type rsp_extension_data =
   EXTENSION_DATA : 'a extension_kind * 'a -> rsp_extension_data
 
-type response_info = {
-  rsp_alert : string;
-  rsp_parse : string;
-  rsp_badcharset : string list;
-  rsp_trycreate : bool;
-  rsp_mailbox_list : mailbox_list list;
-  rsp_mailbox_lsub : mailbox_list list;
-  rsp_search_results : Uint32.t list;
-  rsp_status : mailbox_data_status;
-  rsp_expunged : Uint32.t list;
-  rsp_fetch_list : msg_att list;
-  rsp_extension_list : rsp_extension_data list;
-  rsp_other : string * string option
-}
+type response_info =
+  { rsp_alert : string;
+    rsp_parse : string;
+    rsp_badcharset : string list;
+    rsp_trycreate : bool;
+    rsp_mailbox_list : mailbox_list list;
+    rsp_mailbox_lsub : mailbox_list list;
+    rsp_search_results : Uint32.t list;
+    rsp_status : mailbox_data_status;
+    rsp_expunged : Uint32.t list;
+    rsp_fetch_list : msg_att list;
+    rsp_extension_list : rsp_extension_data list;
+    rsp_other : string * string option }
 
-type state = {
-  rsp_info : response_info;
-  sel_info : selection_info;
-  cap_info : capability list;
-  imap_response : string;
-  current_tag : string option;
-  next_tag : int;
-  out_buf : string list;
-  in_buf : Buffer.t;
-  in_pos : int
-}
+type state =
+  { rsp_info : response_info;
+    sel_info : selection_info;
+    cap_info : capability list;
+    imap_response : string;
+    current_tag : string option;
+    next_tag : int;
+    out_buf : string list;
+    in_buf : Buffer.t;
+    in_pos : int }
 
 type error =
     Bad
