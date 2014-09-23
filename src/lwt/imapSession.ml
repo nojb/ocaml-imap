@@ -916,11 +916,11 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
         loop {msg with internal_date} rest
     (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
     (* loop {msg with header = header_from_imap env} rest *)
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.CONDSTORE_FETCH_DATA_MODSEQ mod_seq_value) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value) :: rest ->
         loop {msg with mod_seq_value} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.XGMLABELS_XGMLABELS gmail_labels) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels) :: rest ->
         loop {msg with gmail_labels} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.XGMMSGID_MSGID gmail_message_id) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.MSG_ATT_XGMMSGID gmail_message_id) :: rest ->
         loop {msg with gmail_message_id} rest
     | _ :: rest -> (* FIXME *)
         loop msg rest

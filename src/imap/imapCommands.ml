@@ -282,7 +282,7 @@ attr-flag-keyword   = atom
   
 module Condstore = struct
   type msg_att_extension +=
-       CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
+       MSG_ATT_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
        RESP_TEXT_CODE_HIGHESTMODSEQ of Uint64.t
@@ -290,10 +290,10 @@ module Condstore = struct
      | RESP_TEXT_CODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
-       CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+       STATUS_ATT_HIGHESTMODSEQ of Uint64.t
   
   type mailbox_data_extension +=
-       CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
+       MAILBOX_DATA_SEARCH of Uint32.t list * Uint64.t
      
   let fetch_att_modseq = FETCH_ATT_EXTENSION "MODSEQ"
 
@@ -303,7 +303,7 @@ module Condstore = struct
       FETCH_DATA ->
         begin
           function
-            CONDSTORE_FETCH_DATA_MODSEQ n ->
+            MSG_ATT_MODSEQ n ->
               Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
           | _ ->
               None
@@ -323,7 +323,7 @@ module Condstore = struct
     | MAILBOX_DATA ->
         begin
           function
-            CONDSTORE_SEARCH_DATA (ns, n) ->
+            MAILBOX_DATA_SEARCH (ns, n) ->
               let loop ppf = function
                   [] -> ()
                 | [x] -> fprintf ppf "%s" (Uint32.to_string x)
@@ -338,7 +338,7 @@ module Condstore = struct
     | STATUS_ATT ->
         begin
           function
-            CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n ->
+            STATUS_ATT_HIGHESTMODSEQ n ->
               Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
           | _ ->
               None
@@ -369,16 +369,16 @@ module Condstore = struct
         altn [ highestmodseq; nomodseq; modified ]
     | FETCH_DATA ->
         str "MODSEQ" >> char ' ' >> char '(' >> permsg_modsequence >>= fun m -> char ')' >>
-        ret (CONDSTORE_FETCH_DATA_MODSEQ m)
+        ret (MSG_ATT_MODSEQ m)
     | STATUS_ATT ->
         str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun n ->
-        ret (CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n)
+        ret (STATUS_ATT_HIGHESTMODSEQ n)
     | MAILBOX_DATA ->
         str "SEARCH" >> char ' ' >>
         opt (rep1 (char ' ' >> nz_number) >>= fun ns ->
              char ' ' >> search_sort_mod_seq >>= fun m -> ret (ns, m)) ([], Uint64.zero) >>=
         fun (ns, m) ->
-        ret (CONDSTORE_SEARCH_DATA (ns, m))
+        ret (MAILBOX_DATA_SEARCH (ns, m))
     | _ ->
         fail
 
@@ -404,8 +404,7 @@ module Condstore = struct
           (* ret (res, Uint64.zero) *)
           (* FIXME *)
           (res, Uint64.zero)
-        | EXTENSION_DATA (MAILBOX_DATA, CONDSTORE_SEARCH_DATA (res, m)) :: _ ->
-          (* ret (res, m) *)
+        | EXTENSION_DATA (MAILBOX_DATA, MAILBOX_DATA_SEARCH (res, m)) :: _ ->
             (res, m)
         | _ :: rest ->
             loop rest
@@ -656,16 +655,6 @@ let search =
 let uid_search =
   Condstore.uid_search
 
-(* let namespace s = *)
-(*   assert false *)
-(* (\* let ci = connection_info s in *\) *)
-(* (\* let cmd = S.raw "NAMESPACE" in *\) *)
-(* (\* let aux () = *\) *)
-(* (\*   send_command ci cmd >>= fun () -> *\) *)
-(* (\*   IO.return ci.state.rsp_info.rsp_namespace *\) *)
-(* (\* in *\) *)
-(* (\* IO.with_lock ci.send_lock aux *\) *)
-
 let check =
   std_command (ImapSend.(raw "CHECK"))
 
@@ -751,7 +740,7 @@ end
 
 module Id = struct
   type response_data_extension +=
-       ID_PARAMS of (string * string option) list
+       RESP_DATA_ID of (string * string option) list
 
   let id_printer : type a. a extension_kind -> a -> _ option =
     let open Format in
@@ -759,7 +748,7 @@ module Id = struct
       RESPONSE_DATA ->
         begin
           function
-            ID_PARAMS params ->
+            RESP_DATA_ID params ->
               let p ppf =
                 List.iter (function (k, None) -> fprintf ppf "@ (%s nil)" k
                                   | (k, Some v) -> fprintf ppf "@ (%s %S)" k v)
@@ -797,7 +786,7 @@ module Id = struct
       RESPONSE_DATA ->
         str "ID" >> char ' ' >>
         char '(' >> sep (char ' ') id_params >>= fun params_list -> char ')' >>
-        ret (ID_PARAMS params_list)
+        ret (RESP_DATA_ID params_list)
     | _ ->
         fail
 
@@ -805,7 +794,7 @@ module Id = struct
     let rec loop =
       function
         [] -> []
-      | EXTENSION_DATA (RESPONSE_DATA, ID_PARAMS params) :: _ ->
+      | EXTENSION_DATA (RESPONSE_DATA, RESP_DATA_ID params) :: _ ->
           params
       | _ :: rest ->
           loop rest
@@ -831,30 +820,44 @@ module Id = struct
     ImapParser.(register_parser {parse = id_parser})
 end
 
-module Uidplus = struct
-  (* resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid *)
-
-  (* resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set *)
-
-  (* resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY" *)
-  (*                   ; incorporated before the expansion rule of *)
-  (*                   ;  atom [SP 1*<any TEXT-CHAR except "]">] *)
-  (*                   ; that appears in [IMAP] *)
-
 (*
+append-uid      = uniqueid
+
+capability      =/ "UIDPLUS"
+
+command-select  =/ uid-expunge
+
+resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid
+
+resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set
+
+resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY"
+                  ; incorporated before the expansion rule of
+                  ;  atom [SP 1*<any TEXT-CHAR except "]">]
+                  ; that appears in [IMAP]
+
+uid-expunge     = "UID" SP "EXPUNGE" SP sequence-set
+
 uid-set         = (uniqueid / uid-range) *("," uid-set)
-*)
-(*
+
 uid-range       = (uniqueid ":" uniqueid)
                   ; two uniqueid values and all values
                   ; between these two regards of order.
                   ; Example: 2:4 and 4:2 are equivalent.
+
+Servers that support [MULTIAPPEND] will have the following extension
+to the above rules:
+
+append-uid      =/ uid-set
+                  ; only permitted if client uses [MULTIAPPEND]
+                  ; to append multiple messages.
 *)
 
+module Uidplus = struct
   type resp_text_code_extension +=
-       UIDPLUS_RESP_CODE_APND of Uint32.t * ImapSet.t
-     | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.t * ImapSet.t
-     | UIDPLUS_RESP_CODE_UIDNOTSTICKY
+       RESP_TEXT_CODE_APPENDUID of Uint32.t * ImapSet.t
+     | RESP_TEXT_CODE_COPYUID of Uint32.t * ImapSet.t * ImapSet.t
+     | RESP_TEXT_CODE_UIDNOTSTICKY
 
   let uidplus_printer : type a. a extension_kind -> a -> _ option =
     let open Format in
@@ -862,11 +865,11 @@ uid-range       = (uniqueid ":" uniqueid)
       RESP_TEXT_CODE ->
         begin
           function
-            UIDPLUS_RESP_CODE_APND (uid1, uid2) ->
+            RESP_TEXT_CODE_APPENDUID (uid1, uid2) ->
               Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s ?)@]" (Uint32.to_string uid1)) (* FIXME *)
-          | UIDPLUS_RESP_CODE_COPY (uid, uidset1, uidset2) ->
+          | RESP_TEXT_CODE_COPYUID (uid, uidset1, uidset2) ->
               Some (fun ppf -> fprintf ppf "@[<2>(uidplus-copy %s ?)@]" (Uint32.to_string uid))
-          | UIDPLUS_RESP_CODE_UIDNOTSTICKY ->
+          | RESP_TEXT_CODE_UIDNOTSTICKY ->
               Some (fun ppf -> fprintf ppf "(uid-not-sticky)")
           | _ ->
               None
@@ -898,7 +901,7 @@ uid-range       = (uniqueid ":" uniqueid)
       nz_number >>= fun uid ->
       char ' ' >>
       nz_number >>= fun uid2 ->
-      ret (UIDPLUS_RESP_CODE_APND (uid, ImapSet.single uid2))
+      ret (RESP_TEXT_CODE_APPENDUID (uid, ImapSet.single uid2))
     in
     let resp_code_copy =
       str "COPYUID" >>
@@ -908,10 +911,10 @@ uid-range       = (uniqueid ":" uniqueid)
       uid_set >>= fun src_uids ->
       char ' ' >>
       uid_set >>= fun dst_uids ->
-      ret (UIDPLUS_RESP_CODE_COPY (uidvalidity, src_uids, dst_uids))
+      ret (RESP_TEXT_CODE_COPYUID (uidvalidity, src_uids, dst_uids))
     in
     let resp_code_uidnotsticky =
-      str "UIDNOTSTICKY" >> ret UIDPLUS_RESP_CODE_UIDNOTSTICKY
+      str "UIDNOTSTICKY" >> ret RESP_TEXT_CODE_UIDNOTSTICKY
     in
     match kind with
       RESP_TEXT_CODE ->
@@ -931,7 +934,7 @@ uid-range       = (uniqueid ":" uniqueid)
       function
         [] ->
           Uint32.zero, ImapSet.empty, ImapSet.empty
-      | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_COPY (uid, src, dst)) :: _ ->
+      | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_COPYUID (uid, src, dst)) :: _ ->
           uid, src, dst
       | _ :: rest ->
           loop rest
@@ -949,7 +952,7 @@ uid-range       = (uniqueid ":" uniqueid)
       function
         [] ->
           Uint32.zero, ImapSet.empty
-      | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_APND (uid, set)) :: _ ->
+      | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_APPENDUID (uid, set)) :: _ ->
           uid, set
       | _ :: rest ->
           loop rest
@@ -974,7 +977,7 @@ end
 
 module Xgmmsgid = struct
   type msg_att_extension +=
-       XGMMSGID_MSGID of Uint64.t
+       MSG_ATT_XGMMSGID of Uint64.t
 
   let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
 
@@ -984,7 +987,7 @@ module Xgmmsgid = struct
       FETCH_DATA ->
         begin
           function
-            XGMMSGID_MSGID id ->
+            MSG_ATT_XGMMSGID id ->
               Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
           | _ ->
               None
@@ -997,7 +1000,7 @@ module Xgmmsgid = struct
     match kind with
       FETCH_DATA ->
         str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
-        ret (XGMMSGID_MSGID n)
+        ret (MSG_ATT_XGMMSGID n)
     | _ ->
         fail
 
@@ -1008,7 +1011,7 @@ end
 
 module Xgmlabels = struct
   type msg_att_extension +=
-       XGMLABELS_XGMLABELS of string list
+       MSG_ATT_XGMLABELS of string list
 
   let fetch_att_xgmlabels =
     FETCH_ATT_EXTENSION "X-GM-LABELS"
@@ -1019,7 +1022,7 @@ module Xgmlabels = struct
       FETCH_DATA ->
         begin
           function
-            XGMLABELS_XGMLABELS labels ->
+            MSG_ATT_XGMLABELS labels ->
               let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
               Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
           | _ ->
@@ -1034,7 +1037,7 @@ module Xgmlabels = struct
       FETCH_DATA ->
         str "X-GM-LABELS" >> char ' ' >>
         char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
-        ret (XGMLABELS_XGMLABELS labels)
+        ret (MSG_ATT_XGMLABELS labels)
     | _ ->
         fail
 
@@ -1065,6 +1068,39 @@ module Xgmlabels = struct
     ImapParser.(register_parser {parse = xgmlabels_parser})
 end
 
+(*
+atom = <atom>
+   ; <atom> as defined in [RFC-2060]
+
+Namespace = nil / "(" 1*( "(" string SP  (<"> QUOTED_CHAR <"> /
+   nil) *(Namespace_Response_Extension) ")" ) ")"
+
+Namespace_Command = "NAMESPACE"
+
+Namespace_Response_Extension = SP string SP "(" string *(SP string)
+   ")"
+
+Namespace_Response = "*" SP "NAMESPACE" SP Namespace SP Namespace SP
+   Namespace
+
+   ; The first Namespace is the Personal Namespace(s)
+   ; The second Namespace is the Other Users' Namespace(s)
+   ; The third Namespace is the Shared Namespace(s)
+
+   nil = <nil>
+      ; <nil> as defined in [RFC-2060]
+
+   QUOTED_CHAR = <QUOTED_CHAR>
+      ; <QUOTED_CHAR> as defined in [RFC-2060]
+
+   string = <string>
+      ; <string> as defined in [RFC-2060]
+      ; Note that  the namespace prefix is to a mailbox and following
+      ; IMAP4 convention, any international string in the NAMESPACE
+      ; response MUST be of modified UTF-7 format as described in
+      ;  [RFC-2060].
+*)
+
 module Namespace = struct
   type namespace_extension =
     string * string list
@@ -1079,25 +1115,7 @@ module Namespace = struct
       ns_other : namespace_item;
       ns_shared : namespace_item }
   type response_data_extension +=
-       NAMESPACE of namespace_data
-
-(*
-Namespace_Response_Extension = SP string SP "(" string *(SP string) ")"
-*)
-  
-(*
-Namespace = nil / "(" 1*( "(" string SP  (<"> QUOTED_CHAR <"> /
-      nil) *(Namespace_Response_Extension) ")" ) ")"
-*)
-
-(*
-Namespace_Response = "*" SP "NAMESPACE" SP Namespace SP Namespace SP
-      Namespace
-
-      ; The first Namespace is the Personal Namespace(s)
-      ; The second Namespace is the Other Users' Namespace(s)
-      ; The third Namespace is the Shared Namespace(s)
-*)
+       RESP_DATA_NAMESPACE of namespace_data
 
   let parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
@@ -1122,14 +1140,14 @@ Namespace_Response = "*" SP "NAMESPACE" SP Namespace SP Namespace SP
         char ' ' >> namespace_item >>= fun ns_personal ->
         char ' ' >> namespace_item >>= fun ns_other ->
         char ' ' >> namespace_item >>= fun ns_shared ->
-        ret (NAMESPACE {ns_personal; ns_other; ns_shared})
+        ret (RESP_DATA_NAMESPACE {ns_personal; ns_other; ns_shared})
     | _ ->
         fail
   let extract st =
     let rec loop = function
         [] ->
           fail ExtensionError
-      | EXTENSION_DATA (RESPONSE_DATA, NAMESPACE ns) :: _ ->
+      | EXTENSION_DATA (RESPONSE_DATA, RESP_DATA_NAMESPACE ns) :: _ ->
           ret ns
       | _ :: rest ->
           loop rest

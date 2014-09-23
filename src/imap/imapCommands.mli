@@ -42,7 +42,7 @@ end
 
 module Condstore : sig
   type msg_att_extension +=
-       CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
+       MSG_ATT_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
        RESP_TEXT_CODE_HIGHESTMODSEQ of Uint64.t
@@ -50,10 +50,10 @@ module Condstore : sig
      | RESP_TEXT_CODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
-       CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+       STATUS_ATT_HIGHESTMODSEQ of Uint64.t
   
   type mailbox_data_extension +=
-       CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
+       MAILBOX_DATA_SEARCH of Uint32.t list * Uint64.t
 
   val fetch_att_modseq : fetch_att
     
@@ -138,11 +138,6 @@ val search : ?charset:string -> search_key -> Uint32.t list command
 
 val uid_search : ?charset:string -> search_key -> Uint32.t list command
 
-(* (\* val namespace : session -> (namespace list * namespace list * namespace list) IO.t *\) *)
-(* (\** Returns the three types of namespaces (personal, other users, shared) in the server. *)
-
-(*     This command requires the NAMESPACE extension. *\) *)
-
 val check : unit command
 
 val close : unit command
@@ -178,14 +173,14 @@ end
 
 module Xgmmsgid : sig
   type msg_att_extension +=
-       XGMMSGID_MSGID of Uint64.t
+       MSG_ATT_XGMMSGID of Uint64.t
 
   val fetch_att_xgmmsgid : fetch_att
 end
 
 module Xgmlabels : sig
   type msg_att_extension +=
-       XGMLABELS_XGMLABELS of string list
+       MSG_ATT_XGMLABELS of string list
 
   val fetch_att_xgmlabels : fetch_att
 
