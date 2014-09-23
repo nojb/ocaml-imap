@@ -151,3 +151,7 @@ val uid_store : ImapSet.t -> store_att_flags -> unit command
 val copy : ImapSet.t -> string -> unit command
     
 val uid_copy : ImapSet.t -> string -> unit command
+
+module Enable : sig
+  val enable : capability list -> capability list command
+end

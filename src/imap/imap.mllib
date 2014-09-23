@@ -1,7 +1,6 @@
 ImapCommands
 ImapControl
 ImapAuth
-ImapEnable
 ImapExtension
 ImapParser
 ImapPrint
