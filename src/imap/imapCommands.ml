@@ -624,3 +624,237 @@ module Id = struct
     ImapPrint.(register_printer {print = id_printer});
     ImapParser.(register_parser {parse = id_parser})
 end
+
+module Uidplus = struct
+  (* resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid *)
+
+  (* resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set *)
+
+  (* resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY" *)
+  (*                   ; incorporated before the expansion rule of *)
+  (*                   ;  atom [SP 1*<any TEXT-CHAR except "]">] *)
+  (*                   ; that appears in [IMAP] *)
+
+(*
+uid-set         = (uniqueid / uid-range) *("," uid-set)
+*)
+(*
+uid-range       = (uniqueid ":" uniqueid)
+                  ; two uniqueid values and all values
+                  ; between these two regards of order.
+                  ; Example: 2:4 and 4:2 are equivalent.
+*)
+
+  type resp_text_code_extension +=
+       UIDPLUS_RESP_CODE_APND of Uint32.t * ImapSet.t
+     | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.t * ImapSet.t
+     | UIDPLUS_RESP_CODE_UIDNOTSTICKY
+
+  let uidplus_printer : type a. a extension_kind -> a -> _ option =
+    let open Format in
+    function
+      RESP_TEXT_CODE ->
+        begin
+          function
+            UIDPLUS_RESP_CODE_APND (uid1, uid2) ->
+              Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s ?)@]" (Uint32.to_string uid1)) (* FIXME *)
+          | UIDPLUS_RESP_CODE_COPY (uid, uidset1, uidset2) ->
+              Some (fun ppf -> fprintf ppf "@[<2>(uidplus-copy %s ?)@]" (Uint32.to_string uid))
+          | UIDPLUS_RESP_CODE_UIDNOTSTICKY ->
+              Some (fun ppf -> fprintf ppf "(uid-not-sticky)")
+          | _ ->
+              None
+        end
+    | _ ->
+        function _ -> None
+
+  let uidplus_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    let uid_range =
+      uniqueid >>= fun x ->
+      char ':' >>
+      uniqueid >>= fun y ->
+      ret (x, y)
+    in
+    let uid_set =
+      let elem =
+        alt
+          (uniqueid >>= fun id -> ret (ImapSet.single id))
+          (uid_range >>= fun (x, y) -> ret (ImapSet.interval x y))
+      in
+      elem >>= fun x ->
+      rep (char ',' >> elem) >>= fun xs ->
+      ret (List.fold_left ImapSet.union x xs)
+    in
+    let resp_code_apnd =
+      str "APPENDUID" >>
+      char ' ' >>
+      nz_number >>= fun uid ->
+      char ' ' >>
+      nz_number >>= fun uid2 ->
+      ret (UIDPLUS_RESP_CODE_APND (uid, ImapSet.single uid2))
+    in
+    let resp_code_copy =
+      str "COPYUID" >>
+      char ' ' >>
+      nz_number >>= fun uidvalidity ->
+      char ' ' >>
+      uid_set >>= fun src_uids ->
+      char ' ' >>
+      uid_set >>= fun dst_uids ->
+      ret (UIDPLUS_RESP_CODE_COPY (uidvalidity, src_uids, dst_uids))
+    in
+    let resp_code_uidnotsticky =
+      str "UIDNOTSTICKY" >> ret UIDPLUS_RESP_CODE_UIDNOTSTICKY
+    in
+    match kind with
+      RESP_TEXT_CODE ->
+        altn [ resp_code_apnd; resp_code_copy; resp_code_uidnotsticky ]
+    | _ ->
+        fail
+
+  let uid_expunge set =
+    let sender =
+      let open ImapSend in
+      raw "UID EXPUNGE" >> char ' ' >> message_set set
+    in
+    ImapCore.std_command sender
+
+  let extract_copy_uid s =
+    let rec loop =
+      function
+        [] ->
+          Uint32.zero, ImapSet.empty, ImapSet.empty
+      | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_COPY (uid, src, dst)) :: _ ->
+          uid, src, dst
+      | _ :: rest ->
+          loop rest
+    in
+    loop s.rsp_info.rsp_extension_list
+
+  let uidplus_copy set destbox =
+    copy set destbox >> gets extract_copy_uid
+
+  let uidplus_uid_copy set destbox =
+    uid_copy set destbox >> gets extract_copy_uid
+
+  let extract_apnd_uid s =
+    let rec loop =
+      function
+        [] ->
+          Uint32.zero, ImapSet.empty
+      | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_APND (uid, set)) :: _ ->
+          uid, set
+      | _ :: rest ->
+          loop rest
+    in
+    loop s.rsp_info.rsp_extension_list
+
+  let extract_apnd_single_uid s =
+    let uid, set = extract_apnd_uid s in
+    match set with
+      [] ->
+        uid, Uint32.zero
+    | (first, _) :: _ ->
+        uid, first
+
+  let uidplus_append mailbox ?flags ?date_time msg =
+    append mailbox ?flags ?date_time msg >> gets extract_apnd_single_uid
+
+  let _ =
+    ImapParser.(register_parser {parse = uidplus_parser});
+    ImapPrint.(register_printer {print = uidplus_printer})
+end
+
+module Xgmmsgid = struct
+  type msg_att_extension +=
+       XGMMSGID_MSGID of Uint64.t
+
+  let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
+
+  let xgmmsgid_printer : type a. a extension_kind -> a -> _ option =
+    let open Format in
+    function
+      FETCH_DATA ->
+        begin
+          function
+            XGMMSGID_MSGID id ->
+              Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
+          | _ ->
+              None
+        end
+    | _ ->
+        function _ -> None
+
+  let xgmmsgid_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    match kind with
+      FETCH_DATA ->
+        str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
+        ret (XGMMSGID_MSGID n)
+    | _ ->
+        fail
+
+  let _ =
+    ImapPrint.(register_printer {print = xgmmsgid_printer});
+    ImapParser.(register_parser {parse = xgmmsgid_parser})
+end
+
+module Xgmlabels = struct
+  type msg_att_extension +=
+       XGMLABELS_XGMLABELS of string list
+
+  let fetch_att_xgmlabels =
+    FETCH_ATT_EXTENSION "X-GM-LABELS"
+
+  let xgmlabels_printer : type a. a extension_kind -> a -> _ option =
+    let open Format in
+    function
+      FETCH_DATA ->
+        begin
+          function
+            XGMLABELS_XGMLABELS labels ->
+              let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
+              Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
+          | _ ->
+              None
+        end
+    | _ ->
+        function _ -> None
+
+  let xgmlabels_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    match kind with
+      FETCH_DATA ->
+        str "X-GM-LABELS" >> char ' ' >>
+        char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
+        ret (XGMLABELS_XGMLABELS labels)
+    | _ ->
+        fail
+
+  let store_xgmlabels_aux cmd set fl_sign fl_silent labels =
+    let sender =
+      let open ImapSend in
+      send cmd >> char ' ' >> message_set set >> char ' ' >>
+      begin
+        match fl_sign with
+          STORE_ATT_FLAGS_SET -> ret ()
+        | STORE_ATT_FLAGS_ADD -> char '+'
+        | STORE_ATT_FLAGS_REMOVE -> char '-'
+      end
+      >> send "X-GM-LABELS" >> (if fl_silent then send ".SILENT" else ret ()) >>
+      char ' ' >>
+      list string labels
+    in
+    ImapCore.std_command sender
+
+  let store_xgmlabels =
+    store_xgmlabels_aux "STORE"
+
+  let uid_store_xgmlabels =
+    store_xgmlabels_aux "UID STORE"
+
+  let _ =
+    ImapPrint.(register_printer {print = xgmlabels_printer});
+    ImapParser.(register_parser {parse = xgmlabels_parser})
+end

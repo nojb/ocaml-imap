@@ -158,3 +158,27 @@ module Id : sig
   val id : (string * string option) list -> (string * string option) list command
   val id_basic : string -> string -> (string option * string option) command
 end
+
+module Uidplus : sig
+  val uid_expunge : ImapSet.t -> unit command
+  val uidplus_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
+  val uidplus_uid_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
+end
+
+module Xgmmsgid : sig
+  type msg_att_extension +=
+       XGMMSGID_MSGID of Uint64.t
+
+  val fetch_att_xgmmsgid : fetch_att
+end
+
+module Xgmlabels : sig
+  type msg_att_extension +=
+       XGMLABELS_XGMLABELS of string list
+
+  val fetch_att_xgmlabels : fetch_att
+
+  val uid_store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command
+
+  val store_xgmlabels : ImapSet.t -> store_att_flags_sign -> bool -> string list -> unit command
+end

@@ -767,7 +767,7 @@ let copy_messages s ~folder ~uids ~dest =
   lwt ci, _ = select_if_needed s folder in
   lwt uidvalidity, src_uid, dst_uid =
     try_lwt
-      run ci (ImapUidplus.uidplus_uid_copy uids dest)
+      run ci (ImapCommands.Uidplus.uidplus_uid_copy uids dest)
     with
       exn ->
         lwt () = Lwt_log.debug ~exn "copy error" in
@@ -854,11 +854,11 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
       | Flags :: rest ->
           loop (FETCH_ATT_FLAGS :: acc) headers rest
       | GmailLabels :: rest ->
-          loop (ImapXgmlabels.fetch_att_xgmlabels :: acc) headers rest
+          loop (ImapCommands.Xgmlabels.fetch_att_xgmlabels :: acc) headers rest
       | GmailThreadID :: rest ->
           failwith "fetch gmail thread id not implemented"
       | GmailMessageID :: rest ->
-          loop (ImapXgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
+          loop (ImapCommands.Xgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
       | FullHeaders :: rest ->
           loop acc
             ("Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" ::
@@ -918,9 +918,9 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
     (* loop {msg with header = header_from_imap env} rest *)
     | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.CONDSTORE_FETCH_DATA_MODSEQ mod_seq_value) :: rest ->
         loop {msg with mod_seq_value} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapXgmlabels.XGMLABELS_XGMLABELS gmail_labels) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.XGMLABELS_XGMLABELS gmail_labels) :: rest ->
         loop {msg with gmail_labels} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapXgmmsgid.XGMMSGID_MSGID gmail_message_id) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.XGMMSGID_MSGID gmail_message_id) :: rest ->
         loop {msg with gmail_message_id} rest
     | _ :: rest -> (* FIXME *)
         loop msg rest
@@ -1129,7 +1129,7 @@ let set_flags s ~folder ~uids ~flags ?customflags () =
 let store_labels s ~folder ~uids ~kind ~labels =
   lwt ci, _ = select_if_needed s folder in
   try_lwt
-    run ci (ImapXgmlabels.uid_store_xgmlabels uids kind true labels)
+    run ci (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels)
   with
     exn ->
       lwt () = Lwt_log.debug ~exn "store_labels error" in
