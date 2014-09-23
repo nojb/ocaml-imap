@@ -25,7 +25,7 @@ open ImapCore
 open ImapControl
 
 module Condstore = struct
-  open ImapExtension
+  (* open ImapExtension *)
   (* resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value / *)
   (*                     "NOMODSEQ" / *)
   (*                     "MODIFIED" SP set *)
@@ -300,7 +300,8 @@ module Condstore = struct
     store_aux "UID STORE" set (Some unchangedsince) flags
     
   let _ =
-    register_extension {ext_parser = condstore_parse; ext_printer = condstore_printer}
+    ImapPrint.(register_printer {print = condstore_printer});
+    ImapParser.(register_parser {parse = condstore_parse})
 end
 
 let capability =
@@ -481,8 +482,6 @@ let uid_store =
   Condstore.uid_store
 
 module Enable = struct
-  open ImapExtension
-    
   type response_data_extension +=
        EXTENSION_ENABLE of capability list
 
@@ -540,12 +539,11 @@ enable-data   = "ENABLED" *(SP capability)
     std_command (enable_sender caps) >> gets enable_handler
 
   let _ =
-    register_extension {ext_parser = enable_parser; ext_printer = enable_printer}
+    ImapParser.(register_parser {parse = enable_parser});
+    ImapPrint.(register_printer {print = enable_printer})
 end
 
 module Id = struct
-  open ImapExtension
-
   type response_data_extension +=
        ID_PARAMS of (string * string option) list
 
@@ -623,5 +621,6 @@ module Id = struct
     ret (get params "name", get params "version")
 
   let _ =
-    register_extension {ext_printer = id_printer; ext_parser = id_parser}
+    ImapPrint.(register_printer {print = id_printer});
+    ImapParser.(register_parser {parse = id_parser})
 end

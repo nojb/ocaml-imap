@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapExtension
 
 type msg_att_extension +=
      XGMLABELS_XGMLABELS of string list
@@ -79,4 +78,5 @@ let uid_store_xgmlabels =
   store_xgmlabels_aux "UID STORE"
 
 let _ =
-  register_extension {ext_parser = xgmlabels_parser; ext_printer = xgmlabels_printer}
+  ImapPrint.(register_printer {print = xgmlabels_printer});
+  ImapParser.(register_parser {parse = xgmlabels_parser})

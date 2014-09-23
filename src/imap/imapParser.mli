@@ -71,6 +71,11 @@ val sequence_set : ImapSet.t t
 
 val capability : capability t
 
+type extension_parser =
+  { parse : 'a. 'a extension_kind -> 'a parser }
+
+val register_parser : extension_parser -> unit
+
 val greeting : greeting t
 
 val response_data : response_data t

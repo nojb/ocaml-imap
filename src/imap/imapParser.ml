@@ -148,6 +148,13 @@ let nz_digits =
 let crlf =
   str "\r\n" >> ret ()
 
+type extension_parser =
+  { parse : 'a. 'a extension_kind -> 'a parser }
+
+let extension_list = ref []
+
+let register_parser p = extension_list := p :: !extension_list
+
 (*
 number          = 1*DIGIT
                     ; Unsigned 32-bit integer
@@ -311,13 +318,7 @@ let test p s =
 (** IMAP PARSER *)
 
 let extension_parser : type a. a extension_kind -> a parser = fun kind ->
-  let open ImapExtension in
-  let rec loop = function
-    | [] -> fail
-    | p :: rest ->
-        alt (p.ext_parser kind) (loop rest)
-  in
-  loop !extension_list
+  List.fold_right (fun p q -> alt (p.parse kind) q) !extension_list fail
 
 let extension_parser : type a. a extension_kind -> a parser = fun kind ->
   delay extension_parser kind

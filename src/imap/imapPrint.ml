@@ -23,14 +23,20 @@
 open Format
 open ImapTypes
 
+type extension_printer =
+  { print : 'a. 'a extension_kind -> 'a -> (Format.formatter -> unit) option }
+
+let extension_list = ref []
+
+let register_printer p = extension_list := p :: !extension_list
+
 let extension_print ppf k d =
-  let open ImapExtension in
   let rec loop =
     function
       [] ->
         fprintf ppf "(extension ..)"
     | p :: rest ->
-        match p.ext_printer k d with
+        match p.print k d with
           Some f -> f ppf
         | None -> loop rest
   in

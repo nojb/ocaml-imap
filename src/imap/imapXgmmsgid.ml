@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapExtension
 
 type msg_att_extension +=
      XGMMSGID_MSGID of Uint64.t
@@ -52,4 +51,5 @@ let xgmmsgid_parser : type a. a extension_kind -> a parser = fun kind ->
       fail
 
 let _ =
-  register_extension {ext_parser = xgmmsgid_parser; ext_printer = xgmmsgid_printer}
+  ImapPrint.(register_printer {print = xgmmsgid_printer});
+  ImapParser.(register_parser {parse = xgmmsgid_parser})

@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapExtension
   
 (* resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid *)
 
@@ -161,4 +160,5 @@ let uidplus_append mailbox ?flags ?date_time msg =
   ImapCommands.append mailbox ?flags ?date_time msg >> gets extract_apnd_single_uid
 
 let _ =
-  register_extension {ext_parser = uidplus_parser; ext_printer = uidplus_printer}
+  ImapParser.(register_parser {parse = uidplus_parser});
+  ImapPrint.(register_printer {print = uidplus_printer})

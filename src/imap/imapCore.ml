@@ -60,6 +60,10 @@ let fresh_selection_info = {
   sel_unseen = 0
 }
 
+let extension_data_store st k d =
+  {st with rsp_info =
+             {st.rsp_info with rsp_extension_list = st.rsp_info.rsp_extension_list @ [EXTENSION_DATA (k, d)]}}
+
 let resp_text_store s {rsp_code; rsp_text} =
   match rsp_code with
     RESP_TEXT_CODE_ALERT ->
@@ -87,7 +91,7 @@ let resp_text_store s {rsp_code; rsp_text} =
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
-      ImapExtension.extension_data_store s RESP_TEXT_CODE e
+      extension_data_store s RESP_TEXT_CODE e
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
@@ -115,7 +119,7 @@ let mailbox_data_store s =
   | MAILBOX_DATA_RECENT n ->
       {s with sel_info = {s.sel_info with sel_recent = Some n}}
   | MAILBOX_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s MAILBOX_DATA e
+      extension_data_store s MAILBOX_DATA e
 
 let message_data_store s =
   function
@@ -151,7 +155,7 @@ let response_data_store s =
   | RESP_DATA_CAPABILITY_DATA cap_info ->
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s RESPONSE_DATA e
+      extension_data_store s RESPONSE_DATA e
   (* | `NAMESPACE (pers, other, shared) -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}} *)
 
