@@ -27,16 +27,13 @@ open ImapCore
 open ImapControl
   
 module Condstore : sig
-  type condstore_resptextcode =
-      CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
-    | CONDSTORE_RESPTEXTCODE_NOMODSEQ
-    | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
-
   type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
-       CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+       CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
+     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
+     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
        CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t

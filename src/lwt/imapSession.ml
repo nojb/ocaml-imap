@@ -524,8 +524,8 @@ let get_mod_sequence_value state =
   let open ImapCommands.Condstore in
   let rec loop = function
       [] -> Modseq.zero
-    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n)) :: _ -> n
-    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ -> Modseq.zero
+    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n
+    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ -> Modseq.zero
     | _ :: rest -> loop rest
   in
   loop state.rsp_info.rsp_extension_list

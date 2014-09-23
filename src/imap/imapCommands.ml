@@ -29,16 +29,13 @@ module Condstore = struct
   (* resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value / *)
   (*                     "NOMODSEQ" / *)
   (*                     "MODIFIED" SP set *)
-  type condstore_resptextcode =
-      CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
-    | CONDSTORE_RESPTEXTCODE_NOMODSEQ
-    | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
-       
   type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
-       CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+       CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
+     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
+     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
        CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
@@ -50,59 +47,55 @@ module Condstore = struct
 
   let condstore_printer : type a. a extension_kind -> a -> (Format.formatter -> unit) option =
     let open Format in
-    let condstore_resptextcode_print ppf = function
-        CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
-          fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n)
-      | CONDSTORE_RESPTEXTCODE_NOMODSEQ ->
-          fprintf ppf "(no-mod-seq)"
-      | CONDSTORE_RESPTEXTCODE_MODIFIED ns ->
-          fprintf ppf "(modified@ ?)"
-  in
-  function
-    FETCH_DATA ->
-      begin
-        function
-          CONDSTORE_FETCH_DATA_MODSEQ n ->
-            Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
-        | _ ->
-            None
-      end
-  | RESP_TEXT_CODE ->
-      begin
-        function
-          CONDSTORE_RESP_TEXT_CODE r ->
-            Some (fun ppf -> condstore_resptextcode_print ppf r)
-        | _ ->
-            None
-      end
-  | MAILBOX_DATA ->
-      begin
-        function
-          CONDSTORE_SEARCH_DATA (ns, n) ->
-            let loop ppf = function
-                [] -> ()
-              | [x] -> fprintf ppf "%s" (Uint32.to_string x)
-              | x :: xs ->
-                  fprintf ppf "%s" (Uint32.to_string x);
-                  List.iter (fun x -> fprintf ppf "@ %s" (Uint32.to_string x)) xs
-            in
-            Some (fun ppf -> fprintf ppf "@[<2>(%a@ (mod-seq %s))@]" loop ns (Uint64.to_string n))
-        | _ ->
-            None
-      end
-  | STATUS_ATT ->
-      begin
-        function
-          CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n ->
-            Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
-        | _ ->
-            None
-      end
-  | _ ->
-      function _ -> None
+    function
+      FETCH_DATA ->
+        begin
+          function
+            CONDSTORE_FETCH_DATA_MODSEQ n ->
+              Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
+          | _ ->
+              None
+        end
+    | RESP_TEXT_CODE ->
+        begin
+          function
+            CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
+              Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
+          | CONDSTORE_RESPTEXTCODE_NOMODSEQ ->
+              Some (fun ppf -> fprintf ppf "(no-mod-seq)")
+          | CONDSTORE_RESPTEXTCODE_MODIFIED ns ->
+              Some (fun ppf -> fprintf ppf "(modified@ ?)")
+          | _ ->
+              None
+        end
+    | MAILBOX_DATA ->
+        begin
+          function
+            CONDSTORE_SEARCH_DATA (ns, n) ->
+              let loop ppf = function
+                  [] -> ()
+                | [x] -> fprintf ppf "%s" (Uint32.to_string x)
+                | x :: xs ->
+                    fprintf ppf "%s" (Uint32.to_string x);
+                    List.iter (fun x -> fprintf ppf "@ %s" (Uint32.to_string x)) xs
+              in
+              Some (fun ppf -> fprintf ppf "@[<2>(%a@ (mod-seq %s))@]" loop ns (Uint64.to_string n))
+          | _ ->
+              None
+        end
+    | STATUS_ATT ->
+        begin
+          function
+            CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n ->
+              Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
+          | _ ->
+              None
+        end
+    | _ ->
+        function _ -> None
 
   (* [RFC 4551]
-  mod-sequence-value  = 1*DIGIT
+     mod-sequence-value  = 1*DIGIT
                             ;; Positive unsigned 64-bit integer
                             ;; (mod-sequence)
                             ;; (1 <= n < 18,446,744,073,709,551,615)
@@ -126,22 +119,18 @@ module Condstore = struct
       char '(' >> str "MODSEQ" >> char ' ' >> mod_sequence_value >>= fun x -> char ')' >> ret x
     in
     let permsg_modsequence = mod_sequence_value in
-    let condstore_resptextcode =
-      let highestmodseq =
-        str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun modseq ->
-        ret (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ modseq)
-      in
-      let nomodseq = str "NOMODSEQ" >> ret CONDSTORE_RESPTEXTCODE_NOMODSEQ in
-      let modified =
-        str "MODIFIED" >> char ' ' >> sequence_set >>= fun set ->
-        ret (CONDSTORE_RESPTEXTCODE_MODIFIED set)
-      in
-      altn [ highestmodseq; nomodseq; modified ]
+    let highestmodseq =
+      str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun modseq ->
+      ret (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ modseq)
+    in
+    let nomodseq = str "NOMODSEQ" >> ret CONDSTORE_RESPTEXTCODE_NOMODSEQ in
+    let modified =
+      str "MODIFIED" >> char ' ' >> sequence_set >>= fun set ->
+      ret (CONDSTORE_RESPTEXTCODE_MODIFIED set)
     in
     match kind with
       RESP_TEXT_CODE ->
-        condstore_resptextcode >>= fun r ->
-        ret (CONDSTORE_RESP_TEXT_CODE r)
+        altn [ highestmodseq; nomodseq; modified ]
     | FETCH_DATA ->
 (* fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")" *)
         str "MODSEQ" >> char ' ' >> char '(' >> permsg_modsequence >>= fun m -> char ')' >>
@@ -216,9 +205,9 @@ module Condstore = struct
       let rec loop = function
           [] ->
             Uint64.zero
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ m)) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ m) :: _ ->
             m
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ ->
             Uint64.zero
         | _ :: rest ->
             loop rest
@@ -278,7 +267,7 @@ module Condstore = struct
     let handler s =
       let rec loop = function
           [] -> ImapSet.empty
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_MODIFIED uids)) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_MODIFIED uids) :: _ ->
             uids
         | _ :: rest ->
             loop rest
