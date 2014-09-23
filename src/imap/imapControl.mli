@@ -21,10 +21,9 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
 
 type ('a, 'state, 'err) result =
-  | Ok of 'a * 'state
+    Ok of 'a * 'state
   | Fail of 'err * 'state
   | Need of (input -> ('a, 'state, 'err) result)
   | Flush of string * (unit -> ('a, 'state, 'err) result)

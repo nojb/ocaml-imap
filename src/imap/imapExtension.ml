@@ -21,24 +21,16 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
   
-type extended_parser =
-    EXTENDED_PARSER_RESPONSE_DATA
-  | EXTENDED_PARSER_RESP_TEXT_CODE
-  | EXTENDED_PARSER_MAILBOX_DATA
-  | EXTENDED_PARSER_FETCH_DATA
-  | EXTENDED_PARSER_STATUS_ATT
-
-type extension = {
-  ext_parser : extended_parser -> extension_data parser;
-  ext_printer : (extension_data -> (Format.formatter -> unit) option)
-}
+type extension =
+  { ext_parser : 'a. 'a extension_kind -> 'a parser;
+    ext_printer : 'a. 'a extension_kind -> 'a -> (Format.formatter -> unit) option }
 
 let extension_list = ref []
 
-let extension_data_store st e =
-  {st with rsp_info = {st.rsp_info with rsp_extension_list = st.rsp_info.rsp_extension_list @ [e]}}
+let extension_data_store st k d =
+  {st with rsp_info =
+             {st.rsp_info with rsp_extension_list = st.rsp_info.rsp_extension_list @ [EXTENSION_DATA (k, d)]}}
 
 let register_extension ext =
   extension_list := !extension_list @ [ext]

@@ -23,25 +23,31 @@
 open ImapTypes
 open ImapExtension
 
-type extension_data +=
+type msg_att_extension +=
      XGMLABELS_XGMLABELS of string list
 
 let fetch_att_xgmlabels =
   FETCH_ATT_EXTENSION "X-GM-LABELS"
 
-let xgmlabels_printer =
+let xgmlabels_printer : type a. a extension_kind -> a -> _ option =
   let open Format in
   function
-    XGMLABELS_XGMLABELS labels ->
-      let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
-      Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
+    FETCH_DATA ->
+      begin
+        function
+          XGMLABELS_XGMLABELS labels ->
+            let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
+            Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
+        | _ ->
+            None
+      end
   | _ ->
-      None
+      function _ -> None
 
-let xgmlabels_parser =
+let xgmlabels_parser : type a. a extension_kind -> a parser = fun kind ->
   let open ImapParser in
-  function
-    EXTENDED_PARSER_FETCH_DATA ->
+  match kind with
+    FETCH_DATA ->
       str "X-GM-LABELS" >> char ' ' >>
       char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
       ret (XGMLABELS_XGMLABELS labels)

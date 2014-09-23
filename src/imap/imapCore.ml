@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
 open ImapControl
 
 let string_of_error = function
@@ -88,7 +87,7 @@ let resp_text_store s {rsp_code; rsp_text} =
   (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
       (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
-      ImapExtension.extension_data_store s e
+      ImapExtension.extension_data_store s RESP_TEXT_CODE e
   | RESP_TEXT_CODE_OTHER other ->
       {s with rsp_info = {s.rsp_info with rsp_other = other}}
   | RESP_TEXT_CODE_NONE ->
@@ -116,7 +115,7 @@ let mailbox_data_store s =
   | MAILBOX_DATA_RECENT n ->
       {s with sel_info = {s.sel_info with sel_recent = Some n}}
   | MAILBOX_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s e
+      ImapExtension.extension_data_store s MAILBOX_DATA e
 
 let message_data_store s =
   function
@@ -152,7 +151,7 @@ let response_data_store s =
   | RESP_DATA_CAPABILITY_DATA cap_info ->
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
-      ImapExtension.extension_data_store s e
+      ImapExtension.extension_data_store s RESPONSE_DATA e
   (* | `NAMESPACE (pers, other, shared) -> *)
   (*   {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}} *)
 

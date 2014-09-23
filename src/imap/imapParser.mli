@@ -23,7 +23,6 @@
 (** CPS Combinator parsers on strings *)
 
 open ImapTypes
-open ImapTypesPrivate
   
 type 'a t =
   'a parser

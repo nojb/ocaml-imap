@@ -23,23 +23,29 @@
 open ImapTypes
 open ImapExtension
 
-type extension_data +=
+type msg_att_extension +=
      XGMMSGID_MSGID of Uint64.t
 
 let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
 
-let xgmmsgid_printer =
+let xgmmsgid_printer : type a. a extension_kind -> a -> _ option =
   let open Format in
   function
-    XGMMSGID_MSGID id ->
-      Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
+    FETCH_DATA ->
+      begin
+        function
+          XGMMSGID_MSGID id ->
+            Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
+        | _ ->
+            None
+      end
   | _ ->
-      None
+      function _ -> None
 
-let xgmmsgid_parser =
+let xgmmsgid_parser : type a. a extension_kind -> a parser = fun kind ->
   let open ImapParser in
-  function
-    EXTENDED_PARSER_FETCH_DATA ->
+  match kind with
+    FETCH_DATA ->
       str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
       ret (XGMMSGID_MSGID n)
   | _ ->

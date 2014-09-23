@@ -21,23 +21,14 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
   
-type extended_parser =
-    EXTENDED_PARSER_RESPONSE_DATA
-  | EXTENDED_PARSER_RESP_TEXT_CODE
-  | EXTENDED_PARSER_MAILBOX_DATA
-  | EXTENDED_PARSER_FETCH_DATA
-  | EXTENDED_PARSER_STATUS_ATT
-
-type extension = {
-  ext_parser : extended_parser -> extension_data parser;
-  ext_printer : (extension_data -> (Format.formatter -> unit) option)
-}
+type extension =
+  { ext_parser : 'a. 'a extension_kind -> 'a parser;
+    ext_printer : 'a. 'a extension_kind -> 'a -> (Format.formatter -> unit) option }
 
 val extension_list : extension list ref
 
-val extension_data_store : state -> extension_data -> state
+val extension_data_store : state -> 'a extension_kind -> 'a -> state
 
 val register_extension : extension -> unit
   

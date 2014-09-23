@@ -32,11 +32,17 @@ module Condstore : sig
     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
 
-  type extension_data +=
+  type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
-     | CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
-     | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
-     | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+
+  type resp_text_code_extension +=
+       CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+
+  type status_info_extension +=
+       CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+  
+  type mailbox_data_extension +=
+       CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
 
   val fetch_att_modseq : fetch_att
     

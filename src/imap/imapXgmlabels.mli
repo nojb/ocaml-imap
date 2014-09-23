@@ -23,7 +23,7 @@
 open ImapTypes
 open ImapCore
 
-type extension_data +=
+type msg_att_extension +=
      XGMLABELS_XGMLABELS of string list
 
 val fetch_att_xgmlabels : fetch_att

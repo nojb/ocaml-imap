@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
   
 type 'a t =
   'a parser
@@ -311,17 +310,17 @@ let test p s =
 
 (** IMAP PARSER *)
 
-let extension_parser calling_parser =
+let extension_parser : type a. a extension_kind -> a parser = fun kind ->
   let open ImapExtension in
   let rec loop = function
     | [] -> fail
     | p :: rest ->
-        alt (p.ext_parser calling_parser) (loop rest)
+        alt (p.ext_parser kind) (loop rest)
   in
   loop !extension_list
 
-let extension_parser =
-  delay extension_parser
+let extension_parser : type a. a extension_kind -> a parser = fun kind ->
+  delay extension_parser kind
     
 (*
 auth-type       = atom
@@ -500,10 +499,7 @@ let resp_text_code =
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> nz_number >>= fun n -> ret (RESP_TEXT_CODE_UNSEEN n) in
-  let extension =
-    extension_parser ImapExtension.EXTENDED_PARSER_RESP_TEXT_CODE >>= fun e ->
-    ret (RESP_TEXT_CODE_EXTENSION e)
-  in
+  let extension = extension_parser RESP_TEXT_CODE >>= fun e -> ret (RESP_TEXT_CODE_EXTENSION e) in
   let other =
     atom >>= fun a -> opt (char ' ' >> some (accum is_text_other_char)) None
     >>= fun s -> ret (RESP_TEXT_CODE_OTHER (a, s))
@@ -608,9 +604,7 @@ let status_att =
   let uidnext = str "UIDNEXT" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDNEXT n) in
   let uidvalidity = str "UIDVALIDITY" >> char ' ' >> nz_number >>= fun n -> ret (STATUS_ATT_UIDVALIDITY n) in
   let unseen = str "UNSEEN" >> char ' ' >> number' >>= fun n -> ret (STATUS_ATT_UNSEEN n) in
-  let extension =
-    extension_parser ImapExtension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e)
-  in
+  let extension = extension_parser STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e) in
   altn [ messages; recent; uidnext; uidvalidity; unseen; extension ]
 
 let address =
@@ -1071,18 +1065,17 @@ let msg_att =
   char '(' >>
   sep1 (char ' ')
     begin
-      altn [
-        (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
-        (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
-        (extension_parser ImapExtension.EXTENDED_PARSER_FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e))
-      ]
+      altn
+        [ (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
+          (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
+          (extension_parser FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e)) ]
     end
   >>= fun xs ->
   char ')' >>
   ret xs
 
 let status_info =
-  alt status_att (extension_parser ImapExtension.EXTENDED_PARSER_STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
+  alt status_att (extension_parser STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
 
 let mailbox_data_flags =
   str "FLAGS" >> char ' ' >> flag_list >>= fun flags ->
@@ -1115,8 +1108,7 @@ let mailbox_data_recent =
   ret (MAILBOX_DATA_RECENT n)
 
 let mailbox_data_extension_data =
-  extension_parser ImapExtension.EXTENDED_PARSER_MAILBOX_DATA >>= fun e ->
-  ret (MAILBOX_DATA_EXTENSION_DATA e)
+  extension_parser MAILBOX_DATA >>= fun e -> ret (MAILBOX_DATA_EXTENSION_DATA e)
 
 (*
 mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -1209,7 +1201,7 @@ let response_data =
     (mailbox_data >>= fun r -> ret (RESP_DATA_MAILBOX_DATA r));
     (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
     (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
-    (extension_parser ImapExtension.EXTENDED_PARSER_RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
+    (extension_parser RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
     (* namespace_response; *)
   ]
   >>= fun x ->

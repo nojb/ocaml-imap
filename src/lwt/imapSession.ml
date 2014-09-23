@@ -524,8 +524,8 @@ let get_mod_sequence_value state =
   let open ImapCommands.Condstore in
   let rec loop = function
       [] -> Modseq.zero
-    | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n
-    | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Modseq.zero
+    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n)) :: _ -> n
+    | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ -> Modseq.zero
     | _ :: rest -> loop rest
   in
   loop state.rsp_info.rsp_extension_list
@@ -1202,7 +1202,7 @@ let capability s =
 let enable_feature s feature =
   lwt ci = connect_if_needed s in
   try_lwt
-    lwt _ = run ci (ImapEnable.enable [CAPABILITY_NAME feature]) in
+    lwt _ = run ci (ImapCommands.Enable.enable [CAPABILITY_NAME feature]) in
     Lwt.return true
   with
   | _ -> Lwt.return false

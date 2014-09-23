@@ -42,24 +42,30 @@ uid-range       = (uniqueid ":" uniqueid)
                   ; Example: 2:4 and 4:2 are equivalent.
 *)
 
-type extension_data +=
+type resp_text_code_extension +=
      UIDPLUS_RESP_CODE_APND of Uint32.t * ImapSet.t
    | UIDPLUS_RESP_CODE_COPY of Uint32.t * ImapSet.t * ImapSet.t
    | UIDPLUS_RESP_CODE_UIDNOTSTICKY
 
-let uidplus_printer =
+let uidplus_printer : type a. a extension_kind -> a -> _ option =
   let open Format in
   function
-    UIDPLUS_RESP_CODE_APND (uid1, uid2) ->
-      Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s ?)@]" (Uint32.to_string uid1)) (* FIXME *)
-  | UIDPLUS_RESP_CODE_COPY (uid, uidset1, uidset2) ->
-      Some (fun ppf -> fprintf ppf "@[<2>(uidplus-copy %s ?)@]" (Uint32.to_string uid))
-  | UIDPLUS_RESP_CODE_UIDNOTSTICKY ->
-      Some (fun ppf -> fprintf ppf "(uid-not-sticky)")
+    RESP_TEXT_CODE ->
+      begin
+        function
+          UIDPLUS_RESP_CODE_APND (uid1, uid2) ->
+            Some (fun ppf -> fprintf ppf "@[<2>(uidplus-append %s ?)@]" (Uint32.to_string uid1)) (* FIXME *)
+        | UIDPLUS_RESP_CODE_COPY (uid, uidset1, uidset2) ->
+            Some (fun ppf -> fprintf ppf "@[<2>(uidplus-copy %s ?)@]" (Uint32.to_string uid))
+        | UIDPLUS_RESP_CODE_UIDNOTSTICKY ->
+            Some (fun ppf -> fprintf ppf "(uid-not-sticky)")
+        | _ ->
+            None
+      end
   | _ ->
-      None
+      function _ -> None
 
-let uidplus_parser =
+let uidplus_parser : type a. a extension_kind -> a parser = fun kind ->
   let open ImapParser in
   let uid_range =
     uniqueid >>= fun x ->
@@ -98,8 +104,8 @@ let uidplus_parser =
   let resp_code_uidnotsticky =
     str "UIDNOTSTICKY" >> ret UIDPLUS_RESP_CODE_UIDNOTSTICKY
   in
-  function
-    EXTENDED_PARSER_RESP_TEXT_CODE ->
+  match kind with
+    RESP_TEXT_CODE ->
       altn [ resp_code_apnd; resp_code_copy; resp_code_uidnotsticky ]
   | _ ->
       fail
@@ -118,7 +124,7 @@ let extract_copy_uid s =
     function
       [] ->
         Uint32.zero, ImapSet.empty, ImapSet.empty
-    | UIDPLUS_RESP_CODE_COPY (uid, src, dst) :: _ ->
+    | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_COPY (uid, src, dst)) :: _ ->
         uid, src, dst
     | _ :: rest ->
         loop rest
@@ -136,7 +142,7 @@ let extract_apnd_uid s =
     function
       [] ->
         Uint32.zero, ImapSet.empty
-    | UIDPLUS_RESP_CODE_APND (uid, set) :: _ ->
+    | EXTENSION_DATA (RESP_TEXT_CODE, UIDPLUS_RESP_CODE_APND (uid, set)) :: _ ->
         uid, set
     | _ :: rest ->
         loop rest

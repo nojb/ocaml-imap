@@ -22,16 +22,15 @@
 
 open Format
 open ImapTypes
-open ImapTypesPrivate
 
-let extension_print ppf e =
+let extension_print ppf k d =
   let open ImapExtension in
   let rec loop =
     function
       [] ->
         fprintf ppf "(extension ..)"
     | p :: rest ->
-        match p.ext_printer e with
+        match p.ext_printer k d with
           Some f -> f ppf
         | None -> loop rest
   in
@@ -108,7 +107,7 @@ let resp_text_code_print ppf r =
     (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
         (* fprintf ppf "compression-active" *)
     | RESP_TEXT_CODE_EXTENSION e ->
-        extension_print ppf e
+        extension_print ppf RESP_TEXT_CODE e
     | RESP_TEXT_CODE_OTHER (k, None) ->
         fprintf ppf "(other %s)" (String.lowercase k)
     | RESP_TEXT_CODE_OTHER (k, Some v) ->
@@ -216,7 +215,7 @@ let status_info_print ppf r =
     | STATUS_ATT_HIGHESTMODSEQ m ->
         fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string m)
     | STATUS_ATT_EXTENSION e ->
-        extension_print ppf e
+        extension_print ppf STATUS_ATT e
   in
   fprintf ppf "@[<2>(status-info@ %a)@]" p r
 
@@ -244,7 +243,7 @@ let mailbox_data_print ppf r =
     | MAILBOX_DATA_RECENT n ->
         fprintf ppf "(recent %i)" n
     | MAILBOX_DATA_EXTENSION_DATA e ->
-        extension_print ppf e
+        extension_print ppf MAILBOX_DATA e
   in
   fprintf ppf "@[<2>(mailbox-data@ %a)@]" p r
 
@@ -372,7 +371,8 @@ let msg_att_item_print ppf r =
     | MSG_ATT_ITEM_STATIC r ->
         fprintf ppf "@[<2>(msg-att-static@ %a)@]" msg_att_item_static r
     | MSG_ATT_ITEM_EXTENSION e ->
-        fprintf ppf "@[<2>(msg-att-extension@ %a)@]" extension_print e
+        let p ppf d = extension_print ppf FETCH_DATA d in
+        fprintf ppf "@[<2>(msg-att-extension@ %a)@]" p e
   in
   fprintf ppf "@[<2>(msg-att-item@ %a)@]" p r
 
@@ -408,7 +408,7 @@ let response_data_print ppf r =
     | RESP_DATA_CAPABILITY_DATA r ->
         capability_data_print ppf r
     | RESP_DATA_EXTENSION_DATA e ->
-        extension_print ppf e
+        extension_print ppf RESPONSE_DATA e
   in
   fprintf ppf "@[<2>(response-data %a)@]" p r
 

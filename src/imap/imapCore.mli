@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
 open ImapControl
   
 val string_of_error : error -> string

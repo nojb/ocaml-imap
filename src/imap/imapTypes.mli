@@ -22,8 +22,6 @@
 
 (** IMAP queries and response data *)
 
-type extension_data = ..
-
 (** {2 Message flags} *)
                 
 type flag =
@@ -382,11 +380,13 @@ type msg_att_static =
 
 type msg_att_dynamic =
   flag_fetch list
+
+type msg_att_extension = ..
   
 type msg_att_item =
     MSG_ATT_ITEM_DYNAMIC of msg_att_dynamic
   | MSG_ATT_ITEM_STATIC of msg_att_static
-  | MSG_ATT_ITEM_EXTENSION of extension_data
+  | MSG_ATT_ITEM_EXTENSION of msg_att_extension
 
 type msg_att =
   msg_att_item list * Uint32.t
@@ -423,6 +423,8 @@ type status_att =
   (** The highest modification sequence of the mailbox.  This requires support
       for the CONDSTORE extension. *)
 
+type status_info_extension = ..
+
 (** STATUS replies. See {!status_att}. *)
 type status_info =
     STATUS_ATT_MESSAGES of int
@@ -431,7 +433,7 @@ type status_info =
   | STATUS_ATT_UIDVALIDITY of Uint32.t
   | STATUS_ATT_UNSEEN of int
   | STATUS_ATT_HIGHESTMODSEQ of Uint64.t
-  | STATUS_ATT_EXTENSION of extension_data
+  | STATUS_ATT_EXTENSION of status_info_extension
 
 (** {2 LIST/LSUB commands} *)
 
@@ -479,6 +481,128 @@ type mailbox_perm =
     MAILBOX_READONLY
   | MAILBOX_READWRITE
 
+(** List of capabilities *)
+type capability_data =
+  capability list
+
+(** {2 Response codes} *)
+
+type resp_text_code_extension = ..
+
+type resp_text_code =
+    RESP_TEXT_CODE_ALERT
+  | RESP_TEXT_CODE_BADCHARSET of string list
+  | RESP_TEXT_CODE_CAPABILITY_DATA of capability_data
+  | RESP_TEXT_CODE_PARSE
+  | RESP_TEXT_CODE_PERMANENTFLAGS of flag_perm list
+  | RESP_TEXT_CODE_READ_ONLY
+  | RESP_TEXT_CODE_READ_WRITE
+  | RESP_TEXT_CODE_TRYCREATE
+  | RESP_TEXT_CODE_UIDNEXT of Uint32.t
+  | RESP_TEXT_CODE_UIDVALIDITY of Uint32.t
+  | RESP_TEXT_CODE_UNSEEN of Uint32.t
+  (* | RESP_TEXT_CODE_COMPRESSIONACTIVE *)
+  | RESP_TEXT_CODE_EXTENSION of resp_text_code_extension
+  | RESP_TEXT_CODE_OTHER of (string * string option)
+  | RESP_TEXT_CODE_NONE
+  
+(** response code, human readable text *)
+type resp_text = {
+  rsp_code : resp_text_code;
+  rsp_text : string
+}
+
+(** {2 Untagged responses} *)
+
+type 'resp_type resp_cond = {
+  rsp_type : 'resp_type;
+  rsp_text : resp_text
+}
+
+(** Authentication condition responses *)
+type resp_cond_auth_type =
+    RESP_COND_AUTH_OK
+  | RESP_COND_AUTH_PREAUTH
+
+type resp_cond_auth =
+  resp_cond_auth_type resp_cond
+
+(** BYE response *)
+type resp_cond_bye =
+  resp_text
+
+type response_fatal =
+  resp_cond_bye
+
+(** Condition state responses *)
+type resp_cond_state_type =
+    RESP_COND_STATE_OK
+  | RESP_COND_STATE_NO
+  | RESP_COND_STATE_BAD
+
+type resp_cond_state =
+  resp_cond_state_type resp_cond
+
+(** Message information *)
+type message_data =
+    MESSAGE_DATA_EXPUNGE of Uint32.t
+  | MESSAGE_DATA_FETCH of msg_att
+
+type mailbox_data_extension = ..
+
+(** Mailbox information *)
+type mailbox_data =
+    MAILBOX_DATA_FLAGS of flag list
+  | MAILBOX_DATA_LIST of mailbox_list
+  | MAILBOX_DATA_LSUB of mailbox_list
+  | MAILBOX_DATA_SEARCH of Uint32.t list
+  | MAILBOX_DATA_STATUS of mailbox_data_status
+  | MAILBOX_DATA_EXISTS of int
+  | MAILBOX_DATA_RECENT of int
+  | MAILBOX_DATA_EXTENSION_DATA of mailbox_data_extension
+
+type response_data_extension = ..
+
+(** Untagged response *)
+type response_data =
+    RESP_DATA_COND_STATE of resp_cond_state
+  | RESP_DATA_COND_BYE of resp_cond_bye
+  | RESP_DATA_MAILBOX_DATA of mailbox_data
+  | RESP_DATA_MESSAGE_DATA of message_data
+  | RESP_DATA_CAPABILITY_DATA of capability_data
+  | RESP_DATA_EXTENSION_DATA of response_data_extension
+
+(** {2 Tagged responses} *)
+  
+type response_tagged = {
+  rsp_tag : string;
+  rsp_cond_state : resp_cond_state
+}
+
+(** Ending response *)
+type response_done =
+    RESP_DONE_TAGGED of response_tagged
+  | RESP_DONE_FATAL of response_fatal
+
+type continue_req =
+    CONTINUE_REQ_TEXT of resp_text
+  | CONTINUE_REQ_BASE64 of string
+
+type cont_req_or_resp_data =
+    RESP_CONT_REQ of continue_req
+  | RESP_CONT_DATA of response_data
+
+type response = {
+  rsp_cont_req_or_resp_data_list : cont_req_or_resp_data list;
+  rsp_resp_done : response_done
+}
+
+(** {2 Greeting response} *)
+
+type greeting =
+    GREETING_RESP_COND_AUTH of resp_cond_auth
+  | GREETING_RESP_COND_BYE of resp_cond_bye
+
 type selection_info = {
   sel_perm_flags : flag_perm list;
   sel_perm : mailbox_perm;
@@ -491,6 +615,16 @@ type selection_info = {
   sel_unseen : int
 }
 
+type _ extension_kind =
+    RESPONSE_DATA : response_data_extension extension_kind
+  | RESP_TEXT_CODE : resp_text_code_extension extension_kind
+  | MAILBOX_DATA : mailbox_data_extension extension_kind
+  | FETCH_DATA : msg_att_extension extension_kind
+  | STATUS_ATT : status_info_extension extension_kind
+
+type rsp_extension_data =
+  EXTENSION_DATA : 'a extension_kind * 'a -> rsp_extension_data
+
 type response_info = {
   rsp_alert : string;
   rsp_parse : string;
@@ -502,7 +636,7 @@ type response_info = {
   rsp_status : mailbox_data_status;
   rsp_expunged : Uint32.t list;
   rsp_fetch_list : msg_att list;
-  rsp_extension_list : extension_data list;
+  rsp_extension_list : rsp_extension_data list;
   rsp_other : string * string option
 }
 
@@ -529,3 +663,11 @@ type error =
 type input =
     End
   | More
+
+type 'a parse_result =
+    Ok of 'a * int
+  | Fail of int
+  | Need of (input -> 'a parse_result)
+
+type 'a parser =
+  Buffer.t -> int -> 'a parse_result

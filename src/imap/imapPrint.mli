@@ -21,7 +21,6 @@
 (* SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
 
 val capability_print : Format.formatter -> capability -> unit
 val response_print : Format.formatter -> response -> unit

@@ -21,7 +21,6 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
 open ImapCore
 open ImapControl
 
@@ -35,15 +34,21 @@ module Condstore = struct
     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
        
-  type extension_data +=
+  type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
-     | CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
-     | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
-     | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
 
+  type resp_text_code_extension +=
+       CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+
+  type status_info_extension +=
+       CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+  
+  type mailbox_data_extension +=
+       CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
+     
   let fetch_att_modseq = FETCH_ATT_EXTENSION "MODSEQ"
 
-  let condstore_printer =
+  let condstore_printer : type a. a extension_kind -> a -> (Format.formatter -> unit) option =
     let open Format in
     let condstore_resptextcode_print ppf = function
         CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
@@ -54,23 +59,47 @@ module Condstore = struct
           fprintf ppf "(modified@ ?)"
   in
   function
-    CONDSTORE_FETCH_DATA_MODSEQ n ->
-      Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
-  | CONDSTORE_RESP_TEXT_CODE r ->
-      Some (fun ppf -> condstore_resptextcode_print ppf r)
-  | CONDSTORE_SEARCH_DATA (ns, n) ->
-      let loop ppf = function
-          [] -> ()
-        | [x] -> fprintf ppf "%s" (Uint32.to_string x)
-        | x :: xs ->
-            fprintf ppf "%s" (Uint32.to_string x);
-            List.iter (fun x -> fprintf ppf "@ %s" (Uint32.to_string x)) xs
-      in
-      Some (fun ppf -> fprintf ppf "@[<2>(%a@ (mod-seq %s))@]" loop ns (Uint64.to_string n))
-  | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n ->
-      Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
+    FETCH_DATA ->
+      begin
+        function
+          CONDSTORE_FETCH_DATA_MODSEQ n ->
+            Some (fun ppf -> fprintf ppf "(mod-seq %s)" (Uint64.to_string n))
+        | _ ->
+            None
+      end
+  | RESP_TEXT_CODE ->
+      begin
+        function
+          CONDSTORE_RESP_TEXT_CODE r ->
+            Some (fun ppf -> condstore_resptextcode_print ppf r)
+        | _ ->
+            None
+      end
+  | MAILBOX_DATA ->
+      begin
+        function
+          CONDSTORE_SEARCH_DATA (ns, n) ->
+            let loop ppf = function
+                [] -> ()
+              | [x] -> fprintf ppf "%s" (Uint32.to_string x)
+              | x :: xs ->
+                  fprintf ppf "%s" (Uint32.to_string x);
+                  List.iter (fun x -> fprintf ppf "@ %s" (Uint32.to_string x)) xs
+            in
+            Some (fun ppf -> fprintf ppf "@[<2>(%a@ (mod-seq %s))@]" loop ns (Uint64.to_string n))
+        | _ ->
+            None
+      end
+  | STATUS_ATT ->
+      begin
+        function
+          CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n ->
+            Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
+        | _ ->
+            None
+      end
   | _ ->
-      None
+      function _ -> None
 
   (* [RFC 4551]
   mod-sequence-value  = 1*DIGIT
@@ -87,7 +116,7 @@ module Condstore = struct
   permsg-modsequence  = mod-sequence-value
                             ;; per message mod-sequence
   *)
-  let condstore_parse =
+  let condstore_parse : type a. a extension_kind -> a parser = fun kind ->
     let open ImapParser in
     let mod_sequence_value =
       accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
@@ -109,21 +138,21 @@ module Condstore = struct
       in
       altn [ highestmodseq; nomodseq; modified ]
     in
-    function
-      EXTENDED_PARSER_RESP_TEXT_CODE ->
+    match kind with
+      RESP_TEXT_CODE ->
         condstore_resptextcode >>= fun r ->
         ret (CONDSTORE_RESP_TEXT_CODE r)
-    | EXTENDED_PARSER_FETCH_DATA ->
+    | FETCH_DATA ->
 (* fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")" *)
         str "MODSEQ" >> char ' ' >> char '(' >> permsg_modsequence >>= fun m -> char ')' >>
         ret (CONDSTORE_FETCH_DATA_MODSEQ m)
 (* status-att          =/ "HIGHESTMODSEQ" *)
 (*                           ;; extends non-terminal defined in RFC 3501. *)
-    | EXTENDED_PARSER_STATUS_ATT ->
+    | STATUS_ATT ->
 (* msg-att-dynamic     =/ fetch-mod-resp *)
         str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun n ->
         ret (CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n)
-    | EXTENDED_PARSER_MAILBOX_DATA ->
+    | MAILBOX_DATA ->
 (* mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP *)
 (*                           search-sort-mod-seq] *)
         str "SEARCH" >> char ' ' >>
@@ -156,7 +185,7 @@ module Condstore = struct
           (* ret (res, Uint64.zero) *)
           (* FIXME *)
           (res, Uint64.zero)
-        | CONDSTORE_SEARCH_DATA (res, m) :: _ ->
+        | EXTENSION_DATA (MAILBOX_DATA, CONDSTORE_SEARCH_DATA (res, m)) :: _ ->
           (* ret (res, m) *)
             (res, m)
         | _ :: rest ->
@@ -187,9 +216,9 @@ module Condstore = struct
       let rec loop = function
           [] ->
             Uint64.zero
-        | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ m) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ m)) :: _ ->
             m
-        | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ ->
             Uint64.zero
         | _ :: rest ->
             loop rest
@@ -249,7 +278,7 @@ module Condstore = struct
     let handler s =
       let rec loop = function
           [] -> ImapSet.empty
-        | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_MODIFIED uids) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_MODIFIED uids)) :: _ ->
             uids
         | _ :: rest ->
             loop rest
@@ -454,33 +483,38 @@ let uid_store =
 module Enable = struct
   open ImapExtension
     
-  type extension_data +=
+  type response_data_extension +=
        EXTENSION_ENABLE of capability list
 
 (*
 response-data =/ "*" SP enable-data CRLF
 enable-data   = "ENABLED" *(SP capability)
 *)
-  let enable_parser =
+  let enable_parser : type a. a extension_kind -> a parser =
     let open ImapParser in
     function
-      EXTENDED_PARSER_RESPONSE_DATA ->
+      RESPONSE_DATA ->
         str "ENABLED" >>
         rep (char ' ' >> capability) >>= fun caps ->
         ret (EXTENSION_ENABLE caps)
     | _ ->
         fail
 
-
-  let enable_printer =
+  let enable_printer : type a. a extension_kind -> a -> _ option =
     let open Format in
     let open ImapPrint in
     function
-      EXTENSION_ENABLE caps ->
-        let p ppf = List.iter (fun x -> fprintf ppf "@ %a" capability_print x) in
-        Some (fun ppf -> fprintf ppf "@[<2>(enabled%a)@]" p caps)
+      RESPONSE_DATA ->
+        begin
+          function
+            EXTENSION_ENABLE caps ->
+              let p ppf = List.iter (fun x -> fprintf ppf "@ %a" capability_print x) in
+              Some (fun ppf -> fprintf ppf "@[<2>(enabled%a)@]" p caps)
+          | _ ->
+              None
+        end
     | _ ->
-        None
+        function _ -> None
 
   let enable_sender caps =
     let open ImapSend in
@@ -497,7 +531,7 @@ enable-data   = "ENABLED" *(SP capability)
     let rec loop =
       function
         [] -> []
-      | EXTENSION_ENABLE caps :: _ -> caps
+      | EXTENSION_DATA (RESPONSE_DATA, EXTENSION_ENABLE caps) :: _ -> caps
       | _ :: rest -> loop rest
     in
     loop s.rsp_info.rsp_extension_list
@@ -512,20 +546,26 @@ end
 module Id = struct
   open ImapExtension
 
-  type extension_data +=
+  type response_data_extension +=
        ID_PARAMS of (string * string option) list
 
-  let id_printer =
+  let id_printer : type a. a extension_kind -> a -> _ option =
     let open Format in
     function
-      ID_PARAMS params ->
-        let p ppf =
-          List.iter (function (k, None) -> fprintf ppf "@ (%s nil)" k
-                            | (k, Some v) -> fprintf ppf "@ (%s %S)" k v)
-        in
-        Some (fun ppf -> fprintf ppf "@[<2>(id%a)@]" p params)
+      RESPONSE_DATA ->
+        begin
+          function
+            ID_PARAMS params ->
+              let p ppf =
+                List.iter (function (k, None) -> fprintf ppf "@ (%s nil)" k
+                                  | (k, Some v) -> fprintf ppf "@ (%s %S)" k v)
+              in
+              Some (fun ppf -> fprintf ppf "@[<2>(id%a)@]" p params)
+          | _ ->
+              None
+        end
     | _ ->
-        None
+        function _ -> None
 
   let id_sender params =
     let open ImapSend in
@@ -541,7 +581,7 @@ module Id = struct
       [] -> nil
     | xs -> list param_sender params
 
-  let id_parser =
+  let id_parser : type a. a extension_kind -> a parser = fun kind ->
     let open ImapParser in
     let id_params =
       astring >>= fun k ->
@@ -549,8 +589,8 @@ module Id = struct
       nstring >>= fun v ->
       ret (k, v)
     in
-    function
-      EXTENDED_PARSER_RESPONSE_DATA ->
+    match kind with
+      RESPONSE_DATA ->
         str "ID" >> char ' ' >>
         char '(' >> sep (char ' ') id_params >>= fun params_list -> char ')' >>
         ret (ID_PARAMS params_list)
@@ -561,7 +601,7 @@ module Id = struct
     let rec loop =
       function
         [] -> []
-      | ID_PARAMS params :: _ ->
+      | EXTENSION_DATA (RESPONSE_DATA, ID_PARAMS params) :: _ ->
           params
       | _ :: rest ->
           loop rest

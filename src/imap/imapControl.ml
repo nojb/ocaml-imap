@@ -21,10 +21,9 @@
    SOFTWARE. *)
 
 open ImapTypes
-open ImapTypesPrivate
   
 type ('a, 'state, 'err) result =
-  | Ok of 'a * 'state
+    Ok of 'a * 'state
   | Fail of 'err * 'state
   | Need of (input -> ('a, 'state, 'err) result)
   | Flush of string * (unit -> ('a, 'state, 'err) result)
@@ -39,7 +38,7 @@ let flush st =
 
 let bind m f st =
   let rec loop = function
-    | Ok (x, st) -> f x st
+      Ok (x, st) -> f x st
     | Fail _ as x -> x
     | Need k -> Need (fun inp -> loop (k inp))
     | Flush (str, k) -> Flush (str, fun () -> loop (k ()))
@@ -51,18 +50,18 @@ let fail err st =
     
 let liftP p st =
   let rec loop = function
-    | ImapTypesPrivate.Ok (x, i) ->
+      ImapTypes.Ok (x, i) ->
         let rest = Buffer.sub st.in_buf i (Buffer.length st.in_buf - i) in
         Buffer.clear st.in_buf;
         Buffer.add_string st.in_buf rest;
         let st = {st with in_pos = 0} in
         Ok (x, st)
-    | ImapTypesPrivate.Fail i ->
+    | ImapTypes.Fail i ->
         let start = max 0 (i - 10) in
         let finish = min (Buffer.length st.in_buf) (i + 10) in
         let context = Buffer.sub st.in_buf start (finish - start) in
         Fail (ParseError (context, i - start), st)
-    | ImapTypesPrivate.Need k ->
+    | ImapTypes.Need k ->
         Need (fun inp -> loop (k inp))
   in
   loop (p st.in_buf st.in_pos)
@@ -87,85 +86,17 @@ let put st _ =
 
 let catch f g st =
   let rec loop = function
-    | Ok _ as ok -> ok
+      Ok _ as ok -> ok
     | Fail (err, st) -> g err st
     | Need k -> Need (fun inp -> loop (k inp))
     | Flush (str, k) -> Flush (str, fun () -> loop (k ()))
   in
   loop (f st)
 
-(* let try_bind m f g st = *)
-(*   let rec loop = function *)
-(*     | Ok (x, st) -> f x st *)
-(*     | Fail err -> g err st *)
-(*     | Need k -> Need (fun inp -> loop (k inp)) *)
-(*     | Flush k -> Flush (fun () -> loop (k ())) *)
-(*   in *)
-(*   loop (m st) *)
-
 let (>>=) = bind
 
 let (>>) m1 m2 = m1 >>= fun _ -> m2
 
-(* let lift f g m st = *)
-(*   let rec loop = function *)
-(*     | Ok (x, state) -> Ok (x, g st state) *)
-(*     | Fail err -> Fail err *)
-(*     | Need k -> Need (fun inp -> loop (k inp)) *)
-(*     | Flush k -> Flush (fun () -> loop (k ())) *)
-(*   in *)
-(*   loop (m (f st)) *)
-
 let run m st =
   assert (List.length st.out_buf = 0);
   m st
-
-(* module type CONTROL = sig *)
-(*   type error *)
-(*   type 'a t *)
-(*   val ret : 'a -> 'a t *)
-(*   val bind : 'a t -> ('a -> 'b t) -> 'b t *)
-(*   val fail : error -> _ t *)
-
-(*   type io *)
-
-(*   val input : io -> string -> int -> int -> int t *)
-(*   val output : io -> string -> int -> int -> int t *)
-(* end *)
-
-(* module MakeRun (IO : CONTROL) = struct *)
-(*   let really_output io buf pos len = *)
-(*     let rec loop pos len = *)
-(*       if len <= 0 then IO.ret () *)
-(*       else IO.bind (IO.output io buf pos len) (fun n -> loop (pos + n) (len - n)) *)
-(*     in *)
-(*     loop pos len *)
-(*   let run c io st = *)
-(*     let buf = Bytes.create 65536 in *)
-(*     let rec loop = function *)
-(*       | Ok (x, st) -> *)
-(*           IO.ret (x, st) *)
-(*       | Fail err -> *)
-(*           IO.fail err *)
-(*       | Flush k -> *)
-(*           let str = Buffer.contents st.out_buf in *)
-(*           Buffer.clear st.out_buf; *)
-(*           prerr_endline ">>>>"; *)
-(*           prerr_string str; *)
-(*           prerr_endline ">>>>"; *)
-(*           IO.bind (really_output io str 0 (String.length str)) (fun () -> loop (k ())) *)
-(*       | Need k -> *)
-(*           IO.bind *)
-(*             (IO.input io buf 0 (String.length buf)) *)
-(*             (function *)
-(*               | 0 -> *)
-(*                   loop (k End) *)
-(*               | _ as n -> *)
-(*                   prerr_endline "<<<<"; *)
-(*                   prerr_string (String.sub buf 0 n); *)
-(*                   prerr_endline "<<<<"; *)
-(*                   Buffer.add_subbytes st.in_buf buf 0 n; *)
-(*                   loop (k More)) *)
-(*     in *)
-(*     loop (run c st) *)
-(* end *)
