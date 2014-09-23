@@ -26,8 +26,6 @@ open ImapTypes
 open ImapCore
 open ImapControl
   
-(* (\** {2 Commands valid in any state} *\) *)
-
 module Condstore : sig
   type condstore_resptextcode =
       CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
@@ -82,8 +80,6 @@ val noop : unit command
 val logout : unit command
 (** Logs out from the server by sending a {b LOGOUT} command. *)
 
-(* (\** {2 Commands valid in {b Non-authenticated} state} *\) *)
-
 (* val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)
 (*   session -> unit IO.t *)
 (* (\** Start a TLS session using the given protocol.  If [?ca_file] is given, *)
@@ -93,8 +89,6 @@ val logout : unit command
 val authenticate : ImapAuth.t -> unit command
 
 val login : string -> string -> unit command
-
-(* (\** {2 Commands valid in {b Authenticated} or {b Selected} state} *\) *)
 
 (* val compress : session -> unit IO.t *)
 (* (\** Enables compression. *)
@@ -131,8 +125,6 @@ val uid_search : ?charset:string -> search_key -> Uint32.t list command
 (* (\** Returns the three types of namespaces (personal, other users, shared) in the server. *)
 
 (*     This command requires the NAMESPACE extension. *\) *)
-
-(* (\** {2 Commands valid only in {b Selected} state} *\) *)
 
 val check : unit command
 

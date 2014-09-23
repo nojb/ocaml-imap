@@ -327,7 +327,7 @@ val fetch_message_by_uid :
 val search :
   session ->
   folder:string ->
-  key:search_key -> Uid.t list Lwt.t
+  key:search_key -> UidSet.t Lwt.t
     (** Search for messages satisfying [key].  Returns the UIDs of matching
         messages. *)
 

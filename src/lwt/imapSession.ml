@@ -1072,7 +1072,8 @@ let search s ~folder ~key =
         | _ ->
             raise_lwt (Error Fetch)
   in
-  Lwt.return result_list
+  let result = List.fold_left (fun s n -> UidSet.add n s) UidSet.empty result_list in
+  Lwt.return result
 
 let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
   lwt ci, _ = select_if_needed s folder in
