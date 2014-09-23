@@ -20,8 +20,37 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type session
+module type IndexSet = sig
+  type elt
+  type t
+  val empty : t
+  val range : elt -> elt -> t
+  val index : elt -> t
+  val add_range : elt -> elt -> t -> t
+  val add : elt -> t -> t
+  val remove_range : elt -> elt -> t -> t
+  val remove : elt -> t -> t
+  val contains : elt -> t -> bool
+  val to_string : t -> string
+end
 
+module type Num = sig
+  type t
+  val of_int : int -> t
+  val compare : t -> t -> int
+  val zero : t
+  val one : t
+  val to_string : t -> string
+  val of_string : string -> t
+end
+
+module Uid : Num
+module UidSet : IndexSet with type elt = Uid.t
+
+module Modseq : Num
+module Gmsgid : Num
+module Gthrid : Num
+  
 type folder_flag =
     Marked
   | Unmarked
@@ -142,8 +171,8 @@ type search_key =
   | SinceReceiveDate of float
   | SizeLarger of int
   | SizeSmaller of int
-  | GmailThreadID of Uint64.t
-  | GmailMessageID of Uint64.t
+  | GmailThreadID of Gthrid.t
+  | GmailMessageID of Gmsgid.t
   | GmailRaw of string
   | Or of search_key * search_key
   | And of search_key * search_key
@@ -190,50 +219,48 @@ type error =
   | NoRecipient
   | Noop
 
-type folder_status = {
-  unseen_count : int;
-  message_count : int;
-  recent_count : int;
-  uid_next : Uint32.t;
-  uid_validity : Uint32.t;
-  highest_mod_seq_value : Uint64.t
-}
+type folder_status =
+  { unseen_count : int;
+    message_count : int;
+    recent_count : int;
+    uid_next : Uid.t;
+    uid_validity : Uid.t;
+    highest_mod_seq_value : Modseq.t }
 
 type folder =
   { path : string;
     delimiter : char option;
     flags : folder_flag list }
 
-type address = {
-  display_name : string;
-  mailbox : string;
-}
+type address =
+  { display_name : string;
+    mailbox : string }
 
-type header = {
-  message_id : string;
-  references : string list;
-  in_reply_to : string list;
-  sender : address;
-  from : address;
-  to_ : address list;
-  cc : address list;
-  bcc : address list;
-  reply_to : address list;
-  subject : string
-}
+type header =
+  { message_id : string;
+    references : string list;
+    in_reply_to : string list;
+    sender : address;
+    from : address;
+    to_ : address list;
+    cc : address list;
+    bcc : address list;
+    reply_to : address list;
+    subject : string }
 
-type message = {
-  uid : Uint32.t;
-  size : int;
-  mod_seq_value : Uint64.t;
-  gmail_labels : string list;
-  gmail_message_id : Uint64.t;
-  gmail_thread_id : Uint64.t;
-  flags : message_flag list;
-  internal_date : float
-}
+type message =
+  { uid : Uid.t;
+    size : int;
+    mod_seq_value : Modseq.t;
+    gmail_labels : string list;
+    gmail_message_id : Gmsgid.t;
+    gmail_thread_id : Gthrid.t;
+    flags : message_flag list;
+    internal_date : float }
 
 exception Error of error
+
+type session
 
 val create_session :
   ?port:int ->
@@ -282,7 +309,7 @@ val copy_messages :
   folder:string ->
   uids:ImapSet.t ->
   dest:string ->
-  (Uint32.t, Uint32.t) Hashtbl.t Lwt.t
+  (Uid.t, Uid.t) Hashtbl.t Lwt.t
     (** Copy messages between two folders.  Returns the mapping between old UIDs
         and new UIDs. *)
 
@@ -294,20 +321,20 @@ val expunge :
 val fetch_message_by_uid :
   session ->
   folder:string ->
-  uid:Uint32.t -> string Lwt.t
+  uid:Uid.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
 
 val search :
   session ->
   folder:string ->
-  key:search_key -> Uint32.t list Lwt.t
+  key:search_key -> Uid.t list Lwt.t
     (** Search for messages satisfying [key].  Returns the UIDs of matching
         messages. *)
 
 val add_flags :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   flags:message_flag list ->
   ?customflags:string list ->
   unit -> unit Lwt.t
@@ -316,7 +343,7 @@ val add_flags :
 val remove_flags :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   flags:message_flag list ->
   ?customflags:string list ->
   unit -> unit Lwt.t
@@ -325,7 +352,7 @@ val remove_flags :
 val set_flags :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   flags:message_flag list ->
   ?customflags:string list ->
   unit -> unit Lwt.t
@@ -334,34 +361,24 @@ val set_flags :
 val add_labels :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   labels:string list -> unit Lwt.t
     (** Add Gmail labels. *)
 
 val remove_labels :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   labels:string list -> unit Lwt.t
     (** Remove Gmail labels. *)
 
 val set_labels :
   session ->
   folder:string ->
-  uids:ImapSet.t ->
+  uids:UidSet.t ->
   labels:string list -> unit Lwt.t
     (** Sets Gmail labels. *)
                         
 val capability :
   session -> capability list Lwt.t
     (** Requests capabilities of the server. *)
-    
-val uid_next : session -> Uint32.t
-    (** The UIDNext value of the currently selected folder.  Raises
-        [Invalid_argument "uid_next"] if no folder is currently selected. *)
-
-val uid_validity : session -> Uint32.t
-    (** The UIDValidity value of the currently selected folder.  Raises
-        [Invalid_argument "uid_validity"] if no folder is currently selected. *)
-
-val mod_sequence_value : session -> Uint64.t

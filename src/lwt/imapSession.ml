@@ -33,36 +33,6 @@ let _ =
   prerr_endline "Initialising SSL...";
   Ssl.init ()
 
-type connected_info = {
-  mutable imap_state : ImapTypes.state;
-  sock : Lwt_ssl.socket;
-  mutable condstore_enabled : bool;
-  mutex : Lwt_mutex.t
-}
-
-type selected_info = {
-  current_folder : string;
-  uid_next : Uint32.t;
-  uid_validity : Uint32.t;
-  mod_sequence_value : Uint64.t;
-  folder_msg_count : int option;
-  first_unseen_uid : Uint32.t
-}
-
-type state =
-    DISCONNECTED
-  | CONNECTED of connected_info
-  | LOGGEDIN of connected_info
-  | SELECTED of connected_info * selected_info
-
-type session = {
-  mutable state : state;
-  username : string;
-  password : string;
-  host : string;
-  port : int
-}
-
 exception ErrorP of error
 
 exception StreamError
@@ -77,67 +47,97 @@ let _ =
       | _ ->
           None)
 
-let fully_write sock buf pos len =
-  let rec loop pos len =
-    if len <= 0 then
-      Lwt.return ()
-    else
-      lwt n = try_lwt Lwt_ssl.write sock buf pos len with _ -> raise_lwt StreamError in
-      loop (pos + n) (len - n)
-  in
-  loop pos len
+module type IndexSet = sig
+  type elt
+  type t
+  val empty : t
+  val range : elt -> elt -> t
+  val index : elt -> t
+  val add_range : elt -> elt -> t -> t
+  val add : elt -> t -> t
+  val remove_range : elt -> elt -> t -> t
+  val remove : elt -> t -> t
+  val contains : elt -> t -> bool
+  val to_string : t -> string
+end
 
-let read sock buf pos len =
-  try_lwt Lwt_ssl.read sock buf pos len with _ -> raise_lwt StreamError
+module IndexSet : sig
+  include IndexSet with type elt = Uint32.t
+  val to_imap_set : t -> ImapSet.t
+  val of_imap_set : ImapSet.t -> t
+end = struct
+  type elt = Uint32.t
+  type t = (elt * elt) list
+  let cmp = Uint32.compare
+  let succ = Uint32.add Uint32.one
+  let pred n = Uint32.sub n Uint32.one
+  let min l r = if cmp l r <= 0 then l else r
+  let max l r = if cmp l r <= 0 then r else l
+  let empty = []
+  let range l r = if cmp l r <= 0 then (l, r) :: [] else (r, l) :: []
+  let index n = range n n
+  let add_range l r s =
+    let l, r = if cmp l r <= 0 then l, r else r, l in
+    let rec loop l r = function
+        [] -> (l, r) :: []
+      | (h, k) :: rest when cmp r (pred h) < 0 ->
+          (l, r) :: (h, k) :: rest
+      | (h, k) :: rest when cmp (succ k) l < 0 ->
+          (h, k) :: loop l r rest
+      | (h, k) :: rest (* when cmp (pred h) r <= 0 || cmp l (succ k) <= 0 *) ->
+          loop (min l h) (max r k) rest
+    in
+    loop l r s
+  let add n = add_range n n
+  let remove_range l r s =
+    let l, r = if cmp l r <= 0 then l, r else r, l in
+    let rec loop l r = function
+        [] -> []
+      | (h, k) :: rest when cmp r h < 0 ->
+          (h, k) :: rest
+      | (h, k) :: rest when cmp k l < 0 ->
+          (h, k) :: loop l r rest
+      | (h, k) :: rest when cmp l h <= 0 && cmp r k < 0 ->
+          (succ r, k) :: rest
+      | (h, k) :: rest when cmp h l < 0 && cmp r k < 0 ->
+          (h, pred l) :: (succ r, k) :: rest
+      | (h, k) :: rest when cmp l h <= 0 && cmp k r <= 0 ->
+          loop l r rest
+      | (h, k) :: rest (* when cmp h l < 0 && cmp k r <= 0 *) ->
+          (h, pred l) :: loop l r rest
+    in
+    loop l r s
+  let remove n = remove_range n n
+  let contains n s = List.exists (fun (l, r) -> cmp l n <= 0 && cmp n r <= 0) s
+  let to_string s =
+    String.concat "," (List.map (function
+          (l, r) when Uint32.compare l r = 0 -> Uint32.to_string l
+        | (l, r) -> Printf.sprintf "%s-%s" (Uint32.to_string l) (Uint32.to_string r)) s)
+  let to_imap_set s =
+    let f l = if cmp l Uint32.max_int = 0 then Uint32.zero else l in
+    List.map (fun (l, r) -> (f l, f r)) s
+  let of_imap_set s =
+    let f l = if cmp l Uint32.zero = 0 then Uint32.max_int else l in
+    List.fold_left (fun s (l, r) -> add_range (f l) (f r) s) empty s
+end
 
-let run s c =
-  let open ImapControl in
-  let buf = Bytes.create 65536 in
-  let rec loop in_buf = function
-    | Ok (x, st) ->
-        s.imap_state <- st;
-        Lwt.return x
-    | Fail (err, st) ->
-        s.imap_state <- st;
-        raise_lwt (ErrorP err)
-    | Flush (str, k) ->
-        lwt () = Lwt_log.debug_f ">>>>\n%s>>>>\n" str in
-        lwt () = fully_write s.sock str 0 (String.length str) in
-        loop in_buf (k ())
-    | Need k ->
-        match_lwt read s.sock buf 0 (String.length buf) with
-        | 0 ->
-            loop in_buf (k End)
-        | _ as n ->
-            lwt () = Lwt_log.debug_f "<<<<\n%s<<<<\n" (String.sub buf 0 n) in
-            Buffer.add_substring in_buf buf 0 n;
-            loop in_buf (k More)
-  in
-  loop s.imap_state.in_buf (run c s.imap_state)
-  
-(* let ssl_context ssl_method ca_file = *)
-(*   let version = *)
-(*     match version with *)
-(*       `TLSv1 -> Ssl.TLSv1 *)
-(*     | `SSLv23 -> Ssl.SSLv23 *)
-(*     | `SSLv3 -> Ssl.SSLv3 *)
-(*   in *)
-(*   let ctx = Ssl.create_context ssl_method Ssl.Client_context in *)
-(*   match ca_file with *)
-(*     None -> *)
-(*       ctx *)
-(*   | Some ca_file -> *)
-(*       Ssl.load_verify_locations ctx ca_file ""; *)
-(*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
-(*       ctx *)
+module type Num = sig
+  type t
+  val of_int : int -> t
+  val compare : t -> t -> int
+  val zero : t
+  val one : t
+  val to_string : t -> string
+  val of_string : string -> t
+end
 
-let create_session ?(port = 993) ~host ~username ~password () =
-  { state = DISCONNECTED;
-    username;
-    password;
-    host;
-    port }
-   
+module Uid = Uint32
+module UidSet = IndexSet
+
+module Modseq = Uint64
+module Gmsgid = Uint64
+module Gthrid = Uint64
+
 type folder_flag =
     Marked
   | Unmarked
@@ -182,10 +182,10 @@ type fetch_request_type =
     UID
   | Sequence
 
-type flags_request_kind =
-    Add
-  | Remove
-  | Set
+(* type flags_request_kind = *)
+(*     Add *)
+(*   | Remove *)
+(*   | Set *)
 
 type workaround =
     Gmail
@@ -272,8 +272,8 @@ type search_key =
   | SinceReceiveDate of float
   | SizeLarger of int
   | SizeSmaller of int
-  | GmailThreadID of Uint64.t
-  | GmailMessageID of Uint64.t
+  | GmailThreadID of Gthrid.t
+  | GmailMessageID of Gmsgid.t
   | GmailRaw of string
   | Or of search_key * search_key
   | And of search_key * search_key
@@ -320,50 +320,134 @@ type error =
   | NoRecipient
   | Noop
 
-type folder_status = {
-  unseen_count : int;
-  message_count : int;
-  recent_count : int;
-  uid_next : Uint32.t;
-  uid_validity : Uint32.t;
-  highest_mod_seq_value : Uint64.t
-}
+type folder_status =
+  { unseen_count : int;
+    message_count : int;
+    recent_count : int;
+    uid_next : Uid.t;
+    uid_validity : Uid.t;
+    highest_mod_seq_value : Modseq.t }
 
 type folder =
   { path : string;
     delimiter : char option;
     flags : folder_flag list }
 
-type address = {
-  display_name : string;
-  mailbox : string;
-}
+type address =
+  { display_name : string;
+    mailbox : string }
 
-type header = {
-  message_id : string;
-  references : string list;
-  in_reply_to : string list;
-  sender : address;
-  from : address;
-  to_ : address list;
-  cc : address list;
-  bcc : address list;
-  reply_to : address list;
-  subject : string
-}
+type header =
+  { message_id : string;
+    references : string list;
+    in_reply_to : string list;
+    sender : address;
+    from : address;
+    to_ : address list;
+    cc : address list;
+    bcc : address list;
+    reply_to : address list;
+    subject : string }
 
-type message = {
-  uid : Uint32.t;
-  size : int;
-  mod_seq_value : Uint64.t;
-  gmail_labels : string list;
-  gmail_message_id : Uint64.t;
-  gmail_thread_id : Uint64.t;
-  flags : message_flag list;
-  internal_date : float
-}
+type message =
+  { uid : Uid.t;
+    size : int;
+    mod_seq_value : Modseq.t;
+    gmail_labels : string list;
+    gmail_message_id : Gmsgid.t;
+    gmail_thread_id : Gthrid.t;
+    flags : message_flag list;
+    internal_date : float }
 
 exception Error of error
+
+type connected_info =
+  { mutable imap_state : ImapTypes.state;
+    sock : Lwt_ssl.socket;
+    mutable condstore_enabled : bool;
+    mutex : Lwt_mutex.t }
+
+type selected_info =
+  { current_folder : string;
+    uid_next : Uid.t;
+    uid_validity : Uid.t;
+    mod_sequence_value : Modseq.t;
+    folder_msg_count : int option;
+    first_unseen_uid : Uid.t }
+
+type state =
+    DISCONNECTED
+  | CONNECTED of connected_info
+  | LOGGEDIN of connected_info
+  | SELECTED of connected_info * selected_info
+
+type session =
+  { mutable state : state;
+    username : string;
+    password : string;
+    host : string;
+    port : int }
+
+let fully_write sock buf pos len =
+  let rec loop pos len =
+    if len <= 0 then
+      Lwt.return ()
+    else
+      lwt n = try_lwt Lwt_ssl.write sock buf pos len with _ -> raise_lwt StreamError in
+      loop (pos + n) (len - n)
+  in
+  loop pos len
+
+let read sock buf pos len =
+  try_lwt Lwt_ssl.read sock buf pos len with _ -> raise_lwt StreamError
+
+let run s c =
+  let open ImapControl in
+  let buf = Bytes.create 65536 in
+  let rec loop in_buf = function
+      Ok (x, st) ->
+        s.imap_state <- st;
+        Lwt.return x
+    | Fail (err, st) ->
+        s.imap_state <- st;
+        raise_lwt (ErrorP err)
+    | Flush (str, k) ->
+        lwt () = Lwt_log.debug_f ">>>>\n%s>>>>\n" str in
+        lwt () = fully_write s.sock str 0 (String.length str) in
+        loop in_buf (k ())
+    | Need k ->
+        match_lwt read s.sock buf 0 (String.length buf) with
+        | 0 ->
+            loop in_buf (k End)
+        | _ as n ->
+            lwt () = Lwt_log.debug_f "<<<<\n%s<<<<\n" (String.sub buf 0 n) in
+            Buffer.add_substring in_buf buf 0 n;
+            loop in_buf (k More)
+  in
+  loop s.imap_state.in_buf (run c s.imap_state)
+  
+(* let ssl_context ssl_method ca_file = *)
+(*   let version = *)
+(*     match version with *)
+(*       `TLSv1 -> Ssl.TLSv1 *)
+(*     | `SSLv23 -> Ssl.SSLv23 *)
+(*     | `SSLv3 -> Ssl.SSLv3 *)
+(*   in *)
+(*   let ctx = Ssl.create_context ssl_method Ssl.Client_context in *)
+(*   match ca_file with *)
+(*     None -> *)
+(*       ctx *)
+(*   | Some ca_file -> *)
+(*       Ssl.load_verify_locations ctx ca_file ""; *)
+(*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
+(*       ctx *)
+
+let create_session ?(port = 993) ~host ~username ~password () =
+  { state = DISCONNECTED;
+    username;
+    password;
+    host;
+    port }
 
 let connect ?(ssl_method = Ssl.TLSv1) s =
   lwt () = assert_lwt (match s.state with DISCONNECTED -> true | _ -> false) in
@@ -437,11 +521,11 @@ let login_if_needed s =
       assert_lwt false
 
 let get_mod_sequence_value state =
-  let open ImapCondstore in
+  let open ImapCommands.Condstore in
   let rec loop = function
-      [] -> Uint64.zero
+      [] -> Modseq.zero
     | CONDSTORE_RESP_TEXT_CODE (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n) :: _ -> n
-    | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Uint64.zero
+    | CONDSTORE_RESP_TEXT_CODE CONDSTORE_RESPTEXTCODE_NOMODSEQ :: _ -> Modseq.zero
     | _ :: rest -> loop rest
   in
   loop state.rsp_info.rsp_extension_list
@@ -539,9 +623,9 @@ let folder_status s ~folder =
     {unseen_count = 0;
      message_count = 0;
      recent_count = 0;
-     uid_next = Uint32.zero;
-     uid_validity = Uint32.zero;
-     highest_mod_seq_value = Uint64.zero}
+     uid_next = Uid.zero;
+     uid_validity = Uid.zero;
+     highest_mod_seq_value = Modseq.zero}
   in
   Lwt.return (loop fs status.st_info_list)
 
@@ -832,7 +916,7 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
         loop {msg with internal_date} rest
     (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
     (* loop {msg with header = header_from_imap env} rest *)
-    | MSG_ATT_ITEM_EXTENSION (ImapCondstore.CONDSTORE_FETCH_DATA_MODSEQ mod_seq_value) :: rest ->
+    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.CONDSTORE_FETCH_DATA_MODSEQ mod_seq_value) :: rest ->
         loop {msg with mod_seq_value} rest
     | MSG_ATT_ITEM_EXTENSION (ImapXgmlabels.XGMLABELS_XGMLABELS gmail_labels) :: rest ->
         loop {msg with gmail_labels} rest
@@ -842,8 +926,8 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
         loop msg rest
   in
   let msg =
-    loop {uid = Uint32.zero; size = 0; mod_seq_value = Uint64.zero;
-          gmail_labels = []; gmail_message_id = Uint64.zero; gmail_thread_id = Uint64.zero;
+    loop {uid = Uid.zero; size = 0; mod_seq_value = Modseq.zero;
+          gmail_labels = []; gmail_message_id = Gmsgid.zero; gmail_thread_id = Gthrid.zero;
           flags = []; internal_date = 0.0}
   in
   let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
@@ -899,7 +983,7 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
             [] ->
               extract_uid rest
           | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: _ ->
-              if Uint32.compare uid from_uid >= 0 then Hashtbl.add result att_number uid;
+              if Uid.compare uid from_uid >= 0 then Hashtbl.add result att_number uid;
               extract_uid rest
           | _ :: rest ->
               loop rest
@@ -1014,13 +1098,7 @@ let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
   in
   let imap_flags = List.map (fun fl -> FLAG_KEYWORD fl) customflags in
   let imap_flags = List.fold_left (fun l fl -> imap_flag_of_flag fl :: l) imap_flags flags in
-  let fl_sign =
-    match kind with
-      Set -> STORE_ATT_FLAGS_SET
-    | Add -> STORE_ATT_FLAGS_ADD
-    | Remove -> STORE_ATT_FLAGS_REMOVE
-  in
-  let store_att_flags = { fl_sign; fl_silent = true; fl_flag_list = imap_flags } in
+  let store_att_flags = { fl_sign = kind; fl_silent = true; fl_flag_list = imap_flags } in
   try_lwt
     run ci (ImapCommands.uid_store uids store_att_flags)
   with
@@ -1036,24 +1114,21 @@ let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
           raise_lwt (Error Store)
 
 let add_flags s ~folder ~uids ~flags ?customflags () =
-  store_flags s ~folder ~uids ~kind:Add ~flags ?customflags ()
+  let uids = UidSet.to_imap_set uids in
+  store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_ADD ~flags ?customflags ()
     
 let remove_flags s ~folder ~uids ~flags ?customflags () =
-  store_flags s ~folder ~uids ~kind:Remove ~flags ?customflags ()
+  let uids = UidSet.to_imap_set uids in
+  store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_REMOVE ~flags ?customflags ()
     
 let set_flags s ~folder ~uids ~flags ?customflags () =
-  store_flags s ~folder ~uids ~kind:Set ~flags ?customflags ()
+  let uids = UidSet.to_imap_set uids in
+  store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~flags ?customflags ()
 
 let store_labels s ~folder ~uids ~kind ~labels =
-  let fl_sign =
-    match kind with
-      Add -> STORE_ATT_FLAGS_ADD
-    | Remove -> STORE_ATT_FLAGS_REMOVE
-    | Set -> STORE_ATT_FLAGS_SET
-  in
   lwt ci, _ = select_if_needed s folder in
   try_lwt
-    run ci (ImapXgmlabels.uid_store_xgmlabels uids fl_sign true labels)
+    run ci (ImapXgmlabels.uid_store_xgmlabels uids kind true labels)
   with
     exn ->
       lwt () = Lwt_log.debug ~exn "store_labels error" in
@@ -1066,13 +1141,16 @@ let store_labels s ~folder ~uids ~kind ~labels =
           raise_lwt (Error Store)
 
 let add_labels s ~folder ~uids ~labels =
-  store_labels s ~folder ~uids ~kind:Add ~labels
+  let uids = UidSet.to_imap_set uids in
+  store_labels s ~folder ~uids ~kind:STORE_ATT_FLAGS_ADD ~labels
 
 let remove_labels s ~folder ~uids ~labels =
-  store_labels s ~folder ~uids ~kind:Remove ~labels
+  let uids = UidSet.to_imap_set uids in
+  store_labels s ~folder ~uids ~kind:STORE_ATT_FLAGS_REMOVE ~labels
 
 let set_labels s ~folder ~uids ~labels =
-  store_labels s ~folder ~uids ~kind:Set ~labels
+  let uids = UidSet.to_imap_set uids in
+  store_labels s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~labels
 
 let capability s =
   lwt ci = connect_if_needed s in

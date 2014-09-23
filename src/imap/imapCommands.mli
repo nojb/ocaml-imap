@@ -28,6 +28,53 @@ open ImapControl
   
 (* (\** {2 Commands valid in any state} *\) *)
 
+module Condstore : sig
+  type condstore_resptextcode =
+      CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
+    | CONDSTORE_RESPTEXTCODE_NOMODSEQ
+    | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
+
+  type extension_data +=
+       CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
+     | CONDSTORE_RESP_TEXT_CODE of condstore_resptextcode
+     | CONDSTORE_SEARCH_DATA of Uint32.t list * Uint64.t
+     | CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
+
+  val fetch_att_modseq : fetch_att
+    
+  val search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
+      
+  val uid_search_modseq : ?charset:string -> search_key -> (Uint32.t list * Uint64.t) command
+      
+  val search : ?charset:string -> search_key -> Uint32.t list command
+      
+  val uid_search : ?charset:string -> search_key -> Uint32.t list command
+      
+  val select : string -> unit command
+      
+  val select_condstore : string -> Uint64.t command
+      
+  val examine : string -> unit command
+      
+  val examine_condstore : string -> Uint64.t command
+      
+  val fetch : ImapSet.t -> fetch_type -> msg_att list command
+      
+  val uid_fetch : ImapSet.t -> fetch_type -> msg_att list command
+      
+  val fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
+      
+  val uid_fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
+      
+  val store : ImapSet.t -> store_att_flags -> unit command
+      
+  val uid_store : ImapSet.t -> store_att_flags -> unit command
+      
+  val store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
+      
+  val uid_store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
+end
+
 val capability : capability list command
 
 val noop : unit command
