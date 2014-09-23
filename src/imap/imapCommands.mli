@@ -155,3 +155,8 @@ val uid_copy : ImapSet.t -> string -> unit command
 module Enable : sig
   val enable : capability list -> capability list command
 end
+
+module Id : sig
+  val id : (string * string option) list -> (string * string option) list command
+  val id_basic : string -> string -> (string option * string option) command
+end
