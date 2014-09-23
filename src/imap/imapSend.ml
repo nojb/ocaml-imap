@@ -68,6 +68,10 @@ let list f = function
 let separated_pair l sep r (x, y) =
   l x >> sep >> r y
 
+let opt f = function
+    None -> null
+  | Some x -> f x
+
 let literal str =
   char '{' >> int (String.length str) >> char '}' >> crlf >> continuation_req >> raw str
 

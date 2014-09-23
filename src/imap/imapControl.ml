@@ -95,6 +95,8 @@ let catch f g st =
 
 let (>>=) = bind
 
+let (>|=) m f = m >>= fun x -> ret (f x)
+
 let (>>) m1 m2 = m1 >>= fun _ -> m2
 
 let run m st =

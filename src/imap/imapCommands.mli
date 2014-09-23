@@ -25,15 +25,29 @@
 open ImapTypes
 open ImapCore
 open ImapControl
-  
+
+module QResync : sig
+  type qresync_vanished =
+    { qr_earlier : bool;
+      qr_vanished : ImapSet.t }
+  val fetch_qresync_vanished :
+    ImapSet.t -> fetch_type -> Uint64.t -> bool -> (msg_att list * qresync_vanished) command
+  val uid_fetch_qresync_vanished :
+    ImapSet.t -> fetch_type -> Uint64.t -> bool -> (msg_att list * qresync_vanished) command
+  val fetch_qresync :
+    ImapSet.t -> fetch_type -> Uint64.t -> (msg_att list * qresync_vanished) command
+  val uid_fetch_qresync :
+    ImapSet.t -> fetch_type -> Uint64.t -> (msg_att list * qresync_vanished) command
+end
+
 module Condstore : sig
   type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
-       CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
-     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
-     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
+       RESP_TEXT_CODE_HIGHESTMODSEQ of Uint64.t
+     | RESP_TEXT_CODE_NOMODSEQ
+     | RESP_TEXT_CODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
        CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t

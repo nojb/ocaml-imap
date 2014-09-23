@@ -59,6 +59,8 @@ val list : ('a -> t) -> 'a list -> t
 val separated_pair : ('a -> t) -> t -> ('b -> t) -> ('a * 'b) -> t
 (** [separated_pair f sep g (x, y)] is equivalent to [f x @> sep @> g y]. *)
 
+val opt : ('a -> t) -> 'a option -> t
+
 val string : string -> t
 (** Sends an IMAP [string] terminal. *)
 

@@ -54,6 +54,8 @@ val catch : ('a, 'state, 'err) control -> ('err -> ('a, 'state, 'err) control) -
 
 val (>>=) : ('a, 'state, 'err) control -> ('a -> ('b, 'state, 'err) control) -> ('b, 'state, 'err) control
 
+val (>|=) : ('a, 'state, 'err) control -> ('a -> 'b) -> ('b, 'state, 'err) control
+
 val (>>) : (_, 'state, 'err) control -> ('a, 'state, 'err) control -> ('a, 'state, 'err) control
 
 val run : ('a, state, 'err) control -> state -> ('a, state, 'err) result

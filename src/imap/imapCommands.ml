@@ -24,18 +24,270 @@ open ImapTypes
 open ImapCore
 open ImapControl
 
+(*
+capability          =/ "QRESYNC"
+
+select-param        =  "QRESYNC" SP "(" uidvalidity SP
+                       mod-sequence-value [SP known-uids]
+                       [SP seq-match-data] ")"
+;; conforms to the generic select-param
+;; syntax defined in [IMAPABNF]
+
+seq-match-data      =  "(" known-sequence-set SP known-uid-set ")"
+
+uidvalidity         =  nz-number
+
+known-uids          =  sequence-set
+;; sequence of UIDs, "*" is not allowed
+
+known-sequence-set  =  sequence-set
+;; set of message numbers corresponding to
+;; the UIDs in known-uid-set, in ascending order.
+;; * is not allowed.
+
+known-uid-set       =  sequence-set
+;; set of UIDs corresponding to the messages in
+;; known-sequence-set, in ascending order.
+;; * is not allowed.
+
+message-data        =/ expunged-resp
+
+expunged-resp       =  "VANISHED" [SP "(EARLIER)"] SP known-uids
+
+rexpunges-fetch-mod =  "VANISHED"
+;; VANISHED UID FETCH modifier conforms
+;; to the fetch-modifier syntax
+;; defined in [IMAPABNF].  It is only
+;; allowed in the UID FETCH command.
+
+resp-text-code      =/ "CLOSED"
+*)
+
+module QResync = struct
+  (* This are handled by the Condstore extension, below *)
+  type resp_text_code_extension +=
+       RESP_TEXT_CODE_HIGHESTMODSEQ of Uint64.t
+     | RESP_TEXT_CODE_NOMODSEQ
+     | RESP_TEXT_CODE_MODIFIED of ImapSet.t
+
+  type resp_text_code_extension +=
+       RESP_TEXT_CODE_CLOSED
+
+  type qresync_vanished =
+    { qr_earlier : bool;
+      qr_vanished : ImapSet.t }
+  
+  type response_data_extension +=
+       RESP_DATA_VANISHED of qresync_vanished
+     
+  let parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    match kind with
+      RESPONSE_DATA ->
+        str "VANISHED" >> char ' ' >>
+        alt (str "(EARLIER) " >> ret true) (ret false) >>= fun qr_earlier ->
+        sequence_set >>= fun qr_vanished -> ret (RESP_DATA_VANISHED {qr_earlier; qr_vanished})
+    | RESP_TEXT_CODE ->
+        str "CLOSED" >> ret RESP_TEXT_CODE_CLOSED
+    | _ ->
+        fail
+
+  let _ =
+    ImapParser.(register_parser {parse})
+
+  let send_select_qresync mb uidvalidity modseq ?known_uids ?seq_match_data () =
+    let open ImapSend in
+    let send_seq_match_data (x, y) = char '(' >> message_set x >> char ' ' >> message_set y >> char ')' in
+    send "SELECT" >> char ' ' >> mailbox mb >> char ' ' >>
+    send "QRESYNC" >> char ' ' >> char '(' >>
+    send (Uint32.to_string uidvalidity) >> char ' ' >>
+    send (Uint64.to_string modseq) >>
+    opt message_set known_uids >>
+    opt send_seq_match_data seq_match_data >> char ')'
+
+  let get_vanished st =
+    let rec loop = function
+        [] ->
+          {qr_earlier = false; qr_vanished = ImapSet.empty}
+      | EXTENSION_DATA (RESPONSE_DATA, RESP_DATA_VANISHED qr) :: _ ->
+          qr
+      | _ :: rest ->
+          loop rest
+    in
+    loop st.rsp_info.rsp_extension_list
+
+  let get_mod_sequence_value st =
+    let rec loop = function
+        [] ->
+          Uint64.zero
+      | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_HIGHESTMODSEQ n) :: _ ->
+          n
+      | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_NOMODSEQ) :: _ ->
+          Uint64.zero
+      | _ :: rest ->
+          loop rest
+    in
+    loop st.rsp_info.rsp_extension_list
+
+  let select_qresync mb uidvalidity modseq ?known_uids ?seq_match_data () =
+    std_command (send_select_qresync mb uidvalidity modseq ?known_uids ?seq_match_data ()) >>
+    gets get_vanished >>= fun vanished ->
+    gets get_mod_sequence_value >>= fun mod_sequence_value ->
+    gets (fun st -> st.rsp_info.rsp_fetch_list) >>= fun result ->
+    ret (result, mod_sequence_value, vanished)
+
+  let send_fetch cmd set ?changedsince ft =
+    let open ImapSend in
+    let send_changedsince modseq =
+      char ' ' >> send "(CHANGEDSINCE " >> send (Uint64.to_string modseq) >> char ')'
+    in
+    raw cmd >> char ' ' >> message_set set >> char ' ' >>
+    fetch_type ft >> opt send_changedsince changedsince
+  
+  let send_fetch_param mod_sequence vanished =
+    let open ImapSend in
+    if mod_sequence = Uint64.zero then
+      ret ()
+    else
+      char ' ' >> char '(' >> send "CHANGEDSINCE" >>
+      char ' ' >> send (Uint64.to_string mod_sequence) >>
+      (if vanished then char ' ' >> send "VANISHED" else ret ()) >>
+      char ')'
+    
+  let fetch_qresync_vanished_aux cmd set fetch_type mod_sequence vanished =
+    std_command (send_fetch cmd set fetch_type >> send_fetch_param mod_sequence vanished) >>
+    gets get_vanished >>= fun vanished ->
+    gets (fun st -> st.rsp_info.rsp_fetch_list) >>= fun result ->
+    ret (result, vanished)
+
+  let fetch_qresync_vanished =
+    fetch_qresync_vanished_aux "FETCH"
+
+  let uid_fetch_qresync_vanished =
+    fetch_qresync_vanished_aux "UID FETCH"
+  
+  let fetch_qresync set fetch_type mod_sequence =
+    fetch_qresync_vanished_aux "FETCH" set fetch_type mod_sequence true
+
+  let uid_fetch_qresync set fetch_type mod_sequence =
+    fetch_qresync_vanished_aux "UID FETCH" set fetch_type mod_sequence true
+end
+
+(*
+capability          =/ "CONDSTORE"
+
+status-att          =/ "HIGHESTMODSEQ"
+                       ;; extends non-terminal defined in RFC 3501.
+
+status-att-val      =/ "HIGHESTMODSEQ" SP mod-sequence-valzer
+                       ;; extends non-terminal defined in [IMAPABNF].
+                       ;; Value 0 denotes that the mailbox doesn't
+                       ;; support persistent mod-sequences
+                       ;; as described in Section 3.1.2
+
+store-modifier      =/ "UNCHANGEDSINCE" SP mod-sequence-valzer
+                       ;; Only a single "UNCHANGEDSINCE" may be
+                       ;; specified in a STORE operation
+
+fetch-modifier      =/ chgsince-fetch-mod
+                       ;; conforms to the generic "fetch-modifier"
+                       ;; syntax defined in [IMAPABNF].
+
+chgsince-fetch-mod  = "CHANGEDSINCE" SP mod-sequence-value
+                       ;; CHANGEDSINCE FETCH modifier conforms to
+                       ;; the fetch-modifier syntax
+
+fetch-att           =/ fetch-mod-sequence
+                       ;; modifies original IMAP4 fetch-att
+
+fetch-mod-sequence  = "MODSEQ"
+
+fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")"
+
+msg-att-dynamic     =/ fetch-mod-resp
+
+search-key          =/ search-modsequence
+                          ;; modifies original IMAP4 search-key
+                          ;;
+                          ;; This change applies to all commands
+                          ;; referencing this non-terminal, in
+                          ;; particular SEARCH.
+
+search-modsequence  = "MODSEQ" [search-modseq-ext] SP
+                      mod-sequence-valzer
+
+search-modseq-ext   = SP entry-name SP entry-type-req
+
+resp-text-code      =/ "HIGHESTMODSEQ" SP mod-sequence-value /
+                       "NOMODSEQ" /
+                       "MODIFIED" SP set
+
+entry-name          = entry-flag-name
+
+entry-flag-name     = DQUOTE "/flags/" attr-flag DQUOTE
+                       ;; each system or user defined flag <flag>
+                       ;; is mapped to "/flags/<flag>".
+                       ;;
+                       ;; <entry-flag-name> follows the escape rules
+                       ;; used by "quoted" string as described in
+                       ;; Section 4.3 of [IMAP4], e.g., for the flag
+                       ;; \Seen the corresponding <entry-name> is
+                       ;; "/flags/\\seen", and for the flag
+                       ;; $MDNSent, the corresponding <entry-name>
+                       ;; is "/flags/$mdnsent".
+
+entry-type-resp     = "priv" / "shared"
+                       ;; metadata item type
+
+entry-type-req      = entry-type-resp / "all"
+                       ;; perform SEARCH operation on private
+                       ;; metadata item, shared metadata item or both
+
+permsg-modsequence  = mod-sequence-value
+                       ;; per message mod-sequence
+
+mod-sequence-value  = 1*DIGIT
+                       ;; Positive unsigned 64-bit integer
+                       ;; (mod-sequence)
+                       ;; (1 <= n < 18,446,744,073,709,551,615)
+
+mod-sequence-valzer = "0" / mod-sequence-value
+
+search-sort-mod-seq = "(" "MODSEQ" SP mod-sequence-value ")"
+
+select-param        =/ condstore-param
+                          ;; conforms to the generic "select-param"
+                          ;; non-terminal syntax defined in [IMAPABNF].
+
+condstore-param     = "CONDSTORE"
+
+mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP
+                       search-sort-mod-seq]
+
+attr-flag           = "\\Answered" / "\\Flagged" / "\\Deleted" /
+                      "\\Seen" / "\\Draft" / attr-flag-keyword /
+                      attr-flag-extension
+                       ;; Does not include "\\Recent"
+
+attr-flag-extension = "\\" atom
+                       ;; Future expansion.  Client implementations
+                       ;; MUST accept flag-extension flags.  Server
+                       ;; implementations MUST NOT generate
+                       ;; flag-extension flags except as defined by
+                       ;; future standard or standards-track
+                       ;; revisions of [IMAP4].
+
+attr-flag-keyword   = atom
+*)
+  
 module Condstore = struct
-  (* open ImapExtension *)
-  (* resp-text-code   =/ "HIGHESTMODSEQ" SP mod-sequence-value / *)
-  (*                     "NOMODSEQ" / *)
-  (*                     "MODIFIED" SP set *)
   type msg_att_extension +=
        CONDSTORE_FETCH_DATA_MODSEQ of Uint64.t
 
   type resp_text_code_extension +=
-       CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ of Uint64.t
-     | CONDSTORE_RESPTEXTCODE_NOMODSEQ
-     | CONDSTORE_RESPTEXTCODE_MODIFIED of ImapSet.t
+       RESP_TEXT_CODE_HIGHESTMODSEQ of Uint64.t
+     | RESP_TEXT_CODE_NOMODSEQ
+     | RESP_TEXT_CODE_MODIFIED of ImapSet.t
 
   type status_info_extension +=
        CONDSTORE_STATUS_INFO_HIGHESTMODSEQ of Uint64.t
@@ -59,11 +311,11 @@ module Condstore = struct
     | RESP_TEXT_CODE ->
         begin
           function
-            CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ n ->
+            RESP_TEXT_CODE_HIGHESTMODSEQ n ->
               Some (fun ppf -> fprintf ppf "(highest-mod-seq %s)" (Uint64.to_string n))
-          | CONDSTORE_RESPTEXTCODE_NOMODSEQ ->
+          | RESP_TEXT_CODE_NOMODSEQ ->
               Some (fun ppf -> fprintf ppf "(no-mod-seq)")
-          | CONDSTORE_RESPTEXTCODE_MODIFIED ns ->
+          | RESP_TEXT_CODE_MODIFIED ns ->
               Some (fun ppf -> fprintf ppf "(modified@ ?)")
           | _ ->
               None
@@ -94,21 +346,6 @@ module Condstore = struct
     | _ ->
         function _ -> None
 
-  (* [RFC 4551]
-     mod-sequence-value  = 1*DIGIT
-                            ;; Positive unsigned 64-bit integer
-                            ;; (mod-sequence)
-                            ;; (1 <= n < 18,446,744,073,709,551,615)
-  *)
-
-  (*
-  search-sort-mod-seq = "(" "MODSEQ" SP mod-sequence-value ")"
-  *)
-
-  (*
-  permsg-modsequence  = mod-sequence-value
-                            ;; per message mod-sequence
-  *)
   let condstore_parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
     let mod_sequence_value =
@@ -121,29 +358,22 @@ module Condstore = struct
     let permsg_modsequence = mod_sequence_value in
     let highestmodseq =
       str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun modseq ->
-      ret (CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ modseq)
+      ret (RESP_TEXT_CODE_HIGHESTMODSEQ modseq)
     in
-    let nomodseq = str "NOMODSEQ" >> ret CONDSTORE_RESPTEXTCODE_NOMODSEQ in
+    let nomodseq = str "NOMODSEQ" >> ret RESP_TEXT_CODE_NOMODSEQ in
     let modified =
-      str "MODIFIED" >> char ' ' >> sequence_set >>= fun set ->
-      ret (CONDSTORE_RESPTEXTCODE_MODIFIED set)
+      str "MODIFIED" >> char ' ' >> sequence_set >>= fun set -> ret (RESP_TEXT_CODE_MODIFIED set)
     in
     match kind with
       RESP_TEXT_CODE ->
         altn [ highestmodseq; nomodseq; modified ]
     | FETCH_DATA ->
-(* fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")" *)
         str "MODSEQ" >> char ' ' >> char '(' >> permsg_modsequence >>= fun m -> char ')' >>
         ret (CONDSTORE_FETCH_DATA_MODSEQ m)
-(* status-att          =/ "HIGHESTMODSEQ" *)
-(*                           ;; extends non-terminal defined in RFC 3501. *)
     | STATUS_ATT ->
-(* msg-att-dynamic     =/ fetch-mod-resp *)
         str "HIGHESTMODSEQ" >> char ' ' >> mod_sequence_value >>= fun n ->
         ret (CONDSTORE_STATUS_INFO_HIGHESTMODSEQ n)
     | MAILBOX_DATA ->
-(* mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP *)
-(*                           search-sort-mod-seq] *)
         str "SEARCH" >> char ' ' >>
         opt (rep1 (char ' ' >> nz_number) >>= fun ns ->
              char ' ' >> search_sort_mod_seq >>= fun m -> ret (ns, m)) ([], Uint64.zero) >>=
@@ -182,7 +412,7 @@ module Condstore = struct
       in
       loop s.rsp_info.rsp_extension_list
     in
-    ImapCore.std_command sender >> gets cmd_handler
+    std_command sender >> gets cmd_handler
 
   let search_modseq ?charset key =
     search_modseq_aux "SEARCH" ?charset key
@@ -205,17 +435,17 @@ module Condstore = struct
       let rec loop = function
           [] ->
             Uint64.zero
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_HIGHESTMODSEQ m) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_HIGHESTMODSEQ m) :: _ ->
             m
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_NOMODSEQ) :: _ ->
+        | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_NOMODSEQ) :: _ ->
             Uint64.zero
         | _ :: rest ->
             loop rest
       in
       loop s.rsp_info.rsp_extension_list
     in
-    modify (fun s -> {s with sel_info = ImapCore.fresh_selection_info}) >>
-    ImapCore.std_command cmd_sender >> gets cmd_handler
+    modify (fun s -> {s with sel_info = fresh_selection_info}) >>
+    std_command cmd_sender >> gets cmd_handler
 
   let select_condstore mb =
     select_condstore_optional mb "SELECT" true
@@ -229,52 +459,39 @@ module Condstore = struct
   let examine mb =
     select_condstore_optional mb "EXAMINE" false >> ret ()
 
-  let fetch_aux cmd set changedsince attrs =
-    let cmd =
-      let open ImapSend in
-      let changedsince = match changedsince with
-          None ->
-            ret ()
-        | Some modseq ->
-            char ' ' >> raw "(CHANGEDSINCE " >> raw (Uint64.to_string modseq) >> char ')'
-      in
-      raw cmd >> char ' ' >> message_set set >> char ' ' >> fetch_type attrs >> changedsince
-    in
-    let cmd_handler s = s.rsp_info.rsp_fetch_list in
-    ImapCore.std_command cmd >> gets cmd_handler
-
-  let fetch set attrs =
-    fetch_aux "FETCH" set None attrs
+  let fetch set fetch_type =
+    QResync.fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
       
-  let uid_fetch set attrs =
-    fetch_aux "UID FETCH" set None attrs
-
-  let fetch_changedsince set modseq attrs =
-    fetch_aux "FETCH" set (Some modseq) attrs
-
-  let uid_fetch_changedsince set modseq attrs =
-    fetch_aux "UID FETCH" set (Some modseq) attrs
-
+  let uid_fetch set fetch_type =
+    QResync.fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
+    
+  let fetch_changedsince set modseq fetch_type =
+    QResync.fetch_qresync_vanished set fetch_type modseq false >|= fst
+    
+  let uid_fetch_changedsince set modseq fetch_type =
+    QResync.uid_fetch_qresync_vanished set fetch_type modseq false >|= fst
+    
   let store_aux cmd set unchangedsince flags =
     let sender =
       let open ImapSend in
-      let unchangedsince = match unchangedsince with
-          None -> ret ()
-        | Some modseq -> raw "(UNCHANGEDSINCE " >> raw (Uint64.to_string modseq) >> raw ") "
+      let send_unchangedsince modseq =
+        send "(UNCHANGEDSINCE " >> send (Uint64.to_string modseq) >> send ") "
       in
-      raw cmd >> char ' ' >> message_set set >> char ' ' >> unchangedsince >> store_att_flags flags
+      send cmd >> char ' ' >> message_set set >> char ' ' >>
+      opt send_unchangedsince unchangedsince >> store_att_flags flags
     in
     let handler s =
       let rec loop = function
-          [] -> ImapSet.empty
-        | EXTENSION_DATA (RESP_TEXT_CODE, CONDSTORE_RESPTEXTCODE_MODIFIED uids) :: _ ->
+          [] ->
+            ImapSet.empty
+        | EXTENSION_DATA (RESP_TEXT_CODE, RESP_TEXT_CODE_MODIFIED uids) :: _ ->
             uids
         | _ :: rest ->
             loop rest
     in
     loop s.rsp_info.rsp_extension_list
   in
-  ImapCore.std_command sender >> gets handler
+  std_command sender >> gets handler
 
   let store set flags =
     store_aux "STORE" set None flags >> ret ()
@@ -416,7 +633,7 @@ let copy_aux cmd set destbox =
     let open ImapSend in
     raw cmd >> char ' ' >> message_set set >> char ' ' >> mailbox destbox
   in
-  ImapCore.std_command sender
+  std_command sender
 
 let copy set destbox =
   copy_aux "COPY" set destbox
@@ -707,7 +924,7 @@ uid-range       = (uniqueid ":" uniqueid)
       let open ImapSend in
       raw "UID EXPUNGE" >> char ' ' >> message_set set
     in
-    ImapCore.std_command sender
+    std_command sender
 
   let extract_copy_uid s =
     let rec loop =
@@ -835,7 +1052,7 @@ module Xgmlabels = struct
       char ' ' >>
       list string labels
     in
-    ImapCore.std_command sender
+    std_command sender
 
   let store_xgmlabels =
     store_xgmlabels_aux "STORE"
