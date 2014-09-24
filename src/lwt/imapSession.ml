@@ -315,6 +315,17 @@ type error =
   | NoRecipient
   | Noop
 
+module Identity = struct
+  type t = (string * string option) list
+  let create x = List.map (fun (k, v) -> (k, Some v)) x
+  let get id key =
+    match List.find (fun (k, _) -> String.lowercase k = String.lowercase key) id |> snd with
+      None -> ""
+    | Some s -> s
+  let vendor id = get id "vendor"
+  let version id = get id "version"
+end 
+
 type folder_status =
   { unseen_count : int;
     message_count : int;
@@ -1315,6 +1326,21 @@ let capability s =
             raise_lwt (Error Capability)
   in
   Lwt.return (capabilities_of_imap_capabilities caps)
+
+let identity s client_id =
+  lwt ci = connect_if_needed s in
+  try_lwt
+    run ci (ImapCommands.Id.id client_id)
+  with
+    exn ->
+      lwt () = Lwt_log.debug ~exn "identity error" in
+      match exn with
+        StreamError ->
+          disconnect s >> raise_lwt exn
+      | ErrorP (ParseError _) ->
+          raise_lwt (Error Parse)
+      | _ ->
+          raise_lwt (Error Identity)
 
 let uid_next s =
   match s.state with

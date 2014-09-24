@@ -219,6 +219,14 @@ type error =
   | NoRecipient
   | Noop
 
+module Identity : sig
+  type t
+  val create : (string * string) list -> t
+  val vendor : t -> string
+  val version : t -> string
+  val get : t -> string -> string
+end
+
 type folder_status =
   { unseen_count : int;
     message_count : int;
@@ -381,3 +389,5 @@ val set_labels :
 
 val capability : session -> capability list Lwt.t
     (** Requests capabilities of the server. *)
+
+val identity : session -> Identity.t -> Identity.t Lwt.t
