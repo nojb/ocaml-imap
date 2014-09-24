@@ -378,7 +378,6 @@ val set_labels :
   uids:UidSet.t ->
   labels:string list -> unit Lwt.t
     (** Sets Gmail labels. *)
-                        
-val capability :
-  session -> capability list Lwt.t
+
+val capability : session -> capability list Lwt.t
     (** Requests capabilities of the server. *)

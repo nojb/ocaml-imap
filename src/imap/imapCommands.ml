@@ -1157,3 +1157,7 @@ module Namespace = struct
   let _ =
     ImapParser.(register_parser {parse})
 end
+
+module Compress = struct
+  let compress = std_command (send "COMPRESS DEFLATE")
+end

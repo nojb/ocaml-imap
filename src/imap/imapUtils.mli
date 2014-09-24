@@ -25,8 +25,6 @@
 val base64_encode : string -> string
 (* val base64_encode_nopad : string -> string *)
 val base64_decode : string -> string
-(* val zlib_compress : string -> string *)
-(* val zlib_uncompress : string -> string *)
 
 (** {2 Modified UTF7} *)
 

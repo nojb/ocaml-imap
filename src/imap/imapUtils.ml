@@ -29,15 +29,9 @@ let base64_encode_nopad s =
 let base64_decode s =
   Cryptokit.transform_string (Cryptokit.Base64.decode ()) s
 
-(* let zlib_compress s = *)
-(*   Cryptokit.transform_string (Cryptokit.Zlib.compress ()) s *)
-
-(* let zlib_uncompress s = *)
-(*   Cryptokit.transform_string (Cryptokit.Zlib.uncompress ()) s *)
-
 let recode ?nln ?encoding out_encoding src dst =
   let rec loop d e = match Uutf.decode d with 
-    | `Uchar _ as u -> ignore (Uutf.encode e u); loop d e 
+      `Uchar _ as u -> ignore (Uutf.encode e u); loop d e 
     | `End -> ignore (Uutf.encode e `End)
     | `Malformed _ -> ignore (Uutf.encode e (`Uchar Uutf.u_rep)); loop d e 
     | `Await -> assert false
@@ -57,7 +51,7 @@ let encode_mutf7 s =
     if i >= String.length s then
       ()
     else match s.[i] with
-      | '&' ->
+        '&' ->
           Buffer.add_string b "&-";
           tr_ascii (i + 1)
       | '\x20' .. '\x7e' as c ->
@@ -83,11 +77,8 @@ let encode_mutf7 s =
       if j >= String.length s then
         add_until j
       else match s.[j] with
-        | '\x20' .. '\x7e' ->
-            add_until j;
-            tr_ascii j
-        | _ ->
-            loop (j + 1)
+          '\x20' .. '\x7e' -> add_until j; tr_ascii j
+        | _ -> loop (j + 1)
     in
     loop i
   in
@@ -100,7 +91,7 @@ let decode_mutf7 s =
     if i >= String.length s then
       ()
     else match s.[i] with
-      | '&' ->
+        '&' ->
           if i+1 < String.length s && s.[i] = '-' then
             begin
               Buffer.add_char b '&';
@@ -127,7 +118,7 @@ let decode_mutf7 s =
           tr_ascii i
         end
       else match s.[i] with
-        | '-' ->
+          '-' ->
             decode_until i;
             tr_ascii (i + 1)
         | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | ',' ->

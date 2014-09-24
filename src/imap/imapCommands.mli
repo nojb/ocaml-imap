@@ -204,3 +204,7 @@ module Namespace : sig
       ns_shared : namespace_item }
   val namespace : namespace_data command
 end
+
+module Compress : sig
+  val compress : unit command
+end
