@@ -397,7 +397,7 @@ let fully_write sock buf pos len =
 let read sock buf pos len =
   try_lwt Lwt_ssl.read sock buf pos len with _ -> raise_lwt StreamError
 
-let run s c =
+let run c s =
   let open ImapControl in
   let buf = Bytes.create 65536 in
   let rec loop in_buf = function
@@ -512,7 +512,7 @@ let cache_capabilities c =
       if List.length ci.imap_state.cap_info > 0 then
         Lwt.return ci.imap_state.cap_info
       else
-        run ci ImapCommands.capability
+        run ImapCommands.capability ci
     with
       exn ->
         disconnect c >> Lwt_log.debug ~exn "capabilities failed" >> raise_lwt (Error Capability)
@@ -541,7 +541,7 @@ let connect ?(ssl_method = Ssl.TLSv1) ~port ~host c =
         compressor = None;
         capabilities = [] }
     in
-    lwt _ = run ci ImapCore.greeting in
+    lwt _ = run ImapCore.greeting ci in
     c.state <- CONNECTED ci;
     lwt () = cache_capabilities c in
     Lwt.return ci
@@ -565,7 +565,7 @@ let enable_compression c =
   lwt () = assert_lwt (ci.compressor = None) in
   lwt () =
     try_lwt
-      run ci ImapCommands.Compress.compress
+      run ImapCommands.Compress.compress ci
     with
       StreamError ->
         disconnect c >> raise_lwt (Error Connection)
@@ -586,7 +586,7 @@ let enable_feature c feature =
         assert_lwt false
   in
   try_lwt
-    lwt _ = run ci (ImapCommands.Enable.enable [CAPABILITY_NAME feature]) in
+    lwt _ = run (ImapCommands.Enable.enable [CAPABILITY_NAME feature]) ci in
     Lwt.return true
   with
     exn -> Lwt_log.debug_f ~exn "could not enable %S" feature >> Lwt.return false
@@ -637,7 +637,7 @@ let login ~username ~password c =
   in
   lwt () =
     try_lwt
-      run ci (ImapCommands.login username password)
+      run (ImapCommands.login username password) ci
     with
       exn ->
         lwt () = Lwt_log.debug ~exn "login error" in
@@ -697,7 +697,7 @@ let select c folder =
   in
   lwt () =
     try_lwt
-      run ci (ImapCommands.select folder)
+      run (ImapCommands.select folder) ci
     with
       exn ->
         lwt () = Lwt_log.debug ~exn "select error" in
@@ -860,7 +860,7 @@ let folder_status s ~folder =
          let status_att_list : status_att list =
            if ci.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: status_att_list else status_att_list
          in
-         run ci (ImapCommands.status folder status_att_list))
+         run (ImapCommands.status folder status_att_list) ci)
       (fun _ -> raise_lwt (Error NonExistantFolder))
   in
   let fs =
@@ -874,7 +874,7 @@ let folder_status s ~folder =
   Lwt.return (loop fs status.st_info_list)
 
 let noop s =
-  with_loggedin s (fun ci -> run ci ImapCommands.noop) (fun _ -> raise_lwt (Error Connection))
+  with_loggedin s (run ImapCommands.noop) (fun _ -> raise_lwt (Error Connection))
 
 let mb_keyword_flag =
   [ "Inbox", Inbox;
@@ -938,30 +938,30 @@ let fetch_all_folders s =
   lwt imap_folders =
         (* lwt delimiter = fetch_delimiter_if_needed ci in FIXME *)
     with_loggedin s
-      (fun ci -> run ci (ImapCommands.list "" "*"))
+      (run (ImapCommands.list "" "*"))
       (fun _ -> raise_lwt (Error NonExistantFolder))
   in
   Lwt.return (List.map results imap_folders)
 
 let rename_folder s ~folder ~new_name =
   with_folder s "INBOX"
-    (fun ci -> run ci (ImapCommands.rename folder new_name))
+    (run (ImapCommands.rename folder new_name))
     (fun _ -> raise_lwt (Error Rename))
   
 let delete_folder s ~folder =
   with_folder s "INBOX"
-    (fun ci -> run ci (ImapCommands.delete folder))
+    (run (ImapCommands.delete folder))
     (fun _ -> raise_lwt (Error Delete))
   
 let create_folder s ~folder =
   with_folder s "INBOX"
-    (fun ci -> run ci (ImapCommands.create folder))
+    (run (ImapCommands.create folder))
     (fun _ -> raise_lwt (Error Create))
 
 let copy_messages s ~folder ~uids ~dest =
   lwt uidvalidity, src_uid, dst_uid =
     with_folder s folder
-      (fun ci -> run ci (ImapCommands.Uidplus.uidplus_uid_copy uids dest))
+      (run (ImapCommands.Uidplus.uidplus_uid_copy uids dest))
       (fun _ -> raise_lwt (Error Copy))
   in
   let h = Hashtbl.create 0 in
@@ -970,7 +970,7 @@ let copy_messages s ~folder ~uids ~dest =
 
 let expunge_folder s ~folder =
   with_folder s folder
-    (fun ci -> run ci ImapCommands.expunge)
+    (run ImapCommands.expunge)
     (fun _ -> raise_lwt (Error Expunge))
 
 let flags_from_lep_att_dynamic att_list =
@@ -1131,7 +1131,7 @@ let fetch_message_by_uid s ~folder ~uid =
   in
   lwt result =
     with_folder s folder
-      (fun ci -> run ci (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type))
+      (run (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type))
       (fun _ -> raise_lwt (Error Fetch))
   in
   Lwt.return (extract_body result)
@@ -1157,41 +1157,59 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   in
   lwt fetch_result =
     with_folder s folder
-      (fun ci -> run ci (ImapCommands.uid_fetch imap_set fetch_type))
+      (run (ImapCommands.uid_fetch imap_set fetch_type))
       (fun _ -> raise_lwt (Error Fetch))
   in
   extract_uid fetch_result;
   Lwt.return result
 
+let imap_date_of_date t =
+  let tm = Unix.localtime t in
+  (tm.Unix.tm_mday, tm.Unix.tm_mon + 1, tm.Unix.tm_year + 1900)
+
 let rec imap_search_key_from_search_key = function
-    All           -> SEARCH_KEY_ALL
-  | From str      -> SEARCH_KEY_FROM str
-  | To str        -> SEARCH_KEY_TO str
-  | Cc str        -> SEARCH_KEY_CC str
-  | Bcc str       -> SEARCH_KEY_BCC str
-  | Recipient str -> SEARCH_KEY_OR (SEARCH_KEY_TO str, SEARCH_KEY_OR (SEARCH_KEY_CC str, SEARCH_KEY_BCC str))
-  | Subject str   -> SEARCH_KEY_SUBJECT str
-  | Content str   -> SEARCH_KEY_TEXT str
-  | Body str      -> SEARCH_KEY_BODY str
-  | UIDs imapset  -> SEARCH_KEY_INSET imapset
-  | Header (k, v) -> SEARCH_KEY_HEADER (k, v)
-  | Read          -> SEARCH_KEY_SEEN
-  | Unread        -> SEARCH_KEY_UNSEEN
-  | Flagged       -> SEARCH_KEY_FLAGGED
-  | Unflagged     -> SEARCH_KEY_UNFLAGGED
-  | Answered      -> SEARCH_KEY_ANSWERED
-  | Unanswered    -> SEARCH_KEY_UNANSWERED
-  | Draft         -> SEARCH_KEY_DRAFT
-  | Undraft       -> SEARCH_KEY_UNDRAFT
-  | Deleted       -> SEARCH_KEY_DELETED
-  | Spam          -> SEARCH_KEY_KEYWORD "Junk"
+    All                 -> SEARCH_KEY_ALL
+  | From str            -> SEARCH_KEY_FROM str
+  | To str              -> SEARCH_KEY_TO str
+  | Cc str              -> SEARCH_KEY_CC str
+  | Bcc str             -> SEARCH_KEY_BCC str
+  | Recipient str       -> SEARCH_KEY_OR (SEARCH_KEY_TO str, SEARCH_KEY_OR (SEARCH_KEY_CC str, SEARCH_KEY_BCC str))
+  | Subject str         -> SEARCH_KEY_SUBJECT str
+  | Content str         -> SEARCH_KEY_TEXT str
+  | Body str            -> SEARCH_KEY_BODY str
+  | UIDs imapset        -> SEARCH_KEY_INSET imapset
+  | Header (k, v)       -> SEARCH_KEY_HEADER (k, v)
+  | Read                -> SEARCH_KEY_SEEN
+  | Unread              -> SEARCH_KEY_UNSEEN
+  | Flagged             -> SEARCH_KEY_FLAGGED
+  | Unflagged           -> SEARCH_KEY_UNFLAGGED
+  | Answered            -> SEARCH_KEY_ANSWERED
+  | Unanswered          -> SEARCH_KEY_UNANSWERED
+  | Draft               -> SEARCH_KEY_DRAFT
+  | Undraft             -> SEARCH_KEY_UNDRAFT
+  | Deleted             -> SEARCH_KEY_DELETED
+  | Spam                -> SEARCH_KEY_KEYWORD "Junk"
+  | BeforeDate t        -> SEARCH_KEY_SENTBEFORE (imap_date_of_date t)
+  | OnDate t            -> SEARCH_KEY_SENTON (imap_date_of_date t)
+  | SinceDate t         -> SEARCH_KEY_SENTSINCE (imap_date_of_date t)
+  | BeforeReceiveDate t -> SEARCH_KEY_BEFORE (imap_date_of_date t)
+  | OnReceiveDate t     -> SEARCH_KEY_ON (imap_date_of_date t)
+  | SinceReceiveDate t  -> SEARCH_KEY_SINCE (imap_date_of_date t)
+  | SizeLarger n        -> SEARCH_KEY_LARGER n
+  | SizeSmaller n       -> SEARCH_KEY_SMALLER n
+  | GmailThreadID id    -> SEARCH_KEY_XGMTHRID id
+  | GmailMessageID id   -> SEARCH_KEY_XGMMSGID id
+  | GmailRaw str        -> SEARCH_KEY_XGMRAW str
+  | Or (k1, k2)         -> SEARCH_KEY_OR (imap_search_key_from_search_key k1, imap_search_key_from_search_key k2)
+  | And (k1, k2)        -> SEARCH_KEY_AND (imap_search_key_from_search_key k1, imap_search_key_from_search_key k2)
+  | Not k               -> SEARCH_KEY_NOT (imap_search_key_from_search_key k)
 
 let search s ~folder ~key =
   (* let charset =  FIXME yahoo *)
   let key = imap_search_key_from_search_key key in
   lwt result_list =
     with_folder s folder
-      (fun ci -> run ci (ImapCommands.uid_search key))
+      (run (ImapCommands.uid_search key))
       (fun _ -> raise_lwt (Error Fetch))
   in
   let result = List.fold_left (fun s n -> UidSet.add n s) UidSet.empty result_list in
@@ -1213,7 +1231,7 @@ let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
   let imap_flags = List.fold_left (fun l fl -> imap_flag_of_flag fl :: l) imap_flags flags in
   let store_att_flags = { fl_sign = kind; fl_silent = true; fl_flag_list = imap_flags } in
   with_folder s folder
-    (fun ci -> run ci (ImapCommands.uid_store uids store_att_flags))
+    (run (ImapCommands.uid_store uids store_att_flags))
     (fun _ -> raise_lwt (Error Store))
 
 let add_flags s ~folder ~uids ~flags ?customflags () =
@@ -1230,7 +1248,7 @@ let set_flags s ~folder ~uids ~flags ?customflags () =
 
 let store_labels s ~folder ~uids ~kind ~labels =
   with_folder s folder
-    (fun ci -> run ci (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels))
+    (run (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels))
     (fun _ -> raise_lwt (Error Store))
 
 let add_labels s ~folder ~uids ~labels =
