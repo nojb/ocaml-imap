@@ -178,10 +178,6 @@ type messages_request_kind =
   | ExtraHeaders of string list
   | Size
 
-type fetch_request_type =
-    UID
-  | Sequence
-
 type workaround =
     Gmail
   | Yahoo
@@ -371,7 +367,6 @@ type connected_info =
   { mutable imap_state : ImapTypes.state;
     sock : Lwt_ssl.socket;
     mutable condstore_enabled : bool;
-    mutex : Lwt_mutex.t;
     mutable compressor : (Cryptokit.transform * Cryptokit.transform) option;
     mutable capabilities : capability list }
 
@@ -389,13 +384,6 @@ type state =
   | LOGGEDIN of connected_info
   | SELECTED of connected_info * selected_info
 
-type session =
-  { mutable state : state;
-    username : string;
-    password : string;
-    host : string;
-    port : int }
-  
 let fully_write sock buf pos len =
   let rec loop pos len =
     if len <= 0 then
@@ -450,7 +438,12 @@ let run s c =
             loop in_buf (k More)
   in
   loop s.imap_state.in_buf (run c s.imap_state)
-  
+
+type connection =
+  { mutable state : state;
+    mutex : Lwt_mutex.t;
+    mutable auto_disconnect : unit Lwt.t }
+
 (* let ssl_context ssl_method ca_file = *)
 (*   let version = *)
 (*     match version with *)
@@ -467,18 +460,11 @@ let run s c =
 (*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
 (*       ctx *)
 
-let create_session ?(port = 993) ~host ~username ~password () =
-  { state = DISCONNECTED;
-    username;
-    password;
-    host;
-    port }
-  
-let disconnect s =
-  match s.state with
+let disconnect c =
+  match c.state with
     CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
-      lwt () = try_lwt Lwt_ssl.close ci.sock with _ -> Lwt.return () in
-      s.state <- DISCONNECTED;
+      lwt () = try_lwt Lwt_ssl.close ci.sock with _ -> Lwt.return_unit in
+      c.state <- DISCONNECTED;
       Lwt.return_unit
   | DISCONNECTED ->
       Lwt.return_unit
@@ -513,11 +499,13 @@ let capabilities_of_imap_capabilities caps =
   in
   loop [] caps
 
-let cache_capabilities s =
+let cache_capabilities c =
   lwt ci =
-    match s.state with
-      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) -> Lwt.return ci
-    | DISCONNECTED -> assert_lwt false
+    match c.state with
+      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
+        Lwt.return ci
+    | DISCONNECTED ->
+        assert_lwt false
   in                
   lwt caps =
     try_lwt
@@ -527,16 +515,21 @@ let cache_capabilities s =
         run ci ImapCommands.capability
     with
       exn ->
-        disconnect s >> Lwt_log.debug ~exn "capabilities failed" >> raise_lwt (Error Capability)
+        disconnect c >> Lwt_log.debug ~exn "capabilities failed" >> raise_lwt (Error Capability)
   in
   ci.capabilities <- capabilities_of_imap_capabilities caps;
   Lwt.return_unit
 
-let connect ?(ssl_method = Ssl.TLSv1) s =
-  lwt () = assert_lwt (match s.state with DISCONNECTED -> true | _ -> false) in
+let connect ?(ssl_method = Ssl.TLSv1) ~port ~host c =
+  lwt () = match c.state with
+      DISCONNECTED ->
+        Lwt.return_unit
+    | _ ->
+        assert_lwt false
+  in
   try_lwt
-    let he = Unix.gethostbyname s.host in
-    let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), s.port) in
+    let he = Unix.gethostbyname host in
+    let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     lwt () = Lwt_unix.connect fd sa in
     let context = Ssl.create_context ssl_method Ssl.Client_context in
@@ -545,55 +538,52 @@ let connect ?(ssl_method = Ssl.TLSv1) s =
       { imap_state = ImapCore.fresh_state;
         sock;
         condstore_enabled = false;
-        mutex = Lwt_mutex.create ();
         compressor = None;
         capabilities = [] }
     in
     lwt _ = run ci ImapCore.greeting in
-    s.state <- CONNECTED ci;
-    lwt () = cache_capabilities s in
+    c.state <- CONNECTED ci;
+    lwt () = cache_capabilities c in
     Lwt.return ci
   with
     _ -> raise_lwt (Error Connection)
 
-let connect_if_needed s =
-  match s.state with
+let connect_if_needed ~port ~host c =
+  match c.state with
     DISCONNECTED ->
-      connect s
-  | CONNECTED ci
-  | LOGGEDIN ci
-  | SELECTED (ci, _) ->
+      connect ~port ~host c
+  | CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
       Lwt.return ci
 
-let enable_compression s =
-  lwt ci =
-    match s.state with
-      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) -> Lwt.return ci
-    | DISCONNECTED -> assert_lwt false
+let enable_compression c =
+  lwt ci = match c.state with
+      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
+        Lwt.return ci
+    | DISCONNECTED ->
+        assert_lwt false
   in
-  lwt () = match ci.compressor with
-      None -> Lwt.return ()
-    | Some _ -> assert_lwt false
-  in
+  lwt () = assert_lwt (ci.compressor = None) in
   lwt () =
     try_lwt
       run ci ImapCommands.Compress.compress
     with
       StreamError ->
-        disconnect s >> raise_lwt (Error Connection)
+        disconnect c >> raise_lwt (Error Connection)
     | ErrorP (ParseError _) ->
         raise_lwt (Error Parse)
     | _ ->
         raise_lwt (Error Compression)
   in
   ci.compressor <- Some (Cryptokit.Zlib.compress (), Cryptokit.Zlib.uncompress ());
-  Lwt.return ()
+  Lwt.return_unit
 
-let enable_feature s feature =
+let enable_feature c feature =
   lwt ci =
-    match s.state with
-      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) -> Lwt.return ci
-    | DISCONNECTED -> assert_lwt false
+    match c.state with
+      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
+        Lwt.return ci
+    | DISCONNECTED ->
+        assert_lwt false
   in
   try_lwt
     lwt _ = run ci (ImapCommands.Enable.enable [CAPABILITY_NAME feature]) in
@@ -601,8 +591,8 @@ let enable_feature s feature =
   with
     exn -> Lwt_log.debug_f ~exn "could not enable %S" feature >> Lwt.return false
 
-let has_capability s cap =
-  match s.state with
+let has_capability c cap =
+  match c.state with
     CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
       List.mem cap ci.capabilities
   | DISCONNECTED ->
@@ -638,51 +628,52 @@ let contains str response =
   let rec loop i = index i || loop (i+1) in
   loop 0
 
-let login s =
-  match s.state with
-    CONNECTED ci ->
-      lwt () =
-        try_lwt
-          run ci (ImapCommands.login s.username s.password)
-        with
-          exn ->
-            lwt () = Lwt_log.debug ~exn "login error" in
-            match exn with
-              StreamError ->
-                disconnect s >> raise_lwt (Error Connection)
-            | ErrorP (ParseError _) ->
-                raise_lwt (Error Parse)
-            | _ ->
-                let contains str = contains str ci.imap_state.imap_response in
-                if contains "not enabled for IMAP use" then
-                  raise_lwt (Error GmailIMAPNotEnabled)
-                else if contains "bandwidth limits" then
-                  raise_lwt (Error GmailExceededBandwidthLimit)
-                else if contains "Too many simultaneous connections" then
-                  raise_lwt (Error GmailTooManySimultaneousConnections)
-                else if contains "Maximum number of connections" then
-                  raise_lwt (Error GmailTooManySimultaneousConnections)
-                else if contains "http://me.com/move" then
-                  raise_lwt (Error MobileMeMoved)
-                else if contains "OCF12" then
-                  raise_lwt (Error YahooUnavailable)
-                else
-                  raise_lwt (Error Authentication)
-      in
-      s.state <- LOGGEDIN ci;
-      lwt () = cache_capabilities s in
-      lwt () = enable_features s in
-      Lwt.return ci
-  | _ ->
-      assert_lwt false
+let login ~username ~password c =
+  lwt ci = match c.state with
+      CONNECTED ci ->
+        Lwt.return ci
+    | LOGGEDIN _ | SELECTED _ | DISCONNECTED ->
+        assert_lwt false
+  in
+  lwt () =
+    try_lwt
+      run ci (ImapCommands.login username password)
+    with
+      exn ->
+        lwt () = Lwt_log.debug ~exn "login error" in
+        match exn with
+          StreamError ->
+            disconnect c >> raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
+            raise_lwt (Error Parse)
+        | _ ->
+            let contains str = contains str ci.imap_state.imap_response in
+            if contains "not enabled for IMAP use" then
+              raise_lwt (Error GmailIMAPNotEnabled)
+            else if contains "bandwidth limits" then
+              raise_lwt (Error GmailExceededBandwidthLimit)
+            else if contains "Too many simultaneous connections" then
+              raise_lwt (Error GmailTooManySimultaneousConnections)
+            else if contains "Maximum number of connections" then
+              raise_lwt (Error GmailTooManySimultaneousConnections)
+            else if contains "http://me.com/move" then
+              raise_lwt (Error MobileMeMoved)
+            else if contains "OCF12" then
+              raise_lwt (Error YahooUnavailable)
+            else
+              raise_lwt (Error Authentication)
+  in
+  c.state <- LOGGEDIN ci;
+  lwt () = cache_capabilities c in
+  lwt () = enable_features c in
+  Lwt.return ci
 
-let login_if_needed s =
-  lwt _ = connect_if_needed s in
-  match s.state with
+let login_if_needed ~port ~host ~username ~password c =
+  lwt _ = connect_if_needed ~port ~host c in
+  match c.state with
     CONNECTED _ ->
-      login s
-  | LOGGEDIN ci
-  | SELECTED (ci, _) ->
+      login ~username ~password c
+  | LOGGEDIN ci | SELECTED (ci, _) ->
       Lwt.return ci
   | DISCONNECTED ->
       assert_lwt false
@@ -697,51 +688,148 @@ let get_mod_sequence_value state =
   in
   loop state.rsp_info.rsp_extension_list
 
-let select s folder =
-  match s.state with
-    LOGGEDIN ci
-  | SELECTED (ci, _) ->
-      lwt () =
-        try_lwt
-          run ci (ImapCommands.select folder)
-        with
-          exn ->
-            lwt () = Lwt_log.debug ~exn "select error" in
-            match exn with
-              StreamError ->
-                disconnect s >> raise_lwt (Error Connection)
-            | ErrorP (ParseError _) ->
-                raise_lwt (Error Parse)
-            | _ ->
-                s.state <- LOGGEDIN ci;
-                raise_lwt (Error NonExistantFolder)
-      in
-      let st = ci.imap_state in
-      let si =
-        { current_folder = folder;
-          uid_next = st.sel_info.sel_uidnext;
-          uid_validity = st.sel_info.sel_uidvalidity;
-          folder_msg_count = st.sel_info.sel_exists;
-          first_unseen_uid = st.sel_info.sel_first_unseen;
-          mod_sequence_value = get_mod_sequence_value st }
-      in
-      s.state <- SELECTED (ci, si);
-      Lwt.return (ci, si)
-  | _ ->
-      assert_lwt false
-
-let select_if_needed s folder =
-  lwt _ = login_if_needed s in
-  match s.state with
+let select c folder =
+  lwt ci = match c.state with
+      LOGGEDIN ci | SELECTED (ci, _) ->
+        Lwt.return ci
+    | DISCONNECTED | CONNECTED _ ->
+        assert_lwt false
+  in
+  lwt () =
+    try_lwt
+      run ci (ImapCommands.select folder)
+    with
+      exn ->
+        lwt () = Lwt_log.debug ~exn "select error" in
+        match exn with
+          StreamError ->
+            disconnect c >> raise_lwt (Error Connection)
+        | ErrorP (ParseError _) ->
+            (* FIXME set state to LOGGEDIN ? *)
+            raise_lwt (Error Parse)
+        | _ ->
+            c.state <- LOGGEDIN ci;
+            raise_lwt (Error NonExistantFolder)
+  in
+  let st = ci.imap_state in
+  let si =
+    { current_folder = folder;
+      uid_next = st.sel_info.sel_uidnext;
+      uid_validity = st.sel_info.sel_uidvalidity;
+      folder_msg_count = st.sel_info.sel_exists;
+      first_unseen_uid = st.sel_info.sel_first_unseen;
+      mod_sequence_value = get_mod_sequence_value st }
+  in
+  c.state <- SELECTED (ci, si);
+  Lwt.return (ci, si)
+  
+let select_if_needed ~port ~host ~username ~password c folder =
+  lwt _ = login_if_needed ~port ~host ~username ~password c in
+  match c.state with
     SELECTED (ci, si)->
       if String.lowercase si.current_folder <> String.lowercase folder then
-        select s folder
+        select c folder
       else
         Lwt.return (ci, si)
   | LOGGEDIN _ ->
-      select s folder
+      select c folder
   | _ ->
       assert_lwt false
+
+type session =
+  { username : string;
+    password : string;
+    host : string;
+    port : int;
+    max_connections : int;
+    mutable connections : connection list }
+
+let create_session ?(max_connections = 2) ?(port = 993) ~host ~username ~password () =
+  { username;
+    password;
+    host;
+    port;
+    max_connections;
+    connections = [] }
+
+let new_connection s =
+  let r = { state = DISCONNECTED; mutex = Lwt_mutex.create (); auto_disconnect = Lwt.return_unit } in
+  s.connections <- r :: s.connections;
+  (* Lwt_log.ign_debug "new connection!"; *)
+  r
+
+let available_connection s =
+  try
+    List.find (fun c -> not (Lwt_mutex.is_locked c.mutex)) s.connections
+  with
+    Not_found ->
+      if List.length s.connections < s.max_connections then
+        new_connection s
+      else
+        List.nth s.connections (Random.int (List.length s.connections))
+
+let with_loggedin s ?folder f ferr =
+  let c =
+    match folder with
+      None ->
+        available_connection s
+    | Some folder ->
+        try
+          List.find begin fun c ->
+            match c.state with
+              SELECTED (_, si) ->
+                if String.uppercase si.current_folder = String.uppercase folder then
+                  begin
+                    (* Lwt_log.ign_debug_f "choosing existing session for %s" si.current_folder; *)
+                    true
+                  end
+                else
+                  false
+            | _ ->
+                false
+          end s.connections
+        with
+          Not_found -> available_connection s
+  in
+  try_lwt
+    Lwt.cancel c.auto_disconnect;
+    match folder with
+      None ->
+        Lwt_mutex.with_lock c.mutex
+          (fun () -> login_if_needed s.port s.host s.username s.password c >>= f)
+    | Some folder ->
+        Lwt_mutex.with_lock c.mutex
+          (fun () -> select_if_needed s.port s.host s.username s.password c folder >>= fun (ci, _) -> f ci)
+  with
+    StreamError ->
+      disconnect c >> raise_lwt (Error Connection)
+  | ErrorP (ParseError _) ->
+      raise_lwt (Error Parse)
+  | exn ->
+      ferr exn
+  finally
+    if not (Lwt_mutex.is_locked c.mutex) then c.auto_disconnect <- Lwt_unix.sleep 60. >> disconnect c;
+    Lwt.return_unit
+
+let with_folder s folder f ferr =
+  with_loggedin s ~folder f ferr
+
+(* let with_loggedin s f ferr = *)
+(*   let c = available_connection s in *)
+(*   try_lwt *)
+(*     if Lwt_mutex.is_empty c.mutex then Lwt.cancel c.auto_disconnect; *)
+(*     Lwt_mutex.with_lock c.mutex *)
+(*       (fun () -> login_if_needed s.port s.host s.username s.password c >>= f) *)
+(*   with *)
+(*     StreamError -> *)
+(*       disconnect c >> raise_lwt (Error Connection) *)
+(*   | ErrorP (ParseError _) -> *)
+(*       raise_lwt (Error Parse) *)
+(*   | exn -> *)
+(*       ferr exn *)
+(*   finally *)
+(*     if Lwt_mutex.is_empty c.mutex then c.auto_disconnect <- Lwt_unix.sleep 60. >> disconnect c; *)
+(*     Lwt.return_unit *)
 
 let folder_status s ~folder =
   let status_att_list : status_att list =
@@ -766,23 +854,14 @@ let folder_status s ~folder =
     | _ :: rest ->
         loop fs rest
   in
-  lwt ci = login_if_needed s in
-  let status_att_list : status_att list =
-    if ci.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: status_att_list else status_att_list
-  in
   lwt status =
-    try_lwt
-      run ci (ImapCommands.status folder status_att_list)
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "status error" in
-        match exn with
-          StreamError ->
-            disconnect s >> raise_lwt (Error Connection)
-        | ErrorP (ParseError _) ->
-            raise_lwt (Error Parse)
-        | _ ->
-            raise_lwt (Error NonExistantFolder)
+    with_loggedin s
+      (fun ci ->
+         let status_att_list : status_att list =
+           if ci.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: status_att_list else status_att_list
+         in
+         run ci (ImapCommands.status folder status_att_list))
+      (fun _ -> raise_lwt (Error NonExistantFolder))
   in
   let fs =
     { unseen_count = 0;
@@ -795,14 +874,7 @@ let folder_status s ~folder =
   Lwt.return (loop fs status.st_info_list)
 
 let noop s =
-  lwt ci = login_if_needed s in
-  try_lwt
-    run ci ImapCommands.noop
-  with
-    StreamError ->
-      disconnect s >> raise_lwt (Error Connection)
-  | _ ->
-      raise_lwt (Error Noop)
+  with_loggedin s (fun ci -> run ci ImapCommands.noop) (fun _ -> raise_lwt (Error Connection))
 
 let mb_keyword_flag =
   [ "Inbox", Inbox;
@@ -863,100 +935,43 @@ let fetch_all_folders s =
     let path = if String.uppercase mb_list.mb_name = "INBOX" then "INBOX" else mb_list.mb_name in
     { path; delimiter = mb_list.mb_delimiter; flags }
   in
-  lwt ci = login_if_needed s in
   lwt imap_folders =
-    try_lwt
-      (* lwt delimiter = fetch_delimiter_if_needed ci in *)
-      run ci (ImapCommands.list "" "*")
-    with
-      StreamError ->
-        disconnect s >> raise_lwt (Error Connection)
-    | ErrorP (ParseError _) ->
-        raise_lwt (Error Parse)
-    | _ ->
-        raise_lwt (Error NonExistantFolder)
+        (* lwt delimiter = fetch_delimiter_if_needed ci in FIXME *)
+    with_loggedin s
+      (fun ci -> run ci (ImapCommands.list "" "*"))
+      (fun _ -> raise_lwt (Error NonExistantFolder))
   in
   Lwt.return (List.map results imap_folders)
 
 let rename_folder s ~folder ~new_name =
-  lwt ci, _ = select_if_needed s "INBOX" in
-  try_lwt
-    run ci (ImapCommands.rename folder new_name)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "rename error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Rename)
+  with_folder s "INBOX"
+    (fun ci -> run ci (ImapCommands.rename folder new_name))
+    (fun _ -> raise_lwt (Error Rename))
   
 let delete_folder s ~folder =
-  lwt ci, _ = select_if_needed s "INBOX" in
-  try_lwt
-    run ci (ImapCommands.delete folder)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "delete error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Delete)
+  with_folder s "INBOX"
+    (fun ci -> run ci (ImapCommands.delete folder))
+    (fun _ -> raise_lwt (Error Delete))
   
 let create_folder s ~folder =
-  lwt ci, _ = select_if_needed s "INBOX" in
-  try_lwt
-    run ci (ImapCommands.create folder)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "create error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Create)
+  with_folder s "INBOX"
+    (fun ci -> run ci (ImapCommands.create folder))
+    (fun _ -> raise_lwt (Error Create))
 
 let copy_messages s ~folder ~uids ~dest =
-  lwt ci, _ = select_if_needed s folder in
   lwt uidvalidity, src_uid, dst_uid =
-    try_lwt
-      run ci (ImapCommands.Uidplus.uidplus_uid_copy uids dest)
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "copy error" in
-        match exn with
-          StreamError ->
-            disconnect s >> raise_lwt (Error Connection)
-        | ErrorP (ParseError _) ->
-            raise_lwt (Error Parse)
-        | _ ->
-            raise_lwt (Error Copy)
+    with_folder s folder
+      (fun ci -> run ci (ImapCommands.Uidplus.uidplus_uid_copy uids dest))
+      (fun _ -> raise_lwt (Error Copy))
   in
   let h = Hashtbl.create 0 in
   ImapSet.iter2 (Hashtbl.add h) src_uid dst_uid;
   Lwt.return h
 
-let expunge s ~folder =
-  lwt ci, _ = select_if_needed s folder in
-  try_lwt
-    run ci ImapCommands.expunge
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "expunge error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Expunge)
+let expunge_folder s ~folder =
+  with_folder s folder
+    (fun ci -> run ci ImapCommands.expunge)
+    (fun _ -> raise_lwt (Error Expunge))
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop (acc : message_flag list) = function
@@ -1089,13 +1104,14 @@ let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
           flags = []; internal_date = 0.0}
   in
   let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
-  lwt ci, _ = select_if_needed s folder in
-  if fetch_by_uid then
-    lwt result = run ci (ImapCommands.uid_fetch imapset fetch_type) in
-    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
-  else
-    lwt result = run ci (ImapCommands.fetch imapset fetch_type) in
-    Lwt.return (List.map (fun (atts, _) -> msg atts) result)
+  assert false
+  (* lwt ci, _ = select_if_needed s folder in *)
+  (* if fetch_by_uid then *)
+  (*   lwt result = run ci (ImapCommands.uid_fetch imapset fetch_type) in *)
+  (*   Lwt.return (List.map (fun (atts, _) -> msg atts) result) *)
+  (* else *)
+  (*   lwt result = run ci (ImapCommands.fetch imapset fetch_type) in *)
+  (*   Lwt.return (List.map (fun (atts, _) -> msg atts) result) *)
   
 let fetch_message_by_uid s ~folder ~uid =
   let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
@@ -1113,20 +1129,12 @@ let fetch_message_by_uid s ~folder ~uid =
     | _ ->
         assert false
   in
-  lwt ci, _ = select_if_needed s folder in
-  try_lwt
-    lwt result = run ci (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type) in
-    Lwt.return (extract_body result)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "fetch error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Fetch)
+  lwt result =
+    with_folder s folder
+      (fun ci -> run ci (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type))
+      (fun _ -> raise_lwt (Error Fetch))
+  in
+  Lwt.return (extract_body result)
   
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   let result = Hashtbl.create 0 in
@@ -1147,126 +1155,66 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
         in
         loop att_item
   in
-  lwt ci, _ = select_if_needed s folder in
   lwt fetch_result =
-    try_lwt
-      run ci (ImapCommands.uid_fetch imap_set fetch_type)
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "fetch error" in
-        match exn with
-          StreamError ->
-            disconnect s >> raise_lwt (Error Connection)
-        | ErrorP (ParseError _) ->
-            raise_lwt (Error Parse)
-        | _ ->
-            raise_lwt (Error Fetch)
+    with_folder s folder
+      (fun ci -> run ci (ImapCommands.uid_fetch imap_set fetch_type))
+      (fun _ -> raise_lwt (Error Fetch))
   in
   extract_uid fetch_result;
   Lwt.return result
 
 let rec imap_search_key_from_search_key = function
-    All ->
-      SEARCH_KEY_ALL
-  | From str ->
-      SEARCH_KEY_FROM str
-  | To str ->
-      SEARCH_KEY_TO str
-  | Cc str ->
-      SEARCH_KEY_CC str
-  | Bcc str ->
-      SEARCH_KEY_BCC str
-  | Recipient str ->
-      SEARCH_KEY_OR (SEARCH_KEY_TO str, SEARCH_KEY_OR (SEARCH_KEY_CC str, SEARCH_KEY_BCC str))
-  | Subject str ->
-      SEARCH_KEY_SUBJECT str
-  | Content str ->
-      SEARCH_KEY_TEXT str
-  | Body str ->
-      SEARCH_KEY_BODY str
-  | UIDs imapset ->
-      SEARCH_KEY_INSET imapset
-  | Header (k, v) ->
-      SEARCH_KEY_HEADER (k, v)
-  | Read ->
-      SEARCH_KEY_SEEN
-  | Unread ->
-      SEARCH_KEY_UNSEEN
-  | Flagged ->
-      SEARCH_KEY_FLAGGED
-  | Unflagged ->
-      SEARCH_KEY_UNFLAGGED
-  | Answered ->
-      SEARCH_KEY_ANSWERED
-  | Unanswered ->
-      SEARCH_KEY_UNANSWERED
-  | Draft ->
-      SEARCH_KEY_DRAFT
-  | Undraft ->
-      SEARCH_KEY_UNDRAFT
-  | Deleted ->
-      SEARCH_KEY_DELETED
-  | Spam ->
-      SEARCH_KEY_KEYWORD "Junk"
+    All           -> SEARCH_KEY_ALL
+  | From str      -> SEARCH_KEY_FROM str
+  | To str        -> SEARCH_KEY_TO str
+  | Cc str        -> SEARCH_KEY_CC str
+  | Bcc str       -> SEARCH_KEY_BCC str
+  | Recipient str -> SEARCH_KEY_OR (SEARCH_KEY_TO str, SEARCH_KEY_OR (SEARCH_KEY_CC str, SEARCH_KEY_BCC str))
+  | Subject str   -> SEARCH_KEY_SUBJECT str
+  | Content str   -> SEARCH_KEY_TEXT str
+  | Body str      -> SEARCH_KEY_BODY str
+  | UIDs imapset  -> SEARCH_KEY_INSET imapset
+  | Header (k, v) -> SEARCH_KEY_HEADER (k, v)
+  | Read          -> SEARCH_KEY_SEEN
+  | Unread        -> SEARCH_KEY_UNSEEN
+  | Flagged       -> SEARCH_KEY_FLAGGED
+  | Unflagged     -> SEARCH_KEY_UNFLAGGED
+  | Answered      -> SEARCH_KEY_ANSWERED
+  | Unanswered    -> SEARCH_KEY_UNANSWERED
+  | Draft         -> SEARCH_KEY_DRAFT
+  | Undraft       -> SEARCH_KEY_UNDRAFT
+  | Deleted       -> SEARCH_KEY_DELETED
+  | Spam          -> SEARCH_KEY_KEYWORD "Junk"
 
 let search s ~folder ~key =
   (* let charset =  FIXME yahoo *)
   let key = imap_search_key_from_search_key key in
-  lwt ci, _ = select_if_needed s folder in
   lwt result_list =
-    try_lwt
-      run ci (ImapCommands.uid_search key)
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "search error" in
-        match exn with
-          StreamError ->
-            disconnect s >> raise_lwt (Error Connection)
-        | ErrorP (ParseError _) ->
-            raise_lwt (Error Parse)
-        | _ ->
-            raise_lwt (Error Fetch)
+    with_folder s folder
+      (fun ci -> run ci (ImapCommands.uid_search key))
+      (fun _ -> raise_lwt (Error Fetch))
   in
   let result = List.fold_left (fun s n -> UidSet.add n s) UidSet.empty result_list in
   Lwt.return result
 
 let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
-  lwt ci, _ = select_if_needed s folder in
   let imap_flag_of_flag = function
-      Seen ->
-        FLAG_SEEN
-    | Answered ->
-        FLAG_ANSWERED
-    | Flagged ->
-        FLAG_FLAGGED
-    | Deleted ->
-        FLAG_DELETED
-    | Draft ->
-        FLAG_DRAFT
-    | MDNSent ->
-        FLAG_KEYWORD "$MDNSent"
-    | Forwarded ->
-        FLAG_KEYWORD "$Forwarded"
-    | SubmitPending ->
-        FLAG_KEYWORD "$SubmitPending"
-    | Submitted ->
-        FLAG_KEYWORD "$Submitted"
+      Seen          -> FLAG_SEEN
+    | Answered      -> FLAG_ANSWERED
+    | Flagged       -> FLAG_FLAGGED
+    | Deleted       -> FLAG_DELETED
+    | Draft         -> FLAG_DRAFT
+    | MDNSent       -> FLAG_KEYWORD "$MDNSent"
+    | Forwarded     -> FLAG_KEYWORD "$Forwarded"
+    | SubmitPending -> FLAG_KEYWORD "$SubmitPending"
+    | Submitted     -> FLAG_KEYWORD "$Submitted"
   in
   let imap_flags = List.map (fun fl -> FLAG_KEYWORD fl) customflags in
   let imap_flags = List.fold_left (fun l fl -> imap_flag_of_flag fl :: l) imap_flags flags in
   let store_att_flags = { fl_sign = kind; fl_silent = true; fl_flag_list = imap_flags } in
-  try_lwt
-    run ci (ImapCommands.uid_store uids store_att_flags)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "store_flags error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Store)
+  with_folder s folder
+    (fun ci -> run ci (ImapCommands.uid_store uids store_att_flags))
+    (fun _ -> raise_lwt (Error Store))
 
 let add_flags s ~folder ~uids ~flags ?customflags () =
   let uids = UidSet.to_imap_set uids in
@@ -1281,19 +1229,9 @@ let set_flags s ~folder ~uids ~flags ?customflags () =
   store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~flags ?customflags ()
 
 let store_labels s ~folder ~uids ~kind ~labels =
-  lwt ci, _ = select_if_needed s folder in
-  try_lwt
-    run ci (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "store_labels error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt (Error Connection)
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Store)
+  with_folder s folder
+    (fun ci -> run ci (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels))
+    (fun _ -> raise_lwt (Error Store))
 
 let add_labels s ~folder ~uids ~labels =
   let uids = UidSet.to_imap_set uids in
@@ -1308,39 +1246,41 @@ let set_labels s ~folder ~uids ~labels =
   store_labels s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~labels
 
 let capability s =
-  lwt ci = connect_if_needed s in
-  lwt caps =
-    try_lwt
-      lwt caps = run ci ImapCommands.capability in
-      lwt () = cache_capabilities s in (* FIXME refactor *)
-      Lwt.return caps
-    with
-      exn ->
-        lwt () = Lwt_log.debug ~exn "capability error" in
-        match exn with
-          StreamError ->
-            disconnect s >> raise_lwt (Error Connection)
-        | ErrorP (ParseError _) ->
-            raise_lwt (Error Parse)
-        | _ ->
-            raise_lwt (Error Capability)
-  in
-  Lwt.return (capabilities_of_imap_capabilities caps)
+  assert false
+  (* lwt ci = connect_if_needed s in *)
+  (* lwt caps = *)
+  (*   try_lwt *)
+  (*     lwt caps = run ci ImapCommands.capability in *)
+  (*     lwt () = cache_capabilities s in (\* FIXME refactor *\) *)
+  (*     Lwt.return caps *)
+  (*   with *)
+  (*     exn -> *)
+  (*       lwt () = Lwt_log.debug ~exn "capability error" in *)
+  (*       match exn with *)
+  (*         StreamError -> *)
+  (*           disconnect s >> raise_lwt (Error Connection) *)
+  (*       | ErrorP (ParseError _) -> *)
+  (*           raise_lwt (Error Parse) *)
+  (*       | _ -> *)
+  (*           raise_lwt (Error Capability) *)
+  (* in *)
+  (* Lwt.return (capabilities_of_imap_capabilities caps) *)
 
 let identity s client_id =
-  lwt ci = connect_if_needed s in
-  try_lwt
-    run ci (ImapCommands.Id.id client_id)
-  with
-    exn ->
-      lwt () = Lwt_log.debug ~exn "identity error" in
-      match exn with
-        StreamError ->
-          disconnect s >> raise_lwt exn
-      | ErrorP (ParseError _) ->
-          raise_lwt (Error Parse)
-      | _ ->
-          raise_lwt (Error Identity)
+  (* lwt ci = connect_if_needed s in *)
+  (* try_lwt *)
+  (*   run ci (ImapCommands.Id.id client_id) *)
+  (* with *)
+  (*   exn -> *)
+  (*     lwt () = Lwt_log.debug ~exn "identity error" in *)
+  (*     match exn with *)
+  (*       StreamError -> *)
+  (*         disconnect s >> raise_lwt exn *)
+  (*     | ErrorP (ParseError _) -> *)
+  (*         raise_lwt (Error Parse) *)
+  (*     | _ -> *)
+  (*         raise_lwt (Error Identity) *)
+  assert false
 
 let uid_next s =
   match s.state with

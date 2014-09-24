@@ -271,6 +271,7 @@ exception Error of error
 type session
 
 val create_session :
+  ?max_connections:int ->
   ?port:int ->
   host:string ->
   username:string ->
@@ -279,8 +280,8 @@ val create_session :
     (** Creates a new IMAP session with given host, username & password.
         Default port is 993. *)
 
-val disconnect :
-  session -> unit Lwt.t
+(* val disconnect : *)
+(*   session -> unit Lwt.t *)
     (** Disconnects from the server. *)
       
 val folder_status :
@@ -321,7 +322,7 @@ val copy_messages :
     (** Copy messages between two folders.  Returns the mapping between old UIDs
         and new UIDs. *)
 
-val expunge :
+val expunge_folder :
   session ->
   folder:string -> unit Lwt.t
     (** Expunges (deletes trashed messages) a folder. *)
@@ -331,6 +332,13 @@ val fetch_message_by_uid :
   folder:string ->
   uid:Uid.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
+
+(* val fetch_number_uid_mapping : *)
+(*   session -> *)
+(*   folder:string -> *)
+(*   from_uid:Uid.t -> *)
+(*   to_uid:Uid.t -> *)
+(*   (Uint32.t, Uid.t) Hashtbl.t Lwt.t *)
 
 val search :
   session ->
