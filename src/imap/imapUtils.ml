@@ -163,3 +163,21 @@ let timegm tm =
   let secs = secs +. float tm.Unix.tm_min *. seconds_per_minute in
   let secs = secs +. float tm.Unix.tm_sec in
   secs
+
+let internal_date_of_imap_date dt =
+  let open ImapTypes in
+  let tm = (* http://stackoverflow.com/a/12353013 *)
+    { Unix.tm_year = dt.dt_year - 1900;
+      tm_mon = dt.dt_month - 1;
+      tm_mday = dt.dt_day;
+      tm_hour = dt.dt_hour;
+      tm_min = dt.dt_min;
+      tm_sec = dt.dt_sec;
+      tm_wday = 0;
+      tm_yday = 0;
+      tm_isdst = false }
+  in
+  let t = timegm tm in
+  let zone_hour = if dt.dt_zone >= 0 then dt.dt_zone / 100 else -(-dt.dt_zone / 100) in
+  let zone_min = if dt.dt_zone >= 0 then dt.dt_zone mod 100 else -(-dt.dt_zone mod 100) in
+  t -. float zone_hour *. 3600. -. float zone_min *. 60.

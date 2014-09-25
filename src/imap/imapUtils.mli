@@ -23,7 +23,6 @@
 (** Various utilities *)
 
 val base64_encode : string -> string
-(* val base64_encode_nopad : string -> string *)
 val base64_decode : string -> string
 
 (** {2 Modified UTF7} *)
@@ -31,4 +30,4 @@ val base64_decode : string -> string
 val encode_mutf7 : string -> string
 val decode_mutf7 : string -> string
 
-val timegm : Unix.tm -> float
+val internal_date_of_imap_date : ImapTypes.date_time -> float

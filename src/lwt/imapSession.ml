@@ -52,6 +52,9 @@ module type IndexSet = sig
   type t
   val empty : t
   val range : elt -> elt -> t
+  val from : elt -> t
+  val until : elt -> t
+  val all : t
   val index : elt -> t
   val add_range : elt -> elt -> t -> t
   val add : elt -> t -> t
@@ -76,6 +79,9 @@ end = struct
   let max l r = if cmp l r <= 0 then r else l
   let empty = []
   let range l r = if cmp l r <= 0 then (l, r) :: [] else (r, l) :: []
+  let from l = (l, Uint32.max_int) :: []
+  let until l = if cmp l Uint32.zero = 0 then [] else (Uint32.one, l) :: []
+  let all = from Uint32.one
   let index n = range n n
   let add_range l r s =
     let l, r = if cmp l r <= 0 then l, r else r, l in
@@ -1114,25 +1120,10 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
           uid := uid'
       | MSG_ATT_ITEM_STATIC (MSG_ATT_RFC822_SIZE size') ->
           size := size'
-      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) -> *)
-      (*     let tm = (\* http://stackoverflow.com/a/12353013 *\) *)
-      (*       {Unix.tm_year = dt.dt_year - 1900; *)
-      (*        tm_mon = dt.dt_month - 1; *)
-      (*        tm_mday = dt.dt_day; *)
-      (*        tm_hour = dt.dt_hour; *)
-      (*        tm_min = dt.dt_min; *)
-      (*        tm_sec = dt.dt_sec; *)
-      (*        tm_wday = 0; *)
-      (*        tm_yday = 0; *)
-      (*        tm_isdst = false} *)
-      (*     in *)
-      (*     let t = ImapUtils.timegm tm in *)
-      (*     let zone_hour = if dt.dt_zone >= 0 then dt.dt_zone / 100 else -(-dt.dt_zone / 100) in *)
-      (*     let zone_min = if dt.dt_zone >= 0 then dt.dt_zone mod 100 else -(-dt.dt_zone mod 100) in *)
-      (*     let internal_date = t -. float zone_hour *. 3600. -. float zone_min *. 60. in *)
-      (*     loop {msg with internal_date} rest *)
-      (* (\* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *\) *)
-      (* (\* loop {msg with header = header_from_imap env} rest *\) *)
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) ->
+          internal_date := ImapUtils.internal_date_of_imap_date dt
+      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
+      (* loop {msg with header = header_from_imap env} rest *)
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value') ->
           mod_seq_value := mod_seq_value'
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels') ->
@@ -1152,11 +1143,6 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
       gmail_labels = !gmail_labels; gmail_message_id = !gmail_message_id;
       gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date }
   in
-  (* let msg = *)
-  (*   loop { uid = Uid.zero; size = 0; mod_seq_value = Modseq.zero; *)
-  (*          gmail_labels = []; gmail_message_id = Gmsgid.zero; gmail_thread_id = Gthrid.zero; *)
-  (*          flags = []; internal_date = 0.0 } *)
-  (* in *)
 
   let vanished = ref None in
 

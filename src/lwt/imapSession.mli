@@ -25,6 +25,9 @@ module type IndexSet = sig
   type t
   val empty : t
   val range : elt -> elt -> t
+  val from : elt -> t
+  val until : elt -> t
+  val all : t
   val index : elt -> t
   val add_range : elt -> elt -> t -> t
   val add : elt -> t -> t
@@ -351,12 +354,12 @@ val fetch_message_by_uid :
   uid:Uid.t -> string Lwt.t
     (** Fetch the raw contents of a message given its UID. *)
 
-(* val fetch_number_uid_mapping : *)
-(*   session -> *)
-(*   folder:string -> *)
-(*   from_uid:Uid.t -> *)
-(*   to_uid:Uid.t -> *)
-(*   (Uint32.t, Uid.t) Hashtbl.t Lwt.t *)
+val fetch_number_uid_mapping :
+  session ->
+  folder:string ->
+  from_uid:Uid.t ->
+  to_uid:Uid.t ->
+  (Seq.t, Uid.t) Hashtbl.t Lwt.t
 
 val search :
   session ->
