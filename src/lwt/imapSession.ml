@@ -798,6 +798,16 @@ let select_if_needed ~conn_type ~port ~host ~username ~password c folder =
   | _ ->
       assert_lwt false
 
+let handle_imap_error err c exn =
+  lwt () = Lwt_log.debug ~exn "error" in
+  match exn with
+    StreamError ->
+      disconnect c >> raise_lwt (Error Connection)
+  | ErrorP (ParseError _) ->
+      raise_lwt (Error Parse)
+  | _ ->
+      raise_lwt (Error err)
+
 type session =
   { conn_type : connection_type;
     username : string;
@@ -868,12 +878,7 @@ let with_loggedin s ?folder f ferr =
           select_if_needed s.conn_type s.port s.host s.username s.password c folder >>= fun (ci, _) -> f ci
         end
   with
-    StreamError ->
-      disconnect c >> raise_lwt (Error Connection)
-  | ErrorP (ParseError _) ->
-      raise_lwt (Error Parse)
-  | exn ->
-      ferr exn
+    exn -> ferr c exn
   finally
   if not (Lwt_mutex.is_locked c.mutex) then
     c.auto_disconnect <- Lwt_unix.sleep 60. >> Lwt_log.debug "disconnecting automatically..." >> disconnect c;
@@ -924,7 +929,7 @@ let folder_status s ~folder =
            if ci.condstore_enabled then STATUS_ATT_HIGHESTMODSEQ :: status_att_list else status_att_list
          in
          run (ImapCommands.status folder status_att_list) ci)
-      (fun _ -> raise_lwt (Error NonExistantFolder))
+      (handle_imap_error NonExistantFolder)
   in
   let fs =
     { unseen_count = 0;
@@ -937,7 +942,7 @@ let folder_status s ~folder =
   Lwt.return (loop fs status.st_info_list)
 
 let noop s =
-  with_loggedin s (run ImapCommands.noop) (fun _ -> raise_lwt (Error Connection))
+  with_loggedin s (run ImapCommands.noop) (handle_imap_error Noop)
 
 let mb_keyword_flag =
   [ "Inbox", Inbox;
@@ -1002,30 +1007,30 @@ let fetch_all_folders s =
         (* lwt delimiter = fetch_delimiter_if_needed ci in FIXME *)
     with_loggedin s
       (run (ImapCommands.list "" "*"))
-      (fun _ -> raise_lwt (Error NonExistantFolder))
+      (handle_imap_error NonExistantFolder)
   in
   Lwt.return (List.map results imap_folders)
 
 let rename_folder s ~folder ~new_name =
   with_folder s "INBOX"
     (run (ImapCommands.rename folder new_name))
-    (fun _ -> raise_lwt (Error Rename))
+    (handle_imap_error Rename)
   
 let delete_folder s ~folder =
   with_folder s "INBOX"
     (run (ImapCommands.delete folder))
-    (fun _ -> raise_lwt (Error Delete))
+    (handle_imap_error Delete)
   
 let create_folder s ~folder =
   with_folder s "INBOX"
     (run (ImapCommands.create folder))
-    (fun _ -> raise_lwt (Error Create))
+    (handle_imap_error Create)
 
 let copy_messages s ~folder ~uids ~dest =
   lwt uidvalidity, src_uid, dst_uid =
     with_folder s folder
       (run (ImapCommands.Uidplus.uidplus_uid_copy uids dest))
-      (fun _ -> raise_lwt (Error Copy))
+      (handle_imap_error Copy)
   in
   let h = Hashtbl.create 0 in
   ImapSet.iter2 (Hashtbl.add h) src_uid dst_uid;
@@ -1034,7 +1039,7 @@ let copy_messages s ~folder ~uids ~dest =
 let expunge_folder s ~folder =
   with_folder s folder
     (run ImapCommands.expunge)
-    (fun _ -> raise_lwt (Error Expunge))
+    (handle_imap_error Expunge)
 
 let flags_from_lep_att_dynamic att_list =
   let rec loop (acc : message_flag list) = function
@@ -1312,7 +1317,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
           run (ImapCommands.fetch imapset fetch_type) ci
       | _, false, false, false ->
           assert_lwt false
-    end begin fun _ -> raise_lwt (Error Fetch) end
+    end (handle_imap_error Fetch)
   in
   let modified_or_added_messages = List.map msg_att_handler result in
   let vanished_messages = match !vanished with
@@ -1351,7 +1356,7 @@ let fetch_message_by_uid s ~folder ~uid =
   lwt result =
     with_folder s folder
       (run (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type))
-      (fun _ -> raise_lwt (Error Fetch))
+      (handle_imap_error Fetch)
   in
   extract_body result
   
@@ -1360,8 +1365,7 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   let imap_set = ImapSet.interval from_uid to_uid in
   let fetch_type = FETCH_TYPE_FETCH_ATT FETCH_ATT_UID in
   let rec extract_uid = function
-      [] ->
-        ()
+      [] -> ()
     | (att_item, att_number) :: rest ->
         let rec loop = function
             [] ->
@@ -1377,7 +1381,7 @@ let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   lwt fetch_result =
     with_folder s folder
       (run (ImapCommands.uid_fetch imap_set fetch_type))
-      (fun _ -> raise_lwt (Error Fetch))
+      (handle_imap_error Fetch)
   in
   extract_uid fetch_result;
   Lwt.return result
@@ -1429,7 +1433,7 @@ let search s ~folder ~key =
   lwt result_list =
     with_folder s folder
       (run (ImapCommands.uid_search key))
-      (fun _ -> raise_lwt (Error Fetch))
+      (handle_imap_error Fetch)
   in
   let result = List.fold_left (fun s n -> UidSet.add n s) UidSet.empty result_list in
   Lwt.return result
@@ -1451,7 +1455,7 @@ let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
   let store_att_flags = { fl_sign = kind; fl_silent = true; fl_flag_list = imap_flags } in
   with_folder s folder
     (run (ImapCommands.uid_store uids store_att_flags))
-    (fun _ -> raise_lwt (Error Store))
+    (handle_imap_error Store)
 
 let add_flags s ~folder ~uids ~flags ?customflags () =
   let uids = UidSet.to_imap_set uids in
@@ -1468,7 +1472,7 @@ let set_flags s ~folder ~uids ~flags ?customflags () =
 let store_labels s ~folder ~uids ~kind ~labels =
   with_folder s folder
     (run (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels))
-    (fun _ -> raise_lwt (Error Store))
+    (handle_imap_error Store)
 
 let add_labels s ~folder ~uids ~labels =
   let uids = UidSet.to_imap_set uids in
