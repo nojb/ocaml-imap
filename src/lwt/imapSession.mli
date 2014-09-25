@@ -191,7 +191,7 @@ type search_key =
 
 type error =
     Connection
-  | TLSNotAvailable
+  (* | TLSNotAvailable *)
   | Parse
   | Certificate
   | Authentication

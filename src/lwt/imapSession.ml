@@ -297,7 +297,7 @@ type search_key =
 
 type error =
     Connection
-  | TLSNotAvailable
+  (* | TLSNotAvailable *)
   | Parse
   | Certificate
   | Authentication
@@ -592,8 +592,15 @@ let connect ~conn_type ~port ~host c =
         Clear ->
           Lwt.return (Lwt_ssl.plain fd)
       | TLS ca_file ->
-          let context = ssl_context Ssl.TLSv1 ca_file in
-          Lwt_ssl.ssl_connect fd context
+          let context = ssl_context Ssl.SSLv23 ca_file in
+          lwt sock = Lwt_ssl.ssl_connect fd context in
+          lwt () = Lwt_log.debug "SSL connection ok" in
+          let ssl_sock = match Lwt_ssl.ssl_socket sock with Some sock -> sock | None -> assert false in
+          let cert = Ssl.get_certificate ssl_sock in
+          Ssl.verify ssl_sock;
+          lwt () = Lwt_log.debug_f "Certificate issuer: %s" (Ssl.get_issuer cert) in
+          lwt () = Lwt_log.debug_f "Subject: %s" (Ssl.get_subject cert) in
+          Lwt.return sock
     in    
     let ci =
       { imap_state = ImapCore.fresh_state;
@@ -608,7 +615,10 @@ let connect ~conn_type ~port ~host c =
     lwt () = cache_capabilities c in
     Lwt.return ci
   with
-    _ -> raise_lwt (Error Connection)
+    Ssl.Verify_error _ ->
+      raise_lwt (Error Certificate)
+  | _ ->
+      raise_lwt (Error Connection)
 
 let connect_if_needed ~conn_type ~port ~host c =
   match c.state with
