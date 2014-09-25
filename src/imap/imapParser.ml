@@ -27,6 +27,11 @@ type 'a t =
 
 let run p b i = p b i
 
+let run_string p s =
+  let b = Buffer.create 0 in
+  Buffer.add_string b s;
+  match p b 0 with Ok (x, _) -> Some x | _ -> None
+
 let bind p f b i =
   let rec loop =
     function

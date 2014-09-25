@@ -27,7 +27,8 @@ open ImapTypes
 type 'a t
 
 val run : 'a t -> Buffer.t -> int -> 'a parse_result
-
+val run_string : 'a t -> string -> 'a option
+  
 val bind : 'a t -> ('a -> 'b t) -> 'b t
 val alt : 'a t -> 'a t -> 'a t
 val altn : 'a t list -> 'a t
@@ -39,6 +40,7 @@ val app : ('a -> 'b) -> 'a t -> 'b t
 val opt : 'a t -> 'a -> 'a t
 val some : 'a t -> 'a option t
 val rep : 'a t -> 'a list t
+val rep_ : _ t -> unit t
 val rep1 : 'a t -> 'a list t
 val sep : _ t -> 'a t -> 'a list t
 val sep1 : _ t -> 'a t -> 'a list t

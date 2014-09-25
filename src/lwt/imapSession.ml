@@ -1553,3 +1553,25 @@ let mod_sequence_value s =
       si.mod_sequence_value
   | _ ->
       invalid_arg "mod_sequence_value"
+
+let idle s ~folder ?(last_known_uid = Uid.zero) () =
+  let waiter, waker = Lwt.task () in
+  let t =
+    lwt msgs =
+      if Uid.compare Uid.zero last_known_uid = 0 then
+        Lwt.return_nil
+      else
+        fetch_messages_by_uid s ~folder ~request:[] ~uids:(UidSet.from last_known_uid)
+    in
+    if List.length msgs > 0 then
+      Lwt.return_unit
+    else
+      with_folder s folder begin fun ci ->
+        lwt () = run ImapCommands.Idle.idle_start ci in
+        lwt () =
+          Lwt.pick [ Lwt_unix.wait_read (Lwt_ssl.get_fd ci.sock); Lwt_unix.sleep (29. *. 60.); waiter ]
+        in
+        run ImapCommands.Idle.idle_done ci
+      end (handle_imap_error Idle)
+  in
+  t, waker

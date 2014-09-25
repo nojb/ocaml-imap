@@ -458,3 +458,9 @@ val capability : session -> capability list Lwt.t
     (** Requests capabilities of the server. *)
 
 val identity : session -> Identity.t -> Identity.t Lwt.t
+
+val idle :
+  session ->
+  folder:string ->
+  ?last_known_uid:Uid.t ->
+  unit -> unit Lwt.t * unit Lwt.u

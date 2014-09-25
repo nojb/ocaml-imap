@@ -1148,3 +1148,19 @@ end
 module Compress = struct
   let compress = std_command (send "COMPRESS DEFLATE")
 end
+
+module Idle = struct
+  let idle_done =
+    ImapSend.(raw "DONE" >> crlf) >> flush >>
+    liftP ImapParser.response >>= fun r ->
+    modify (fun s -> response_store s r) >>
+    handle_response r
+    
+  let idle_start =
+    modify (fun st -> {st with sel_info = { st.sel_info with sel_exists = None; sel_recent = None}}) >>
+    ImapSend.(send_tag >> char ' ' >> send "IDLE" >> crlf) >>
+    flush >>
+    liftP ImapParser.(rep_ response_data) >>
+    liftP ImapParser.continue_req >>
+    ret ()
+end

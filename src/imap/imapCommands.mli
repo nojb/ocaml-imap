@@ -190,3 +190,8 @@ end
 module Compress : sig
   val compress : unit command
 end
+
+module Idle : sig
+  val idle_done : unit command
+  val idle_start : unit command
+end
