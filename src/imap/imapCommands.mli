@@ -29,7 +29,7 @@ open ImapControl
 module QResync : sig
   type qresync_vanished =
     { qr_earlier : bool;
-      qr_vanished : ImapSet.t }
+      qr_known_uids : ImapSet.t }
   val fetch_qresync_vanished :
     ImapSet.t -> fetch_type -> Uint64.t -> bool -> (msg_att list * qresync_vanished) command
   val uid_fetch_qresync_vanished :
@@ -73,17 +73,17 @@ module Condstore : sig
       
   val examine_condstore : string -> Uint64.t command
       
-  val fetch : ImapSet.t -> fetch_type -> msg_att list command
+  (* val fetch : ImapSet.t -> fetch_type -> msg_att list command *)
       
-  val uid_fetch : ImapSet.t -> fetch_type -> msg_att list command
+  (* val uid_fetch : ImapSet.t -> fetch_type -> msg_att list command *)
       
   val fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
       
   val uid_fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
       
-  val store : ImapSet.t -> store_att_flags -> unit command
+  (* val store : ImapSet.t -> store_att_flags -> unit command *)
       
-  val uid_store : ImapSet.t -> store_att_flags -> unit command
+  (* val uid_store : ImapSet.t -> store_att_flags -> unit command *)
       
   val store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
       

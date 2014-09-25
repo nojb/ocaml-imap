@@ -75,7 +75,7 @@ module QResync = struct
 
   type qresync_vanished =
     { qr_earlier : bool;
-      qr_vanished : ImapSet.t }
+      qr_known_uids : ImapSet.t }
   
   type response_data_extension +=
        RESP_DATA_VANISHED of qresync_vanished
@@ -86,7 +86,7 @@ module QResync = struct
       RESPONSE_DATA ->
         str "VANISHED" >> char ' ' >>
         alt (str "(EARLIER) " >> ret true) (ret false) >>= fun qr_earlier ->
-        sequence_set >>= fun qr_vanished -> ret (RESP_DATA_VANISHED {qr_earlier; qr_vanished})
+        sequence_set >>= fun qr_known_uids -> ret (RESP_DATA_VANISHED {qr_earlier; qr_known_uids})
     | RESP_TEXT_CODE ->
         str "CLOSED" >> ret RESP_TEXT_CODE_CLOSED
     | _ ->
@@ -108,7 +108,7 @@ module QResync = struct
   let get_vanished st =
     let rec loop = function
         [] ->
-          {qr_earlier = false; qr_vanished = ImapSet.empty}
+          {qr_earlier = false; qr_known_uids = ImapSet.empty}
       | EXTENSION_DATA (RESPONSE_DATA, RESP_DATA_VANISHED qr) :: _ ->
           qr
       | _ :: rest ->

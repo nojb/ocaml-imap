@@ -1,16 +1,22 @@
+#use "topfind"
+
 #require "uint"
 #install_printer Uint32.printer
 #install_printer Uint64.printer
-#require "ssl"
-#require "str"
 #require "uutf"
 #require "cryptokit"
+
 #directory "_build/src/imap"
-#directory "_build/src/unix"
-#directory "_build/src/lwt"
-#directory "_build/src/async"
-#directory "_build/src/other"
 #load_rec "imap.cma"
+           
+#require "ssl"
 #require "lwt.ssl"
 #require "lwt.syntax"
+
+#directory "_build/src/lwt"
 #load_rec "imapSession.cma"
+#install_printer ImapSession.Uid.printer
+#install_printer ImapSession.Modseq.printer
+#install_printer ImapSession.Gmsgid.printer
+#install_printer ImapSession.Gthrid.printer
+#install_printer ImapSession.UidSet.printer

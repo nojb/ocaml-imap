@@ -31,6 +31,7 @@ module type IndexSet = sig
   val remove_range : elt -> elt -> t -> t
   val remove : elt -> t -> t
   val contains : elt -> t -> bool
+  val printer : Format.formatter -> t -> unit
   val to_string : t -> string
 end
 
@@ -42,11 +43,14 @@ module type Num = sig
   val one : t
   val to_string : t -> string
   val of_string : string -> t
+  val printer : Format.formatter -> t -> unit
 end
 
 module Uid : Num
 module UidSet : IndexSet with type elt = Uid.t
-
+module Seq : Num
+module SeqSet : IndexSet with type elt = Seq.t
+  
 module Modseq : Num
 module Gmsgid : Num
 module Gthrid : Num
@@ -326,7 +330,21 @@ val expunge_folder :
   session ->
   folder:string -> unit Lwt.t
     (** Expunges (deletes trashed messages) a folder. *)
-  
+
+val fetch_messages_by_uid :
+  session ->
+  folder:string ->
+  request:messages_request_kind list ->
+  uids:UidSet.t ->
+  message list Lwt.t
+
+val fetch_messages_by_number :
+  session ->
+  folder:string ->
+  request:messages_request_kind list ->
+  seqs:SeqSet.t ->
+  message list Lwt.t
+
 val fetch_message_by_uid :
   session ->
   folder:string ->

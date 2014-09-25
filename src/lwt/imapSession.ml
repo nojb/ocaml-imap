@@ -58,6 +58,7 @@ module type IndexSet = sig
   val remove_range : elt -> elt -> t -> t
   val remove : elt -> t -> t
   val contains : elt -> t -> bool
+  val printer : Format.formatter -> t -> unit
   val to_string : t -> string
 end
 
@@ -109,10 +110,21 @@ end = struct
     loop l r s
   let remove n = remove_range n n
   let contains n s = List.exists (fun (l, r) -> cmp l n <= 0 && cmp n r <= 0) s
+  let printer ppf s =
+    let open Format in
+    let pr ppf (l, r) =
+      if Uint32.compare l r = 0 then
+        fprintf ppf "%s" (Uint32.to_string l)
+      else
+        fprintf ppf "%s-%s" (Uint32.to_string l) (Uint32.to_string r)
+    in    
+    match s with
+      [] -> fprintf ppf "(empty)"
+    | x :: [] -> pr ppf x
+    | x :: xs -> pr ppf x; List.iter (fun x -> fprintf ppf ",%a" pr x) xs
   let to_string s =
-    String.concat "," (List.map (function
-          (l, r) when Uint32.compare l r = 0 -> Uint32.to_string l
-        | (l, r) -> Printf.sprintf "%s-%s" (Uint32.to_string l) (Uint32.to_string r)) s)
+    printer Format.str_formatter s;
+    Format.flush_str_formatter ()
   let to_imap_set s =
     let f l = if cmp l Uint32.max_int = 0 then Uint32.zero else l in
     List.map (fun (l, r) -> (f l, f r)) s
@@ -129,11 +141,14 @@ module type Num = sig
   val one : t
   val to_string : t -> string
   val of_string : string -> t
+  val printer : Format.formatter -> t -> unit
 end
 
 module Uid = Uint32
 module UidSet = IndexSet
-
+module Seq = Uint32
+module SeqSet = IndexSet
+  
 module Modseq = Uint64
 module Gmsgid = Uint64
 module Gthrid = Uint64
@@ -361,12 +376,17 @@ type message =
     flags : message_flag list;
     internal_date : float }
 
+type sync_result =
+  { vanished_messages : IndexSet.t;
+    modified_or_added_messages : message list }
+
 exception Error of error
 
 type connected_info =
   { mutable imap_state : ImapTypes.state;
     sock : Lwt_ssl.socket;
     mutable condstore_enabled : bool;
+    mutable qresync_enabled : bool; (* FIXME set these somewhere ! *)
     mutable compressor : (Cryptokit.transform * Cryptokit.transform) option;
     mutable capabilities : capability list }
 
@@ -387,7 +407,7 @@ type state =
 let fully_write sock buf pos len =
   let rec loop pos len =
     if len <= 0 then
-      Lwt.return ()
+      Lwt.return_unit
     else
       lwt n = try_lwt Lwt_ssl.write sock buf pos len with _ -> raise_lwt StreamError in
       loop (pos + n) (len - n)
@@ -538,6 +558,7 @@ let connect ?(ssl_method = Ssl.TLSv1) ~port ~host c =
       { imap_state = ImapCore.fresh_state;
         sock;
         condstore_enabled = false;
+        qresync_enabled = false;
         compressor = None;
         capabilities = [] }
     in
@@ -609,9 +630,9 @@ let enable_features s =
       Lwt.return_unit
   in
   if has_capability s QResync then
-    enable_feature s "QRESYNC" >> Lwt.return ()
+    enable_feature s "QRESYNC" >> Lwt.return_unit
   else if has_capability s Condstore then
-    enable_feature s "CONDSTORE" >> Lwt.return ()
+    enable_feature s "CONDSTORE" >> Lwt.return_unit
   else
     Lwt.return_unit
 
@@ -1016,103 +1037,169 @@ let flags_from_lep_att_dynamic att_list =
 let header_from_imap env =
   assert false
 
-let fetch_messages s ~folder ~request_kind ~fetch_by_uid ~imapset =
-  (* let needs_body = ref false in *)  
-  let fetch_atts, headers =
-    let rec loop acc headers = function
-        [] ->
-          acc, headers
-      | Uid :: rest ->
-          loop (FETCH_ATT_UID :: acc) headers rest
-      | Flags :: rest ->
-          loop (FETCH_ATT_FLAGS :: acc) headers rest
-      | GmailLabels :: rest ->
-          loop (ImapCommands.Xgmlabels.fetch_att_xgmlabels :: acc) headers rest
-      | GmailThreadID :: rest ->
-          failwith "fetch gmail thread id not implemented"
-      | GmailMessageID :: rest ->
-          loop (ImapCommands.Xgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
-      | FullHeaders :: rest ->
-          loop acc
-            ("Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" ::
-             "To" :: "Cc" :: "Message-ID" :: "References" :: "In-Reply-To" :: headers)
-            rest
-      | Headers :: rest ->
-          loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: headers) rest
-      | HeaderSubject :: rest ->
-          loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: "Subject" :: headers) rest
-      | Size :: rest ->
-          loop (FETCH_ATT_RFC822_SIZE :: acc) headers rest
-      | Structure :: rest ->
-          loop (FETCH_ATT_BODYSTRUCTURE :: acc) headers rest
-      | InternalDate :: rest ->
-          loop (FETCH_ATT_INTERNALDATE :: acc) headers rest
-      | ExtraHeaders extra :: rest ->
-          loop acc (extra @ headers) rest
-    in
-    loop [] [] request_kind
+type request_type =
+    UID
+  | Sequence
+
+let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping ?(start_uid = Uid.zero) ~imapset () =
+  let request = if List.mem Uid request then request else Uid :: request in
+  (* FIXME MboxMailWorkaround *)
+
+  let needs_flags = ref (List.mem Flags (request : messages_request_kind list)) in
+  let needs_gmail_labels = ref (List.mem (GmailLabels : messages_request_kind) request) in
+  let needs_gmail_thread_id = ref (List.mem (GmailThreadID : messages_request_kind) request) in
+  let needs_gmail_message_id = ref (List.mem (GmailMessageID : messages_request_kind) request) in
+  let needs_body = ref (List.mem Structure request) in
+  
+  let rec loop acc headers = function
+      [] ->
+        List.rev acc, List.rev headers
+    | Uid :: rest ->
+        loop (FETCH_ATT_UID :: acc) headers rest
+    | Flags :: rest ->
+        loop (FETCH_ATT_FLAGS :: acc) headers rest
+    | GmailLabels :: rest ->
+        loop (ImapCommands.Xgmlabels.fetch_att_xgmlabels :: acc) headers rest
+    | GmailThreadID :: rest ->
+        failwith "fetch gmail thread id not implemented"
+    | GmailMessageID :: rest ->
+        loop (ImapCommands.Xgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
+    | FullHeaders :: rest ->
+        loop acc
+          ("Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" ::
+           "To" :: "Cc" :: "Message-ID" :: "References" :: "In-Reply-To" :: headers)
+          rest
+    | Headers :: rest ->
+        loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: headers) rest
+    | HeaderSubject :: rest ->
+        loop (FETCH_ATT_ENVELOPE :: acc) ("References" :: "Subject" :: headers) rest
+    | Size :: rest ->
+        loop (FETCH_ATT_RFC822_SIZE :: acc) headers rest
+    | Structure :: rest ->
+        loop (FETCH_ATT_BODYSTRUCTURE :: acc) headers rest
+    | InternalDate :: rest ->
+        loop (FETCH_ATT_INTERNALDATE :: acc) headers rest
+    | ExtraHeaders extra :: rest ->
+        loop acc (extra @ headers) rest
   in
-  let needs_headers = List.length headers > 0 in
+  let fetch_atts, headers = loop [] [] request in
+
+  let needs_header = List.length headers > 0 in
+  
   let fetch_atts =
-    if needs_headers then
+    if needs_header then
       FETCH_ATT_BODY_PEEK_SECTION
         (Some (SECTION_SPEC_SECTION_MSGTEXT (SECTION_MSGTEXT_HEADER_FIELDS headers)), None) :: fetch_atts
     else
       fetch_atts
   in
-  let rec loop msg = function
-      [] ->
-        msg
-    | MSG_ATT_ITEM_DYNAMIC flags :: rest ->
-        let flags = flags_from_lep_att_dynamic flags in
-        loop {msg with flags} rest
-    | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid) :: rest ->
-        loop {msg with uid} rest
-    | MSG_ATT_ITEM_STATIC (MSG_ATT_RFC822_SIZE size) :: rest ->
-        loop {msg with size} rest
-    | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) :: rest ->
-        let tm = (* http://stackoverflow.com/a/12353013 *)
-          {Unix.tm_year = dt.dt_year - 1900;
-           tm_mon = dt.dt_month - 1;
-           tm_mday = dt.dt_day;
-           tm_hour = dt.dt_hour;
-           tm_min = dt.dt_min;
-           tm_sec = dt.dt_sec;
-           tm_wday = 0;
-           tm_yday = 0;
-           tm_isdst = false}
-        in
-        let t = ImapUtils.timegm tm in
-        let zone_hour = if dt.dt_zone >= 0 then dt.dt_zone / 100 else -(-dt.dt_zone / 100) in
-        let zone_min = if dt.dt_zone >= 0 then dt.dt_zone mod 100 else -(-dt.dt_zone mod 100) in
-        let internal_date = t -. float zone_hour *. 3600. -. float zone_min *. 60. in
-        loop {msg with internal_date} rest
-    (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
-    (* loop {msg with header = header_from_imap env} rest *)
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value) :: rest ->
-        loop {msg with mod_seq_value} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels) :: rest ->
-        loop {msg with gmail_labels} rest
-    | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.MSG_ATT_XGMMSGID gmail_message_id) :: rest ->
-        loop {msg with gmail_message_id} rest
-    | _ :: rest -> (* FIXME *)
-        loop msg rest
-  in
-  let msg =
-    loop {uid = Uid.zero; size = 0; mod_seq_value = Modseq.zero;
-          gmail_labels = []; gmail_message_id = Gmsgid.zero; gmail_thread_id = Gthrid.zero;
-          flags = []; internal_date = 0.0}
-  in
-  let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
-  assert false
-  (* lwt ci, _ = select_if_needed s folder in *)
-  (* if fetch_by_uid then *)
-  (*   lwt result = run ci (ImapCommands.uid_fetch imapset fetch_type) in *)
-  (*   Lwt.return (List.map (fun (atts, _) -> msg atts) result) *)
-  (* else *)
-  (*   lwt result = run ci (ImapCommands.fetch imapset fetch_type) in *)
-  (*   Lwt.return (List.map (fun (atts, _) -> msg atts) result) *)
   
+  let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
+
+  let msg_att_handler msg_att =
+    let flags = ref [] in
+    let uid = ref Uid.zero in
+    let size = ref 0 in
+    let gmail_labels = ref [] in
+    let gmail_message_id = ref Gmsgid.zero in
+    let gmail_thread_id = ref Gthrid.zero in
+    let mod_seq_value = ref Modseq.zero in
+    let internal_date = ref 0. in
+    
+    let handle_msg_att_item = function
+        MSG_ATT_ITEM_DYNAMIC flags' ->
+          flags := flags_from_lep_att_dynamic flags';
+          needs_flags := false
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid') ->
+          uid := uid'
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_RFC822_SIZE size') ->
+          size := size'
+      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) -> *)
+      (*     let tm = (\* http://stackoverflow.com/a/12353013 *\) *)
+      (*       {Unix.tm_year = dt.dt_year - 1900; *)
+      (*        tm_mon = dt.dt_month - 1; *)
+      (*        tm_mday = dt.dt_day; *)
+      (*        tm_hour = dt.dt_hour; *)
+      (*        tm_min = dt.dt_min; *)
+      (*        tm_sec = dt.dt_sec; *)
+      (*        tm_wday = 0; *)
+      (*        tm_yday = 0; *)
+      (*        tm_isdst = false} *)
+      (*     in *)
+      (*     let t = ImapUtils.timegm tm in *)
+      (*     let zone_hour = if dt.dt_zone >= 0 then dt.dt_zone / 100 else -(-dt.dt_zone / 100) in *)
+      (*     let zone_min = if dt.dt_zone >= 0 then dt.dt_zone mod 100 else -(-dt.dt_zone mod 100) in *)
+      (*     let internal_date = t -. float zone_hour *. 3600. -. float zone_min *. 60. in *)
+      (*     loop {msg with internal_date} rest *)
+      (* (\* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *\) *)
+      (* (\* loop {msg with header = header_from_imap env} rest *\) *)
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value') ->
+          mod_seq_value := mod_seq_value'
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels') ->
+          gmail_labels := gmail_labels';
+          needs_gmail_labels := false
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.MSG_ATT_XGMMSGID gmail_message_id') ->
+          gmail_message_id := gmail_message_id';
+          needs_gmail_message_id := false
+      | _ -> (* FIXME *) ()
+    in
+
+    List.iter handle_msg_att_item (fst msg_att);
+
+    (* if !needs_flag || !needs_gmail_labels || !needs_gmail_message_id then assert false *)
+
+    { uid = !uid; size = !size; mod_seq_value = !mod_seq_value;
+      gmail_labels = !gmail_labels; gmail_message_id = !gmail_message_id;
+      gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date }
+  in
+  (* let msg = *)
+  (*   loop { uid = Uid.zero; size = 0; mod_seq_value = Modseq.zero; *)
+  (*          gmail_labels = []; gmail_message_id = Gmsgid.zero; gmail_thread_id = Gthrid.zero; *)
+  (*          flags = []; internal_date = 0.0 } *)
+  (* in *)
+
+  let vanished = ref None in
+
+  lwt result =
+    with_folder s folder begin fun ci ->
+      match req_type, modseq = Modseq.zero, ci.condstore_enabled, ci.qresync_enabled with
+        UID, false, true, _ ->
+          run (ImapCommands.Condstore.uid_fetch_changedsince imapset modseq fetch_type) ci
+      | UID, false, _, true ->
+          lwt r, v = run (ImapCommands.QResync.uid_fetch_qresync imapset fetch_type modseq) ci in
+          vanished := Some v;
+          Lwt.return r
+      | UID, true, _, _ ->
+          run (ImapCommands.uid_fetch imapset fetch_type) ci
+      | Sequence, false, _, true ->
+          lwt r, v = run (ImapCommands.QResync.fetch_qresync imapset fetch_type modseq) ci in
+          vanished := Some v;
+          Lwt.return r
+      | Sequence, false, true, _ ->
+          run (ImapCommands.Condstore.fetch_changedsince imapset modseq fetch_type) ci
+      | Sequence, true, _, _ ->
+          run (ImapCommands.fetch imapset fetch_type) ci
+      | _, false, false, false ->
+          assert_lwt false
+    end begin fun _ -> raise_lwt (Error Fetch) end
+  in
+  let modified_or_added_messages = List.map msg_att_handler result in
+  let vanished_messages = match !vanished with
+      None -> IndexSet.empty
+    | Some v -> IndexSet.of_imap_set v.ImapCommands.QResync.qr_known_uids
+  in
+  Lwt.return { vanished_messages; modified_or_added_messages }
+  
+let fetch_messages_by_uid s ~folder ~request ~uids =
+  let imapset = IndexSet.to_imap_set uids in
+  lwt sr = fetch_messages s ~folder ~request ~req_type:UID ~imapset () in
+  Lwt.return sr.modified_or_added_messages
+
+let fetch_messages_by_number s ~folder ~request ~seqs =
+  let imapset = IndexSet.to_imap_set seqs in
+  lwt sr = fetch_messages s ~folder ~request ~req_type:Sequence ~imapset () in
+  Lwt.return sr.modified_or_added_messages
+
 let fetch_message_by_uid s ~folder ~uid =
   let fetch_type = FETCH_TYPE_FETCH_ATT (FETCH_ATT_BODY_PEEK_SECTION (None, None)) in
   let extract_body = function
