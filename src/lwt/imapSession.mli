@@ -325,8 +325,8 @@ val create_session :
     (** Creates a new IMAP session with given host, username & password.
         Default port is 993. *)
 
-(* val disconnect : *)
-(*   session -> unit Lwt.t *)
+val logout :
+  session -> unit Lwt.t
     (** Disconnects from the server. *)
       
 val folder_status :

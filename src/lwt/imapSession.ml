@@ -882,6 +882,18 @@ let with_loggedin s ?folder f ferr =
 let with_folder s folder f ferr =
   with_loggedin s ~folder f ferr
 
+let logout s =
+  let logout c =
+    match c.state with
+      CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
+        lwt () = try_lwt run ImapCommands.logout ci with _ -> Lwt.return_unit in
+        c.state <- DISCONNECTED;
+        Lwt.return_unit
+    | DISCONNECTED ->
+        Lwt.return_unit
+  in
+  Lwt_list.iter_p logout s.connections
+
 let folder_status s ~folder =
   let status_att_list : status_att list =
     STATUS_ATT_UNSEEN :: STATUS_ATT_MESSAGES :: STATUS_ATT_RECENT ::
