@@ -265,10 +265,9 @@ type media_basic_type =
   | MEDIA_BASIC_VIDEO
   | MEDIA_BASIC_OTHER of string
 
-type media_basic = {
-  med_basic_type : media_basic_type;
-  med_basic_subtype : string
-}
+type media_basic =
+  { med_basic_type : media_basic_type;
+    med_basic_subtype : string }
 
 type body_fld_enc =
     BODY_FLD_ENC_7BIT
@@ -363,7 +362,6 @@ type msg_att_static =
   | MSG_ATT_BODYSTRUCTURE of body
   | MSG_ATT_BODY_SECTION of msg_att_body_section
   | MSG_ATT_UID of Uint32.t
-  (* | MSG_ATT_X_GM_THRID of Gthrid.t *)
 
 type msg_att_dynamic =
   flag_fetch list

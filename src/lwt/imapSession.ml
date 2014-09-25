@@ -356,6 +356,37 @@ type folder =
     delimiter : char option;
     flags : folder_flag list }
 
+type multipart_type =
+    Mixed
+  | Related
+  | Alternative
+  | Signed
+
+type singlepart_type =
+    Basic
+  | Message of part
+
+and single_part =
+  { part_id : string;
+    size : int;
+    filename : string option;
+    mime_type : string;
+    charset : string option;
+    content_id : string option;
+    content_location : string option;
+    content_description : string option;
+    part_type : singlepart_type }
+
+and multi_part =
+  { part_id : string;
+    mime_type : string;
+    parts : part list;
+    part_type : multipart_type }
+
+and part =
+    Single of single_part
+  | Multipart of multi_part
+
 type address =
   { display_name : string;
     mailbox : string }
@@ -380,7 +411,8 @@ type message =
     gmail_message_id : Gmsgid.t;
     gmail_thread_id : Gthrid.t;
     flags : message_flag list;
-    internal_date : float }
+    internal_date : float;
+    main_part : part option }
 
 type sync_result =
   { vanished_messages : IndexSet.t;
@@ -1043,6 +1075,88 @@ let flags_from_lep_att_dynamic att_list =
 let header_from_imap env =
   assert false
 
+let import_imap_body body =
+  let basic_part part_id basic ext =
+    let mime_type = match basic.bd_media_basic.med_basic_type with
+        MEDIA_BASIC_APPLICATION ->
+          "application/" ^ basic.bd_media_basic.med_basic_subtype
+      | MEDIA_BASIC_AUDIO ->
+          "audio/" ^ basic.bd_media_basic.med_basic_subtype
+      | MEDIA_BASIC_IMAGE ->
+          "image/" ^ basic.bd_media_basic.med_basic_subtype
+      | MEDIA_BASIC_MESSAGE ->
+          "message/" ^ basic.bd_media_basic.med_basic_subtype
+      | MEDIA_BASIC_VIDEO ->
+          "video/" ^ basic.bd_media_basic.med_basic_subtype
+      | MEDIA_BASIC_OTHER s ->
+          s ^ "/" ^ basic.bd_media_basic.med_basic_subtype
+    in
+    { part_id = String.concat "." (List.rev part_id);
+      size = basic.bd_fields.bd_size;
+      filename = None;
+      mime_type;
+      charset = None;
+      content_id = basic.bd_fields.bd_id;
+      content_location = None;
+      content_description = basic.bd_fields.bd_description;
+      part_type = Basic }
+  in
+  let text_part part_id (text : body_type_text) ext =
+    { part_id = String.concat "." (List.rev part_id);
+      size = text.bd_fields.bd_size;
+      filename = None;
+      mime_type = "text/" ^ text.bd_media_text;
+      charset = None;
+      content_id = text.bd_fields.bd_id;
+      content_location = None;
+      content_description = text.bd_fields.bd_description;
+      part_type = Basic }
+  in
+  let rec msg_part part_id msg ext =
+    let next_part_id = match msg.bd_body with
+        BODY_1PART _ -> "1" :: part_id
+      | BODY_MPART _ -> part_id
+    in
+    { part_id = String.concat "." (List.rev part_id);
+      size = msg.bd_fields.bd_size;
+      filename = None;
+      mime_type = "message/rfc822";
+      charset = None;
+      content_id = msg.bd_fields.bd_id;
+      content_location = None;
+      content_description = msg.bd_fields.bd_description;
+      part_type = Message (part next_part_id msg.bd_body) }
+  and single_part part_id sp =
+    match sp.bd_data with
+      BODY_TYPE_1PART_BASIC basic ->
+        basic_part part_id basic sp.bd_ext_1part
+    | BODY_TYPE_1PART_MSG msg ->
+        msg_part part_id msg sp.bd_ext_1part
+    | BODY_TYPE_1PART_TEXT text ->
+        text_part part_id text sp.bd_ext_1part
+  and multi_part part_id mp =
+    let rec loop count = function
+        []         -> []
+      | bd :: rest -> part (string_of_int count :: part_id) bd :: loop (count + 1) rest
+    in
+    let parts = loop 1 mp.bd_list in
+    let part_type = match String.lowercase mp.bd_media_subtype with
+        "alternative" -> Alternative
+      | "related"     -> Related
+      | _             -> Mixed
+    in
+    { part_id = String.concat "." (List.rev part_id);
+      mime_type = "multipart/" ^ mp.bd_media_subtype;
+      parts;
+      part_type }
+  and part part_id = function
+      BODY_1PART sp -> Single (single_part part_id sp)
+    | BODY_MPART mp -> Multipart (multi_part part_id mp)
+  in
+  match body with
+    BODY_1PART _ -> part ["1"] body
+  | BODY_MPART _ -> part [] body
+  
 type request_type =
     UID
   | Sequence
@@ -1111,19 +1225,23 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     let gmail_thread_id = ref Gthrid.zero in
     let mod_seq_value = ref Modseq.zero in
     let internal_date = ref 0. in
-    
+    let main_part = ref None in
+      
     let handle_msg_att_item = function
         MSG_ATT_ITEM_DYNAMIC flags' ->
           flags := flags_from_lep_att_dynamic flags';
           needs_flags := false
       | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid') ->
           uid := uid'
+      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
+      (* loop {msg with header = header_from_imap env} rest *)
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_BODYSTRUCTURE body) ->
+          main_part := Some (import_imap_body body);
+          needs_body := false;
       | MSG_ATT_ITEM_STATIC (MSG_ATT_RFC822_SIZE size') ->
           size := size'
       | MSG_ATT_ITEM_STATIC (MSG_ATT_INTERNALDATE dt) ->
           internal_date := ImapUtils.internal_date_of_imap_date dt
-      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
-      (* loop {msg with header = header_from_imap env} rest *)
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value') ->
           mod_seq_value := mod_seq_value'
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels') ->
@@ -1141,7 +1259,8 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
 
     { uid = !uid; size = !size; mod_seq_value = !mod_seq_value;
       gmail_labels = !gmail_labels; gmail_message_id = !gmail_message_id;
-      gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date }
+      gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date;
+      main_part = !main_part }
   in
 
   let vanished = ref None in

@@ -247,6 +247,37 @@ type folder =
     delimiter : char option;
     flags : folder_flag list }
 
+type multipart_type =
+    Mixed
+  | Related
+  | Alternative
+  | Signed
+
+type singlepart_type =
+    Basic
+  | Message of part
+
+and single_part =
+  { part_id : string;
+    size : int;
+    filename : string option;
+    mime_type : string;
+    charset : string option;
+    content_id : string option;
+    content_location : string option;
+    content_description : string option;
+    part_type : singlepart_type }
+
+and multi_part =
+  { part_id : string;
+    mime_type : string;
+    parts : part list;
+    part_type : multipart_type }
+
+and part =
+    Single of single_part
+  | Multipart of multi_part
+
 type address =
   { display_name : string;
     mailbox : string }
@@ -271,7 +302,8 @@ type message =
     gmail_message_id : Gmsgid.t;
     gmail_thread_id : Gthrid.t;
     flags : message_flag list;
-    internal_date : float }
+    internal_date : float;
+    main_part : part option }
 
 exception Error of error
 
