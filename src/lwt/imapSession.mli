@@ -57,6 +57,10 @@ module SeqSet : IndexSet with type elt = Seq.t
 module Modseq : Num
 module Gmsgid : Num
 module Gthrid : Num
+
+type connection_type =
+    Clear
+  | TLS of string option
   
 type folder_flag =
     Marked
@@ -312,6 +316,7 @@ type session
 
 val create_session :
   ?max_connections:int ->
+  ?conn_type:connection_type ->
   ?port:int ->
   host:string ->
   username:string ->

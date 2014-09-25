@@ -518,21 +518,8 @@ let noop =
 let logout =
   catch (std_command (ImapSend.raw "LOGOUT")) (function Bye -> ret () | _ as e -> fail e)
 
-(* let starttls ?(version = `TLSv1) ?ca_file s = *)
-(*   let ci = connection_info s in *)
-(*   let cmd = S.raw "STARTTLS" in *)
-(*   let aux () = *)
-(*     if ci.compress_deflate then *)
-(*       IO.fail (Failure "starttls: compression active") *)
-(*     else *)
-(*       send_command ci cmd >>= fun () -> *)
-(*       IO.starttls version ?ca_file ci.chan >>= begin fun chan -> *)
-(*         ci.chan <- chan; *)
-(*         ci.state <- {ci.state with cap_info = []}; (\* See 6.2.1 in RFC 3501 *\) *)
-(*         IO.return () *)
-(*       end *)
-(*   in *)
-(*   IO.with_lock ci.send_lock aux *)
+let starttls =
+  std_command (ImapSend.raw "STARTTLS") >> modify (fun st -> {st with cap_info = []})
 
 let authenticate auth =
   let step data =

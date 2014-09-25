@@ -159,6 +159,10 @@ module Modseq = Uint64
 module Gmsgid = Uint64
 module Gthrid = Uint64
 
+type connection_type =
+    Clear
+  | TLS of string option
+  
 type folder_flag =
     Marked
   | Unmarked
@@ -503,22 +507,6 @@ type connection =
     mutex : Lwt_mutex.t;
     mutable auto_disconnect : unit Lwt.t }
 
-(* let ssl_context ssl_method ca_file = *)
-(*   let version = *)
-(*     match version with *)
-(*       `TLSv1 -> Ssl.TLSv1 *)
-(*     | `SSLv23 -> Ssl.SSLv23 *)
-(*     | `SSLv3 -> Ssl.SSLv3 *)
-(*   in *)
-(*   let ctx = Ssl.create_context ssl_method Ssl.Client_context in *)
-(*   match ca_file with *)
-(*     None -> *)
-(*       ctx *)
-(*   | Some ca_file -> *)
-(*       Ssl.load_verify_locations ctx ca_file ""; *)
-(*       Ssl.set_verify ctx [Ssl.Verify_peer] None; *)
-(*       ctx *)
-
 let disconnect c =
   match c.state with
     CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
@@ -579,20 +567,34 @@ let cache_capabilities c =
   ci.capabilities <- capabilities_of_imap_capabilities caps;
   Lwt.return_unit
 
-let connect ?(ssl_method = Ssl.TLSv1) ~port ~host c =
+let ssl_context ssl_method ca_file =
+  let ctx = Ssl.create_context ssl_method Ssl.Client_context in
+  match ca_file with
+    None ->
+      ctx
+  | Some ca_file ->
+      Ssl.load_verify_locations ctx ca_file "";
+      Ssl.set_verify ctx [Ssl.Verify_peer] None;
+      ctx
+
+let connect ~conn_type ~port ~host c =
   lwt () = match c.state with
-      DISCONNECTED ->
-        Lwt.return_unit
-    | _ ->
-        assert_lwt false
+      DISCONNECTED -> Lwt.return_unit
+    | _            -> assert_lwt false
   in
   try_lwt
     let he = Unix.gethostbyname host in
     let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     lwt () = Lwt_unix.connect fd sa in
-    let context = Ssl.create_context ssl_method Ssl.Client_context in
-    lwt sock = Lwt_ssl.ssl_connect fd context in
+    lwt sock =
+      match conn_type with
+        Clear ->
+          Lwt.return (Lwt_ssl.plain fd)
+      | TLS ca_file ->
+          let context = ssl_context Ssl.TLSv1 ca_file in
+          Lwt_ssl.ssl_connect fd context
+    in    
     let ci =
       { imap_state = ImapCore.fresh_state;
         sock;
@@ -608,10 +610,10 @@ let connect ?(ssl_method = Ssl.TLSv1) ~port ~host c =
   with
     _ -> raise_lwt (Error Connection)
 
-let connect_if_needed ~port ~host c =
+let connect_if_needed ~conn_type ~port ~host c =
   match c.state with
     DISCONNECTED ->
-      connect ~port ~host c
+      connect ~conn_type ~port ~host c
   | CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
       Lwt.return ci
 
@@ -728,8 +730,8 @@ let login ~username ~password c =
   lwt () = enable_features c in
   Lwt.return ci
 
-let login_if_needed ~port ~host ~username ~password c =
-  lwt _ = connect_if_needed ~port ~host c in
+let login_if_needed ~conn_type ~port ~host ~username ~password c =
+  lwt _ = connect_if_needed ~conn_type ~port ~host c in
   match c.state with
     CONNECTED _ ->
       login ~username ~password c
@@ -783,8 +785,8 @@ let select c folder =
   c.state <- SELECTED (ci, si);
   Lwt.return (ci, si)
   
-let select_if_needed ~port ~host ~username ~password c folder =
-  lwt _ = login_if_needed ~port ~host ~username ~password c in
+let select_if_needed ~conn_type ~port ~host ~username ~password c folder =
+  lwt _ = login_if_needed ~conn_type ~port ~host ~username ~password c in
   match c.state with
     SELECTED (ci, si)->
       if String.lowercase si.current_folder <> String.lowercase folder then
@@ -797,15 +799,18 @@ let select_if_needed ~port ~host ~username ~password c folder =
       assert_lwt false
 
 type session =
-  { username : string;
+  { conn_type : connection_type;
+    username : string;
     password : string;
     host : string;
     port : int;
     max_connections : int;
     mutable connections : connection list }
 
-let create_session ?(max_connections = 2) ?(port = 993) ~host ~username ~password () =
-  { username;
+let create_session ?(max_connections = 2) ?(conn_type = TLS None) ?port ~host ~username ~password () =
+  let port = match conn_type with Clear -> 143 | TLS _ -> 993 in
+  { conn_type;
+    username;
     password;
     host;
     port;
@@ -840,7 +845,7 @@ let with_loggedin s ?folder f ferr =
               SELECTED (_, si) ->
                 if String.uppercase si.current_folder = String.uppercase folder then
                   begin
-                    (* Lwt_log.ign_debug_f "choosing existing session for %s" si.current_folder; *)
+                    Lwt_log.ign_debug_f "choosing existing session for %s" si.current_folder;
                     true
                   end
                 else
@@ -855,11 +860,13 @@ let with_loggedin s ?folder f ferr =
     Lwt.cancel c.auto_disconnect;
     match folder with
       None ->
-        Lwt_mutex.with_lock c.mutex
-          (fun () -> login_if_needed s.port s.host s.username s.password c >>= f)
+        Lwt_mutex.with_lock c.mutex begin fun () ->
+          login_if_needed s.conn_type s.port s.host s.username s.password c >>= f
+        end
     | Some folder ->
-        Lwt_mutex.with_lock c.mutex
-          (fun () -> select_if_needed s.port s.host s.username s.password c folder >>= fun (ci, _) -> f ci)
+        Lwt_mutex.with_lock c.mutex begin fun () ->
+          select_if_needed s.conn_type s.port s.host s.username s.password c folder >>= fun (ci, _) -> f ci
+        end
   with
     StreamError ->
       disconnect c >> raise_lwt (Error Connection)
@@ -874,23 +881,6 @@ let with_loggedin s ?folder f ferr =
 
 let with_folder s folder f ferr =
   with_loggedin s ~folder f ferr
-
-(* let with_loggedin s f ferr = *)
-(*   let c = available_connection s in *)
-(*   try_lwt *)
-(*     if Lwt_mutex.is_empty c.mutex then Lwt.cancel c.auto_disconnect; *)
-(*     Lwt_mutex.with_lock c.mutex *)
-(*       (fun () -> login_if_needed s.port s.host s.username s.password c >>= f) *)
-(*   with *)
-(*     StreamError -> *)
-(*       disconnect c >> raise_lwt (Error Connection) *)
-(*   | ErrorP (ParseError _) -> *)
-(*       raise_lwt (Error Parse) *)
-(*   | exn -> *)
-(*       ferr exn *)
-(*   finally *)
-(*     if Lwt_mutex.is_empty c.mutex then c.auto_disconnect <- Lwt_unix.sleep 60. >> disconnect c; *)
-(*     Lwt.return_unit *)
 
 let folder_status s ~folder =
   let status_att_list : status_att list =

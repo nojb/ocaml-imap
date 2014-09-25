@@ -73,17 +73,9 @@ module Condstore : sig
       
   val examine_condstore : string -> Uint64.t command
       
-  (* val fetch : ImapSet.t -> fetch_type -> msg_att list command *)
-      
-  (* val uid_fetch : ImapSet.t -> fetch_type -> msg_att list command *)
-      
   val fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
       
   val uid_fetch_changedsince : ImapSet.t -> Uint64.t -> fetch_type -> msg_att list command
-      
-  (* val store : ImapSet.t -> store_att_flags -> unit command *)
-      
-  (* val uid_store : ImapSet.t -> store_att_flags -> unit command *)
       
   val store_unchangedsince : ImapSet.t -> Uint64.t -> store_att_flags -> ImapSet.t command
       
@@ -95,22 +87,12 @@ val capability : capability list command
 val noop : unit command
 
 val logout : unit command
-(** Logs out from the server by sending a {b LOGOUT} command. *)
 
-(* val starttls : ?version : [ `TLSv1 | `SSLv23 | `SSLv3 ] -> ?ca_file : string -> *)
-(*   session -> unit IO.t *)
-(* (\** Start a TLS session using the given protocol.  If [?ca_file] is given, *)
-(*     then it must point to a certificate in PEM format and will be used to *)
-(*     validate the server identity. *\) *)
+val starttls : unit command
 
 val authenticate : ImapAuth.t -> unit command
 
 val login : string -> string -> unit command
-
-(* val compress : session -> unit IO.t *)
-(* (\** Enables compression. *)
-
-(*     This command requires the COMPRESS=DEFLATE extension. *\) *)
 
 val examine : string -> unit command
 
