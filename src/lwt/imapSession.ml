@@ -391,12 +391,12 @@ type address =
   { display_name : string;
     mailbox : string }
 
-type header =
+type envelope =
   { message_id : string;
     references : string list;
     in_reply_to : string list;
-    sender : address;
-    from : address;
+    sender : address option;
+    from : address option;
     to_ : address list;
     cc : address list;
     bcc : address list;
@@ -412,7 +412,8 @@ type message =
     gmail_thread_id : Gthrid.t;
     flags : message_flag list;
     internal_date : float;
-    main_part : part option }
+    main_part : part option;
+    envelope : envelope option }
 
 type sync_result =
   { vanished_messages : IndexSet.t;
@@ -867,7 +868,8 @@ let with_loggedin s ?folder f ferr =
   | exn ->
       ferr exn
   finally
-    if not (Lwt_mutex.is_locked c.mutex) then c.auto_disconnect <- Lwt_unix.sleep 60. >> disconnect c;
+  if not (Lwt_mutex.is_locked c.mutex) then
+    c.auto_disconnect <- Lwt_unix.sleep 60. >> Lwt_log.debug "disconnecting automatically..." >> disconnect c;
     Lwt.return_unit
 
 let with_folder s folder f ferr =
@@ -1072,9 +1074,30 @@ let flags_from_lep_att_dynamic att_list =
 (*   in *)
 (*   loop att_list *)
 
-let header_from_imap env =
-  assert false
+let import_imap_address ad =
+  { display_name = ad.ad_personal_name; (* FIXME mime decode *)
+    mailbox = ad.ad_mailbox_name ^ "@" ^ ad.ad_host_name }
 
+let import_imap_envelope env =
+  let sender =
+    let l = List.map import_imap_address env.env_sender in
+    if List.length l > 0 then Some (List.hd l) else None
+  in
+  let from =
+    let l = List.map import_imap_address env.env_from in
+    if List.length l > 0 then Some (List.hd l) else None
+  in
+  { message_id = env.env_message_id; (* FIXME mailimf_msg_id_parse *)
+    references = [];
+    reply_to = List.map import_imap_address env.env_reply_to;
+    sender;
+    from;
+    to_ = List.map import_imap_address env.env_to;
+    cc = List.map import_imap_address env.env_cc;
+    bcc = List.map import_imap_address env.env_bcc;
+    in_reply_to = [env.env_in_reply_to]; (* fixme msg_id_list_parse *)
+    subject = env.env_subject }
+  
 let import_imap_body body =
   let basic_part part_id basic ext =
     let mime_type = match basic.bd_media_basic.med_basic_type with
@@ -1226,6 +1249,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     let mod_seq_value = ref Modseq.zero in
     let internal_date = ref 0. in
     let main_part = ref None in
+    let envelope = ref None in
       
     let handle_msg_att_item = function
         MSG_ATT_ITEM_DYNAMIC flags' ->
@@ -1233,8 +1257,8 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
           needs_flags := false
       | MSG_ATT_ITEM_STATIC (MSG_ATT_UID uid') ->
           uid := uid'
-      (* | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) :: rest -> *)
-      (* loop {msg with header = header_from_imap env} rest *)
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_ENVELOPE env) ->
+          envelope := Some (import_imap_envelope env);
       | MSG_ATT_ITEM_STATIC (MSG_ATT_BODYSTRUCTURE body) ->
           main_part := Some (import_imap_body body);
           needs_body := false;
@@ -1260,7 +1284,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     { uid = !uid; size = !size; mod_seq_value = !mod_seq_value;
       gmail_labels = !gmail_labels; gmail_message_id = !gmail_message_id;
       gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date;
-      main_part = !main_part }
+      main_part = !main_part; envelope = !envelope }
   in
 
   let vanished = ref None in
@@ -1317,16 +1341,17 @@ let fetch_message_by_uid s ~folder ~uid =
           | _ :: rest ->
               loop rest
         in
-        loop result
+        Lwt.return (loop result)
     | _ ->
-        assert false
+        raise_lwt (Error Fetch)
+        (* assert false *)
   in
   lwt result =
     with_folder s folder
       (run (ImapCommands.uid_fetch (ImapSet.single uid) fetch_type))
       (fun _ -> raise_lwt (Error Fetch))
   in
-  Lwt.return (extract_body result)
+  extract_body result
   
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   let result = Hashtbl.create 0 in

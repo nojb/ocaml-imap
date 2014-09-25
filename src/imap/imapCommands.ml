@@ -462,7 +462,7 @@ module Condstore = struct
     QResync.fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
       
   let uid_fetch set fetch_type =
-    QResync.fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
+    QResync.uid_fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
     
   let fetch_changedsince set modseq fetch_type =
     QResync.fetch_qresync_vanished set fetch_type modseq false >|= fst

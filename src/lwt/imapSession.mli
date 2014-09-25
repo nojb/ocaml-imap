@@ -282,12 +282,12 @@ type address =
   { display_name : string;
     mailbox : string }
 
-type header =
+type envelope =
   { message_id : string;
     references : string list;
     in_reply_to : string list;
-    sender : address;
-    from : address;
+    sender : address option;
+    from : address option;
     to_ : address list;
     cc : address list;
     bcc : address list;
@@ -303,7 +303,8 @@ type message =
     gmail_thread_id : Gthrid.t;
     flags : message_flag list;
     internal_date : float;
-    main_part : part option }
+    main_part : part option;
+    envelope : envelope option }
 
 exception Error of error
 
