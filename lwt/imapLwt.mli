@@ -20,6 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+(** The type of index sets, e.g., sets of UIDs or Sequence Numbers. *)
 module type IndexSet = sig
   type elt
   type t
@@ -39,6 +40,8 @@ module type IndexSet = sig
   val to_string : t -> string
 end
 
+(** The type of IMAP numbers such as UIDs, Sequence numbers, Gmail message IDs,
+    MODSEQs, etc. *)
 module type Num = sig
   type t
   val of_int : int -> t
@@ -56,8 +59,8 @@ module Seq : Num
 module SeqSet : IndexSet with type elt = Seq.t
   
 module Modseq : Num
-module Gmsgid : Num
-module Gthrid : Num
+module Gmsgid : Num (** Gmail message id *)
+module Gthrid : Num (** Gmail thread id *)
 
 type connection_type =
     Clear
@@ -158,8 +161,7 @@ type search_key =
   | To of string
   | Cc of string
   | Bcc of string
-  | Recipient of string
-  (** Recipient is the combination of To, Cc and Bcc *)
+  | Recipient of string (* Recipient is the combination of To, Cc and Bcc *)
   | Subject of string
   | Content of string
   | Body of string
@@ -315,8 +317,9 @@ val create_session :
   username:string ->
   password:string ->
   unit -> session
-    (** Creates a new IMAP session with given host, username & password.
-        Default port is 993. *)
+    (** Creates a new IMAP session. The session will open up to
+        [max_connections] concurrent connections to the IMAP server, but never
+        more than one to a single folder. *)
 
 val logout :
   session -> unit Lwt.t
@@ -357,14 +360,17 @@ val append_message :
   message:string ->
   ?customflags:string list ->
   flags:message_flag list -> Uid.t Lwt.t
+    (** Upload a message. *)
 
 val subscribe_folder :
   session ->
   folder:string -> unit Lwt.t
+    (** Subscribe to a folder. *)
 
 val unsubscribe_folder :
   session ->
   folder:string -> unit Lwt.t
+    (** Unsubscribe to a folder. *)
 
 val copy_messages :
   session ->
@@ -386,6 +392,7 @@ val fetch_messages_by_uid :
   request:messages_request_kind list ->
   uids:UidSet.t ->
   message list Lwt.t
+    (** Fetches message information given their UIDs. *)
 
 val fetch_messages_by_number :
   session ->
@@ -393,6 +400,7 @@ val fetch_messages_by_number :
   request:messages_request_kind list ->
   seqs:SeqSet.t ->
   message list Lwt.t
+    (** Fetches message information given their sequence numbers. *)
 
 val fetch_message_by_uid :
   session ->
@@ -469,9 +477,13 @@ val capability :
 val identity :
   session ->
   (string * string) list -> (string * string) list Lwt.t
+    (** Sends client ID and returns server ID.  Requires ID extension. *)
 
 val idle :
   session ->
   folder:string ->
   ?last_known_uid:Uid.t ->
   unit -> unit Lwt.t * unit Lwt.u
+    (** Start IDLEing.  Returns [(t, u)], where [t] will wait until there
+        something is received from the server, and [u] can be used to stop the
+        IDLEing prematurely.  Requires IDLE extension. *)
