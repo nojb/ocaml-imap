@@ -1,8 +1,14 @@
 # ocaml-imap - an IMAP4 client library
 
-OCaml-IMAP is an OCaml client library for the [IMAP4rev1][] protocol.  It is is
-designed to be independent of the underlying buffering scheme and I/O system,
-and it can easily be used with [Lwt][] or [Async] to support concurrency.
+OCaml-IMAP is a fully featured OCaml client library for the [IMAP4rev1][]
+protocol.  It consists of two parts.  Firstly, there is a low-level API that
+follows the specification closely and is completely independent of any
+particular I/O, error handling, or control flow mechanisms.  Secondly, there is
+a high-level API built on top of the low-level one and [Lwt][] that liberates
+the user from dealing with much of the low-level details necessary to interact
+with an IMAP server.  Additionally it can automatically open more than one
+connection in the background for greater performance.  Other concucurrency
+frameworks (such as [Async][]) could be supported with not too much effort.
 
 This is a preliminary release.
 
@@ -18,226 +24,216 @@ Contact: [Nicolas Ojeda Bar][]
 
 ## Acknowledgements
 
-This library has been greatly influenced by
-
-- [MailCore2][]
-- Ruby's [Net::IMAP][] module
+This library (particularly the interface) has been greatly influenced by
+[MailCore2][].
 
 [MailCore2]: https://github.com/MailCore/mailcore2
-[Net::IMAP]: http://ruby-doc.org/stdlib-2.0/libdoc/net/imap/rdoc/Net/IMAP.html
 
 ## Requirements and installation
 
-The library has several dependencies and the easiest way to install everything
-is to use [OPAM](http://opam.ocaml.org).
+Use [OPAM][].
 
-1. Install `ocaml-imap` from OPAM. For the `Lwt` backend, just do:
-   ```sh
-   opam install ssl lwt imap
-   ```
-   For the `Async` backend, do:
-   ```sh
-   opam install async_ssl imap
-   ```
-   Finally, simply doing
-   ```sh
-   opam install imap
-   ```
-   will install only the `unix` (synchronous) backend.
+    # opam install lwt imap
 
-   Optionally, if you would like to use GNU SASL library to authenticate
-   with the server, you should include in each case the dependency `gsasl`:
-   `opam install gsasl imap`, or `opam install ssl lwt gsasl imap`, or
-   `opam install async_ssl gsasl imap`. See `gsasl/imap_gsasl.mli` for the interface.
-   
-2. Read the documentation in `imap/client.mli`, `imap/response.mli`, and
-   `imap/imap_types.mli`.
+[OPAM]: http://opam.ocaml.org
 
-3. (Optional) Install the `utop` toplevel:
-   ```sh
-   opam install utop
-   ```
+<!-- ## Review: SEQs, UIDs, and MODSEQs -->
+
+<!-- There are two main issues to keep in mind with dealing with IMAP protocol. -->
+<!-- Firstly is that it is possible for many clients to access/modify one mailbox -->
+<!-- (even the same folder) concurrently.  Secondly, since mailboxes can contain -->
+<!-- thousands or more messages, it is important to minimize the transfer of unneeded -->
+<!-- information between the client and the server.  In particular, information that -->
+<!-- has already been fetched should not be refetched again unless it has changed. -->
+
+<!-- The purpose of this section is to review the three main technical concepts -->
+<!-- needed to understand the interface afforded by this library. -->
+
+### Review: Sequence numbers
+
+Emails in a mail folder are numbered in an increasing manner from one upwards
+(in order of arrival).  The number corresponding to each message is called its
+*sequence number*.
+
+These numbers are not very useful because they are not intrinsic to the message.
+For example, if the first message in the mail folder is deleted the number of
+*every* other message in the folder gets decreased by one.  Since many clients
+may be accessing the mail folder at the same time, if you delete a message by
+specifying its sequence number you may end up deleting the wrong message.
+Clearly this is not very convenient.  See below for how to deal with this.
+
+In the high-level API there is only function that uses sequence numbers:
+`fetch_messages_by_number`.
+
+### Review: UIDs
+
+A better way to specify messages in an IMAP folder is to use *unique
+identification numbers* (from now on, UIDs).  As the name implies, they are
+supposed to be unique (but only within the folder the message is residing in).
+More importantly they are intrinsic to the message.  This means that no matter
+what operation you do, a message will never change its UID (actually I am lying
+a little here.  If you want to know how find out about **UIDVALIDITY**).
+
+One downside of UIDs is that they are only valid within a folder, so if you copy
+an email to another folder there is no reliable way in the base IMAP protocol to
+know what is the UID of the copy.  Similarly if you upload (append) a new
+message to the folder.  There is a common extension to the protocol
+(**UIDPLUS**) that gives you this information.
+
+Most of the high level API deals with UIDs and sets of UIDs to find, fetch, and
+modify messages.
+
+<!-- ### MODSEQs -->
+
+<!-- The other type of number important in the IMAP universe is the *modification -->
+<!-- sequence number* (from now on, MODSEQ).  It plays a role in trying to identify -->
+<!-- information (such as flags, deleted messages, etc.) that has not changed and -->
+<!-- therefore does not need to be fetched again by the client. **NOTE**: Only IMAP -->
+<!-- servers supporting the **CONDSTORE** and/or **QRESYNC** extensions will actually -->
+<!-- use MODSEQs. -->
+
+<!-- The MODSEQ of a message is a timestamp that indicates the last time that its -->
+<!-- information was changed. -->
 
 ## Usage
 
-Since we will be using the Lwt backend for demonstration purposes, it is easier
-to explore using the [utop](https://github.com/diml/utop) toplevel, which has
-auto-evaluation of Lwt threads.  All the examples below are done using the
-`utop` toplevel.
+All the examples below are done using the [utop][] toplevel using the high-level
+Lwt API.
 
-### Connection, Authentication, and Disconnection
+[utop]: https://github.com/diml/utop
 
-1. Load the library and install the relevant printers.
-   ```ocaml
-   # #require "imap.lwt";;
-   # open Imap;;
-   # open Types;;
-   ```
+### Setup the toplevel
 
-2. Set up and open a SSL connection to the IMAP server
-   ```ocaml
-   # let imap = Imap_lwt.make ();;
-   val imap : Imap_lwt.session = <abstr>
-   # Imap_lwt.connect_ssl imap "imap.gmail.com";;
-   - : [ `Needsauth | `Preauth ] = `Needsauth
-   ```
-   This means that the SSL connection has been established successfully and the
-   server requires authentication.
+    # #require "imap.top"
+    # open ImapSession
 
-3. Authenticate with login and password.
-   ```ocaml
-   # Imap_lwt.login imap "<login>" "<password>";;
-   - : unit = ()
-   ```
-   At this point we have successfully authenticated and we are ready to interact
-   with the server.
+### Creating and Authenticating a Session
 
-4. Logout
-   ```ocaml
-   # Imap_lwt.logout imap;;
-   - : unit = ()
-   ```
+    # let s = create_session ~host:"imap.gmail.com" ~username:"myuser" ~password:"mysecret";;
+    val s : session = <abstr>
 
-### Selecting and closing mailbox
+Note that you never need to connect or authenticate explicitly.  It is all
+taken care of automatically.  The session will automatically disconnect
+after a period of inactivity (default: 1min) and then reconnect as needed.
 
-1. Select the INBOX mailbox in order to look at its messages.
-   ```ocaml
-   # Imap_lwt.select imap "inbox";;
-   - : unit = ()
-   ```
+To terminate the session gracefully, use
 
-2. Get the number of unread messages and the total number of messages in the
-   mailbox:
-   ```ocaml
-   # Imap_lwt.status imap "inbox" [`UNSEEN; `MESSAGES];;
-   - : mailbox_data_status = {st_mailbox = "inbox"; st_info_list = [`MESSAGES 11; `UNSEEN 8]}
-   ```
-   So there are 11 messages and 8 unread messages.
+    # logout s;;
+    - : unit = ()
 
-3. Close the mailbox.
-   ```ocaml
-   # Imap_lwt.close imap;;
-   - : unit = ()
-   # Imap_lwt.last_response imap;;
-   - : string = "Returned to authenticated state. (Success)"
-   ```
-   
-### Fetch message MIME information
+### Finding out message UIDs
 
-1. Get the UIDs of unread messages in the mailbox.
-   ```ocaml
-   # Imap_lwt.uid_search imap `UNSEEN;;
-   - : Uid.t list = [2; 3; 4; 5; 7; 8; 9; 10]
-   ```
-   
-2. Get envelope information for message with UID 2.
-   ```ocaml
-   # let s = Imap_lwt.uid_fetch (Uid_set.single' 2) [`ENVELOPE];;
-   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
-   # Lwt_stream.map snd s |> Lwt_stream.to_list;;
-   - : msg_at list =
-   [`UID 2;
-    `ENVELOPE
-     {env_date = "Tue, 4 Feb 2014 07:52:19 -0800";
-      env_subject = "The best of Gmail, wherever you are";
-      env_from = [{addr_name = "Gmail Team"; addr_adl = ""; addr_mailbox = "mail-noreply"; addr_host = "google.com"}];
-      env_sender = [{addr_name = "Gmail Team"; addr_adl = ""; addr_mailbox = "mail-noreply"; addr_host = "google.com"}];
-      env_reply_to = [{addr_name = "Gmail Team"; addr_adl = ""; addr_mailbox = "mail-noreply"; addr_host = "google.com"}];
-      env_to = [{addr_name = "imaplib test"; addr_adl = ""; addr_mailbox = "imaplibtest"; addr_host = "gmail.com"}];
-      env_cc = [];
-      env_bcc = [];
-      env_in_reply_to = "";
-      env_message_id = "<CAFo37G3POBokcVK2ZDKMXi35iOnXH5XKyAztFFFeUVy2J1QrgA@mail.gmail.com>"}]
-   ```
+Before one can do anything with a message using IMAP it is often necessary to
+know its UID.  The easiest way to do this is use the imap **SEARCH** command.
+In the library this is done with `search command':
 
-3. Get MIME body structure
-   ```ocaml
-   # let s = Imap_lwt.uid_fetch (Uid_set.single' 2) [`BODYSTRUCTURE];;
-   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
-   # Lwt_stream.to_list s;;
-   [(2, `UID 2);
-    (2,
-     `BODYSTRUCTURE
-       (Imap.Mime.Multi_part
-         {Imap.Mime.bd_subtype = "ALTERNATIVE";
-          bd_parts =
-           [Imap.Mime.Text
-             {Imap.Mime.bd_param = [("CHARSET", "ISO-8859-1")]; bd_id = None; 
-              bd_desc = None; bd_enc = `QUOTED_PRINTABLE; bd_octets = 656; 
-              bd_other = {Imap.Mime.text_subtype = "PLAIN"; text_lines = 23}; 
-              bd_ext = {Imap.Mime.ext_md5 = None; ext_dsp = None; ext_lang = []; ext_exts = []}};
-            Imap.Mime.Text
-             {Imap.Mime.bd_param = [("CHARSET", "ISO-8859-1")]; bd_id = None; 
-              bd_desc = None; bd_enc = `QUOTED_PRINTABLE; bd_octets = 3374; 
-              bd_other = {Imap.Mime.text_subtype = "HTML"; text_lines = 46}; 
-              bd_ext = {Imap.Mime.ext_md5 = None; ext_dsp = None; ext_lang = []; ext_exts = []}}];
-          bd_mexts = {Imap.Mime.mext_param = [("BOUNDARY", "089e0122f720083c1b04f196a0a7")]; mext_dsp = None; mext_lang = []; mext_exts = []}}))]
-   ```
+    # #show_val search;;
+    val search : ImapSession.session -> folder:string -> key:ImapSession.search_key -> ImapSession.UidSet.t Lwt.t
+
+The only interesting argument is labeled `key` and specifies which messages one
+is looking for.  For example to find all messages from an email
+`"important@email.com"` in the **INBOX** folder, one can simply do:
+
+    # let uids = search s ~folder:"INBOX" ~key:(From "important@email.com")
+    val uids : UidSet.t = <abstr>
+
+### Fetching message data
+
+Once one has the UIDs of the messages one intends to manipulate, the actual
+fetching of data is done with the function `fetch_messages_by_uid`.  The following
+will find out the size of all messages in **INBOX**.
+
+    # let msgs = fetch_messages_by_uid s ~folder:"inbox" ~request:[Size] ~uids:UidSet.all;;
+    val msgs : message list = [ ... ]
+
+This function returns a list of `message` values.  The `message` type is given by
+
+    # #show_type message;;
+    type message = {
+      uid : ImapSession.UidSet.elt;
+      size : int;
+      mod_seq_value : Modseq.t;
+      gmail_labels : string list;
+      gmail_message_id : Gmsgid.t;
+      gmail_thread_id : Gthrid.t;
+      flags : message_flag list;
+      internal_date : float;
+      main_part : part option;
+      envelope : envelope option;
+    }
+
+Only the fields that were actually requested should be used (in this case, only
+`size` should be used).  The different information that can be requested like
+this is specified by the type `messages_request_type`:
+
+    # #show_type messages_request_type;;
+    type messages_request_kind =
+    | Flags
+    | Headers
+    | Structure
+    | InternalDate
+    | FullHeaders
+    | HeaderSubject
+    | GmailLabels
+    | GmailMessageID
+    | GmailThreadID
+    | ExtraHeaders of string list
+    | Size
+
+To fetch the full message corresponding to a given UID, one can use `fetch_message_by_uid`:
+
+    # fetch_message_by_uid s ~uid;;
+    - : string = "..."
             
-### Inspect and change flags and labels
+### Changing flags and labels
 
-1. Get flags for message with UID 11.
-   ```ocaml
-   # let s = Imap_lwt.uid_fetch imap (Uid_set.single' 11) [`FLAGS];;
-   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
-   # Lwt_stream.map snd s |> Lwt_stream.to_list;;
-   - : msg_att list = [`FLAGS []]
-   ```
+Suppose we have an UID set `uids` and we want to label (in the Gmail sense) the
+corresponding messages with label `MyLabel`.  It is very easy.
 
-2. Get Gmail labels for message with UID 11.
-   ```ocaml
-   # let s = Imap_lwt.uid_fetch imap (Uid_set.single' 11) [`X_GM_LABELS];;
-   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
-   # Lwt_stream.map snd s |> Lwt_stream.to_list;;
-   - : msg_att list = [`X_GM_LABELS ["\\Important"]]
-   ```
+    # add_labels s ~folder:"INBOX" ~uids ~labels:["MyLabel"]
 
-1. Mark message with UID 11 as `Seen`.
-   ```ocaml
-   # Imap_lwt.uid_store imap (Uid_set.single' 11) `Add (`FLAGS [`Seen]);;
-   - : unit = ()
-   # let s = Imap_lwt.uid_fetch imap (Uid_set.single' 11) [`FLAGS];;
-   val s : (Seq.t * msg_att) Lwt_stream.t = <abstr>
-   # Lwt_stream.map snd s |> Lwt_stream.to_list;;
-   - : msg_att list = [`FLAGS [`Seen]]
-   ```
+There is also `remove_labels` to remove a label, and `set_labels` to completely
+replace the existing labels.
 
-### Debug trace
+There is a parallel set of function for flags: `add_flags`, `remove_flags`, `set_flags` that
+allow to modify the flags of a message.
 
-One can turn on debug output by setting the variable `Imap.Client.debug` to true:
-```ocaml
-# Imap.Client.debug := true;;
-- : unit = ()
-```
-The same effect is achieved by setting the environment variable `IMAP_DEBUG`
-to anything other than `0`.  This makes it very easy to see what is going on
-behind the scenes:
-```ocaml
-# Imap_lwt.connect_ssl imap "imap.gmail.com";;
-S: * OK Gimap ready for requests from 131.111.16.20 u46mb29270479wec
-- : [ `Needsauth | `Preauth ] = `Needsauth
-# Imap_lwt.login imap "<login>" "<password>";;
-C: 1 LOGIN <login> <password>
-S: * CAPABILITY IMAP4rev1 UNSELECT IDLE NAMESPACE QUOTA ID XLIST CHILDREN X-GM-EXT-1 UIDPLUS COMPRESS=DEFLATE ENABLE MOVE CONDSTORE ESEARCH
-S: 1 OK <login> <user name> authenticated (Success)
-- : unit = ()
-# Imap_lwt.logout imap;;
-C: 2 LOGOUT
-S: * BYE LOGOUT Requested
-S: 2 OK 73 good day (Success)
-- : unit = ()
-```
+    # #show_type message_flag;;
+    type message_flag = Seen | Answered | Flagged | Deleted | Draft | MDNSent | Forwarded | SubmitPending | Submitted
+
+### Debugging
+
+To see a debug trace of everything that gets sent and received, set the Lwt log level to `Debug`.
+
+    # Lwt_log.Section.set_level Lwt_log.Sectin.main Lwt_log.Debug;;
+
+**NOTE**: This will print your username and password on the terminal.
 
 ## Supported IMAP extensions
 
-- COMPRESS=DEFLATE [(RFC 4978)](https://tools.ietf.org/html/rfc4978)
-<!-- - IDLE [(RFC 2177)](https://tools.ietf.org/html/rfc2177) -->
-- CONDSTORE [(RFC 4551)](https://tools.ietf.org/html/rfc4551)
-- ID [(RFC 2971)](https://tools.ietf.org/html/rfc2971)
-- UIDPLUS [(RFC 4315)](https://tools.ietf.org/html/rfc4315)
-- X-GM-EXT-1 [(Google)](https://developers.google.com/gmail/imap_extensions)
-<!-- - NAMESPACE [(RFC 2342)](http://www.ietf.org/rfc/rfc2342.txt) -->
-- ENABLE [(RFC 5161)](https://tools.ietf.org/html/rfc5161)
-- AUTH=XOAUTH2 [(Google)](https://developers.google.com/gmail/xoauth2_protocol)
+- [COMPRESS=DEFLATE][]
+- [IDLE][]
+- [CONDSTORE][]
+- [ID][]
+- [UIDPLUS][]
+- [X-GM-EXT-1][]
+- [NAMESPACE][]
+- [QRESYNC][]
+- [ENABLE][]
+<!-- - AUTH=XOAUTH2 [(Google)](https://developers.google.com/gmail/xoauth2_protocol) -->
+
+[COMPRESS=DEFLATE]: http://tools.ietf.org/html/rfc4978
+[IDLE]: http://tools.ietf.org/html/rfc2177
+[CONDSTORE]: http://tools.ietf.org/html/rfc4551
+[ID]: https://www.ietf.org/rfc/rfc2971.txt
+[UIDPLUS]: http://tools.ietf.org/html/rfc4315
+[X-GM-EXT-1]: https://developers.google.com/gmail/imap_extensions
+[NAMESPACE]: http://tools.ietf.org/html/rfc2342
+[QRESYNC]: http://tools.ietf.org/html/rfc5162
+[ENABLE]: http://tools.ietf.org/html/rfc5161
 
 ## Comments
+
+Any comments/suggestions/bug reports/etc are greatly appreciated!  Please email [me].
+
+[me]: n.oje.bar@gmail.com
