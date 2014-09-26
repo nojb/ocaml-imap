@@ -962,13 +962,16 @@ module Uidplus = struct
     ImapPrint.(register_printer {print = uidplus_printer})
 end
 
-module Xgmmsgid = struct
+module XGmExt1 = struct
   type msg_att_extension +=
        MSG_ATT_XGMMSGID of Uint64.t
+     | MSG_ATT_XGMLABELS of string list
 
   let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
+      
+  let fetch_att_xgmlabels = FETCH_ATT_EXTENSION "X-GM-LABELS"
 
-  let xgmmsgid_printer : type a. a extension_kind -> a -> _ option =
+  let xgmext1_printer : type a. a extension_kind -> a -> _ option =
     let open Format in
     function
       FETCH_DATA ->
@@ -976,40 +979,7 @@ module Xgmmsgid = struct
           function
             MSG_ATT_XGMMSGID id ->
               Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
-          | _ ->
-              None
-        end
-    | _ ->
-        function _ -> None
-
-  let xgmmsgid_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
-    let open ImapParser in
-    match kind with
-      FETCH_DATA ->
-        str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
-        ret (MSG_ATT_XGMMSGID n)
-    | _ ->
-        fail
-
-  let _ =
-    ImapPrint.(register_printer {print = xgmmsgid_printer});
-    ImapParser.(register_parser {parse = xgmmsgid_parser})
-end
-
-module Xgmlabels = struct
-  type msg_att_extension +=
-       MSG_ATT_XGMLABELS of string list
-
-  let fetch_att_xgmlabels =
-    FETCH_ATT_EXTENSION "X-GM-LABELS"
-
-  let xgmlabels_printer : type a. a extension_kind -> a -> _ option =
-    let open Format in
-    function
-      FETCH_DATA ->
-        begin
-          function
-            MSG_ATT_XGMLABELS labels ->
+          | MSG_ATT_XGMLABELS labels ->
               let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
               Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
           | _ ->
@@ -1018,13 +988,20 @@ module Xgmlabels = struct
     | _ ->
         function _ -> None
 
-  let xgmlabels_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
+  let xgmext1_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
+    let msgid = 
+      str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
+      ret (MSG_ATT_XGMMSGID n)
+    in
+    let labels =
+      str "X-GM-LABELS" >> char ' ' >>
+      char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
+      ret (MSG_ATT_XGMLABELS labels)
+    in
     match kind with
       FETCH_DATA ->
-        str "X-GM-LABELS" >> char ' ' >>
-        char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
-        ret (MSG_ATT_XGMLABELS labels)
+        alt msgid labels
     | _ ->
         fail
 
@@ -1051,8 +1028,8 @@ module Xgmlabels = struct
     store_xgmlabels_aux "UID STORE"
 
   let _ =
-    ImapPrint.(register_printer {print = xgmlabels_printer});
-    ImapParser.(register_parser {parse = xgmlabels_parser})
+    ImapPrint.(register_printer {print = xgmext1_printer});
+    ImapParser.(register_parser {parse = xgmext1_parser})
 end
 
 (*

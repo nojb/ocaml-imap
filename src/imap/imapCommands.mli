@@ -154,16 +154,12 @@ module Uidplus : sig
   val uidplus_append : string -> ?flags:flag list -> ?date_time:float -> string -> (Uint32.t * Uint32.t) command
 end
 
-module Xgmmsgid : sig
+module XGmExt1 : sig
   type msg_att_extension +=
        MSG_ATT_XGMMSGID of Uint64.t
+     |  MSG_ATT_XGMLABELS of string list
 
   val fetch_att_xgmmsgid : fetch_att
-end
-
-module Xgmlabels : sig
-  type msg_att_extension +=
-       MSG_ATT_XGMLABELS of string list
 
   val fetch_att_xgmlabels : fetch_att
 

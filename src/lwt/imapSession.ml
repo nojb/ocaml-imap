@@ -1286,11 +1286,11 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     | Flags :: rest ->
         loop (FETCH_ATT_FLAGS :: acc) headers rest
     | GmailLabels :: rest ->
-        loop (ImapCommands.Xgmlabels.fetch_att_xgmlabels :: acc) headers rest
+        loop (ImapCommands.XGmExt1.fetch_att_xgmlabels :: acc) headers rest
     | GmailThreadID :: rest ->
         failwith "fetch gmail thread id not implemented"
     | GmailMessageID :: rest ->
-        loop (ImapCommands.Xgmmsgid.fetch_att_xgmmsgid :: acc) headers rest
+        loop (ImapCommands.XGmExt1.fetch_att_xgmmsgid :: acc) headers rest
     | FullHeaders :: rest ->
         loop acc
           ("Date" :: "Subject" :: "From" :: "Sender" :: "Reply-To" ::
@@ -1352,10 +1352,10 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
           internal_date := ImapUtils.internal_date_of_imap_date dt
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.Condstore.MSG_ATT_MODSEQ mod_seq_value') ->
           mod_seq_value := mod_seq_value'
-      | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmlabels.MSG_ATT_XGMLABELS gmail_labels') ->
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.XGmExt1.MSG_ATT_XGMLABELS gmail_labels') ->
           gmail_labels := gmail_labels';
           needs_gmail_labels := false
-      | MSG_ATT_ITEM_EXTENSION (ImapCommands.Xgmmsgid.MSG_ATT_XGMMSGID gmail_message_id') ->
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.XGmExt1.MSG_ATT_XGMMSGID gmail_message_id') ->
           gmail_message_id := gmail_message_id';
           needs_gmail_message_id := false
       | _ -> (* FIXME *) ()
@@ -1546,7 +1546,7 @@ let set_flags s ~folder ~uids ~flags ?customflags () =
 
 let store_labels s ~folder ~uids ~kind ~labels =
   Session.with_folder s folder
-    (Conn.run (ImapCommands.Xgmlabels.uid_store_xgmlabels uids kind true labels))
+    (Conn.run (ImapCommands.XGmExt1.uid_store_xgmlabels uids kind true labels))
     (handle_imap_error Store)
 
 let add_labels s ~folder ~uids ~labels =
