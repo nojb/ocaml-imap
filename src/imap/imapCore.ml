@@ -89,8 +89,6 @@ let resp_text_store s {rsp_code; rsp_text} =
       {s with sel_info = {s.sel_info with sel_uidvalidity = uid}}
   | RESP_TEXT_CODE_UNSEEN unseen ->
       {s with sel_info = {s.sel_info with sel_first_unseen = unseen}}
-  (* | RESP_TEXT_CODE_COMPRESSIONACTIVE -> *)
-      (* {s with rsp_info = {s.rsp_info with rsp_compressionactive = true}} *)
   | RESP_TEXT_CODE_EXTENSION e ->
       extension_data_store s RESP_TEXT_CODE e
   | RESP_TEXT_CODE_OTHER other ->
@@ -157,8 +155,6 @@ let response_data_store s =
       {s with cap_info}
   | RESP_DATA_EXTENSION_DATA e ->
       extension_data_store s RESPONSE_DATA e
-  (* | `NAMESPACE (pers, other, shared) -> *)
-  (*   {s with rsp_info = {s.rsp_info with rsp_namespace = pers, other, shared}} *)
 
 let response_tagged_store s {rsp_cond_state = r} =
   resp_cond_state_store s r

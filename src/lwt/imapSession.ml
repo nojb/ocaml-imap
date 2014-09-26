@@ -56,6 +56,7 @@ module type IndexSet = sig
   val until : elt -> t
   val all : t
   val index : elt -> t
+  val length : t -> int
   val add_range : elt -> elt -> t -> t
   val add : elt -> t -> t
   val remove_range : elt -> elt -> t -> t
@@ -83,6 +84,9 @@ end = struct
   let until l = if cmp l Uint32.zero = 0 then [] else (Uint32.one, l) :: []
   let all = from Uint32.one
   let index n = range n n
+  let length s =
+    let l (l, r) = succ Uint32.(sub r l) |> Uint32.to_int in
+    List.fold_left (fun acc x -> acc + (l x)) 0 s
   let add_range l r s =
     let l, r = if cmp l r <= 0 then l, r else r, l in
     let rec loop l r = function
@@ -1624,7 +1628,7 @@ let idle s ~folder ?(last_known_uid = Uid.zero) () =
     else
       Session.with_folder s folder begin fun ci ->
         lwt () = Conn.run ImapCommands.Idle.idle_start ci in
-        ci.idling <- Some waker;
+        ci.Conn.idling <- Some waker;
         try_lwt
           lwt () = Lwt.pick [ Conn.wait_read ci; Lwt_unix.sleep (29. *. 60.); waiter ] in
           Conn.run ImapCommands.Idle.idle_done ci

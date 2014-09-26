@@ -29,6 +29,7 @@ module type IndexSet = sig
   val until : elt -> t
   val all : t
   val index : elt -> t
+  val length : t -> int
   val add_range : elt -> elt -> t -> t
   val add : elt -> t -> t
   val remove_range : elt -> elt -> t -> t

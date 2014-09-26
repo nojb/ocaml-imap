@@ -1122,8 +1122,35 @@ module Namespace = struct
     ImapParser.(register_parser {parse})
 end
 
+(*
+command-auth =/ compress
+
+compress    = "COMPRESS" SP algorithm
+
+capability  =/ "COMPRESS=" algorithm
+              ;; multiple COMPRESS capabilities allowed
+
+algorithm   = "DEFLATE"
+
+resp-text-code =/ "COMPRESSIONACTIVE"
+*)
+
 module Compress = struct
+  type resp_text_code_extension +=
+       RESP_TEXT_CODE_COMPRESSIONACTIVE
+
+  let parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
+    let open ImapParser in
+    match kind with
+      RESP_TEXT_CODE ->
+        str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE
+    | _ ->
+        fail
+       
   let compress = std_command (send "COMPRESS DEFLATE")
+
+  let _ =
+    ImapParser.(register_parser {parse})
 end
 
 module Idle = struct

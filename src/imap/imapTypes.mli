@@ -38,7 +38,7 @@ type flag =
   | FLAG_KEYWORD of string
   (** keyword flag *)
   | FLAG_EXTENSION of string
-  (* (\** \extension flag *\) ] with sexp *)
+  (** \extension flag *)
 
 type flag_fetch =
     FLAG_FETCH_RECENT
@@ -214,10 +214,6 @@ type fetch_att =
   | FETCH_ATT_FLAGS
   (** Message flags *)
   | FETCH_ATT_EXTENSION of string
-  (* | `X_GM_MSGID *)
-  (* (\** Gmail message ID. *\) *)
-  (* | `X_GM_THRID *)
-  (* (\** Gmail thread ID. *\) *)
 
 type fetch_type =
     FETCH_TYPE_ALL
