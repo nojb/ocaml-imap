@@ -105,7 +105,7 @@ Lwt API.
 ### Setup the toplevel
 
     # #require "imap.lwt";;
-    # #require "imap.top";;
+    # #require "imap.lwt.top";;
     # open ImapLwt;;
 
 ### Creating and Authenticating a Session
@@ -221,7 +221,6 @@ To see a debug trace of everything that gets sent and received, set the Lwt log 
 - [NAMESPACE][]
 - [QRESYNC][]
 - [ENABLE][]
-<!-- - AUTH=XOAUTH2 [(Google)](https://developers.google.com/gmail/xoauth2_protocol) -->
 
 [COMPRESS=DEFLATE]: http://tools.ietf.org/html/rfc4978
 [IDLE]: http://tools.ietf.org/html/rfc2177
