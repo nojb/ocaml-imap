@@ -1,9 +1,0 @@
-* Add support for more IMAP extensions
-  - QUOTA
-  - ACL
-  - SPECIAL-USE
-  - QRESYNC
-  - UTF8
-  - ANNOTATEMORE
-  
-* Complete test suite

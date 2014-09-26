@@ -2,13 +2,9 @@ OCAMLBUILD = ocamlbuild -classic-display -use-ocamlfind
 
 all: imap lwt
 
-imap: src/imap/imap.cma
+imap: imap/imap.cma
 
-# unix: src/unix/imapUnix.cma
-
-lwt: src/lwt/imapSession.cma
-
-# test: tests/test_unix.byte
+lwt: lwt/imapSession.cma
 
 %.cma:
 	$(OCAMLBUILD) $@

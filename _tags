@@ -1,4 +1,4 @@
 true: package(uint), package(cryptokit), package(uutf)
-<src/unix/*> or <tests/*> or <src/lwt/*> or <src/other/*>: package(ssl)
-<src/lwt/*>: package(lwt.ssl)
+<lwt/*>: package(lwt.ssl), syntax(camlp4o), package(lwt.syntax)
+<imap>: include
 true: debug
