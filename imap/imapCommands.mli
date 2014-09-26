@@ -157,9 +157,12 @@ end
 module XGmExt1 : sig
   type msg_att_extension +=
        MSG_ATT_XGMMSGID of Uint64.t
-     |  MSG_ATT_XGMLABELS of string list
+     | MSG_ATT_XGMTHRID of Uint64.t
+     | MSG_ATT_XGMLABELS of string list
 
   val fetch_att_xgmmsgid : fetch_att
+
+  val fetch_att_xgmthrid : fetch_att
 
   val fetch_att_xgmlabels : fetch_att
 

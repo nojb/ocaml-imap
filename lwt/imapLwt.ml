@@ -1301,7 +1301,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     | GmailLabels :: rest ->
         loop (ImapCommands.XGmExt1.fetch_att_xgmlabels :: acc) headers rest
     | GmailThreadID :: rest ->
-        failwith "fetch gmail thread id not implemented"
+        loop (ImapCommands.XGmExt1.fetch_att_xgmthrid :: acc) headers rest
     | GmailMessageID :: rest ->
         loop (ImapCommands.XGmExt1.fetch_att_xgmmsgid :: acc) headers rest
     | FullHeaders :: rest ->
@@ -1371,6 +1371,9 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.XGmExt1.MSG_ATT_XGMMSGID gmail_message_id') ->
           gmail_message_id := gmail_message_id';
           needs_gmail_message_id := false
+      | MSG_ATT_ITEM_EXTENSION (ImapCommands.XGmExt1.MSG_ATT_XGMTHRID gmail_thread_id') ->
+          gmail_thread_id := gmail_thread_id';
+          needs_gmail_thread_id := false
       | _ -> (* FIXME *) ()
     in
 

@@ -965,9 +965,12 @@ end
 module XGmExt1 = struct
   type msg_att_extension +=
        MSG_ATT_XGMMSGID of Uint64.t
+     | MSG_ATT_XGMTHRID of Uint64.t
      | MSG_ATT_XGMLABELS of string list
 
   let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
+
+  let fetch_att_xgmthrid = FETCH_ATT_EXTENSION "X-GM-THRID"
       
   let fetch_att_xgmlabels = FETCH_ATT_EXTENSION "X-GM-LABELS"
 
@@ -979,6 +982,8 @@ module XGmExt1 = struct
           function
             MSG_ATT_XGMMSGID id ->
               Some (fun ppf -> fprintf ppf "(x-gm-msgid %s)" (Uint64.to_string id))
+          | MSG_ATT_XGMTHRID id ->
+              Some (fun ppf -> fprintf ppf "(x-gm-thrid %s)" (Uint64.to_string id))
           | MSG_ATT_XGMLABELS labels ->
               let p ppf = List.iter (fun x -> fprintf ppf "@ %S" x) in
               Some (fun ppf -> fprintf ppf "@[<2>(x-gm-labels%a)@]" p labels)
@@ -994,6 +999,10 @@ module XGmExt1 = struct
       str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
       ret (MSG_ATT_XGMMSGID n)
     in
+    let thrid =
+      str "X-GM-THRID" >> char ' ' >> uint64 >>= fun n ->
+      ret (MSG_ATT_XGMTHRID n)
+    in
     let labels =
       str "X-GM-LABELS" >> char ' ' >>
       char '(' >> sep (char ' ') astring >>= fun labels -> char ')' >>
@@ -1001,7 +1010,7 @@ module XGmExt1 = struct
     in
     match kind with
       FETCH_DATA ->
-        alt msgid labels
+        altn [ msgid; thrid; labels ]
     | _ ->
         fail
 
