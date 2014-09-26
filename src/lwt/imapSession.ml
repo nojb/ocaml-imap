@@ -425,7 +425,54 @@ type sync_result =
 
 exception Error of error
 
-module Conn = struct
+module Conn : sig
+  type connected_info =
+    { mutable imap_state : ImapTypes.state;
+      sock : Lwt_ssl.socket;
+      mutable condstore_enabled : bool;
+      mutable qresync_enabled : bool; (* FIXME set these somewhere ! *)
+      mutable compressor : (Cryptokit.transform * Cryptokit.transform) option;
+      mutable capabilities : capability list }
+  type selected_info
+    (* { current_folder : string; *)
+    (*   uid_next : Uid.t; *)
+    (*   uid_validity : Uid.t; *)
+    (*   mod_sequence_value : Modseq.t; *)
+    (*   folder_msg_count : int option; *)
+    (*   first_unseen_uid : Uid.t } *)
+  type connection
+  val run : 'a ImapCore.command -> connected_info -> 'a Lwt.t
+  val connect_if_needed :
+    conn_type:connection_type ->
+    port:int ->
+    host:string -> connection -> connected_info Lwt.t
+  val login_if_needed :
+    conn_type:connection_type ->
+    port:int ->
+    host:string ->
+    username:string ->
+    password:string -> connection -> connected_info Lwt.t
+  val select_if_needed :
+    conn_type:connection_type ->
+    port:int ->
+    host:string ->
+    username:string ->
+    password:string -> connection -> string -> (connected_info * selected_info) Lwt.t
+  val disconnect :
+    connection -> unit Lwt.t
+  val new_connection :
+    unit -> connection
+  val is_idle :
+    connection -> bool
+  val is_selecting_folder :
+    string -> connection -> bool
+  val reset_auto_disconnect :
+    connection -> (unit -> 'a Lwt.t) -> 'a Lwt.t
+  val logout :
+    connection -> unit Lwt.t
+  val wait_read :
+    connected_info -> unit Lwt.t
+end = struct
   type connected_info =
     { mutable imap_state : ImapTypes.state;
       sock : Lwt_ssl.socket;
@@ -1042,6 +1089,14 @@ let delete_folder s ~folder =
 let create_folder s ~folder =
   Session.with_folder s "INBOX" (Conn.run (ImapCommands.create folder))
     (handle_imap_error Create)
+
+let subscribe_folder s ~folder =
+  Session.with_folder s "INBOX" (Conn.run (ImapCommands.subscribe folder))
+    (handle_imap_error Subscribe)
+
+let unsubscribe_folder s ~folder =
+  Session.with_folder s "INBOX" (Conn.run (ImapCommands.unsubscribe folder))
+    (handle_imap_error Subscribe)
 
 let copy_messages s ~folder ~uids ~dest =
   lwt uidvalidity, src_uid, dst_uid =

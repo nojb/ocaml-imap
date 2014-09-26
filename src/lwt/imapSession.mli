@@ -358,6 +358,14 @@ val create_folder :
   folder:string -> unit Lwt.t
     (** Creates a new folder. *)
 
+val subscribe_folder :
+  session ->
+  folder:string -> unit Lwt.t
+
+val unsubscribe_folder :
+  session ->
+  folder:string -> unit Lwt.t
+
 val copy_messages :
   session ->
   folder:string ->
