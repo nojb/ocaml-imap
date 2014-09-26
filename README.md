@@ -49,7 +49,7 @@ Use [OPAM][].
 <!-- The purpose of this section is to review the three main technical concepts -->
 <!-- needed to understand the interface afforded by this library. -->
 
-### Review: Sequence numbers
+## UIDs and Sequence numbers
 
 Emails in a mail folder are numbered in an increasing manner from one upwards
 (in order of arrival).  The number corresponding to each message is called its
@@ -64,8 +64,6 @@ Clearly this is not very convenient.  See below for how to deal with this.
 
 In the high-level API there is only function that uses sequence numbers:
 `fetch_messages_by_number`.
-
-### Review: UIDs
 
 A better way to specify messages in an IMAP folder is to use *unique
 identification numbers* (from now on, UIDs).  As the name implies, they are
