@@ -336,17 +336,6 @@ type error =
   | NoRecipient
   | Noop
 
-module Identity = struct
-  type t = (string * string option) list
-  let create x = List.map (fun (k, v) -> (k, Some v)) x
-  let get id key =
-    match List.find (fun (k, _) -> String.lowercase k = String.lowercase key) id |> snd with
-      None -> ""
-    | Some s -> s
-  let vendor id = get id "vendor"
-  let version id = get id "version"
-end 
-
 type folder_status =
   { unseen_count : int;
     message_count : int;
@@ -424,6 +413,36 @@ type sync_result =
     modified_or_added_messages : message list }
 
 exception Error of error
+
+let capabilities_of_imap_capabilities caps =
+  let rec loop acc = function
+      [] ->
+        List.rev acc
+    | CAPABILITY_NAME name :: rest ->
+        begin
+          match String.uppercase name with
+            "STARTTLS"         -> loop (StartTLS :: acc) rest
+          | "ID"               -> loop (Id :: acc) rest
+          | "XLIST"            -> loop (XList :: acc) rest
+          | "X-GM-EXT-1"       -> loop (Gmail :: acc) rest
+          | "IDLE"             -> loop (Idle :: acc) rest
+          | "CONDSTORE"        -> loop (Condstore :: acc) rest
+          | "QRESYNC"          -> loop (QResync :: acc) rest
+          | "XOAUTH2"          -> loop (XOAuth2 :: acc) rest
+          | "COMPRESS=DEFLATE" -> loop (CompressDeflate :: acc) rest
+          | "NAMESPACE"        -> loop (Namespace :: acc) rest
+          | "CHILDREN"         -> loop (Children :: acc) rest
+          | _                  -> loop acc rest
+        end
+    | CAPABILITY_AUTH_TYPE name :: rest ->
+        begin
+          match String.uppercase name with
+            "PLAIN" -> loop (Auth Plain :: acc) rest
+          | "LOGIN" -> loop (Auth Login :: acc) rest
+          | _ -> loop acc rest
+        end
+  in
+  loop [] caps
 
 module Conn : sig
   type connected_info =
@@ -563,36 +582,6 @@ end = struct
         Lwt.return_unit
     | DISCONNECTED ->
         Lwt.return_unit
-
-  let capabilities_of_imap_capabilities caps =
-    let rec loop acc = function
-        [] ->
-          List.rev acc
-      | CAPABILITY_NAME name :: rest ->
-          begin
-            match String.uppercase name with
-              "STARTTLS"         -> loop (StartTLS :: acc) rest
-            | "ID"               -> loop (Id :: acc) rest
-            | "XLIST"            -> loop (XList :: acc) rest
-            | "X-GM-EXT-1"       -> loop (Gmail :: acc) rest
-            | "IDLE"             -> loop (Idle :: acc) rest
-            | "CONDSTORE"        -> loop (Condstore :: acc) rest
-            | "QRESYNC"          -> loop (QResync :: acc) rest
-            | "XOAUTH2"          -> loop (XOAuth2 :: acc) rest
-            | "COMPRESS=DEFLATE" -> loop (CompressDeflate :: acc) rest
-            | "NAMESPACE"        -> loop (Namespace :: acc) rest
-            | "CHILDREN"         -> loop (Children :: acc) rest
-            | _                  -> loop acc rest
-          end
-      | CAPABILITY_AUTH_TYPE name :: rest ->
-          begin
-            match String.uppercase name with
-              "PLAIN" -> loop (Auth Plain :: acc) rest
-            | "LOGIN" -> loop (Auth Login :: acc) rest
-            | _ -> loop acc rest
-          end
-    in
-    loop [] caps
 
   let cache_capabilities c =
     lwt ci =
@@ -1555,41 +1544,23 @@ let set_labels s ~folder ~uids ~labels =
   store_labels s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~labels
 
 let capability s =
-  assert false
-  (* lwt ci = connect_if_needed s in *)
-  (* lwt caps = *)
-  (*   try_lwt *)
-  (*     lwt caps = run ci ImapCommands.capability in *)
-  (*     lwt () = cache_capabilities s in (\* FIXME refactor *\) *)
-  (*     Lwt.return caps *)
-  (*   with *)
-  (*     exn -> *)
-  (*       lwt () = Lwt_log.debug ~exn "capability error" in *)
-  (*       match exn with *)
-  (*         StreamError -> *)
-  (*           disconnect s >> raise_lwt (Error Connection) *)
-  (*       | ErrorP (ParseError _) -> *)
-  (*           raise_lwt (Error Parse) *)
-  (*       | _ -> *)
-  (*           raise_lwt (Error Capability) *)
-  (* in *)
-  (* Lwt.return (capabilities_of_imap_capabilities caps) *)
+  lwt caps =
+    Session.with_connected s begin fun ci ->
+      lwt caps = Conn.run ImapCommands.capability ci in
+      (* lwt () = cache_capabilities s in (\* FIXME refactor *\) *)
+      Lwt.return caps
+    end (handle_imap_error Capability)
+  in
+  Lwt.return (capabilities_of_imap_capabilities caps)
 
 let identity s client_id =
-  (* lwt ci = connect_if_needed s in *)
-  (* try_lwt *)
-  (*   run ci (ImapCommands.Id.id client_id) *)
-  (* with *)
-  (*   exn -> *)
-  (*     lwt () = Lwt_log.debug ~exn "identity error" in *)
-  (*     match exn with *)
-  (*       StreamError -> *)
-  (*         disconnect s >> raise_lwt exn *)
-  (*     | ErrorP (ParseError _) -> *)
-  (*         raise_lwt (Error Parse) *)
-  (*     | _ -> *)
-  (*         raise_lwt (Error Identity) *)
-  assert false
+  let client_id = List.map (fun (k, v) -> (k, Some v)) client_id in
+  lwt server_id =
+    Session.with_connected s
+      (Conn.run (ImapCommands.Id.id client_id))
+      (handle_imap_error Identity)
+  in
+  Lwt.return (List.map (function (k, None) -> (k, "") | (k, Some v) -> (k, v)) server_id)
 
 (* let uid_next s = *)
 (*   match s.state with *)
