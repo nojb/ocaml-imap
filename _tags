@@ -2,3 +2,4 @@ true: package(uint), package(cryptokit), package(uutf)
 <lwt/*>: package(lwt.ssl), syntax(camlp4o), package(lwt.syntax)
 <imap>: include
 true: debug
+<**/*.{ml,mli}> : bin_annot

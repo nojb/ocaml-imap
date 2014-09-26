@@ -1,0 +1,18 @@
+version = "0.20.0"
+description = "IMAP client library"
+requires = "uint cryptokit uutf"
+archive(byte) = "imap.cma"
+archive(byte, plugin) = "imap.cma"
+archive(native) = "imap.cmxa"
+exists_if = "imap.cma"
+
+package "lwt" (
+ version = "0.20.0"
+ description = "IMAP client library for Lwt"
+ requires = "imap lwt lwt.ssl lwt.unix lwt.syntax"
+ archive(byte) = "imapLwt.cma"
+ archive(byte, plugin) = "imapLwt.cma"
+ archive(native) = "imapLwt.cmxa"
+ exists_if = "imapLwt.cma"
+)
+

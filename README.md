@@ -33,7 +33,7 @@ This library (particularly the interface) has been greatly influenced by
 
 Use [OPAM][].
 
-    # opam install lwt imap
+    # opam install ssl lwt imap
 
 [OPAM]: http://opam.ocaml.org
 
@@ -104,8 +104,9 @@ Lwt API.
 
 ### Setup the toplevel
 
-    # #require "imap.top"
-    # open ImapSession
+    # #require "imap.lwt";;
+    # #require "imap.top";;
+    # open ImapLwt;;
 
 ### Creating and Authenticating a Session
 
@@ -128,7 +129,7 @@ know its UID.  The easiest way to do this is use the imap **SEARCH** command.
 In the library this is done with `search command':
 
     # #show_val search;;
-    val search : ImapSession.session -> folder:string -> key:ImapSession.search_key -> ImapSession.UidSet.t Lwt.t
+    val search : session -> folder:string -> key:search_key -> UidSet.t Lwt.t
 
 The only interesting argument is labeled `key` and specifies which messages one
 is looking for.  For example to find all messages from an email
@@ -150,7 +151,7 @@ This function returns a list of `message` values.  The `message` type is given b
 
     # #show_type message;;
     type message = {
-      uid : ImapSession.UidSet.elt;
+      uid : UidSet.elt;
       size : int;
       mod_seq_value : Modseq.t;
       gmail_labels : string list;

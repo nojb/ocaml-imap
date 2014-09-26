@@ -6,17 +6,21 @@
 #require "uutf"
 #require "cryptokit"
 
-#directory "_build/src/imap"
+#directory "_build/imap"
 #load_rec "imap.cma"
            
 #require "ssl"
 #require "lwt.ssl"
 #require "lwt.syntax"
 
-#directory "_build/src/lwt"
-#load_rec "imapSession.cma"
-#install_printer ImapSession.Uid.printer
-#install_printer ImapSession.Modseq.printer
-#install_printer ImapSession.Gmsgid.printer
-#install_printer ImapSession.Gthrid.printer
-#install_printer ImapSession.UidSet.printer
+#directory "_build/lwt"
+#load_rec "imapLwt.cma"
+#install_printer ImapLwt.Uid.printer
+#install_printer ImapLwt.Seq.printer
+#install_printer ImapLwt.Modseq.printer
+#install_printer ImapLwt.Gmsgid.printer
+#install_printer ImapLwt.Gthrid.printer
+#install_printer ImapLwt.UidSet.printer
+#install_printer ImapLwt.SeqSet.printer
+
+open ImapLwt;;

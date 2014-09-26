@@ -30,7 +30,7 @@ let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
 let _ =
-  prerr_endline "Initialising SSL...";
+  (* prerr_endline "Initialising SSL..."; *)
   Ssl.init ()
 
 exception ErrorP of error
