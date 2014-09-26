@@ -134,7 +134,7 @@ The only interesting argument is labeled `key` and specifies which messages one
 is looking for.  For example to find all messages from an email
 `"important@email.com"` in the **INBOX** folder, one can simply do:
 
-    # let uids = search s ~folder:"INBOX" ~key:(From "important@email.com")
+    # lwt uids = search s ~folder:"INBOX" ~key:(From "important@email.com")
     val uids : UidSet.t = <abstr>
 
 ### Fetching message data
@@ -143,7 +143,7 @@ Once one has the UIDs of the messages one intends to manipulate, the actual
 fetching of data is done with the function `fetch_messages_by_uid`.  The following
 will find out the size of all messages in **INBOX**.
 
-    # let msgs = fetch_messages_by_uid s ~folder:"inbox" ~request:[Size] ~uids:UidSet.all;;
+    # lwt msgs = fetch_messages_by_uid s ~folder:"inbox" ~request:[Size] ~uids:UidSet.all;;
     val msgs : message list = [ ... ]
 
 This function returns a list of `message` values.  The `message` type is given by
