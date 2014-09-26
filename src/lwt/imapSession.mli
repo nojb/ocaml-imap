@@ -350,6 +350,13 @@ val create_folder :
   folder:string -> unit Lwt.t
     (** Creates a new folder. *)
 
+val append_message :
+  session ->
+  folder:string ->
+  message:string ->
+  ?customflags:string list ->
+  flags:message_flag list -> Uid.t Lwt.t
+
 val subscribe_folder :
   session ->
   folder:string -> unit Lwt.t

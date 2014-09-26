@@ -151,6 +151,7 @@ module Uidplus : sig
   val uid_expunge : ImapSet.t -> unit command
   val uidplus_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
   val uidplus_uid_copy : ImapSet.t -> string -> (Uint32.t * ImapSet.t * ImapSet.t) command
+  val uidplus_append : string -> ?flags:flag list -> ?date_time:float -> string -> (Uint32.t * Uint32.t) command
 end
 
 module Xgmmsgid : sig

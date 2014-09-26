@@ -1087,6 +1087,24 @@ let unsubscribe_folder s ~folder =
   Session.with_folder s "INBOX" (Conn.run (ImapCommands.unsubscribe folder))
     (handle_imap_error Subscribe)
 
+let flag_to_lep = function
+    Seen          -> FLAG_SEEN
+  | Flagged       -> FLAG_FLAGGED
+  | Deleted       -> FLAG_DELETED
+  | Answered      -> FLAG_ANSWERED
+  | Draft         -> FLAG_DRAFT
+  | Forwarded     -> FLAG_KEYWORD "$Forwarded"
+  | MDNSent       -> FLAG_KEYWORD "$MDNSent"
+  | SubmitPending -> FLAG_KEYWORD "$SubmitPending"
+  | Submitted     -> FLAG_KEYWORD "$Submitted"
+
+let append_message s ~folder ~message ?(customflags = []) ~flags =
+  let flags = (List.map (fun fl -> FLAG_KEYWORD fl) customflags) @ (List.map flag_to_lep flags) in
+  Session.with_folder s folder begin fun ci ->
+    lwt _, uidresult = Conn.run (ImapCommands.Uidplus.uidplus_append folder ~flags message) ci in
+    Lwt.return uidresult
+  end (handle_imap_error Append)
+
 let copy_messages s ~folder ~uids ~dest =
   lwt uidvalidity, src_uid, dst_uid =
     Session.with_folder s folder
