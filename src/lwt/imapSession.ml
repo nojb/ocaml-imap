@@ -451,7 +451,8 @@ module Conn : sig
       mutable condstore_enabled : bool;
       mutable qresync_enabled : bool; (* FIXME set these somewhere ! *)
       mutable compressor : (Cryptokit.transform * Cryptokit.transform) option;
-      mutable capabilities : capability list }
+      mutable capabilities : capability list;
+      mutable idling : unit Lwt.u option }
   type selected_info
     (* { current_folder : string; *)
     (*   uid_next : Uid.t; *)
@@ -498,7 +499,8 @@ end = struct
       mutable condstore_enabled : bool;
       mutable qresync_enabled : bool; (* FIXME set these somewhere ! *)
       mutable compressor : (Cryptokit.transform * Cryptokit.transform) option;
-      mutable capabilities : capability list }
+      mutable capabilities : capability list;
+      mutable idling : unit Lwt.u option }
 
   type selected_info =
     { current_folder : string;
@@ -645,7 +647,8 @@ end = struct
           condstore_enabled = false;
           qresync_enabled = false;
           compressor = None;
-          capabilities = [] }
+          capabilities = [];
+          idling = None }
       in
       lwt _ = run ImapCore.greeting ci in
       c.state <- CONNECTED ci;
@@ -848,7 +851,13 @@ end = struct
   let logout c =
     match c.state with
       CONNECTED ci | LOGGEDIN ci | SELECTED (ci, _) ->
-        lwt () = try_lwt run ImapCommands.logout ci with _ -> Lwt.return_unit in
+        lwt () =
+          try_lwt
+            let () = match ci.idling with Some waker -> Lwt.wakeup waker () | None -> () in
+            run ImapCommands.logout ci
+          with
+            _ -> Lwt.return_unit
+        in
         c.state <- DISCONNECTED;
         Lwt.return_unit
     | DISCONNECTED ->
@@ -1615,10 +1624,13 @@ let idle s ~folder ?(last_known_uid = Uid.zero) () =
     else
       Session.with_folder s folder begin fun ci ->
         lwt () = Conn.run ImapCommands.Idle.idle_start ci in
-        lwt () =
-          Lwt.pick [ Conn.wait_read ci; Lwt_unix.sleep (29. *. 60.); waiter ]
-        in
-        Conn.run ImapCommands.Idle.idle_done ci
+        ci.idling <- Some waker;
+        try_lwt
+          lwt () = Lwt.pick [ Conn.wait_read ci; Lwt_unix.sleep (29. *. 60.); waiter ] in
+          Conn.run ImapCommands.Idle.idle_done ci
+        finally
+          ci.Conn.idling <- None;
+          Lwt.return_unit
       end (handle_imap_error Idle)
   in
   t, waker
