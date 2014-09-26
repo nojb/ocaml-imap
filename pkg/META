@@ -4,6 +4,7 @@ requires = "uint cryptokit uutf"
 archive(byte) = "imap.cma"
 archive(byte, plugin) = "imap.cma"
 archive(native) = "imap.cmxa"
+archive(native, plugin) = "imap.cmxs"
 exists_if = "imap.cma"
 
 package "lwt" (
@@ -13,6 +14,18 @@ package "lwt" (
  archive(byte) = "imapLwt.cma"
  archive(byte, plugin) = "imapLwt.cma"
  archive(native) = "imapLwt.cmxa"
+ archive(native, plugin) = "imapLwt.cmxs"
  exists_if = "imapLwt.cma"
+
+ package "top" (
+  version = "0.20.0"
+  description = "Toplevel support for imap.lwt"
+  requires = "imap.lwt"
+  archive(byte) = "imapLwtInstallPrinters.cma"
+  archive(byte, plugin) = "imapLwtInstallPrinters.cma"
+  archive(native) = "imapLwtInstallPrinters.cmxa"
+  archive(native, plugin) = "imapLwtInstallPrinters.cmxs"
+  exists_if = "imapLwtInstallPrinters.cma"
+ )
 )
 

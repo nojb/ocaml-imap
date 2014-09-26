@@ -3,3 +3,4 @@ true: package(uint), package(cryptokit), package(uutf)
 <imap>: include
 true: debug
 <**/*.{ml,mli}> : bin_annot
+<top/*>: package(compiler-libs)

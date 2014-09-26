@@ -18,6 +18,7 @@ let () =
       Pkg.lib ~cond:cond_lwt_ssl ~exts:Exts.module_library "lwt/imapLwt" ::
       Pkg.doc "README.md" ::
       Pkg.doc "CHANGES" ::
+      Pkg.lib ~exts:Exts.library "top/imapLwtInstallPrinters" ::
       Pkg.lib ~exts:Exts.interface "imap/imapTypes" ::
       (List.map (fun u -> Pkg.lib ~exts:Exts.interface_opt (Printf.sprintf "imap/imap%s" u)) imap_units)
     end
