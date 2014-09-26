@@ -222,7 +222,7 @@ let fresh_state = {
 
 let greeting =
   liftP ImapParser.greeting >>= fun g ->
-  ImapPrint.greeting_print Format.err_formatter g;
+  (* ImapPrint.greeting_print Format.err_formatter g; *)
   modify (fun s -> greeting_store s g) >>
   match g with
     GREETING_RESP_COND_BYE r ->
@@ -235,7 +235,7 @@ let greeting =
       | RESP_COND_AUTH_PREAUTH -> ret `PreAuth
 
 let handle_response r =
-  ImapPrint.response_print Format.err_formatter r;
+  (* ImapPrint.response_print Format.err_formatter r; *)
   let imap_response =
     match r.rsp_resp_done with
       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}

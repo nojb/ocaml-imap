@@ -23,8 +23,8 @@
 open ImapTypes
 
 let _ =
-  Lwt_log.default := Lwt_log.channel ~template:"$(message)" ~close_mode:`Keep ~channel:Lwt_io.stderr ();
-  Lwt_log.Section.set_level Lwt_log.Section.main Lwt_log.Debug
+  Lwt_log.default := Lwt_log.channel ~template:"$(message)" ~close_mode:`Keep ~channel:Lwt_io.stderr ()
+  (* Lwt_log.Section.set_level Lwt_log.Section.main Lwt_log.Debug *)
 
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
