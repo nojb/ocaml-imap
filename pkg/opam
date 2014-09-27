@@ -6,8 +6,8 @@ ocaml-version: [ >= "4.02.0" ]
 homepage: "http://www.github.com/nojb/ocaml-imap"
 bug-reports: "http://www.github.com/nojb/ocaml-imap/issues"
 build:
-  [ "ocaml" "pkg/build.ml" "native=%{ocaml-native}%"
-                           "native-dynlink=%{ocaml-native-dynlink}%"
+  [ "ocaml" "pkg/build.ml" "native=true" # TODO fixme
+                           "native-dynlink=true" # TODO fixme
                            "lwt=%{lwt:installed}%"
                            "ssl=%{ssl:installed}%" ]
 depends: [ "uint" "cryptokit" "uutf" ]
