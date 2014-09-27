@@ -33,7 +33,7 @@ This library (particularly the interface) has been greatly influenced by
 
 Use [OPAM][].
 
-    # opam install ssl lwt imap
+    opam install ssl lwt imap
 
 [OPAM]: http://opam.ocaml.org
 
