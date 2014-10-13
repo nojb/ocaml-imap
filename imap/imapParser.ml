@@ -21,7 +21,7 @@
    SOFTWARE. *)
 
 open ImapTypes
-  
+
 type 'a t =
     Buffer.t -> int -> 'a parse_result
 
@@ -30,7 +30,12 @@ let run p b i = p b i
 let run_string p s =
   let b = Buffer.create 0 in
   Buffer.add_string b s;
-  match p b 0 with Ok (x, _) -> Some x | _ -> None
+  let rec loop = function
+    | Ok (x, _) -> Some x
+    | Fail _ -> None
+    | Need k -> loop (k End)
+  in
+  loop (p b 0)
 
 let bind p f b i =
   let rec loop =
@@ -266,7 +271,7 @@ nz-number       = digit-nz *DIGIT
 *)
 let nz_number =
   app Uint32.of_string nz_digits
-    
+
 let nz_number' =
   app int_of_string nz_digits
 
@@ -329,7 +334,7 @@ let extension_parser : type a. a extension_kind -> a t = fun kind ->
 
 let extension_parser : type a. a extension_kind -> a t = fun kind ->
   delay extension_parser kind
-    
+
 (*
 auth-type       = atom
                     ; Defined by [SASL]
@@ -650,7 +655,7 @@ let envelope =
 
 let media_subtype =
   imap_string
-    
+
 (*
 media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
                   "MESSAGE" / "VIDEO") DQUOTE) / string) SP
@@ -818,7 +823,7 @@ let body_ext_1part =
         {bd_md5; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []}
     end
     {bd_md5 = None; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []}
-    
+
 (*
 body-ext-mpart  = body-fld-param [SP body-fld-dsp [SP body-fld-lang
                   [SP body-fld-loc *(SP body-extension)]]]
@@ -844,7 +849,7 @@ let body_ext_mpart =
         {bd_parameter; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []}
     end
     {bd_parameter; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []}
-    
+
 (*
 body-type-basic = media-basic SP body-fields
                     ; MESSAGE subtype MUST NOT be "RFC822"
@@ -954,7 +959,7 @@ let date_time =
   char ' ' >> zone >>= fun dt_zone ->
   char '\"' >>
   ret {dt_day; dt_month; dt_year; dt_hour; dt_min; dt_sec; dt_zone}
-    
+
 let header_fld_name =
   astring
 
@@ -1020,7 +1025,7 @@ let section =
 let uint64 =
   accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
   try ret (Uint64.of_string s) with _ -> fail
- 
+
 (*
 msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
                   "RFC822" [".HEADER" / ".TEXT"] SP nstring /
@@ -1064,7 +1069,7 @@ let msg_att_dynamic =
   sep (char ' ') flag_fetch >>= fun flags ->
   char ')' >>
   ret flags
-    
+
 (*
 msg-att         = "(" (msg-att-dynamic / msg-att-static)
                    *(SP (msg-att-dynamic / msg-att-static)) ")"
@@ -1138,7 +1143,7 @@ let message_data =
   alt
     (str "EXPUNGE" >> ret (MESSAGE_DATA_EXPUNGE n))
     (str "FETCH" >> char ' ' >> msg_att >>= fun att -> ret (MESSAGE_DATA_FETCH (att, n)))
- 
+
 (*
 tag             = 1*<any ASTRING-CHAR except "+">
 *)
@@ -1240,3 +1245,73 @@ let response =
   rep cont_req_or_resp_data >>= fun rsp_cont_req_or_resp_data_list ->
   response_done >>= fun rsp_resp_done ->
   ret {rsp_cont_req_or_resp_data_list; rsp_resp_done}
+
+(* Parsing headers *)
+
+type state =
+  | START
+  | CR
+  | LF
+  | WSP
+  | OUT
+
+let peek_char b i =
+  let rec loop () =
+    if i >= Buffer.length b then
+      Need (function End -> Ok (None, i) | More -> loop ())
+    else
+      Ok (Some (Buffer.nth b i), i)
+  in
+  loop ()
+
+let unstructured =
+  let rec loop = function
+    | OUT ->
+        ret ()
+    | START ->
+        begin
+          peek_char >>= function
+          | None -> fail
+          | Some '\r' -> any_char >> loop CR
+          | Some '\n' -> any_char >> loop LF
+          | Some _ -> any_char >> loop START
+        end
+    | CR ->
+        begin
+          peek_char >>= function
+          | None -> fail
+          | Some '\n' -> any_char >> loop LF
+          | Some _ -> any_char >> loop START
+        end
+    | LF ->
+        begin
+          peek_char >>= function
+          | None -> loop OUT
+          | Some ' ' | Some '\t' -> any_char >> loop WSP
+          | Some _ -> loop OUT
+        end
+    | WSP ->
+        begin
+          peek_char >>= function
+          | None -> fail
+          | Some '\r' -> any_char >> loop CR
+          | Some '\n' -> any_char >> loop LF
+          | Some _ -> any_char >> loop START
+        end
+  in
+  rep_ (alt (char ' ') (char '\t')) >> pos >>= fun i ->
+  loop START >> take_from i
+
+let is_ftext = function
+  | '\033' .. '\057'
+  | '\059' .. '\126' -> true
+  | _ -> false
+
+let field_name =
+  accum is_ftext
+
+let imf_field =
+  field_name >>= fun h ->
+  char ':' >>
+  unstructured >>= fun v ->
+  ret (h, v)

@@ -23,12 +23,12 @@
 (** CPS Combinator parsers on strings *)
 
 open ImapTypes
-  
+
 type 'a t
 
 val run : 'a t -> Buffer.t -> int -> 'a parse_result
 val run_string : 'a t -> string -> 'a option
-  
+
 val bind : 'a t -> ('a -> 'b t) -> 'b t
 val alt : 'a t -> 'a t -> 'a t
 val altn : 'a t list -> 'a t
@@ -45,7 +45,7 @@ val rep1 : 'a t -> 'a list t
 val sep : _ t -> 'a t -> 'a list t
 val sep1 : _ t -> 'a t -> 'a list t
 val delay : ('a -> 'b t) -> 'a -> 'b t
-    
+
 val char : char -> char t
 val str : string -> string t (* case-insensitive *)
 val accum : (char -> bool) -> string t
@@ -91,3 +91,5 @@ val continue_req : continue_req t
 val cont_req_or_resp_data : cont_req_or_resp_data t
 
 val response : response t
+
+val imf_field : (string * string) t
