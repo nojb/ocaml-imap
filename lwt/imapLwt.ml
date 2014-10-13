@@ -127,7 +127,7 @@ end = struct
         fprintf ppf "%s" (Uint32.to_string l)
       else
         fprintf ppf "%s-%s" (Uint32.to_string l) (Uint32.to_string r)
-    in    
+    in
     match s with
       [] -> fprintf ppf "(empty)"
     | x :: [] -> pr ppf x
@@ -158,7 +158,7 @@ module Uid = Uint32
 module UidSet = IndexSet
 module Seq = Uint32
 module SeqSet = IndexSet
-  
+
 module Modseq = Uint64
 module Gmsgid = Uint64
 module Gthrid = Uint64
@@ -166,7 +166,7 @@ module Gthrid = Uint64
 type connection_type =
     Clear
   | TLS of string option
-  
+
 type folder_flag =
     Marked
   | Unmarked
@@ -400,6 +400,12 @@ type envelope =
     reply_to : address list;
     subject : string }
 
+module M = Map.Make
+    (struct
+      type t = string
+      let compare s1 s2 = String.compare (String.lowercase s1) (String.lowercase s2)
+    end)
+
 type message =
   { uid : Uid.t;
     size : int;
@@ -410,7 +416,8 @@ type message =
     flags : message_flag list;
     internal_date : float;
     main_part : part option;
-    envelope : envelope option }
+    envelope : envelope option;
+    extra_headers : string M.t }
 
 type sync_result =
   { vanished_messages : IndexSet.t;
@@ -596,7 +603,7 @@ end = struct
           Lwt.return ci
       | DISCONNECTED ->
           assert_lwt false
-    in                
+    in
     lwt caps =
       try_lwt
         if List.length ci.imap_state.cap_info > 0 then
@@ -644,7 +651,7 @@ end = struct
             lwt () = Lwt_log.debug_f "Certificate issuer: %s" (Ssl.get_issuer cert) in
             lwt () = Lwt_log.debug_f "Subject: %s" (Ssl.get_subject cert) in
             Lwt.return sock
-      in    
+      in
       let ci =
         { imap_state = ImapCore.fresh_state;
           sock;
@@ -1066,7 +1073,7 @@ let imap_mailbox_flags_to_flags imap_flags =
 (*             None *)
 (*   | Some c -> *)
 (*       Lwt.return c *)
-        
+
 let fetch_all_folders s =
   let results mb_list =
     let flags = imap_mailbox_flags_to_flags mb_list.mb_flag in
@@ -1083,11 +1090,11 @@ let fetch_all_folders s =
 let rename_folder s ~folder ~new_name =
   Session.with_folder s "INBOX" (Conn.run (ImapCommands.rename folder new_name))
     (handle_imap_error Rename)
-  
+
 let delete_folder s ~folder =
   Session.with_folder s "INBOX" (Conn.run (ImapCommands.delete folder))
     (handle_imap_error Delete)
-  
+
 let create_folder s ~folder =
   Session.with_folder s "INBOX" (Conn.run (ImapCommands.create folder))
     (handle_imap_error Create)
@@ -1194,7 +1201,7 @@ let import_imap_envelope env =
     bcc = List.map import_imap_address env.env_bcc;
     in_reply_to = [env.env_in_reply_to]; (* fixme msg_id_list_parse *)
     subject = env.env_subject }
-  
+
 let import_imap_body body =
   let basic_part part_id basic ext =
     let mime_type = match basic.bd_media_basic.med_basic_type with
@@ -1276,7 +1283,7 @@ let import_imap_body body =
   match body with
     BODY_1PART _ -> part ["1"] body
   | BODY_MPART _ -> part [] body
-  
+
 type request_type =
     UID
   | Sequence
@@ -1290,7 +1297,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
   let needs_gmail_thread_id = ref (List.mem (GmailThreadID : messages_request_kind) request) in
   let needs_gmail_message_id = ref (List.mem (GmailMessageID : messages_request_kind) request) in
   let needs_body = ref (List.mem Structure request) in
-  
+
   let rec loop acc headers = function
       [] ->
         List.rev acc, List.rev headers
@@ -1325,7 +1332,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
   let fetch_atts, headers = loop [] [] request in
 
   let needs_header = List.length headers > 0 in
-  
+
   let fetch_atts =
     if needs_header then
       FETCH_ATT_BODY_PEEK_SECTION
@@ -1333,7 +1340,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     else
       fetch_atts
   in
-  
+
   let fetch_type = FETCH_TYPE_FETCH_ATT_LIST fetch_atts in
 
   let msg_att_handler msg_att =
@@ -1347,7 +1354,8 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     let internal_date = ref 0. in
     let main_part = ref None in
     let envelope = ref None in
-      
+    let extra_headers = ref M.empty in
+
     let handle_msg_att_item = function
         MSG_ATT_ITEM_DYNAMIC flags' ->
           flags := flags_from_lep_att_dynamic flags';
@@ -1374,7 +1382,22 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
       | MSG_ATT_ITEM_EXTENSION (ImapCommands.XGmExt1.MSG_ATT_XGMTHRID gmail_thread_id') ->
           gmail_thread_id := gmail_thread_id';
           needs_gmail_thread_id := false
-      | _ -> (* FIXME *) ()
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_BODY_SECTION
+                          {sec_section = Some (SECTION_SPEC_SECTION_MSGTEXT t); sec_body_part = sl})
+      | MSG_ATT_ITEM_STATIC (MSG_ATT_BODY_SECTION
+                          {sec_section =
+                             Some (SECTION_SPEC_SECTION_PART (_, Some (SECTION_TEXT_MSGTEXT t)));
+                           sec_body_part = sl}) ->
+          begin
+            match ImapParser.(run_string (rep imf_field) sl) with
+            | Some fields ->
+                extra_headers := List.fold_left (fun hdrs (h, v) -> M.add h v hdrs) !extra_headers fields
+            | None ->
+                ()
+          end
+      | _ ->
+          (* TODO *)
+          ()
     in
 
     List.iter handle_msg_att_item (fst msg_att);
@@ -1384,7 +1407,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     { uid = !uid; size = !size; mod_seq_value = !mod_seq_value;
       gmail_labels = !gmail_labels; gmail_message_id = !gmail_message_id;
       gmail_thread_id = !gmail_thread_id; flags = !flags; internal_date = !internal_date;
-      main_part = !main_part; envelope = !envelope }
+      main_part = !main_part; envelope = !envelope; extra_headers = !extra_headers }
   in
 
   let vanished = ref None in
@@ -1418,7 +1441,7 @@ let fetch_messages s ~folder ~request ~req_type ?(modseq = Modseq.zero) ?mapping
     | Some v -> IndexSet.of_imap_set v.ImapCommands.QResync.qr_known_uids
   in
   Lwt.return { vanished_messages; modified_or_added_messages }
-  
+
 let fetch_messages_by_uid s ~folder ~request ~uids =
   let imapset = IndexSet.to_imap_set uids in
   lwt sr = fetch_messages s ~folder ~request ~req_type:UID ~imapset () in
@@ -1452,7 +1475,7 @@ let fetch_message_by_uid s ~folder ~uid =
       (handle_imap_error Fetch)
   in
   extract_body result
-  
+
 let fetch_number_uid_mapping s ~folder ~from_uid ~to_uid =
   let result = Hashtbl.create 0 in
   let imap_set = ImapSet.interval from_uid to_uid in
@@ -1551,11 +1574,11 @@ let store_flags s ~folder ~uids ~kind ~flags ?(customflags = []) () =
 let add_flags s ~folder ~uids ~flags ?customflags () =
   let uids = UidSet.to_imap_set uids in
   store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_ADD ~flags ?customflags ()
-    
+
 let remove_flags s ~folder ~uids ~flags ?customflags () =
   let uids = UidSet.to_imap_set uids in
   store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_REMOVE ~flags ?customflags ()
-    
+
 let set_flags s ~folder ~uids ~flags ?customflags () =
   let uids = UidSet.to_imap_set uids in
   store_flags s ~folder ~uids ~kind:STORE_ATT_FLAGS_SET ~flags ?customflags ()

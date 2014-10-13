@@ -57,7 +57,7 @@ module Uid : Num
 module UidSet : IndexSet with type elt = Uid.t
 module Seq : Num
 module SeqSet : IndexSet with type elt = Seq.t
-  
+
 module Modseq : Num
 module Gmsgid : Num (** Gmail message id *)
 module Gthrid : Num (** Gmail thread id *)
@@ -65,7 +65,7 @@ module Gthrid : Num (** Gmail thread id *)
 type connection_type =
     Clear
   | TLS of string option
-  
+
 type folder_flag =
     Marked
   | Unmarked
@@ -293,6 +293,8 @@ type envelope =
     reply_to : address list;
     subject : string }
 
+module M : Map.S with type key = string
+
 type message =
   { uid : Uid.t;
     size : int;
@@ -303,7 +305,8 @@ type message =
     flags : message_flag list;
     internal_date : float;
     main_part : part option;
-    envelope : envelope option }
+    envelope : envelope option;
+    extra_headers : string M.t }
 
 exception Error of error
 
@@ -324,7 +327,7 @@ val create_session :
 val logout :
   session -> unit Lwt.t
     (** Disconnects from the server. *)
-      
+
 val folder_status :
   session ->
   folder:string -> folder_status Lwt.t
@@ -343,12 +346,12 @@ val rename_folder :
   folder:string ->
   new_name:string -> unit Lwt.t
     (** Renames a folder. *)
-  
+
 val delete_folder :
   session ->
   folder:string -> unit Lwt.t
     (** Deletes a folder. *)
-  
+
 val create_folder :
   session ->
   folder:string -> unit Lwt.t
