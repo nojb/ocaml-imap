@@ -22,18 +22,18 @@
 
 open ImapTypes
 open ImapControl
-  
+
 val string_of_error : error -> string
-  
+
 type 'a command = ('a, state, error) control
 
-val response_data_store : state -> response_data -> state
+val response_data_store : state -> response_data -> unit
 
-val greeting_store : state -> greeting -> state
+val greeting_store : state -> greeting -> unit
 
-val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> state
+val cont_req_or_resp_data_store : state -> cont_req_or_resp_data -> unit
 
-val response_store : state -> response -> state
+val response_store : state -> response -> unit
 
 val handle_response : response -> unit command
 
@@ -43,11 +43,10 @@ val send_tag : unit command
 
 (** {2 IMAP sessions} *)
 
-val fresh_selection_info : selection_info
+val fresh_selection_info : unit -> selection_info
 
-val fresh_state : state
+val fresh_state : unit -> state
 
 val greeting : [ `NeedsAuth | `PreAuth ] command
 
 val std_command : unit command -> unit command
-

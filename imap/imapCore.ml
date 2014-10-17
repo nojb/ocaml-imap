@@ -34,7 +34,7 @@ let string_of_error = function
 
 type 'a command = ('a, state, error) control
 
-let fresh_response_info = {
+let fresh_response_info () = {
   rsp_alert = "";
   rsp_parse = "";
   rsp_badcharset = [];
@@ -49,7 +49,7 @@ let fresh_response_info = {
   rsp_other = ("", None)
 }
 
-let fresh_selection_info = {
+let fresh_selection_info () = {
   sel_perm_flags = [];
   sel_perm = MAILBOX_READONLY;
   sel_uidnext = Uint32.zero;
@@ -62,78 +62,70 @@ let fresh_selection_info = {
 }
 
 let extension_data_store st k d =
-  {st with rsp_info =
-             {st.rsp_info with rsp_extension_list = st.rsp_info.rsp_extension_list @ [EXTENSION_DATA (k, d)]}}
+  st.rsp_info.rsp_extension_list <- st.rsp_info.rsp_extension_list @ [EXTENSION_DATA (k, d)]
 
 let resp_text_store s {rsp_code; rsp_text} =
   match rsp_code with
     RESP_TEXT_CODE_ALERT ->
-      {s with rsp_info = {s.rsp_info with rsp_alert = rsp_text}}
+      s.rsp_info.rsp_alert <- rsp_text
   | RESP_TEXT_CODE_BADCHARSET csets ->
-      {s with rsp_info = {s.rsp_info with rsp_badcharset = csets}}
+      s.rsp_info.rsp_badcharset <- csets
   | RESP_TEXT_CODE_CAPABILITY_DATA caps ->
-      {s with cap_info = caps}
+      s.cap_info <- caps
   | RESP_TEXT_CODE_PARSE ->
-      {s with rsp_info = {s.rsp_info with rsp_parse = rsp_text}}
+      s.rsp_info.rsp_parse <- rsp_text
   | RESP_TEXT_CODE_PERMANENTFLAGS flags ->
-      {s with sel_info = {s.sel_info with sel_perm_flags = flags}}
+      s.sel_info.sel_perm_flags <- flags
   | RESP_TEXT_CODE_READ_ONLY ->
-      {s with sel_info = {s.sel_info with sel_perm = MAILBOX_READONLY}}
+      s.sel_info.sel_perm <- MAILBOX_READONLY
   | RESP_TEXT_CODE_READ_WRITE ->
-      {s with sel_info = {s.sel_info with sel_perm = MAILBOX_READWRITE}}
+      s.sel_info.sel_perm <- MAILBOX_READWRITE
   | RESP_TEXT_CODE_TRYCREATE ->
-      {s with rsp_info = {s.rsp_info with rsp_trycreate = true}}
+      s.rsp_info.rsp_trycreate <- true
   | RESP_TEXT_CODE_UIDNEXT uid ->
-      {s with sel_info = {s.sel_info with sel_uidnext = uid}}
+      s.sel_info.sel_uidnext <- uid
   | RESP_TEXT_CODE_UIDVALIDITY uid ->
-      {s with sel_info = {s.sel_info with sel_uidvalidity = uid}}
+      s.sel_info.sel_uidvalidity <- uid
   | RESP_TEXT_CODE_UNSEEN unseen ->
-      {s with sel_info = {s.sel_info with sel_first_unseen = unseen}}
+      s.sel_info.sel_first_unseen <- unseen
   | RESP_TEXT_CODE_EXTENSION e ->
       extension_data_store s RESP_TEXT_CODE e
   | RESP_TEXT_CODE_OTHER other ->
-      {s with rsp_info = {s.rsp_info with rsp_other = other}}
+      s.rsp_info.rsp_other <- other
   | RESP_TEXT_CODE_NONE ->
-      s
+      ()
 
 let mailbox_data_store s =
   function
     MAILBOX_DATA_FLAGS flags ->
-      {s with sel_info = {s.sel_info with sel_flags = flags}}
+      s.sel_info.sel_flags <- flags
   | MAILBOX_DATA_LIST mb ->
-      {s with rsp_info =
-                {s.rsp_info with rsp_mailbox_list =
-                                   s.rsp_info.rsp_mailbox_list @ [mb]}}
+      s.rsp_info.rsp_mailbox_list <- s.rsp_info.rsp_mailbox_list @ [mb]
   | MAILBOX_DATA_LSUB mb ->
-      {s with rsp_info =
-                {s.rsp_info with rsp_mailbox_list =
-                                   s.rsp_info.rsp_mailbox_lsub @ [mb]}}
+      s.rsp_info.rsp_mailbox_list <- s.rsp_info.rsp_mailbox_lsub @ [mb]
   | MAILBOX_DATA_SEARCH results ->
-      {s with rsp_info = {s.rsp_info with
-                          rsp_search_results = s.rsp_info.rsp_search_results @ results}}
+      s.rsp_info.rsp_search_results <- s.rsp_info.rsp_search_results @ results
   | MAILBOX_DATA_STATUS status ->
-      {s with rsp_info = {s.rsp_info with rsp_status = status}}
+      s.rsp_info.rsp_status <- status
   | MAILBOX_DATA_EXISTS n ->
-      {s with sel_info = {s.sel_info with sel_exists = Some n}}
+      s.sel_info.sel_exists <- Some n
   | MAILBOX_DATA_RECENT n ->
-      {s with sel_info = {s.sel_info with sel_recent = Some n}}
+      s.sel_info.sel_recent <- Some n
   | MAILBOX_DATA_EXTENSION_DATA e ->
       extension_data_store s MAILBOX_DATA e
 
 let message_data_store s =
   function
     MESSAGE_DATA_EXPUNGE n ->
-      let s =
-        {s with rsp_info = {s.rsp_info with rsp_expunged = s.rsp_info.rsp_expunged @ [n]}}
-      in
+      s.rsp_info.rsp_expunged <- s.rsp_info.rsp_expunged @ [n];
       begin match s.sel_info.sel_exists with
         | Some n ->
-            {s with sel_info = {s.sel_info with sel_exists = Some (n-1)}}
+            s.sel_info.sel_exists <- Some (n-1)
         | None ->
-            s
+            ()
       end
   | MESSAGE_DATA_FETCH att ->
-      {s with rsp_info = {s.rsp_info with rsp_fetch_list = s.rsp_info.rsp_fetch_list @ [att]}}
+      s.rsp_info.rsp_fetch_list <- s.rsp_info.rsp_fetch_list @ [att]
 
 let resp_cond_state_store s {rsp_text = r} =
   resp_text_store s r
@@ -152,7 +144,7 @@ let response_data_store s =
   | RESP_DATA_MESSAGE_DATA r ->
       message_data_store s r
   | RESP_DATA_CAPABILITY_DATA cap_info ->
-      {s with cap_info}
+      s.cap_info <- cap_info
   | RESP_DATA_EXTENSION_DATA e ->
       extension_data_store s RESPONSE_DATA e
 
@@ -187,31 +179,30 @@ let response_done_store s =
 
 let cont_req_or_resp_data_store s =
   function
-    RESP_CONT_REQ r ->
-      s
+    RESP_CONT_REQ _ ->
+      ()
   | RESP_CONT_DATA r ->
       response_data_store s r
 
 let response_store s {rsp_cont_req_or_resp_data_list; rsp_resp_done} =
-  let s = {s with rsp_info = fresh_response_info} in
+  s.rsp_info <- fresh_response_info ();
   (* FIXME : check if this does not conflict with the implementation of IDLE -
      it seems that the response_data_store there gets discarded ? *)
-  response_done_store
-    (List.fold_left cont_req_or_resp_data_store s rsp_cont_req_or_resp_data_list)
-    rsp_resp_done
+  List.iter (cont_req_or_resp_data_store s) rsp_cont_req_or_resp_data_list;
+  response_done_store s rsp_resp_done
 
 let debug =
   try let s = Sys.getenv "IMAP_DEBUG" in ref (s <> "0")
   with Not_found -> ref false
 
-let fresh_state = {
-  rsp_info = fresh_response_info;
-  sel_info = fresh_selection_info;
+let fresh_state () = {
+  rsp_info = fresh_response_info ();
+  sel_info = fresh_selection_info ();
   cap_info = [];
   imap_response = "";
   current_tag = None;
   next_tag = 0;
-  out_buf = [];
+  out_buf = Buffer.create 0;
   in_buf = Buffer.create 0;
   in_pos = 0
 }
@@ -222,10 +213,10 @@ let greeting =
   modify (fun s -> greeting_store s g) >>
   match g with
     GREETING_RESP_COND_BYE r ->
-      modify (fun s -> {s with imap_response = r.rsp_text}) >>
+      modify (fun s -> s.imap_response <- r.rsp_text) >>
       fail Bye
   | GREETING_RESP_COND_AUTH r ->
-      modify (fun s -> {s with imap_response = r.rsp_text.rsp_text}) >>
+      modify (fun s -> s.imap_response <- r.rsp_text.rsp_text) >>
       match r.rsp_type with
         RESP_COND_AUTH_OK -> ret `NeedsAuth
       | RESP_COND_AUTH_PREAUTH -> ret `PreAuth
@@ -237,7 +228,7 @@ let handle_response r =
       RESP_DONE_TAGGED {rsp_cond_state = {rsp_text = {rsp_text = s}}}
     | RESP_DONE_FATAL {rsp_text = s} -> s
   in
-  modify (fun s -> {s with imap_response}) >>
+  modify (fun s -> s.imap_response <- imap_response) >>
   gets (fun s -> s.current_tag) >>= fun tag ->
   let bad_tag t = match tag with Some tag -> tag <> t | None -> true in
   match r.rsp_resp_done with
@@ -255,7 +246,7 @@ let handle_response r =
 let send_tag =
   gets (fun s -> s.next_tag) >>= fun tag ->
   let ctag = string_of_int tag in
-  modify (fun s -> {s with current_tag = Some ctag; next_tag = tag+1}) >>
+  modify (fun s -> s.current_tag <- Some ctag; s.next_tag <- tag+1) >>
   send ctag
 
 let std_command sender =

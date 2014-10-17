@@ -76,10 +76,10 @@ module QResync = struct
   type qresync_vanished =
     { qr_earlier : bool;
       qr_known_uids : ImapSet.t }
-  
+
   type response_data_extension +=
        RESP_DATA_VANISHED of qresync_vanished
-     
+
   let parse : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
     match kind with
@@ -143,7 +143,7 @@ module QResync = struct
     in
     raw cmd >> char ' ' >> message_set set >> char ' ' >>
     fetch_type ft >> opt send_changedsince changedsince
-  
+
   let send_fetch_param mod_sequence vanished =
     let open ImapSend in
     if mod_sequence = Uint64.zero then
@@ -153,7 +153,7 @@ module QResync = struct
       char ' ' >> send (Uint64.to_string mod_sequence) >>
       (if vanished then char ' ' >> send "VANISHED" else ret ()) >>
       char ')'
-    
+
   let fetch_qresync_vanished_aux cmd set fetch_type mod_sequence vanished =
     std_command (send_fetch cmd set fetch_type >> send_fetch_param mod_sequence vanished) >>
     gets get_vanished >>= fun vanished ->
@@ -165,7 +165,7 @@ module QResync = struct
 
   let uid_fetch_qresync_vanished =
     fetch_qresync_vanished_aux "UID FETCH"
-  
+
   let fetch_qresync set fetch_type mod_sequence =
     fetch_qresync_vanished_aux "FETCH" set fetch_type mod_sequence true
 
@@ -279,7 +279,7 @@ attr-flag-extension = "\\" atom
 
 attr-flag-keyword   = atom
 *)
-  
+
 module Condstore = struct
   type msg_att_extension +=
        MSG_ATT_MODSEQ of Uint64.t
@@ -291,10 +291,10 @@ module Condstore = struct
 
   type status_info_extension +=
        STATUS_ATT_HIGHESTMODSEQ of Uint64.t
-  
+
   type mailbox_data_extension +=
        MAILBOX_DATA_SEARCH of Uint32.t list * Uint64.t
-     
+
   let fetch_att_modseq = FETCH_ATT_EXTENSION "MODSEQ"
 
   let condstore_printer : type a. a extension_kind -> a -> (Format.formatter -> unit) option =
@@ -443,12 +443,12 @@ module Condstore = struct
       in
       loop s.rsp_info.rsp_extension_list
     in
-    modify (fun s -> {s with sel_info = fresh_selection_info}) >>
+    modify (fun s -> s.sel_info <- fresh_selection_info ()) >>
     std_command cmd_sender >> gets cmd_handler
 
   let select_condstore mb =
     select_condstore_optional mb "SELECT" true
-      
+
   let select mb =
     select_condstore_optional mb "SELECT" false >> ret ()
 
@@ -460,16 +460,16 @@ module Condstore = struct
 
   let fetch set fetch_type =
     QResync.fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
-      
+
   let uid_fetch set fetch_type =
     QResync.uid_fetch_qresync_vanished set fetch_type Uint64.zero false >|= fst
-    
+
   let fetch_changedsince set modseq fetch_type =
     QResync.fetch_qresync_vanished set fetch_type modseq false >|= fst
-    
+
   let uid_fetch_changedsince set modseq fetch_type =
     QResync.uid_fetch_qresync_vanished set fetch_type modseq false >|= fst
-    
+
   let store_aux cmd set unchangedsince flags =
     let sender =
       let open ImapSend in
@@ -503,7 +503,7 @@ module Condstore = struct
 
   let uid_store_unchangedsince set unchangedsince flags =
     store_aux "UID STORE" set (Some unchangedsince) flags
-    
+
   let _ =
     ImapPrint.(register_printer {print = condstore_printer});
     ImapParser.(register_parser {parse = condstore_parse})
@@ -519,7 +519,7 @@ let logout =
   catch (std_command (ImapSend.raw "LOGOUT")) (function Bye -> ret () | _ as e -> fail e)
 
 let starttls =
-  std_command (ImapSend.raw "STARTTLS") >> modify (fun st -> {st with cap_info = []})
+  std_command (ImapSend.raw "STARTTLS") >> modify (fun st -> st.cap_info <- [])
 
 let authenticate auth =
   let step data =
@@ -561,7 +561,7 @@ let authenticate auth =
 let login user pass =
   std_command
     (ImapSend.(raw "LOGIN" >> char ' ' >> string user >> char ' ' >> string pass))
-  
+
 (* let compress s = *)
 (*   let ci = connection_info s in *)
 (*   let cmd = S.raw "COMPRESS DEFLATE" in *)
@@ -583,23 +583,23 @@ let select mbox =
 let create mbox =
   std_command
     (ImapSend.(raw "CREATE" >> char ' ' >> mailbox mbox))
- 
+
 let delete mbox =
   std_command
     (ImapSend.(raw "DELETE" >> char ' ' >> mailbox mbox))
- 
+
 let rename oldbox newbox =
   std_command
     (ImapSend.(raw "RENAME" >> char ' ' >> mailbox oldbox >> char ' ' >> mailbox newbox))
- 
+
 let subscribe mbox =
   std_command
     (ImapSend.(raw "SUBSCRIBE" >> char ' ' >> mailbox mbox))
- 
+
 let unsubscribe mbox =
   std_command
     (ImapSend.(raw "UNSUBCRIBE" >> char ' ' >> mailbox mbox))
- 
+
 let list mbox list_mb =
   std_command (ImapSend.(raw "LIST" >> char ' ' >> mailbox mbox >> char ' ' >> mailbox list_mb)) >>
   gets (fun s -> s.rsp_info.rsp_mailbox_list)
@@ -971,7 +971,7 @@ module XGmExt1 = struct
   let fetch_att_xgmmsgid = FETCH_ATT_EXTENSION "X-GM-MSGID"
 
   let fetch_att_xgmthrid = FETCH_ATT_EXTENSION "X-GM-THRID"
-      
+
   let fetch_att_xgmlabels = FETCH_ATT_EXTENSION "X-GM-LABELS"
 
   let xgmext1_printer : type a. a extension_kind -> a -> _ option =
@@ -995,7 +995,7 @@ module XGmExt1 = struct
 
   let xgmext1_parser : type a. a extension_kind -> a ImapParser.t = fun kind ->
     let open ImapParser in
-    let msgid = 
+    let msgid =
       str "X-GM-MSGID" >> char ' ' >> uint64 >>= fun n ->
       ret (MSG_ATT_XGMMSGID n)
     in
@@ -1155,7 +1155,7 @@ module Compress = struct
         str "COMPRESSIONACTIVE" >> ret RESP_TEXT_CODE_COMPRESSIONACTIVE
     | _ ->
         fail
-       
+
   let compress = std_command (send "COMPRESS DEFLATE")
 
   let _ =
@@ -1168,9 +1168,9 @@ module Idle = struct
     liftP ImapParser.response >>= fun r ->
     modify (fun s -> response_store s r) >>
     handle_response r
-    
+
   let idle_start =
-    modify (fun st -> {st with sel_info = { st.sel_info with sel_exists = None; sel_recent = None}}) >>
+    modify (fun st -> st.sel_info.sel_exists <- None; st.sel_info.sel_recent <- None) >>
     ImapSend.(send_tag >> char ' ' >> send "IDLE" >> crlf) >>
     flush >>
     liftP ImapParser.(rep_ response_data) >>

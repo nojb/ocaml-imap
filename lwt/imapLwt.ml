@@ -544,11 +544,9 @@ end = struct
     let open ImapControl in
     let buf = Bytes.create 65536 in
     let rec loop in_buf = function
-        Ok (x, st) ->
-          s.imap_state <- st;
+        Ok x ->
           Lwt.return x
-      | Fail (err, st) ->
-          s.imap_state <- st;
+      | Fail err ->
           raise_lwt (ErrorP err)
       | Flush (str, k) ->
           lwt () = Lwt_log.debug_f ">>>>\n%s>>>>\n" str in
@@ -653,7 +651,7 @@ end = struct
             Lwt.return sock
       in
       let ci =
-        { imap_state = ImapCore.fresh_state;
+        { imap_state = ImapCore.fresh_state ();
           sock;
           condstore_enabled = false;
           qresync_enabled = false;

@@ -23,7 +23,7 @@
 (** IMAP queries and response data *)
 
 (** {2 Message flags} *)
-                
+
 type flag =
     FLAG_ANSWERED
   (** [\Answered] flag *)
@@ -332,7 +332,7 @@ and body =
   | BODY_MPART of body_type_mpart
 
 (** {3 Responses} *)
-  
+
 type date_time =
   { dt_day : int;
     dt_month : int;
@@ -363,7 +363,7 @@ type msg_att_dynamic =
   flag_fetch list
 
 type msg_att_extension = ..
-  
+
 type msg_att_item =
     MSG_ATT_ITEM_DYNAMIC of msg_att_dynamic
   | MSG_ATT_ITEM_STATIC of msg_att_static
@@ -482,7 +482,7 @@ type resp_text_code =
   | RESP_TEXT_CODE_EXTENSION of resp_text_code_extension
   | RESP_TEXT_CODE_OTHER of (string * string option)
   | RESP_TEXT_CODE_NONE
-  
+
 (** response code, human readable text *)
 type resp_text =
   { rsp_code : resp_text_code;
@@ -548,7 +548,7 @@ type response_data =
   | RESP_DATA_EXTENSION_DATA of response_data_extension
 
 (** {2 Tagged responses} *)
-  
+
 type response_tagged =
   { rsp_tag : string;
     rsp_cond_state : resp_cond_state }
@@ -577,15 +577,15 @@ type greeting =
   | GREETING_RESP_COND_BYE of resp_cond_bye
 
 type selection_info =
-  { sel_perm_flags : flag_perm list;
-    sel_perm : mailbox_perm;
-    sel_uidnext : Uint32.t;
-    sel_uidvalidity : Uint32.t;
-    sel_first_unseen : Uint32.t;
-    sel_flags : flag list;
-    sel_exists : int option;
-    sel_recent : int option;
-    sel_unseen : int }
+  { mutable sel_perm_flags : flag_perm list;
+    mutable sel_perm : mailbox_perm;
+    mutable sel_uidnext : Uint32.t;
+    mutable sel_uidvalidity : Uint32.t;
+    mutable sel_first_unseen : Uint32.t;
+    mutable sel_flags : flag list;
+    mutable sel_exists : int option;
+    mutable sel_recent : int option;
+    mutable sel_unseen : int }
 
 type _ extension_kind =
     RESPONSE_DATA : response_data_extension extension_kind
@@ -598,29 +598,29 @@ type rsp_extension_data =
   EXTENSION_DATA : 'a extension_kind * 'a -> rsp_extension_data
 
 type response_info =
-  { rsp_alert : string;
-    rsp_parse : string;
-    rsp_badcharset : string list;
-    rsp_trycreate : bool;
-    rsp_mailbox_list : mailbox_list list;
-    rsp_mailbox_lsub : mailbox_list list;
-    rsp_search_results : Uint32.t list;
-    rsp_status : mailbox_data_status;
-    rsp_expunged : Uint32.t list;
-    rsp_fetch_list : msg_att list;
-    rsp_extension_list : rsp_extension_data list;
-    rsp_other : string * string option }
+  { mutable rsp_alert : string;
+    mutable rsp_parse : string;
+    mutable rsp_badcharset : string list;
+    mutable rsp_trycreate : bool;
+    mutable rsp_mailbox_list : mailbox_list list;
+    mutable rsp_mailbox_lsub : mailbox_list list;
+    mutable rsp_search_results : Uint32.t list;
+    mutable rsp_status : mailbox_data_status;
+    mutable rsp_expunged : Uint32.t list;
+    mutable rsp_fetch_list : msg_att list;
+    mutable rsp_extension_list : rsp_extension_data list;
+    mutable rsp_other : string * string option }
 
 type state =
-  { rsp_info : response_info;
-    sel_info : selection_info;
-    cap_info : capability list;
-    imap_response : string;
-    current_tag : string option;
-    next_tag : int;
-    out_buf : string list;
+  { mutable rsp_info : response_info;
+    mutable sel_info : selection_info;
+    mutable cap_info : capability list;
+    mutable imap_response : string;
+    mutable current_tag : string option;
+    mutable next_tag : int;
+    out_buf : Buffer.t;
     in_buf : Buffer.t;
-    in_pos : int }
+    mutable in_pos : int }
 
 type error =
     Bad
@@ -639,4 +639,3 @@ type 'a parse_result =
     Ok of 'a * int
   | Fail of int
   | Need of (input -> 'a parse_result)
-

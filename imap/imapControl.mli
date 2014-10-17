@@ -22,11 +22,11 @@
 
 open ImapTypes
 
-type ('a, 'state, 'err) result =
-    Ok of 'a * 'state
-  | Fail of 'err * 'state
-  | Need of (input -> ('a, 'state, 'err) result)
-  | Flush of string * (unit -> ('a, 'state, 'err) result)
+type ('a, 'err) result =
+    Ok of 'a
+  | Fail of 'err
+  | Need of (input -> ('a, 'err) result)
+  | Flush of string * (unit -> ('a, 'err) result)
 
 type ('a, 'state, 'control) control
 
@@ -44,11 +44,11 @@ val ret : 'a -> ('a, _, _) control
 
 val gets : ('state -> 'a) -> ('a, 'state, _) control
 
-val modify : ('state -> 'state) -> (unit, 'state, _) control
+val modify : ('state -> unit) -> (unit, 'state, _) control
 
 val get : ('state, 'state, _) control
 
-val put : 'state -> (unit, 'state, _) control
+(* val put : 'state -> (unit, 'state, _) control *)
 
 val catch : ('a, 'state, 'err) control -> ('err -> ('a, 'state, 'err) control) -> ('a, 'state, 'err) control
 
@@ -58,4 +58,4 @@ val (>|=) : ('a, 'state, 'err) control -> ('a -> 'b) -> ('b, 'state, 'err) contr
 
 val (>>) : (_, 'state, 'err) control -> ('a, 'state, 'err) control -> ('a, 'state, 'err) control
 
-val run : ('a, state, 'err) control -> state -> ('a, state, 'err) result
+val run : ('a, state, 'err) control -> state -> ('a, 'err) result
