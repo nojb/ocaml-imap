@@ -125,7 +125,7 @@ let message_data_store s =
             ()
       end
   | MESSAGE_DATA_FETCH att ->
-      s.rsp_info.rsp_fetch_list <- s.rsp_info.rsp_fetch_list @ [att]
+      s.rsp_info.rsp_fetch_list <- att :: s.rsp_info.rsp_fetch_list
 
 let resp_cond_state_store s {rsp_text = r} =
   resp_text_store s r
