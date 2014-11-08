@@ -108,7 +108,7 @@ Lwt API.
 
 ### Creating and Authenticating a Session
 
-    # let s = create_session ~host:"imap.gmail.com" ~username:"myuser" ~password:"mysecret";;
+    # let s = create_session ~host:"imap.gmail.com" ~username:"myuser" ~password:"mysecret" ();;
     val s : session = <abstr>
 
 Note that you never need to connect or authenticate explicitly.  It is all
@@ -204,7 +204,7 @@ allow to modify the flags of a message.
 
 To see a debug trace of everything that gets sent and received, set the Lwt log level to `Debug`.
 
-    # Lwt_log.Section.set_level Lwt_log.Sectin.main Lwt_log.Debug;;
+    # Lwt_log.Section.set_level Lwt_log.Section.main Lwt_log.Debug;;
 
 **NOTE**: This will print your username and password on the terminal.
 
