@@ -919,7 +919,9 @@ module Session = struct
       mutable connections : Conn.connection list }
 
   let create_session ?(max_connections = 2) ?(conn_type = TLS None) ?port ~host ~username ~password () =
-    let port = match conn_type with Clear -> 143 | TLS _ -> 993 in
+    let port = match port with
+      Some n -> n
+    | None   -> match conn_type with Clear -> 143 | TLS _ -> 993 in
     { conn_type;
       username;
       password;
