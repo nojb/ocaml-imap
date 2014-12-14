@@ -47,7 +47,7 @@ val sep1 : _ t -> 'a t -> 'a list t
 val delay : ('a -> 'b t) -> 'a -> 'b t
 
 val char : char -> char t
-val str : string -> string t (* case-insensitive *)
+val str : string -> unit t (* case-insensitive *)
 val accum : (char -> bool) -> string t
 val crlf : unit t
 val quoted_char : char t

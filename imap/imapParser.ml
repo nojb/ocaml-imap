@@ -69,8 +69,13 @@ let altn ps =
 let (>>) p q =
   p >>= fun _ -> q
 
-let app f p =
-  p >>= fun x -> ret (f x)
+let app f p b i =
+  let rec loop = function
+    | Ok (x, i) -> Ok (f x, i)
+    | Fail _ as fail -> fail
+    | Need k -> Need (fun inp -> loop (k inp))
+  in
+  loop (p b i)
 
 let opt p x =
   alt p (ret x)
@@ -99,8 +104,14 @@ let rec rep_ p =
 and rep1_ p =
   p >>= fun _ -> rep_ p
 
-let take_from pos b i =
-  Ok (Buffer.sub b pos (i - pos), i)
+let take p b i =
+  let i0 = i in
+  let rec loop = function
+    | Ok (_, i) -> Ok (Buffer.sub b i0 (i - i0), i)
+    | Fail _ as fail -> fail
+    | Need k -> Need (fun inp -> loop (k inp))
+  in
+  loop (p b i)
 
 let rec char c b i =
   if i >= Buffer.length b then
@@ -122,9 +133,6 @@ let satisfy f =
 let skip_while f =
   rep1_ (satisfy f)
 
-let pos _ i =
-  Ok (i, i)
-
 let delay f x b i =
   f x b i
 
@@ -139,14 +147,23 @@ let skip n b i =
   loop ()
 
 let string_of_length n =
-  pos >>= fun i -> skip n >> take_from i
+  take (skip n)
 
-let str u =
-  string_of_length (String.length u) >>= fun s ->
-  if String.uppercase s = String.uppercase u then ret s else fail
+let str u b i =
+  let rec loop j =
+    if j >= String.length u then
+      Ok ((), i + String.length u)
+    else if i + j >= Buffer.length b then
+      Need (function End -> Fail (i + j) | More -> loop j)
+    else if Char.uppercase u.[j] = Char.uppercase (Buffer.nth b (i + j)) then
+      loop (j + 1)
+    else
+      Fail (i + j)
+  in
+  loop 0
 
 let rec accum f =
-  pos >>= fun i -> skip_while f >> take_from i
+  take (skip_while f)
 
 let digit =
   satisfy (function '0' .. '9' -> true | _ -> false)
@@ -155,10 +172,10 @@ let nz_digit =
   satisfy (function '1' .. '9' -> true | _ -> false)
 
 let nz_digits =
-  pos >>= fun i -> nz_digit >> rep digit >> take_from i
+  take (nz_digit >> rep digit)
 
 let crlf =
-  str "\r\n" >> ret ()
+  str "\r\n"
 
 type extension_parser =
   { parse : 'a. 'a extension_kind -> 'a t }
@@ -207,8 +224,7 @@ literal         = "{" number "}" CRLF *CHAR8
                     ; Number represents the number of CHAR8s
 *)
 let literal =
-  char '{' >> number' >>= fun len -> char '}' >> str "\r\n" >>
-  string_of_length len
+  char '{' >> number' >>= fun len -> char '}' >> crlf >> string_of_length len
 
 (*
 string          = quoted / literal
@@ -276,7 +292,7 @@ let nz_number' =
   app int_of_string nz_digits
 
 let nil =
-  str "nil" >> ret ()
+  str "nil"
 
 let nstring =
   alt (some imap_string) (none nil)
@@ -288,10 +304,10 @@ let digits1 =
   app (fun c -> Char.code c - Char.code '0') digit
 
 let digits2 =
-  pos >>= fun i -> digit >> digit >> app int_of_string (take_from i)
+  app int_of_string (take (digit >> digit))
 
 let digits4 =
-  pos >>= fun i -> digit >> digit >> digit >> digit >> app int_of_string (take_from i)
+  app int_of_string (take (digit >> digit >> digit >> digit))
 
 let is_base64_char = function
   | 'a' .. 'z' | 'A' .. 'Z'
@@ -307,9 +323,8 @@ let base64 =
       (base64_char >> base64_char >> base64_char >> str "=")
       (base64_char >> base64_char >> str "==")
   in
-  pos >>= fun i ->
-  rep_ (base64_char >> base64_char >> base64_char >> base64_char) >>
-  base64_terminal >>  take_from i
+  take
+    (rep_ (base64_char >> base64_char >> base64_char >> base64_char) >> base64_terminal)
 
 let test p s =
   let b = Buffer.create 0 in
@@ -1023,8 +1038,7 @@ let section =
   char '[' >> opt (some section_spec) None >>= fun x -> char ']' >> ret x
 
 let uint64 =
-  accum (function '0' .. '9' -> true | _ -> false) >>= fun s ->
-  try ret (Uint64.of_string s) with _ -> fail
+  app Uint64.of_string (accum (function '0' .. '9' -> true | _ -> false))
 
 (*
 msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -1079,32 +1093,28 @@ let msg_att =
   sep1 (char ' ')
     begin
       altn
-        [ (msg_att_static >>= fun a -> ret (MSG_ATT_ITEM_STATIC a));
-          (msg_att_dynamic >>= fun a -> ret (MSG_ATT_ITEM_DYNAMIC a));
-          (extension_parser FETCH_DATA >>= fun e -> ret (MSG_ATT_ITEM_EXTENSION e)) ]
+        [ (app (fun a -> MSG_ATT_ITEM_STATIC a) msg_att_static);
+          (app (fun a -> MSG_ATT_ITEM_DYNAMIC a) msg_att_dynamic);
+          (app (fun e -> MSG_ATT_ITEM_EXTENSION e) (extension_parser FETCH_DATA)) ]
     end
   >>= fun xs ->
   char ')' >>
   ret xs
 
 let status_info =
-  alt status_att (extension_parser STATUS_ATT >>= fun e -> ret (STATUS_ATT_EXTENSION e))
+  alt status_att (app (fun e -> STATUS_ATT_EXTENSION e) (extension_parser STATUS_ATT))
 
 let mailbox_data_flags =
-  str "FLAGS" >> char ' ' >> flag_list >>= fun flags ->
-  ret (MAILBOX_DATA_FLAGS flags)
+  app (fun flags -> MAILBOX_DATA_FLAGS flags) (str "FLAGS" >> char ' ' >> flag_list)
 
 let mailbox_data_list =
-  str "LIST" >> char ' ' >> mailbox_list >>= fun mb ->
-  ret (MAILBOX_DATA_LIST mb)
+  app (fun mb -> MAILBOX_DATA_LIST mb) (str "LIST" >> char ' ' >> mailbox_list)
 
 let mailbox_data_lsub =
-  str "LSUB" >> char ' ' >> mailbox_list >>= fun mb ->
-  ret (MAILBOX_DATA_LSUB mb)
+  app (fun mb -> MAILBOX_DATA_LSUB mb) (str "LSUB" >> char ' ' >> mailbox_list)
 
 let mailbox_data_search =
-  str "SEARCH" >> rep (char ' ' >> nz_number) >>= fun ns ->
-  ret (MAILBOX_DATA_SEARCH ns)
+  app (fun ns -> MAILBOX_DATA_SEARCH ns) (str "SEARCH" >> rep (char ' ' >> nz_number))
 
 let mailbox_data_status =
   str "STATUS" >> char ' ' >> mailbox >>= fun st_mailbox ->
@@ -1121,7 +1131,7 @@ let mailbox_data_recent =
   ret (MAILBOX_DATA_RECENT n)
 
 let mailbox_data_extension_data =
-  extension_parser MAILBOX_DATA >>= fun e -> ret (MAILBOX_DATA_EXTENSION_DATA e)
+  app (fun e -> MAILBOX_DATA_EXTENSION_DATA e) (extension_parser MAILBOX_DATA)
 
 (*
 mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -1162,7 +1172,7 @@ let tag =
 response-tagged = tag SP resp-cond-state CRLF
 *)
 let response_tagged =
-  tag >>= fun rsp_tag -> char ' ' >> resp_cond_state >>= fun rsp_cond_state -> str "\r\n" >>
+  tag >>= fun rsp_tag -> char ' ' >> resp_cond_state >>= fun rsp_cond_state -> crlf >>
   ret {rsp_tag; rsp_cond_state}
 
 (*
@@ -1170,7 +1180,9 @@ resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
                     ; Authentication condition
 *)
 let resp_cond_auth =
-  alt (str "OK" >> ret RESP_COND_AUTH_OK) (str "PREAUTH" >> ret RESP_COND_AUTH_PREAUTH) >>=
+  alt
+    (app (fun _ -> RESP_COND_AUTH_OK) (str "OK"))
+    (app (fun _ -> RESP_COND_AUTH_PREAUTH) (str "PREAUTH")) >>=
   fun rsp_type ->
   char ' ' >> resp_text >>= fun rsp_text ->
   ret {rsp_type; rsp_text}
@@ -1187,10 +1199,10 @@ greeting        = "*" SP (resp-cond-auth / resp-cond-bye) CRLF
 let greeting =
   char '*' >> char ' ' >>
   alt
-    (resp_cond_auth >>= fun r -> ret (GREETING_RESP_COND_AUTH r))
-    (resp_cond_bye >>= fun r -> ret (GREETING_RESP_COND_BYE r))
+    (app (fun r -> GREETING_RESP_COND_AUTH r) resp_cond_auth)
+    (app (fun r -> GREETING_RESP_COND_BYE r) resp_cond_bye)
   >>= fun x ->
-  str "\r\n" >>
+  crlf >>
   ret x
 
 (*
@@ -1199,8 +1211,8 @@ continue-req    = "+" SP (resp-text / base64) CRLF
 let continue_req =
   char '+' >> opt (char ' ') '\000' >> (* we allow an optional space *)
   alt
-    (base64 >>= fun b64 -> str "\r\n" >> ret (CONTINUE_REQ_BASE64 b64))
-    (resp_text >>= fun rt -> str "\r\n" >> ret (CONTINUE_REQ_TEXT rt))
+    (base64 >>= fun b64 -> crlf >> ret (CONTINUE_REQ_BASE64 b64))
+    (resp_text >>= fun rt -> crlf >> ret (CONTINUE_REQ_TEXT rt))
 
 (*
 response-data   = "*" SP (resp-cond-state / resp-cond-bye /
@@ -1209,12 +1221,12 @@ response-data   = "*" SP (resp-cond-state / resp-cond-bye /
 let response_data =
   char '*' >> char ' ' >>
   altn [
-    (resp_cond_state >>= fun r -> ret (RESP_DATA_COND_STATE r));
-    (resp_cond_bye >>= fun r -> ret (RESP_DATA_COND_BYE r));
-    (mailbox_data >>= fun r -> ret (RESP_DATA_MAILBOX_DATA r));
-    (message_data >>= fun r -> ret (RESP_DATA_MESSAGE_DATA r));
-    (capability_data >>= fun r -> ret (RESP_DATA_CAPABILITY_DATA r));
-    (extension_parser RESPONSE_DATA >>= fun e -> ret (RESP_DATA_EXTENSION_DATA e))
+    (app (fun r -> RESP_DATA_COND_STATE r) resp_cond_state);
+    (app (fun r -> RESP_DATA_COND_BYE r) resp_cond_bye);
+    (app (fun r -> RESP_DATA_MAILBOX_DATA r) mailbox_data);
+    (app (fun r -> RESP_DATA_MESSAGE_DATA r) message_data);
+    (app (fun r -> RESP_DATA_CAPABILITY_DATA r) capability_data);
+    (app (fun e -> RESP_DATA_EXTENSION_DATA e) (extension_parser RESPONSE_DATA))
     (* namespace_response; *)
   ]
   >>= fun x ->
@@ -1233,13 +1245,13 @@ response-done   = response-tagged / response-fatal
 *)
 let response_done =
   alt
-    (response_tagged >>= fun r -> ret (RESP_DONE_TAGGED r))
-    (response_fatal >>= fun r -> ret (RESP_DONE_FATAL r))
+    (app (fun r -> RESP_DONE_TAGGED r) response_tagged)
+    (app (fun r -> RESP_DONE_FATAL r) response_fatal)
 
 let cont_req_or_resp_data =
   alt
-    (continue_req >>= fun r -> ret (RESP_CONT_REQ r))
-    (response_data >>= fun r -> ret (RESP_CONT_DATA r))
+    (app (fun r -> RESP_CONT_REQ r) continue_req)
+    (app (fun r -> RESP_CONT_DATA r) response_data)
 
 let response =
   rep cont_req_or_resp_data >>= fun rsp_cont_req_or_resp_data_list ->
@@ -1299,8 +1311,7 @@ let unstructured =
           | Some _ -> any_char >> loop START
         end
   in
-  rep_ (alt (char ' ') (char '\t')) >> pos >>= fun i ->
-  loop START >> take_from i
+  rep_ (alt (char ' ') (char '\t')) >> take (loop START)
 
 let is_ftext = function
   | '\033' .. '\057'
