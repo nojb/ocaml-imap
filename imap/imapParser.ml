@@ -487,7 +487,7 @@ sequence-set    = (seq-number / seq-range) *("," sequence-set)
                     ; overlap coalesced to be 4,5,6,7,8,9,10.
 *)
 let sequence_set =
-  let elem = alt (seq_number >>= fun x -> ret (ImapSet.single x)) seq_range in
+  let elem = alt seq_range (seq_number >>= fun x -> ret (ImapSet.single x)) in
   elem >>= fun x ->
   rep (char ',' >> elem) >>= fun xs ->
   ret (List.fold_left ImapSet.union x xs)
