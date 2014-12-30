@@ -1,2 +1,3 @@
 syntax=lwt
 match_clause=4
+strict_else=never
