@@ -20,11 +20,41 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open ImapTypes
 open ImapControl
-  
+
+type uint32 = Uint32.t
+
+type state =
+  { mutable rsp_alert : string;
+    mutable rsp_parse : string;
+    mutable rsp_badcharset : string list;
+    mutable rsp_trycreate : bool;
+    mutable rsp_other : string * string option;
+    mutable sel_perm_flags : flag_perm list;
+    mutable sel_perm : [ `Read_write | `Read_only ];
+    mutable sel_uidnext : uint32;
+    mutable sel_uidvalidity : uint32;
+    mutable sel_first_unseen : uint32;
+    mutable sel_flags : flag list;
+    mutable sel_exists : int option;
+    mutable sel_recent : int option;
+    mutable sel_unseen : int;
+    mutable caps : string list;
+    mutable imap_response : string;
+    mutable current_tag : string option;
+    mutable next_tag : int }
+
+type error =
+  [ `Bad
+  | `BadTag
+  | `No
+  | `Bye
+  | `ParseError of string * int
+  | `Auth_error
+  | `ExtensionError ]
+
 val string_of_error : error -> string
-  
+
 type 'a command = ('a, state, error) control
 
 val response_data_store : state -> response_data -> state
@@ -50,4 +80,3 @@ val fresh_state : state
 val greeting : [ `NeedsAuth | `PreAuth ] command
 
 val std_command : unit command -> unit command
-

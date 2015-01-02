@@ -3,104 +3,70 @@ open Sexplib.Std
 open Imap
 open Imap_types
 open Imap_uint
-  
+
 let example_responses =
   [ ("* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI",
-     `CAPABILITY [`NAME "IMAP4rev1"; `NAME "STARTTLS"; `AUTH_TYPE "GSSAPI"]);
+     `Capability ["IMAP4rev1"; "STARTTLS"; "AUTH=GSSAPI"]);
     ("abcd OK CAPABILITY completed",
-     `TAGGED ("abcd", `OK (`NONE, "CAPABILITY completed")));
+     `Tagged ("abcd", `Ok (`None, "CAPABILITY completed")));
     ("* CAPABILITY IMAP4rev1 AUTH=GSSAPI AUTH=PLAIN",
-     `CAPABILITY [`NAME "IMAP4rev1"; `AUTH_TYPE "GSSAPI"; `AUTH_TYPE "PLAIN"]);
-    ("* 22 EXPUNGE", `EXPUNGE (Seq.of_int 22));
-    ("* 23 EXISTS", `EXISTS 23);
-    ("* 3 RECENT", `RECENT 3);
+     `Capability ["IMAP4rev1"; "AUTH=GSSAPI"; "AUTH=PLAIN"]);
+    ("* 22 EXPUNGE", `Expunge 22);
+    ("* 23 EXISTS", `Exists 23);
+    ("* 3 RECENT", `Recent 3);
     ("* 14 FETCH (FLAGS (\\Seen \\Deleted))",
-     `FETCH (Seq.of_int 14, [`FLAGS [`Seen; `Deleted]]));
+     `Fetch (14, [`Flags [`Seen; `Deleted]]));
     ("* BYE IMAP4rev1 Server logging out",
-     `BYE (`NONE, "IMAP4rev1 Server logging out"));
+     `Bye (`None, "IMAP4rev1 Server logging out"));
     ("* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED",
-     `CAPABILITY [`NAME "IMAP4rev1"; `NAME "STARTTLS"; `NAME "LOGINDISABLED"]);
-    ("+ ", `CONT_REQ (`BASE64 ""));
+     `Capability ["IMAP4rev1"; "STARTTLS"; "LOGINDISABLED"]);
+    ("+ ", `Cont "");
     ("* OK [UNSEEN 12] Message 12 is first unseen",
-     `OK (`UNSEEN (Seq.of_int 12), "Message 12 is first unseen"));
+     `Ok (`Unseen 12, "Message 12 is first unseen"));
     ("* OK [UIDVALIDITY 3857529045] UIDs valid",
-     `OK (`UIDVALIDITY (Uid.of_int 3857529045), "UIDs valid"));
+     `Ok (`Uid_validity 3857529045, "UIDs valid"));
     ("* OK [UIDNEXT 4392] Predicted next UID",
-     `OK (`UIDNEXT (Uid.of_int 4392), "Predicted next UID"));
+     `Ok (`Uid_next 4392, "Predicted next UID"));
     ("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)",
-     `FLAGS [`Answered; `Flagged; `Deleted; `Seen; `Draft]);
+     `Flags [`Answered; `Flagged; `Deleted; `Seen; `Draft]);
     ("* OK [PERMANENTFLAGS (\\Deleted \\Seen \\*)] Limited",
-     `OK (`PERMANENTFLAGS [`Deleted; `Seen; `All], "Limited"));
+     `Ok (`Permanent_flags [`Deleted; `Seen; `All], "Limited"));
     ("A142 OK [READ-WRITE] SELECT completed",
-     `TAGGED ("A142", `OK (`READ_WRITE, "SELECT completed")));
+     `Tagged ("A142", `Ok (`Read_write, "SELECT completed")));
     ("* OK [PERMANENTFLAGS ()] No permanent flags permitted",
-     `OK (`PERMANENTFLAGS [], "No permanent flags permitted"));
+     `Ok (`Permanent_flags [], "No permanent flags permitted"));
     ("A932 OK [READ-ONLY] EXAMINE completed",
-     `TAGGED ("A932", `OK (`READ_ONLY, "EXAMINE completed")));
+     `Tagged ("A932", `Ok (`Read_only, "EXAMINE completed")));
     ("* LIST (\\Noselect) \"/\" foo",
-     `LIST {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags=[]};
-            mb_delimiter = '/';
-            mb_name = "foo"});
-    ("* LIST () \"/\" foo/bar",
-     `LIST {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '/';
-            mb_name = "foo/bar"});
+     `List ([`Noselect], Some '/', "foo"));
+    ("* LIST () \"/\" foo/bar", `List ([], Some '/', "foo/bar"));
     ("A684 NO Name \"foo\" has inferior hierarchical names",
-     `TAGGED ("A684", `NO (`NONE, "Name \"foo\" has inferior hierarchical names")));
-    ("* LIST () \".\" foo",
-     `LIST {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "foo"});
-    ("* LIST () \".\" foo.bar",
-     `LIST {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "foo.bar"});
-    ("* LIST (\\Noselect) \".\" foo",
-     `LIST {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "foo"});
-    ("* LIST () \".\" INBOX",
-     `LIST {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "INBOX"});
-    ("* LIST () \".\" INBOX.bar",
-     `LIST {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "INBOX.bar"});
-    ("* LIST (\\Noselect) \"/\" \"\"",
-     `LIST {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags = []};
-            mb_delimiter = '/';
-            mb_name = ""});
+     `Tagged ("A684", `No (`None, "Name \"foo\" has inferior hierarchical names")));
+    ("* LIST () \".\" foo", `List ([], Some '.', "foo"));
+    ("* LIST () \".\" foo.bar", `List ([], Some '.', "foo.bar"));
+    ("* LIST (\\Noselect) \".\" foo", `List ([`Noselect], Some '.', "foo"));
+    ("* LIST () \".\" INBOX", `List ([], Some '.', "INBOX"));
+    ("* LIST () \".\" INBOX.bar", `List ([], Some '.', "INBOX.bar"));
+    ("* LIST (\\Noselect) \"/\" \"\"", `List ([`Noselect], Some '/', ""));
     ("* LIST (\\Noselect) \".\" #news.",
-     `LIST {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "#news."});
+     `List ([`Noselect], Some '.', "#news."));
     ("* LIST (\\Noselect) \"/\" ~/Mail/foo",
-     `LIST {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags = []};
-            mb_delimiter = '/';
-            mb_name = "~/Mail/foo"});
+     `List ([`Noselect], Some '/', "~/Mail/foo"));
     ("* LSUB () \".\" #news.comp.mail.mime",
-     `LSUB {mb_flag = {mbf_sflag = None; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "#news.comp.mail.mime"});
+     `Lsub ([], Some '.', "#news.comp.mail.mime"));
     ("* LSUB (\\NoSelect) \".\" #news.comp.mail",
-     `LSUB {mb_flag = {mbf_sflag = Some `Noselect; mbf_oflags = []};
-            mb_delimiter = '.';
-            mb_name = "#news.comp.mail"});
+     `Lsub ([`Noselect], Some '.', "#news.comp.mail"));
     ("* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)",
-     `STATUS {st_mailbox = "blurdybloop";
-              st_info_list = [`MESSAGES 231; `UIDNEXT (Uid.of_int 44292)]});
-    ("+ Ready for literal data",
-     `CONT_REQ (`TEXT (`NONE, "Ready for literal data")));
-    ("* SEARCH 2 84 882",
-     `SEARCH (List.map Uint32.of_int [2; 84; 882], Modseq.zero));
-    ("* SEARCH", `SEARCH ([], Modseq.zero));
+     `Status ("blurdybloop", [`Messages 231; `Uid_next 44292]));
+    ("+ Ready for literal data", `Cont "Ready for literal data");
+    ("* SEARCH 2 84 882", `Search [2; 84; 882]);
+    ("* SEARCH", `Search []);
     ("* 2 FETCH (FLAGS (\\Deleted \\Seen))",
-     `FETCH (Seq.of_int 2, [`FLAGS [`Deleted; `Seen]]));
+     `Fetch (2, [`Flags [`Deleted; `Seen]]));
     ("* 23 FETCH (FLAGS (\\Seen) UID 4827313)",
-     `FETCH (Seq.of_int 23, [`FLAGS [`Seen]; `UID (Uid.of_int 4827313)]));
+     `Fetch (23, [`Flags [`Seen]; `Uid 4827313]));
     ("* 23 FETCH (FLAGS (\\Seen) RFC822.SIZE 44827)",
-     `FETCH (Seq.of_int 23, [`FLAGS [`Seen]; `RFC822_SIZE 44827]))
+     `Fetch (23, [`Flags [`Seen]; `Rrfc822_size 44827]))
   ]
 
 let test_parser ~ctxt p sexp_of_t s check =
@@ -136,28 +102,28 @@ let test_envelope ctxt =
      \"<B27397-0100000@cac.washington.edu>\")"
   in
   let tgray =
-    { addr_name = "Terry Gray";
-      addr_adl = "";
-      addr_mailbox = "gray";
-      addr_host = "cac.washington.edu" }
+    { ad_name = "Terry Gray";
+      ad_adl = "";
+      ad_mailbox = "gray";
+      ad_host = "cac.washington.edu" }
   in
   let imap =
-    { addr_name = "";
-      addr_adl = "";
-      addr_mailbox = "imap";
-      addr_host = "cac.washington.edu" }
+    { ad_name = "";
+      ad_adl = "";
+      ad_mailbox = "imap";
+      ad_host = "cac.washington.edu" }
   in
   let minutes =
-    { addr_name = "";
-      addr_adl = "";
-      addr_mailbox = "minutes";
-      addr_host = "CNRI.Reston.VA.US" }
+    { ad_name = "";
+      ad_adl = "";
+      ad_mailbox = "minutes";
+      ad_host = "CNRI.Reston.VA.US" }
   in
   let jklensin =
-    { addr_name = "John Klensin";
-      addr_adl = "";
-      addr_mailbox = "KLENSIN";
-      addr_host = "MIT.EDU" }
+    { ad_name = "John Klensin";
+      ad_adl = "";
+      ad_mailbox = "KLENSIN";
+      ad_host = "MIT.EDU" }
   in
   let check =
     { env_date = "Wed, 17 Jul 1996 02:23:25 -0700 (PDT)";
@@ -167,7 +133,7 @@ let test_envelope ctxt =
       env_in_reply_to = ""; env_message_id = "<B27397-0100000@cac.washington.edu>" }
   in
   test_parser ~ctxt envelope sexp_of_envelope ex check
-    
+
 let test_body ctxt =
   let open Mime in
   let ex =

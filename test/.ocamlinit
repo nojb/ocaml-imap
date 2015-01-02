@@ -1,3 +1,0 @@
-#directory "_build"
-#load "test.cmo"
-open Test

@@ -4,23 +4,7 @@
 #install_printer Uint32.printer
 #install_printer Uint64.printer
 #require "uutf"
-#require "cryptokit"
+#require "base64"
 
-#directory "_build/imap"
+#directory "_build/lib"
 #load_rec "imap.cma"
-           
-#require "ssl"
-#require "lwt.ssl"
-#require "lwt.syntax"
-
-#directory "_build/lwt"
-#load_rec "imapLwt.cma"
-#install_printer ImapLwt.Uid.printer
-#install_printer ImapLwt.Seq.printer
-#install_printer ImapLwt.Modseq.printer
-#install_printer ImapLwt.Gmsgid.printer
-#install_printer ImapLwt.Gthrid.printer
-#install_printer ImapLwt.UidSet.printer
-#install_printer ImapLwt.SeqSet.printer
-
-open ImapLwt;;

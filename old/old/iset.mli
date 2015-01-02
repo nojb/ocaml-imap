@@ -34,10 +34,8 @@
     Briefly, an expression such as 1:3,4,5:12,18:* will be represented by the OCaml
     list [[(1, 3); (4, 4); (5, 12); (18, 0)]]. *)
 
-type num = Uint32.t
-
 (** The type of sets, a formal, ordered, union of intervals. *)
-type t = (num * num) list
+type t = private (uint32 * uint32) list
 
 val empty : t
 (** The empty set. *)
@@ -45,28 +43,26 @@ val empty : t
 val all : t
 (** The interval of all positive numbers. *)
 
-val single : num -> t
+val single : uint32 -> t
 (** The interval consisting of a single number. *)
 
-val single_int : int -> t
-
-val interval : num -> num -> t
+val seq : uint32 -> uint32 -> t
 (** The set consisting of a single interval. *)
 
-val from : num -> t
+val from : uint32 -> t
 (** The half-interval starting from [n] (inclusive).  It corresponds to the
     IMAP expression "n:*". *)
 
-val add : num -> t -> t
+val add : uint32 -> t -> t
 (** [add n s] adds a single number [n] to the set [s]. *)
 
-val add_interval : num -> num -> t -> t
+val add_seq : uint32 -> uint32 -> t -> t
 (** [add_interval n m s] adds the whole interval between numbers [n] and [m]
     (including both [n] and [m]) to the set [s]. *)
 
 val union : t -> t -> t
 (** [union s1 s2] forms the union of the [s1] and [s2]. *)
 
-val of_list : num list -> t
+val of_list : uint32 list -> t
 
-val iter2 : (num -> num -> unit) -> t -> t -> unit
+val iter2 : (uint32 -> uint32 -> unit) -> t -> t -> unit

@@ -1,0 +1,15 @@
+OASISFormat: 0.4
+Name: imap
+Version: 0.30.0
+Synopsis: IMAP4rev1 protocol codec
+Authors: Nicolas Ojeda Bar <n.oje.bar@gmail.com>
+License: MIT
+Plugins: META (0.4), DevFiles (0.4)
+BuildTools: ocamlbuild
+
+Library imap
+  Path: lib
+  Install: true
+  FindlibName: imap
+  Modules: Imap
+  BuildDepends: uutf, base64, uint
