@@ -7,4 +7,4 @@
 #require "base64"
 
 #directory "_build/lib"
-#load_rec "imap.cma"
+#use "lib/imap.ml"

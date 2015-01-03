@@ -20,9 +20,11 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-(* Modified UTF-7 *)
+let io_buffer_size = 65536                           (* IO_BUFFER_SIZE 4.0.0 *)
 
 module Mutf7 = struct
+
+  (* Modified UTF-7 *)
 
   let recode ?nln ?encoding out_encoding src dst =
     let rec loop d e = match Uutf.decode d with
@@ -273,7 +275,8 @@ type decode_error =
   | `Unexpected_char of char
   | `Unexpected_string of string
   | `Illegal_char of char
-  | `Illegal_range ]
+  | `Illegal_range
+  | `Unexpected_eoi ]
 
 let pp = Format.fprintf
 
@@ -358,7 +361,7 @@ let pp_msg_att : Format.formatter -> msg_att -> unit = fun ppf att ->
   | `Rfc822_size n    -> pp ppf "(rfc822-size %i)" n
   | `Body b           -> pp ppf "@[<2>(body@ %a)@]" pp_body b
   | `Body_structure b -> pp ppf "@[<2>(bodystructure@ %a)@]" pp_body b
-  | `Body_section _   -> pp ppf "@[<2>(body-section ???)@]"
+  | `Body_section _   -> pp ppf "@[<2>(body-section TODO)@]"
   | `Uid n            -> pp ppf "(uid %a)" Uint32.printer n
   | `Modseq m         -> pp ppf "(modseq %a)" Uint64.printer m
   | `Gm_msgid m       -> pp ppf "(gm-msgid %a)" Uint64.printer m
@@ -476,7 +479,13 @@ let pp_response : Format.formatter -> response -> unit = fun ppf r ->
   | `Enabled s          -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list pp_cap) s
 
 let pp_decode_error ppf = function
-  | _ -> pp ppf "error TODO"
+  | `Expected_char c     -> pp ppf "@[Expected@ character@ %C@]" c
+  | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
+  | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
+  | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
+  | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
+  | `Illegal_range       -> pp ppf "@[Illegal@ range@]" (* FIXME *)
+  | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
 
 module D = struct
 
@@ -510,21 +519,32 @@ module D = struct
   let err_unexpected c _ = err (`Unexpected_char c)
   let err_quoted c _ = err (`Illegal_char c)
   let err_illegal_range _ = err `Illegal_range
+  let err_unexpected_eoi = err `Unexpected_eoi
 
   let ret x _ = `Ok x
   let cur d = d.i.[d.i_pos]
   let badd d = Buffer.add_char d.buf $ cur d
   let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
-  let decode d = d.k d
-  let eoi _ = () (* FIXME *)
+  let decode d =
+    Printf.eprintf "decode i_pos=%d i_max=%d c=%C\n%!" d.i_pos d.i_max $ cur d;
+    d.k d
+  let rec eoi d = d.k <- (fun _ -> err_unexpected_eoi)
+
   let src d s j l =                                     (* set [d.i] with [s]. *)
     if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds" else
     if l = 0 then eoi d else
     (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
+  let refill k d = match d.src with
+    | `Manual     -> d.k <- k; `Await
+    | `String _   -> eoi d; k d
+    | `Channel ic ->
+        let rc = input ic d.i 0 (String.length d.i) in
+        (src d d.i 0 rc; k d)
+
   let readc k d =
     if d.i_pos < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else
-    (d.k <- k; `Await)
+    refill k d
 
   let p_ch c k d =
     if cur d = c then readc k d else err_expected c d
@@ -1605,14 +1625,21 @@ module D = struct
     if cur d = ' ' then readc $ p_text k $ d else
     p_text k d
 
-  let p_response k d =
+  let rec p_response k d =
+    if d.i_pos >= d.i_max then readc (p_response k) d else
     let k x d = p_crlf $ k x $ d in
     if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
     if cur d = '*' then readc $ p_untagged k $ d else
     p_tagged (fun t s -> k $ `Tagged (t, s)) d
 
   let decoder src =
-    { src; i = ""; i_pos = 0; i_max = 0; buf = Buffer.create 4096; k = p_response ret }
+    let i, i_pos, i_max = match src with
+      | `String s -> s, 0, String.length s
+      | `Manual -> "", 0, 0
+      | `Channel _ -> Bytes.create io_buffer_size, 0, 0
+    in
+    { src = (src :> src); i; i_pos; i_max;
+      buf = Buffer.create 4096; k = p_response ret }
 
 end
 
@@ -1693,7 +1720,7 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Ok of string | `Await | `End ]
+    [ `Ok of string | `Await | `Flush ]
 
   type encoder =
     { dst : dst;
@@ -1704,33 +1731,45 @@ module E = struct
 
   let encode_dst_rem e = e.o_max - e.o_pos
 
-  let encode_dst e s j l =
+  let dst e s j l =
     if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
     e.o <- s; e.o_pos <- j; e.o_max <- j + l
 
   let partial k e = function
     | `Await -> k e
-    | `Ok _ | `End -> invalid_arg "cannot encode now, use `Await first"
+    | `Ok _ | `Flush -> invalid_arg "cannot encode now, use `Await first"
 
-  let flush k e = match e.dst with
+  let flush k e =
+    match e.dst with
     | `Manual -> e.k <- partial k; `Partial
     | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
     | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
 
-  let rec writes s ?(j = 0) ?(l = String.length s) k e =
-    let rem = encode_dst_rem e in
-    let len = if l > rem then rem else l in
-    String.unsafe_blit s j e.o e.o_pos len;
-    e.o_pos <- e.o_pos + len;
-    if len < l then flush (writes s ~j:(j + len) ~l:(l - len) k) e else k e
+  let rec writes s k e =
+   let rec loop j l e =
+     (* Printf.eprintf "writes %S j=%d l=%d\n%!" s j l; *)
+     let rem = encode_dst_rem e in
+      let len = if l > rem then rem else l in
+      String.unsafe_blit s j e.o e.o_pos len;
+      e.o_pos <- e.o_pos + len;
+      if len < l then flush (loop (j + len) (l - len)) e else k e
+    in
+    loop 0 (String.length s) e
 
-  let encode_ e = function
-    | `Await -> e.k e `Await
-    | `Ok x -> writes x (fun _ -> `Ok) e
-    | `End -> assert false (* FIXME *)
+  let rec encode_ e = function
+    | `Await -> `Ok
+    | `Ok x -> writes x encode_loop e
+    | `Flush -> flush encode_loop e
+
+  and encode_loop e = e.k <- encode_; `Ok
 
   let encoder dst =
-    { dst; o = ""; o_pos = 0; o_max = 0; k = encode_ }
+    let o, o_pos, o_max = match dst with
+      | `Manual -> "", 0, 0
+      | `Buffer _
+      | `Channel _ -> Bytes.create io_buffer_size, 0, io_buffer_size
+    in
+    { dst = (dst :> dst); o; o_pos; o_max; k = encode_ }
 
   let encode e v = e.k e v
 end
@@ -1738,6 +1777,7 @@ end
 type error =
   [ `Incorrect_tag of string * string
   | `Decode_error of decode_error
+  | `Unexpected_cont
   | `Not_running
   | `Bad
   | `Bye
@@ -1774,6 +1814,10 @@ type src = D.src
 
 type dst = E.dst
 
+let src c = D.src c.d
+
+let dst c = E.dst c.e
+
 let ret v k c = c.k <- k; v
 
 let rec eor c = ret (`Error `Not_running) eor c
@@ -1782,20 +1826,16 @@ let conn src dst =
   { e = E.encoder dst; d = D.decoder src; i_st = `Connected;
     i_text = ""; i_cap = []; r = false; t = 0; k = eor }
 
-let begin_run st =
-  assert (not st.r);
-  st.r <- true
-
-let end_run st =
-  assert st.r;
-  st.r <- false
-
-let encode x k c =
+let encode_ x k c =
   let rec loop = function
     | `Partial -> ret `Await_dst (fun c -> loop (E.encode c.e `Await)) c
     | `Ok      -> k c
   in
-  loop (E.encode c.e (`Ok x))
+  loop (E.encode c.e x)
+
+let encode x k c = encode_ (`Ok x) k c
+
+let flush k c = encode_ `Flush k c
 
 let w_raw s k c = encode s k c
 
@@ -1810,8 +1850,28 @@ let decode k c =
 let rec decode_to_cont k c =
   decode (function `Cont _ -> k | _ -> decode_to_cont k (* FIXME error ? *) ) c
 
-let classify_string s =
-  `Literal (* FIXME *)
+let classify_string str =
+  let literal = function
+    | '\x80' .. '\xFF' | '\r' | '\n' -> true
+    | _ -> false
+  in
+  let quotes = function
+    | '(' | ')' | '{' | ' ' | '\x00' .. '\x1F' | '\x7F'
+    | '%' | '*' | '\"' | '\\' -> true
+    | _ -> false
+  in
+  let needs f s =
+    let rec loop i =
+      if i >= String.length s then false else
+      if f s.[i] then true else
+      loop (i+1)
+    in
+    loop 0
+  in
+  if str = "" then `Quoted else
+  if needs literal str then `Literal else
+  if needs quotes str then `Quoted else
+  `Raw
 
 let sf = Printf.sprintf
 
@@ -1819,25 +1879,20 @@ let w_string x k c =
   match classify_string x with
   | `Raw     -> encode x k c
   | `Quoted  -> encode "\"" (encode x (encode "\"" k)) c
-  | `Literal -> encode (sf "{%d}\r\n" (String.length x)) (decode_to_cont k) c
-
-(* let begin_encode x k c = *)
-(*   begin_run c; *)
-(*   let x = `L[`R (string_of_int c.t); `R " "; x; `R "\r\n"] in *)
-(*   encodef x k c *)
+  | `Literal -> encode (sf "{%d}\r\n" (String.length x)) (flush (decode_to_cont k)) c
 
 let run c = c.k c
 
 let r_response c =
   let rec loop r c =
     match r with
-    | #untagged as r      -> ret (`Untagged r) (decode loop) c
-    | `Tagged (t, `Ok _)  -> ret `Ok eor c
-    | `Tagged (_, `Bad _) -> ret (`Error `Bad) eor c
-    | `Tagged (_, `No _)  -> ret (`Error `No) eor c
-    | `Bye _ as r         -> ret (`Error `Bye) eor c
-    | `Preauth _          -> assert false (* FIXME *)
-    | `Cont _             -> assert false (* FIXME *)
+    | #untagged as r           -> ret (`Untagged r) (decode loop) c
+    | `Tagged (g, `Ok (d, t))  -> c.i_text <- t; ret `Ok eor c
+    | `Tagged (_, `Bad (d, t)) -> c.i_text <- t; ret (`Error `Bad) eor c
+    | `Tagged (_, `No (d, t))  -> c.i_text <- t; ret (`Error `No) eor c
+    | `Bye (d, t)              -> c.i_text <- t; ret (`Error `Bye) eor c
+    | `Preauth _               -> assert false (* FIXME *)
+    | `Cont _                  -> ret (`Error `Unexpected_cont) eor c
   in
   decode loop c
 
@@ -1860,13 +1915,13 @@ let w_crlf k c =
   encode "\r\n" k c
 
 let capability c =
-  w_tag (w_raw "CAPABILITY" (w_crlf r_response)) c
+  w_tag (w_raw "CAPABILITY" (w_crlf (flush r_response))) c
 
 let noop c =
-  w_tag (w_raw "NOOP" (w_crlf r_response)) c
+  w_tag (w_raw "NOOP" (w_crlf (flush r_response))) c
 
 let create m c =
-  w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf r_response)) c
+  w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf (flush r_response))) c
 
 (* let logout e = writes "LOGOUT" e *)
 (* let starttls = writes "STARTTLS" e *)
@@ -1954,3 +2009,52 @@ let create m c =
 
 (* let store_labels s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs *)
 (* let uid_store_labels s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs *)
+
+(* module Test = struct *)
+(*   let (>>=) = Lwt.(>>=) *)
+(*   let connect h l u = *)
+(*     let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in *)
+(*     Lwt_unix.gethostbyname h >>= fun he -> *)
+(*     Lwt_unix.connect fd (Lwt_unix.ADDR_INET (he.Lwt_unix.h_addr_list.(0), 993)) >>= fun () -> *)
+(*     Lwt_ssl.ssl_connect fd (Ssl.create_context Ssl.TLSv1 Ssl.Client_context) >>= fun ssl -> *)
+(*     let c = conn `Manual `Manual in *)
+(*     let i = Bytes.create E.io_buffer_size in *)
+(*     let o = Bytes.create E.io_buffer_size in *)
+(*     let rec loop = function *)
+(*       | `Await_src -> *)
+(*           Lwt_ssl.read ssl i ? ? >>= fun rc -> *)
+(*           src c i ? rc; *)
+(*           loop (run c) *)
+(*       | `Await_dst -> *)
+(*           Lwt_ssl.write ssl o ? ? >>= fun rc -> *)
+(*           dst c o ? ?; *)
+(*           loop (run c) *)
+(*       | `Untagged r -> `Untagged r *)
+(*       | `Ok -> `Ok *)
+(*     in *)
+(* end *)
+
+(* module Test = struct *)
+(*   let (>>=) = Lwt.(>>=) *)
+(*   let connect h l u = *)
+(*     let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in *)
+(*     let he = Unix.gethostbyname h in *)
+(*     Unix.connect fd (Unix.ADDR_INET (he.Lwt_unix.h_addr_list.(0), 993)); *)
+(*     let ssl = Ssl.embed_socket fd (Ssl.create_context Ssl.TLSv1 Ssl.Client_context) in *)
+(*     Ssl.connect ssl; *)
+(*     let c = conn `Manual `Manual in *)
+(*     let i = Bytes.create E.io_buffer_size in *)
+(*     let o = Bytes.create E.io_buffer_size in *)
+(*     let rec loop = function *)
+(*       | `Await_src -> *)
+(*           let rc = Ssl.read ssl i ? ? in *)
+(*           src c i ? rc; *)
+(*           loop (run c) *)
+(*       | `Await_dst -> *)
+(*           let rc = Ssl.write ssl o ? ? in *)
+(*           dst c o ? ?; *)
+(*           loop (run c) *)
+(*       | `Untagged r -> `Untagged r *)
+(*       | `Ok -> `Ok *)
+(*     in *)
+(* end *)

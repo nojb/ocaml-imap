@@ -384,7 +384,8 @@ type decode_error =
   | `Unexpected_char of char
   | `Unexpected_string of string
   | `Illegal_char of char
-  | `Illegal_range ]
+  | `Illegal_range
+  | `Unexpected_eoi ]
 
 val pp_response : Format.formatter -> response -> unit
 (** Pretty print a server response. *)
@@ -464,6 +465,7 @@ type status_att =
 type error =
   [ `Incorrect_tag of string * string
   | `Decode_error of decode_error
+  | `Unexpected_cont
   | `Not_running
   | `Bad
   | `Bye
@@ -475,7 +477,7 @@ type command = conn -> result
 type src = [ `String of string | `Channel of in_channel | `Manual ]
 type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
-val conn : src -> dst -> conn
+val conn : [< src] -> [< dst] -> conn
 val run : conn -> result
 (* val decoder_src : state -> .. -> unit *)
 (* val encoder_dst : state -> .. -> unit *)

@@ -1,5 +1,7 @@
 PKG uutf
 PKG uint
 PKG base64
+PKG lwt
+PKG ssl
 B _build
 S lib
