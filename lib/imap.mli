@@ -45,26 +45,6 @@
     {e {{:https://tools.ietf.org/html/rfc4315}Internet Message Access Protocol (IMAP) - UIDPLUS extension}, 2005}}}
 *)
 
-module MUTF7 : sig
-
-  (** {1 Modified UTF-7}
-
-      A mail-safe (7-bit) encoding of Unicode.  It is mainly used to transmit
-      mailbox names and flags/labels.  The necessary encoding/decoding is
-      automatically performed by the library, and it is exposed here only in
-      case it is useful for some other purposes. *)
-
-  val encode : string -> string
-  (** [encode s] encoded a string into modified UTF-7.  The input string is
-      assumed to be valid UTF-8.  If any malformed unicode characters are found they
-      are replaced by the Unicode replacement character [U+FFFD]. *)
-
-  val decode : string -> string
-  (** [decode s] decodes a modified UTF-7 string into a UTF-8 encoded string. *)
-end
-
-(** {1:decode Decode} *)
-
 type address =
   { ad_name : string;
     ad_adl : string;
@@ -83,16 +63,6 @@ type envelope =
     env_bcc : address list;
     env_in_reply_to : string;
     env_message_id : string }
-
-(** Unsigned 32-bit numbers are used for message UID and Sequence numbers. *)
-type uint32 = Uint32.t
-
-(** Unsigned 64-bit numbers are used for: modification sequence numbers and
-    Gmail message and thread IDs. *)
-type uint64 = Uint64.t
-
-(** List of message numbers (UID or Sequence) as a list of intervals. *)
-type set = (uint32 * uint32) list
 
 (** List of standard capabilites. *)
 type capability =
@@ -188,17 +158,17 @@ type msg_att =
   | `Body_section of section * int option * string option
   (** A message MIME part, starting offset, part data. *)
 
-  | `Uid of uint32
+  | `Uid of Uint32.t
   (** UID.  Typically constant between sessions, but needs to be re-requested if
       the mailbox [UIDVALIDITY] value changes. *)
 
-  | `Modseq of uint64
+  | `Modseq of Uint64.t
   (** The modification sequence number of this message.  Requires [CONDSTORE]. *)
 
-  | `Gm_msgid of uint64
+  | `Gm_msgid of Uint64.t
   (** Gmail message ID. *)
 
-  | `Gm_thrid of uint64
+  | `Gm_thrid of Uint64.t
   (** Gmail thread ID. *)
 
   | `Gm_labels of string list
@@ -235,13 +205,13 @@ type code =
   (** An [APPEND] or [COPY] command is failing because the destination mailbox
       does not exist.  Suggests issuing a [CREATE] command to create it. *)
 
-  | `Uid_next of uint32
+  | `Uid_next of Uint32.t
   (** The next UID of the current mailbox. *)
 
-  | `Uid_validity of uint32
+  | `Uid_validity of Uint32.t
   (** The [UIDVALIDITY] value of the current mailbox. *)
 
-  | `Unseen of uint32
+  | `Unseen of Uint32.t
   (** The Sequence number of the next unseen message in the current mailbox. *)
 
   | `Other of string * string option
@@ -252,7 +222,7 @@ type code =
       a mailbox implictly as a consequence of selecting a different mailbox.
       Requires [QRESYNC]. *)
 
-  | `Highest_modseq of uint64
+  | `Highest_modseq of Uint64.t
   (** The highest modification sequence number of all messages in the current
       mailbox.  Requires [CONDSTORE]. *)
 
@@ -260,17 +230,17 @@ type code =
   (** The server does not support the persistent storage of modification
       sequence numbers.  Requires [CONDSTORE]. *)
 
-  | `Modified of set
+  | `Modified of (Uint32.t * Uint32.t) list
   (** The message numbers (UID or Sequence) of all the messages that failed the
       [UNCHANGEDSINCE] test used int he last issued [STORE] or [UID STORE]
       command.  Requires [CONDSTORE]. *)
 
-  | `Append_uid of uint32 * uint32
+  | `Append_uid of Uint32.t * Uint32.t
   (** Sent in response to an [APPEND] command, contains the [UIDVALIDITY] of
       the destination mailbox, followed by the [UID] of the newly appended message.
       Requires [UIDPLUS]. *)
 
-  | `Copy_uid of uint32 * set * set
+  | `Copy_uid of Uint32.t * (Uint32.t * Uint32.t) list * (Uint32.t * Uint32.t) list
   (** Sent in response to a [COPY] command, contains the [UIDVALIDITY] of the
       destination mailbox, followed by the set of UIDs of the source messages,
       and the set of UIDs of the destination messages (in the same order).
@@ -315,17 +285,17 @@ type mbx_status =
   | `Recent of int
   (** Number of messages in the mailbox with the [\Recent] flag. *)
 
-  | `Uid_next of uint32
+  | `Uid_next of Uint32.t
   (** The expected UID of the next message to be added to this mailbox. *)
 
-  | `Uid_validity of uint32
+  | `Uid_validity of Uint32.t
   (** The UID VALIDITY value of this mailbox. *)
 
-  | `Unseen of uint32
+  | `Unseen of Uint32.t
   (** The Sequence number of the first message in the mailbox that has not been
       seen. *)
 
-  | `Highest_modseq of uint64
+  | `Highest_modseq of Uint64.t
   (** The highest modification sequence number of all the messages in the
       mailbox.  This is only sent back if [CONDSTORE] is enabled. *) ]
 
@@ -334,14 +304,10 @@ type state =
   | `No of code * string
   | `Bad of code * string ]
 
-(** Server Responses.  Sending a command to the server will typically result in
-    a sequence of [response] items being sent back, ending in a [`Tagged]
-    response or possibly [`Bye]. *)
-type response =
+(** Server data responses. *)
+type untagged =
   [ state
-
-  | `Bye of code * string
-  (** [BYE] message sent by the server just before closing the connection. *)
+  (** Untagged status response. *)
 
   | `Flags of flag list
   (** List of labels are valid for the messages contained within. *)
@@ -353,7 +319,7 @@ type response =
   | `Lsub of mbx_flag list * char option * string
   (** [LSUB] response, same information as [LIST]. *)
 
-  | `Search of uint32 list * uint64 option
+  | `Search of Uint32.t list * Uint64.t option
   (** [SEARCH] or [UID SEARCH] response: list of message numbers (UID or
       Sequence), and optionally the highest modification sequence number of the
       returned list of messages if [CONDSTORE] is enabled. *)
@@ -369,41 +335,50 @@ type response =
   | `Recent of int
   (** Number of messages with the [\Recent] flag. *)
 
-  | `Expunge of uint32
+  | `Expunge of Uint32.t
   (** Inform that a message has been permanently deleted from the current
       mailbox.  The message number is always a Sequence number. *)
 
-  | `Fetch of uint32 * msg_att list
+  | `Fetch of Uint32.t * msg_att list
   (** [FETCH] or [UID FETCH] response: message number (UID of Sequence), list of
       attributes requested. *)
 
   | `Capability of capability list
   (** List of capabilities supported by the server. *)
 
-  | `Preauth of code * string
-  (** The server is informing that the session as been Pre-Authorized and no
-      authentication is necessary.  This should not occur in normal
-      circumstances. *)
-
-  | `Cont of string
-  (** Continuation request: the server is waiting for client data.  The client
-      must wait for this message before sending literal data. *)
-
-  | `Tagged of string * state
-  (** Tagged response: tag, result status. *)
-
-  | `Vanished of set
+  | `Vanished of (Uint32.t * Uint32.t) list
   (** List of UIDs of messages that have been expunged from the current
       mailbox.  Requires [QRESYNC]. *)
 
-  | `Vanished_earlier of set
+  | `Vanished_earlier of (Uint32.t * Uint32.t) list
   (** Same as [`Vanished], but sent only in response to a [FETCH (VANISHED)] or
       [SELECT/EXAMINE (QRESYNC)] command.  Requires [QRESYNC]. *)
 
   | `Enabled of capability list
   (** [ENABLE] response: list of capabilities enabled. *) ]
 
-type error =
+(** Server responses.  Sending a command will typically result in a
+    sequence of [untagged] items being sent back, ending in a [`Tagged]
+    response or possibly [`Bye]. *)
+type response =
+  [ untagged
+  (** Untagged data response. *)
+
+  | `Bye of code * string
+  (** The server will close the connection immediately. *)
+
+  | `Preauth of code * string
+  (** The session as been Pre-Authorized and no authentication is necessary.
+      This should not occur in normal circumstances. *)
+
+  | `Cont of string
+  (** Continuation request: the server is waiting for client data.  The client
+      must wait for this message before sending literal data. *)
+
+  | `Tagged of string * state ]
+(** Tagged response: tag, result status. *)
+
+type decode_error =
   [ `Expected_char of char
   | `Expected_string of string
   | `Unexpected_char of char
@@ -414,16 +389,8 @@ type error =
 val pp_response : Format.formatter -> response -> unit
 (** Pretty print a server response. *)
 
-val pp_error : Format.formatter -> error -> unit
+val pp_decode_error : Format.formatter -> decode_error -> unit
 (** Pretty print a decoding error. *)
-
-type decoder
-
-val decoder : string -> decoder
-
-val decode : decoder -> [ `Ok of response | `Await | `Error of error ]
-
-(** {1:encode Encode} *)
 
 (** Keys used for [SEARCH] command. *)
 type search_key =
@@ -460,14 +427,14 @@ type search_key =
   | `Sent_on of int * int * int
   | `Sent_since of int * int * int
   | `Smaller of int
-  | `Uid of set
+  | `Uid of (Uint32.t * Uint32.t) list
   | `Undraft
-  | `In_set of set
+  | `In_set of (Uint32.t * Uint32.t) list
   | `And of search_key * search_key
-  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * uint64
+  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
   | `Gm_raw of string
-  | `Gm_msgid of uint64
-  | `Gm_thrid of uint64
+  | `Gm_msgid of Uint64.t
+  | `Gm_thrid of Uint64.t
   | `Gm_labels of string list ]
 
 type fetch_att =
@@ -492,56 +459,75 @@ type status_att =
   | `Unseen
   | `Highest_modseq ]
 
-type fragment
+(** {1 Commands} *)
 
-val capability          : fragment
-(** The [CAPABILITY] command. *)
+type error =
+  [ `Incorrect_tag of string * string
+  | `Decode_error of decode_error
+  | `Not_running
+  | `Bad
+  | `Bye
+  | `No ]
 
-val noop                : fragment
-(** The [NOOP] command. *)
+type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
+type conn
+type command = conn -> result
+type src = [ `String of string | `Channel of in_channel | `Manual ]
+type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
-val logout              : fragment
-(** The [LOGOUT] command. *)
+val conn : src -> dst -> conn
+val run : conn -> result
+(* val decoder_src : state -> .. -> unit *)
+(* val encoder_dst : state -> .. -> unit *)
 
-val login               : string -> string -> fragment
-(** [login u p] is the [LOGIN] command with user [u] and password [p]. *)
+(* val capability          : command *)
+(* (\** The [CAPABILITY] command. *\) *)
 
-val create              : string -> fragment
-(** [create m] is the [CREATE] command. *)
+(* val noop                : command *)
+(* (\** The [NOOP] command. *\) *)
 
-val rename              : string -> string -> fragment
-val subscribe           : string -> fragment
-val unsubscribe         : string -> fragment
-val list                : string -> string -> fragment
-val lsub                : string -> string -> fragment
-val status              : string -> status_att list -> fragment
-val copy                : set -> string -> fragment
-val uid_copy            : set -> string -> fragment
-val check               : fragment
-val close               : fragment
-val expunge             : fragment
-val search              : search_key -> fragment
-val uid_search          : search_key -> fragment
-val select_condstore    : string -> fragment
-val select              : string -> fragment
-val examine_condstore   : string -> fragment
-val examine             : string -> fragment
-val enable              : capability list -> fragment
+(* val logout              : command *)
+(* (\** The [LOGOUT] command. *\) *)
 
-type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ]
+(* val login               : string -> string -> command *)
+(* (\** [login u p] is the [LOGIN] command with user [u] and password [p]. *\) *)
 
-val fetch_changed       : set -> [< fetch_spec] -> changed:uint64 -> fragment
-val fetch_vanished      : set -> [< fetch_spec] -> changed:uint64 -> fragment
-val uid_fetch_changed   : set -> [< fetch_spec] -> changed:uint64 -> fragment
-val uid_fetch_vanished  : set -> [< fetch_spec] -> changed:uint64 -> fragment
-val fetch               : set -> [< fetch_spec] -> fragment
-val uid_fetch           : set -> [< fetch_spec] -> fragment
+(* val create              : string -> command *)
+(* (\** [create m] is the [CREATE] command. *\) *)
 
-type store_spec = [ `Add | `Set | `Remove ]
+(* val rename              : string -> string -> command *)
+(* val subscribe           : string -> command *)
+(* val unsubscribe         : string -> command *)
+(* val list                : string -> string -> command *)
+(* val lsub                : string -> string -> command *)
+(* val status              : string -> status_att list -> command *)
+(* val copy                : set -> string -> command *)
+(* val uid_copy            : set -> string -> command *)
+(* val check               : command *)
+(* val close               : command *)
+(* val expunge             : command *)
+(* val search              : search_key -> command *)
+(* val uid_search          : search_key -> command *)
+(* val select_condstore    : string -> command *)
+(* val select              : string -> command *)
+(* val examine_condstore   : string -> command *)
+(* val examine             : string -> command *)
+(* val enable              : capability list -> command *)
 
-val store               : set -> ?silent:bool -> [< store_spec] -> flag list -> fragment
-val uid_store           : set -> ?silent:bool -> [< store_spec] -> flag list -> fragment
-val store_unchanged     : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> fragment
-val uid_store_unchanged : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> fragment
-val store_labels        : set -> ?silent:bool -> [< store_spec] -> string list -> fragment
-val uid_store_labels    : set -> ?silent:bool -> [< store_spec] -> string list -> fragment
+(* type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ] *)
+
+(* val fetch_changed       : set -> [< fetch_spec] -> changed:uint64 -> command *)
+(* val fetch_vanished      : set -> [< fetch_spec] -> changed:uint64 -> command *)
+(* val uid_fetch_changed   : set -> [< fetch_spec] -> changed:uint64 -> command *)
+(* val uid_fetch_vanished  : set -> [< fetch_spec] -> changed:uint64 -> command *)
+(* val fetch               : set -> [< fetch_spec] -> command *)
+(* val uid_fetch           : set -> [< fetch_spec] -> command *)
+
+(* type store_spec = [ `Add | `Set | `Remove ] *)
+
+(* val store               : set -> ?silent:bool -> [< store_spec] -> flag list -> command *)
+(* val uid_store           : set -> ?silent:bool -> [< store_spec] -> flag list -> command *)
+(* val store_unchanged     : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> command *)
+(* val uid_store_unchanged : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> command *)
+(* val store_labels        : set -> ?silent:bool -> [< store_spec] -> string list -> command *)
+(* val uid_store_labels    : set -> ?silent:bool -> [< store_spec] -> string list -> command *)

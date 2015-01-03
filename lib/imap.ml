@@ -22,7 +22,7 @@
 
 (* Modified UTF-7 *)
 
-module MUTF7 = struct
+module Mutf7 = struct
 
   let recode ?nln ?encoding out_encoding src dst =
     let rec loop d e = match Uutf.decode d with
@@ -98,8 +98,6 @@ module MUTF7 = struct
     Buffer.contents b
 end
 
-(* Decoder *)
-
 type address =
   { ad_name : string;
     ad_adl : string;
@@ -117,10 +115,6 @@ type envelope =
     env_bcc : address list;
     env_in_reply_to : string;
     env_message_id : string }
-
-type uint32 = Uint32.t
-type uint64 = Uint64.t
-type set = (uint32 * uint32) list
 
 type capability =
   [ `Acl
@@ -191,10 +185,10 @@ type msg_att =
   | `Body of body
   | `Body_structure of body
   | `Body_section of section * int option * string option
-  | `Uid of uint32
-  | `Modseq of uint64
-  | `Gm_msgid of uint64
-  | `Gm_thrid of uint64
+  | `Uid of Uint32.t
+  | `Modseq of Uint64.t
+  | `Gm_msgid of Uint64.t
+  | `Gm_thrid of Uint64.t
   | `Gm_labels of string list ]
 
 type code =
@@ -206,16 +200,16 @@ type code =
   | `Read_only
   | `Read_write
   | `Try_create
-  | `Uid_next of uint32
-  | `Uid_validity of uint32
-  | `Unseen of uint32
+  | `Uid_next of Uint32.t
+  | `Uid_validity of Uint32.t
+  | `Unseen of Uint32.t
   | `Other of string * string option
   | `Closed
-  | `Highest_modseq of uint64
+  | `Highest_modseq of Uint64.t
   | `No_modseq
-  | `Modified of set
-  | `Append_uid of uint32 * uint32
-  | `Copy_uid of uint32 * set * set
+  | `Modified of (Uint32.t * Uint32.t) list
+  | `Append_uid of Uint32.t * Uint32.t
+  | `Copy_uid of Uint32.t * (Uint32.t * Uint32.t) list * (Uint32.t * Uint32.t) list
   | `Uid_not_sticky
   | `Compression_active
   | `Use_attr
@@ -240,37 +234,40 @@ type mbx_flag =
 type mbx_status =
   [ `Messages of int
   | `Recent of int
-  | `Uid_next of uint32
-  | `Uid_validity of uint32
-  | `Unseen of uint32
-  | `Highest_modseq of uint64 ]
+  | `Uid_next of Uint32.t
+  | `Uid_validity of Uint32.t
+  | `Unseen of Uint32.t
+  | `Highest_modseq of Uint64.t ]
 
 type state =
   [ `Ok of code * string
   | `No of code * string
   | `Bad of code * string ]
 
-type response =
+type untagged =
   [ state
-  | `Bye of code * string
   | `Flags of flag list
   | `List of mbx_flag list * char option * string
   | `Lsub of mbx_flag list * char option * string
-  | `Search of uint32 list * uint64 option
+  | `Search of Uint32.t list * Uint64.t option
   | `Status of string * mbx_status list
   | `Exists of int
   | `Recent of int
-  | `Expunge of uint32
-  | `Fetch of uint32 * msg_att list
+  | `Expunge of Uint32.t
+  | `Fetch of Uint32.t * msg_att list
   | `Capability of capability list
-  | `Preauth of code * string
-  | `Cont of string
-  | `Tagged of string * state
-  | `Vanished of set
-  | `Vanished_earlier of set
+  | `Vanished of (Uint32.t * Uint32.t) list
+  | `Vanished_earlier of (Uint32.t * Uint32.t) list
   | `Enabled of capability list ]
 
-type error =
+type response =
+  [ untagged
+  | `Bye of code * string
+  | `Preauth of code * string
+  | `Cont of string
+  | `Tagged of string * state ]
+
+type decode_error =
   [ `Expected_char of char
   | `Expected_string of string
   | `Unexpected_char of char
@@ -318,9 +315,9 @@ let pp_address ppf x =
 
 let pp_envelope ppf env =
   pp ppf "@[<hv 2>(envelope@ (date %S)@ (subject %S)@ \
-               (from %a)@ (sender %a)@ (reply-to %a)@ \
-               (to %a)@ (cc %a)@ (bcc %a)@ (in-reply-to %S)@ \
-               (message-id %S))@]"
+          (from %a)@ (sender %a)@ (reply-to %a)@ \
+          (to %a)@ (cc %a)@ (bcc %a)@ (in-reply-to %S)@ \
+          (message-id %S))@]"
     env.env_date
     env.env_subject
     (pp_list pp_address) env.env_from
@@ -460,8 +457,10 @@ let pp_response : Format.formatter -> response -> unit = fun ppf r ->
   | #state as s         -> pp_state ppf s
   | `Bye (c, t)         -> pp ppf "@[<2>(bye@ %a@ %S)@]" pp_code c t
   | `Flags flags        -> pp ppf "@[<2>(flags@ %a)@]" (pp_list pp_flag) flags
-  | `List (f, s, m)     -> pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f (pp_opt pp_char) s m
-  | `Lsub (f, s, m)     -> pp ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f (pp_opt pp_char) s m
+  | `List (f, s, m)     -> pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
+                             (pp_opt pp_char) s m
+  | `Lsub (f, s, m)     -> pp ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
+                             (pp_opt pp_char) s m
   | `Search (ns, m)     -> pp ppf "@[<2>(search@ %a@ %a)@]" (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
   | `Status (m, s)      -> pp ppf "@[<2>(status@ %S@ %a)@]" m (pp_list pp_mbx_status) s
   | `Exists n           -> pp ppf "(exists %i)" n
@@ -476,56 +475,68 @@ let pp_response : Format.formatter -> response -> unit = fun ppf r ->
   | `Vanished_earlier s -> pp ppf "@[<2>(vanished-earlier@ %a)@]" pp_set s
   | `Enabled s          -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list pp_cap) s
 
-let pp_error ppf x =
-  pp ppf "error"
+let pp_decode_error ppf = function
+  | _ -> pp ppf "error TODO"
 
-type decoder =
-  { mutable i : string;
-    mutable i_pos : int;
-    mutable i_max : int;
-    buf : Buffer.t;
-    mutable k : decoder -> [ `Ok of response | `Await | `Error of error ] }
+module D = struct
 
-external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
+  (* Decoder *)
 
-let (--) a b =
-  if String.length a <> String.length b then false else
-  let rec loop i =
-    if i >= String.length a then true else
-    if Char.uppercase a.[i] = Char.uppercase b.[i] then loop (i + 1) else
-    false
-  in
-  loop 0
+  type src = [ `String of string | `Channel of in_channel | `Manual ]
 
-let err e = `Error e
-let err_expected c _ = err (`Expected_char c)
-let err_expected_s s _ = err (`Expected_string s)
-let err_unexpected_s a _ = err (`Unexpected_string a)
-let err_unexpected c _ = err (`Unexpected_char c)
-let err_quoted c _ = err (`Illegal_char c)
-let err_illegal_range _ = err `Illegal_range
+  type decoder =
+    { src : src;
+      mutable i : string;
+      mutable i_pos : int;
+      mutable i_max : int;
+      buf : Buffer.t;
+      mutable k : decoder -> [ `Ok of response | `Await | `Error of decode_error ] }
 
-let ret x _ = `Ok x
-let cur d = d.i.[d.i_pos]
-let badd d = Buffer.add_char d.buf $ cur d
-let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
-let decode d = d.k d
+  external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
 
-let readc k d =
-  if d.i_pos < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else
-  (d.k <- k; `Await)
+  let (--) a b =
+    if String.length a <> String.length b then false else
+    let rec loop i =
+      if i >= String.length a then true else
+      if Char.uppercase a.[i] = Char.uppercase b.[i] then loop (i + 1) else
+      false
+    in
+    loop 0
 
-let p_ch c k d =
-  if cur d = c then readc k d else err_expected c d
+  let err e = `Error e
+  let err_expected c _ = err (`Expected_char c)
+  let err_expected_s s _ = err (`Expected_string s)
+  let err_unexpected_s a _ = err (`Unexpected_string a)
+  let err_unexpected c _ = err (`Unexpected_char c)
+  let err_quoted c _ = err (`Illegal_char c)
+  let err_illegal_range _ = err `Illegal_range
 
-let p_sp k d = p_ch ' ' k d
+  let ret x _ = `Ok x
+  let cur d = d.i.[d.i_pos]
+  let badd d = Buffer.add_char d.buf $ cur d
+  let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
+  let decode d = d.k d
+  let eoi _ = () (* FIXME *)
+  let src d s j l =                                     (* set [d.i] with [s]. *)
+    if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds" else
+    if l = 0 then eoi d else
+    (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
-let p_while1 f k d = (* TODO do not use d.buf if not necessary *)
-  if f $ cur d then
-    let rec nxt d = if f $ cur d then (badd d; readc nxt d) else k $ buf d $ d in
-    (badd d; readc nxt d)
-  else
-  err_unexpected $ cur d $ d
+  let readc k d =
+    if d.i_pos < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else
+    (d.k <- k; `Await)
+
+  let p_ch c k d =
+    if cur d = c then readc k d else err_expected c d
+
+  let p_sp k d = p_ch ' ' k d
+
+  let p_while1 f k d = (* TODO do not use d.buf if not necessary *)
+    if f $ cur d then
+      let rec nxt d = if f $ cur d then (badd d; readc nxt d) else k $ buf d $ d in
+      (badd d; readc nxt d)
+    else
+    err_unexpected $ cur d $ d
 
 (*
    CHAR           =  %x01-7F
@@ -549,48 +560,48 @@ let p_while1 f k d = (* TODO do not use d.buf if not necessary *)
    atom            = 1*ATOM-CHAR
 *)
 
-let is_atom_char = function
-  | '(' | ')' | '{' | ' '
-  | '\x00' .. '\x1F' | '\x7F'
-  | '%' | '*' | '"' | '\\' | ']' -> false
-  | '\x01' .. '\x7F' -> true
-  | _ -> false
+  let is_atom_char = function
+    | '(' | ')' | '{' | ' '
+    | '\x00' .. '\x1F' | '\x7F'
+    | '%' | '*' | '"' | '\\' | ']' -> false
+    | '\x01' .. '\x7F' -> true
+    | _ -> false
 
-let p_atom k d =
-  p_while1 is_atom_char k d
+  let p_atom k d =
+    p_while1 is_atom_char k d
 
-let p_atomf s k d =
-  p_atom (fun a d -> if a -- s then k d else err_expected_s s d) d
+  let p_atomf s k d =
+    p_atom (fun a d -> if a -- s then k d else err_expected_s s d) d
 
-let p_t3 p1 p2 p3 k d =
-  p1 (fun x -> p_sp $ p2 (fun y -> p_sp $ p3 (k x y))) d
+  let p_t3 p1 p2 p3 k d =
+    p1 (fun x -> p_sp $ p2 (fun y -> p_sp $ p3 (k x y))) d
 
-let p_t2 p1 p2 k d =
-  p1 (fun x -> p_sp $ p2 (k x)) d
+  let p_t2 p1 p2 k d =
+    p1 (fun x -> p_sp $ p2 (k x)) d
 
-let p_sep p k d =
-  let rec loop acc d =
-    if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
-    k $ List.rev acc $ d
-  in
-  loop [] d
+  let p_sep p k d =
+    let rec loop acc d =
+      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
+      k $ List.rev acc $ d
+    in
+    loop [] d
 
-let p_list1 p k d =
-  let rec loop acc d =
-    if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
-    if cur d = ')' then readc $ k (List.rev acc) $ d else
-    err_unexpected $ cur d $ d
-  in
-  p_ch '(' $ p (fun x -> loop [x]) $ d
+  let p_list1 p k d =
+    let rec loop acc d =
+      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
+      if cur d = ')' then readc $ k (List.rev acc) $ d else
+      err_unexpected $ cur d $ d
+    in
+    p_ch '(' $ p (fun x -> loop [x]) $ d
 
-let p_list p k d =
-  let rec loop acc d =
-    if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
-    if cur d = ')' then readc $ k (List.rev acc) $ d else
-    err_unexpected $ cur d $ d
-  in
-  if is_atom_char $ cur d then p_atomf "NIL" $ k [] $ d else
-  p_ch '(' (fun d -> if cur d = ')' then readc $ k [] $ d else p (fun x -> loop [x]) d) d
+  let p_list p k d =
+    let rec loop acc d =
+      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
+      if cur d = ')' then readc $ k (List.rev acc) $ d else
+      err_unexpected $ cur d $ d
+    in
+    if is_atom_char $ cur d then p_atomf "NIL" $ k [] $ d else
+    p_ch '(' (fun d -> if cur d = ')' then readc $ k [] $ d else p (fun x -> loop [x]) d) d
 
 (*
    CR             =  %x0D
@@ -603,8 +614,8 @@ let p_list p k d =
                           ; Internet standard newline
 *)
 
-let p_crlf k d =
-  p_ch '\r' $ p_ch '\n' k $ d
+  let p_crlf k d =
+    p_ch '\r' $ p_ch '\n' k $ d
 
 (*
    number          = 1*DIGIT
@@ -616,10 +627,10 @@ let p_crlf k d =
                        ; (0 < n < 4,294,967,296)
 *)
 
-let is_digit = function '0' .. '9' -> true | _ -> false
-let p_uint k d = p_while1 is_digit (fun s -> k $ int_of_string s) d
-let p_uint32 k d = p_while1 is_digit (fun s -> k $ Uint32.of_string s) d
-let p_uint64 k d = p_while1 is_digit (fun s -> k $ Uint64.of_string s) d
+  let is_digit = function '0' .. '9' -> true | _ -> false
+  let p_uint k d = p_while1 is_digit (fun s -> k $ int_of_string s) d
+  let p_uint32 k d = p_while1 is_digit (fun s -> k $ Uint32.of_string s) d
+  let p_uint64 k d = p_while1 is_digit (fun s -> k $ Uint64.of_string s) d
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -628,18 +639,18 @@ let p_uint64 k d = p_while1 is_digit (fun s -> k $ Uint64.of_string s) d
                      '\\' quoted-specials
 *)
 
-let rec p_quoted k d = (* "" was eaten *)
-  match cur d with
-  | '\r' | '\n' -> err_quoted $ cur d $ d
-  | '"' -> readc $ k (buf d) $ d
-  | '\\' ->
-      let nxt d =
-        if cur d = '"' || cur d = '\\' then (badd d; readc (p_quoted k) d) else
-        err_unexpected $ cur d $ d
-      in
-      readc nxt d
-  | '\x01' .. '\x7F' -> badd d; readc (p_quoted k) d
-  | _ -> err_unexpected $ cur d $ d
+  let rec p_quoted k d = (* "" was eaten *)
+    match cur d with
+    | '\r' | '\n' -> err_quoted $ cur d $ d
+    | '"' -> readc $ k (buf d) $ d
+    | '\\' ->
+        let nxt d =
+          if cur d = '"' || cur d = '\\' then (badd d; readc (p_quoted k) d) else
+          err_unexpected $ cur d $ d
+        in
+        readc nxt d
+    | '\x01' .. '\x7F' -> badd d; readc (p_quoted k) d
+    | _ -> err_unexpected $ cur d $ d
 
 (*
    literal         = "{" number "}" CRLF *CHAR8
@@ -648,30 +659,30 @@ let rec p_quoted k d = (* "" was eaten *)
    string          = quoted / literal
 *)
 
-let p_literal n k d = (* reads n bytes *)
-  if d.i_max - d.i_pos >= n then begin
-    let s = String.sub d.i d.i_pos n in
-    d.i_pos <- d.i_pos + n;
-    k s d
-  end else
-  let rec loop rem d =
-    let have = d.i_max - d.i_pos in
-    if have >= rem then begin
-      Buffer.add_substring d.buf d.i d.i_pos rem;
-      d.i_pos <- d.i_pos + rem;
-      k $ buf d $ d
-    end else begin
-      Buffer.add_substring d.buf d.i d.i_pos have;
-      d.i_pos <- d.i_max;
-      readc $ loop (rem - have) $ d
-    end
-  in
-  loop n d
+  let p_literal n k d = (* reads n bytes *)
+    if d.i_max - d.i_pos >= n then begin
+      let s = String.sub d.i d.i_pos n in
+      d.i_pos <- d.i_pos + n;
+      k s d
+    end else
+    let rec loop rem d =
+      let have = d.i_max - d.i_pos in
+      if have >= rem then begin
+        Buffer.add_substring d.buf d.i d.i_pos rem;
+        d.i_pos <- d.i_pos + rem;
+        k $ buf d $ d
+      end else begin
+        Buffer.add_substring d.buf d.i d.i_pos have;
+        d.i_pos <- d.i_max;
+        readc $ loop (rem - have) $ d
+      end
+    in
+    loop n d
 
-let p_string k d =
-  if cur d = '"' then readc $ p_quoted k $ d else
-  if cur d = '{' then readc $ p_uint (fun n -> p_ch '}' $ p_crlf (p_literal n k)) $ d else
-  err_unexpected $ cur d $ d
+  let p_string k d =
+    if cur d = '"' then readc $ p_quoted k $ d else
+    if cur d = '{' then readc $ p_uint (fun n -> p_ch '}' $ p_crlf (p_literal n k)) $ d else
+    err_unexpected $ cur d $ d
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -679,12 +690,12 @@ let p_string k d =
    astring         = 1*ASTRING-CHAR / string
 *)
 
-let is_astring_char c =
-  is_atom_char c || c = ']'
+  let is_astring_char c =
+    is_atom_char c || c = ']'
 
-let p_astring k d =
-  if is_astring_char $ cur d then p_while1 is_astring_char k d else
-  p_string k d
+  let p_astring k d =
+    if is_astring_char $ cur d then p_while1 is_astring_char k d else
+    p_string k d
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -692,13 +703,13 @@ let p_astring k d =
    text            = 1*TEXT-CHAR
 *)
 
-let is_text_char = function
-  | '\r' | '\n' -> false
-  | '\x01' .. '\x7F' -> true
-  | _ -> false
+  let is_text_char = function
+    | '\r' | '\n' -> false
+    | '\x01' .. '\x7F' -> true
+    | _ -> false
 
-let p_text k d =
-  p_while1 is_text_char k d
+  let p_text k d =
+    p_while1 is_text_char k d
 
 (*
    nil             = "NIL"
@@ -706,24 +717,24 @@ let p_text k d =
    nstring         = string / nil
 *)
 
-let p_nstring k d =
-  if is_atom_char $ cur d then p_atomf "NIL" $ k None $ d else
-  p_string (fun s -> k $ Some s) d
+  let p_nstring k d =
+    if is_atom_char $ cur d then p_atomf "NIL" $ k None $ d else
+    p_string (fun s -> k $ Some s) d
 
-let p_nstring' k d =
-  p_nstring (function Some s -> k s | None -> k "") d
+  let p_nstring' k d =
+    p_nstring (function Some s -> k s | None -> k "") d
 
 (*
    DIGIT          =  %x30-39
                           ; 0-9
 *)
 
-let p_digit k d =
-  if is_digit $ cur d then k $ (Char.code $ cur d) - 0x30 $ d else
-  err_unexpected $ cur d $ d
+  let p_digit k d =
+    if is_digit $ cur d then k $ (Char.code $ cur d) - 0x30 $ d else
+    err_unexpected $ cur d $ d
 
-let p_digit2 k d =
-  p_digit (fun n -> p_digit (fun m -> k $ 10 * n + m)) d
+  let p_digit2 k d =
+    p_digit (fun n -> p_digit (fun m -> k $ 10 * n + m)) d
 
 (*
    flag-extension  = "\\" atom
@@ -741,56 +752,56 @@ let p_digit2 k d =
                        ; Does not include "\Recent"
 *)
 
-let p_flag k d =
-  if cur d = '\\' then
-    readc $ p_atom begin fun a d ->
-      if a -- "Answered" then k `Answered d else
-      if a -- "Flagged" then k `Flagged d else
-      if a -- "Deleted" then k `Deleted d else
-      if a -- "Seen" then k `Seen d else
-      if a -- "Draft" then k `Draft d else
-      k $ `Extension a $ d
-    end $ d
-  else
-  p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
-
-(*
-   flag-fetch      = flag / "\Recent"
-*)
-
-let p_flag_fetch k d =
-  if cur d = '\\' then
-    readc $ p_atom begin fun a d ->
-      if a -- "Answered" then k `Answered d else
-      if a -- "Flagged" then k `Flagged d else
-      if a -- "Deleted" then k `Deleted d else
-      if a -- "Seen" then k `Seen d else
-      if a -- "Draft" then k `Draft d else
-      if a -- "Recent" then k `Recent d else
-      k $ `Extension a $ d
-    end $ d
-  else
-  p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
-
-(*
-   flag-perm       = flag / "\*"
-*)
-
-let p_flag_perm k d =
-  if cur d = '\\' then
-    readc begin fun d ->
-      if cur d = '*' then readc $ k `All $ d else
-      p_atom begin fun a d ->
+  let p_flag k d =
+    if cur d = '\\' then
+      readc $ p_atom begin fun a d ->
         if a -- "Answered" then k `Answered d else
         if a -- "Flagged" then k `Flagged d else
         if a -- "Deleted" then k `Deleted d else
         if a -- "Seen" then k `Seen d else
         if a -- "Draft" then k `Draft d else
         k $ `Extension a $ d
+      end $ d
+    else
+    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+
+(*
+   flag-fetch      = flag / "\Recent"
+*)
+
+  let p_flag_fetch k d =
+    if cur d = '\\' then
+      readc $ p_atom begin fun a d ->
+        if a -- "Answered" then k `Answered d else
+        if a -- "Flagged" then k `Flagged d else
+        if a -- "Deleted" then k `Deleted d else
+        if a -- "Seen" then k `Seen d else
+        if a -- "Draft" then k `Draft d else
+        if a -- "Recent" then k `Recent d else
+        k $ `Extension a $ d
+      end $ d
+    else
+    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+
+(*
+   flag-perm       = flag / "\*"
+*)
+
+  let p_flag_perm k d =
+    if cur d = '\\' then
+      readc begin fun d ->
+        if cur d = '*' then readc $ k `All $ d else
+        p_atom begin fun a d ->
+          if a -- "Answered" then k `Answered d else
+          if a -- "Flagged" then k `Flagged d else
+          if a -- "Deleted" then k `Deleted d else
+          if a -- "Seen" then k `Seen d else
+          if a -- "Draft" then k `Draft d else
+          k $ `Extension a $ d
+        end d
       end d
-    end d
-  else
-  p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+    else
+    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
 
 (*
    seq-number      = nz-number / "*"
@@ -839,18 +850,18 @@ let p_flag_perm k d =
                      ; Example: 2:4 and 4:2 are equivalent.
 *)
 
-(* We never parse '*' since it does not seem to show up in responses *)
-let p_set k d =
-  let rg k d =
-    let nxt n d = if cur d = ':' then readc $ p_uint32 (fun m -> k (n, m)) $ d else k $ (n, n) $ d in
-    if cur d = '*' then err_illegal_range d else
-    p_uint32 nxt d
-  in
-  let rec loop acc d =
-    if cur d = ',' then readc $ rg (fun r -> loop (r :: acc)) $ d else
-    k (List.rev acc) d
-  in
-  rg (fun r -> loop [r]) d
+  (* We never parse '*' since it does not seem to show up in responses *)
+  let p_set k d =
+    let rg k d =
+      let nxt n d = if cur d = ':' then readc $ p_uint32 (fun m -> k (n, m)) $ d else k $ (n, n) $ d in
+      if cur d = '*' then err_illegal_range d else
+      p_uint32 nxt d
+    in
+    let rec loop acc d =
+      if cur d = ',' then readc $ rg (fun r -> loop (r :: acc)) $ d else
+      k (List.rev acc) d
+    in
+    rg (fun r -> loop [r]) d
 
 
 (*
@@ -904,83 +915,83 @@ let p_set k d =
                     ; IMAP [RFC3501]
 *)
 
-let is_text_other_char c =
-  is_text_char c && (c <> ']')
+  let is_text_other_char c =
+    is_text_char c && (c <> ']')
 
-let p_text_1 k d =
-  p_while1 is_text_other_char k d
+  let p_text_1 k d =
+    p_while1 is_text_other_char k d
 
-let p_cap k d =
-  p_atom begin fun a d ->
-    if a -- "COMPRESS=DEFLATE" then k `Compress_deflate d else
-    if a -- "CONDSTORE" then k `Condstore d else
-    if a -- "ENABLE" then k `Enable d else
-    if a -- "IDLE" then k `Idle d else
-    if a -- "LITERAL+" then k `Literal_plus d else
-    if a -- "NAMESPACE" then k `Namespace d else
-    if a -- "ID" then k `Id d else
-    if a -- "QRESYNC" then k `Qresync d else
-    if a -- "UIDPLUS" then k `Uid_plus d else
-    if a -- "UNSELECT" then k `Unselect d else
-    if a -- "XLIST" then k `Xlist d else
-    if a -- "AUTH=PLAIN" then k $ `Auth `Plain $ d else
-    if a -- "AUTH=LOGIN" then k $ `Auth `Login $ d else
-    if a -- "XOAUTH2" then k `Xoauth2 d else
-    if a -- "X-GM-EXT-1" then k `Gmail d else
-    k $ `Other a $ d
-  end d
+  let p_cap k d =
+    p_atom begin fun a d ->
+      if a -- "COMPRESS=DEFLATE" then k `Compress_deflate d else
+      if a -- "CONDSTORE" then k `Condstore d else
+      if a -- "ENABLE" then k `Enable d else
+      if a -- "IDLE" then k `Idle d else
+      if a -- "LITERAL+" then k `Literal_plus d else
+      if a -- "NAMESPACE" then k `Namespace d else
+      if a -- "ID" then k `Id d else
+      if a -- "QRESYNC" then k `Qresync d else
+      if a -- "UIDPLUS" then k `Uid_plus d else
+      if a -- "UNSELECT" then k `Unselect d else
+      if a -- "XLIST" then k `Xlist d else
+      if a -- "AUTH=PLAIN" then k $ `Auth `Plain $ d else
+      if a -- "AUTH=LOGIN" then k $ `Auth `Login $ d else
+      if a -- "XOAUTH2" then k `Xoauth2 d else
+      if a -- "X-GM-EXT-1" then k `Gmail d else
+      k $ `Other a $ d
+    end d
 
-let p_code k d = (* '[' was eaten *)
-  p_atom begin fun a d ->
-    if a -- "ALERT" then k `Alert d else
-    if a -- "BADCHARSET" then
-      if cur d = ' ' then readc $ p_list1 p_astring (fun xs -> k $ `Bad_charset xs) $ d else
-      k $ `Bad_charset [] $ d else
-    if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
-    if a -- "PARSE" then k `Parse d else
-    if a -- "PERMANENTFLAGS" then p_sp $ p_list p_flag_perm (fun xs -> k $ `Permanent_flags xs) $ d else
-    if a -- "READ-ONLY" then k `Read_only d else
-    if a -- "READ-WRITE" then k `Read_write d else
-    if a -- "TRYCREATE" then k `Try_create d else
-    if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
-    if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
-    if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
-    if a -- "CLOSED" then k `Closed d else
-    if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
-    if a -- "NOMODSEQ" then k `No_modseq d else
-    if a -- "MODIFIED" then p_sp $ p_set (fun s -> k $ `Modified s) $ d else
-    if a -- "APPENDUID" then p_sp $ p_t2 p_uint32 p_uint32 (fun n m -> k $ `Append_uid (n, m)) $ d else
-    if a -- "COPYUID" then p_sp $ p_t3 p_uint32 p_set p_set (fun n s1 s2 -> k $ `Copy_uid (n, s1, s2)) $ d else
-    if a -- "UIDNOTSTICKY" then k `Uid_not_sticky d else
-    if a -- "COMPRESSIONACTIVE" then k `Compression_active d else
-    if a -- "USEATTR" then k `Use_attr d else
-    if cur d = ' ' then readc $ p_text_1 (fun x -> k $ `Other (a, Some x)) $ d else
-    k $ `Other (a, None) $ d
-  end d
+  let p_code k d = (* '[' was eaten *)
+    p_atom begin fun a d ->
+      if a -- "ALERT" then k `Alert d else
+      if a -- "BADCHARSET" then
+        if cur d = ' ' then readc $ p_list1 p_astring (fun xs -> k $ `Bad_charset xs) $ d else
+        k $ `Bad_charset [] $ d else
+      if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
+      if a -- "PARSE" then k `Parse d else
+      if a -- "PERMANENTFLAGS" then p_sp $ p_list p_flag_perm (fun xs -> k $ `Permanent_flags xs) $ d else
+      if a -- "READ-ONLY" then k `Read_only d else
+      if a -- "READ-WRITE" then k `Read_write d else
+      if a -- "TRYCREATE" then k `Try_create d else
+      if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
+      if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
+      if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
+      if a -- "CLOSED" then k `Closed d else
+      if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
+      if a -- "NOMODSEQ" then k `No_modseq d else
+      if a -- "MODIFIED" then p_sp $ p_set (fun s -> k $ `Modified s) $ d else
+      if a -- "APPENDUID" then p_sp $ p_t2 p_uint32 p_uint32 (fun n m -> k $ `Append_uid (n, m)) $ d else
+      if a -- "COPYUID" then p_sp $ p_t3 p_uint32 p_set p_set (fun n s1 s2 -> k $ `Copy_uid (n, s1, s2)) $ d else
+      if a -- "UIDNOTSTICKY" then k `Uid_not_sticky d else
+      if a -- "COMPRESSIONACTIVE" then k `Compression_active d else
+      if a -- "USEATTR" then k `Use_attr d else
+      if cur d = ' ' then readc $ p_text_1 (fun x -> k $ `Other (a, Some x)) $ d else
+      k $ `Other (a, None) $ d
+    end d
 
 (*
    resp-text       = ["[" resp-text-code "]" SP] text
 *)
 
-let p_resp_text k d =
-  if cur d = '[' then
-    let nxt x d = p_ch ']' (fun d -> if cur d = ' ' then readc $ p_text (k x) $ d else k x "" d) d in
-    readc $ p_code nxt $ d
-  else
-  p_text $ k `None $ d
+  let p_resp_text k d =
+    if cur d = '[' then
+      let nxt x d = p_ch ']' (fun d -> if cur d = ' ' then readc $ p_text (k x) $ d else k x "" d) d in
+      readc $ p_code nxt $ d
+    else
+    p_text $ k `None $ d
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
                        ; Status condition
 *)
 
-let p_resp_cond_state k d =
-  p_atom begin fun a d ->
-    if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
-    if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
-    if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
-    err_unexpected_s a d
-  end d
+  let p_resp_cond_state k d =
+    p_atom begin fun a d ->
+      if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
+      if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
+      if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
+      err_unexpected_s a d
+    end d
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -1012,23 +1023,23 @@ let p_resp_cond_state k d =
                        ; extensions to this specification.
 *)
 
-let p_mbx_flag k d =
-  p_ch '\\' $ p_atom begin fun a d ->
-    if a -- "Noselect" then k `Noselect d else
-    if a -- "Marked" then k `Marked d else
-    if a -- "Unmarked" then k `Unmarked d else
-    if a -- "Noinferiors" then k `Noinferiors d else
-    if a -- "HasChildren" then k `HasChildren d else
-    if a -- "HasNoChildren" then k `HasNoChildren d else
-    if a -- "All" then k `All d else
-    if a -- "Archive" then k `Archive d else
-    if a -- "Drafts" then k `Drafts d else
-    if a -- "Flagged" then k `Flagged d else
-    if a -- "Junk" then k `Junk d else
-    if a -- "Sent" then k `Sent d else
-    if a -- "Trash" then k `Trash d else
-    k $ `Extension a $ d
-  end $ d
+  let p_mbx_flag k d =
+    p_ch '\\' $ p_atom begin fun a d ->
+      if a -- "Noselect" then k `Noselect d else
+      if a -- "Marked" then k `Marked d else
+      if a -- "Unmarked" then k `Unmarked d else
+      if a -- "Noinferiors" then k `Noinferiors d else
+      if a -- "HasChildren" then k `HasChildren d else
+      if a -- "HasNoChildren" then k `HasNoChildren d else
+      if a -- "All" then k `All d else
+      if a -- "Archive" then k `Archive d else
+      if a -- "Drafts" then k `Drafts d else
+      if a -- "Flagged" then k `Flagged d else
+      if a -- "Junk" then k `Junk d else
+      if a -- "Sent" then k `Sent d else
+      if a -- "Trash" then k `Trash d else
+      k $ `Extension a $ d
+    end $ d
 
 (*
    mailbox         = "INBOX" / astring
@@ -1041,9 +1052,9 @@ let p_mbx_flag k d =
                        ; semantic details of mailbox names.
 *)
 
-let p_mailbox k d =
-  let decode_mailbox_name s = try MUTF7.decode s with _ -> s in (* FIXME handle error *)
-  p_astring (fun s -> k $ decode_mailbox_name s) d
+  let p_mailbox k d =
+    let decode_mailbox_name s = try Mutf7.decode s with _ -> s in (* FIXME handle error *)
+    p_astring (fun s -> k $ decode_mailbox_name s) d
 
 (*
    QUOTED-CHAR     = <any TEXT-CHAR except quoted-specials> /
@@ -1053,24 +1064,24 @@ let p_mailbox k d =
                       (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
 *)
 
-let p_quoted_char k d =
-  let is_qchar = function '\r' | '\n' | '\\' | '"' -> false | '\x01' .. '\x7F' -> true | _ -> false in
-  if cur d = '\\' then
-    let nxt d =
-      if cur d = '\\' || cur d = '"' then let c = cur d in readc $ k c $ d else
-      err_unexpected $ cur d $ d
-    in
-    readc nxt d
-  else
-  if is_qchar $ cur d then let c = cur d in readc $ k c $ d else
-  err_unexpected $ cur d $ d
+  let p_quoted_char k d =
+    let is_qchar = function '\r' | '\n' | '\\' | '"' -> false | '\x01' .. '\x7F' -> true | _ -> false in
+    if cur d = '\\' then
+      let nxt d =
+        if cur d = '\\' || cur d = '"' then let c = cur d in readc $ k c $ d else
+        err_unexpected $ cur d $ d
+      in
+      readc nxt d
+    else
+    if is_qchar $ cur d then let c = cur d in readc $ k c $ d else
+    err_unexpected $ cur d $ d
 
-let p_delim k d =
-  if cur d = '"' then readc $ p_quoted_char (fun c -> p_ch '"' $ k (Some c)) $ d else
-  p_atomf "NIL" $ k None $ d
+  let p_delim k d =
+    if cur d = '"' then readc $ p_quoted_char (fun c -> p_ch '"' $ k (Some c)) $ d else
+    p_atomf "NIL" $ k None $ d
 
-let p_mailbox_list k d =
-  p_t3 $ p_list p_mbx_flag $ p_delim $ p_mailbox $ k $ d
+  let p_mailbox_list k d =
+    p_t3 $ p_list p_mbx_flag $ p_delim $ p_mailbox $ k $ d
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1088,16 +1099,16 @@ let p_mailbox_list k d =
                           ;; as described in Section 3.1.2
 *)
 
-let p_status_att k d =
-  p_atom begin fun a d ->
-    if a -- "MESSAGES" then p_sp $ p_uint (fun n -> k $ `Messages n) $ d else
-    if a -- "RECENT" then p_sp $ p_uint (fun n -> k $ `Recent n) $ d else
-    if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
-    if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
-    if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
-    if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
-    err_unexpected_s a d
-  end d
+  let p_status_att k d =
+    p_atom begin fun a d ->
+      if a -- "MESSAGES" then p_sp $ p_uint (fun n -> k $ `Messages n) $ d else
+      if a -- "RECENT" then p_sp $ p_uint (fun n -> k $ `Recent n) $ d else
+      if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
+      if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
+      if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
+      if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
+      err_unexpected_s a d
+    end d
 
 (*
    address         = "(" addr-name SP addr-adl SP addr-mailbox SP
@@ -1123,14 +1134,14 @@ let p_status_att k d =
                        ; mailbox after removing [RFC-2822] quoting
 *)
 
-let p_address k d =
-  p_ch '(' begin
-           p_nstring' @@ fun ad_name ->
-    p_sp $ p_nstring' @@ fun ad_adl ->
-    p_sp $ p_nstring' @@ fun ad_mailbox ->
-    p_sp $ p_nstring' @@ fun ad_host ->
-    p_ch ')' $ k {ad_name; ad_adl; ad_mailbox; ad_host}
-  end d
+  let p_address k d =
+    p_ch '(' begin
+      p_nstring' @@ fun ad_name ->
+      p_sp $ p_nstring' @@ fun ad_adl ->
+      p_sp $ p_nstring' @@ fun ad_mailbox ->
+      p_sp $ p_nstring' @@ fun ad_host ->
+      p_ch ')' $ k {ad_name; ad_adl; ad_mailbox; ad_host}
+    end d
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -1158,23 +1169,23 @@ let p_address k d =
    env-to          = "(" 1*address ")" / nil
 *)
 
-let p_envelope k d =
-  p_ch '(' begin
-           p_nstring'        @@ fun env_date ->
-    p_sp $ p_nstring'        @@ fun env_subject ->
-    p_sp $ p_list1 p_address @@ fun env_from ->
-    p_sp $ p_list1 p_address @@ fun env_sender ->
-    p_sp $ p_list1 p_address @@ fun env_reply_to ->
-    p_sp $ p_list1 p_address @@ fun env_to ->
-    p_sp $ p_list1 p_address @@ fun env_cc ->
-    p_sp $ p_list1 p_address @@ fun env_bcc ->
-    p_sp $ p_nstring'        @@ fun env_in_reply_to ->
-    p_sp $ p_nstring'        @@ fun env_message_id ->
-    p_ch ')' $
-    k {env_date; env_subject; env_from; env_sender;
-       env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
-       env_message_id}
-  end d
+  let p_envelope k d =
+    p_ch '(' begin
+      p_nstring'        @@ fun env_date ->
+      p_sp $ p_nstring'        @@ fun env_subject ->
+      p_sp $ p_list1 p_address @@ fun env_from ->
+      p_sp $ p_list1 p_address @@ fun env_sender ->
+      p_sp $ p_list1 p_address @@ fun env_reply_to ->
+      p_sp $ p_list1 p_address @@ fun env_to ->
+      p_sp $ p_list1 p_address @@ fun env_cc ->
+      p_sp $ p_list1 p_address @@ fun env_bcc ->
+      p_sp $ p_nstring'        @@ fun env_in_reply_to ->
+      p_sp $ p_nstring'        @@ fun env_message_id ->
+      p_ch ')' $
+      k {env_date; env_subject; env_from; env_sender;
+         env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
+         env_message_id}
+    end d
 
 (*
    body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
@@ -1192,15 +1203,15 @@ let p_envelope k d =
                      body-fld-enc SP body-fld-octets
 *)
 
-let p_body_fields k d =
-  let param k d = p_string (fun v -> p_sp $ p_string (fun v' -> k (v, v'))) d in
-  p_list1 param begin fun params ->
-    p_sp $ p_nstring @@ fun id ->
-    p_sp $ p_nstring @@ fun desc ->
-    p_sp $ p_string  @@ fun enc ->
-    p_sp $ p_uint    @@ fun octets ->
-    k {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
-  end d
+  let p_body_fields k d =
+    let param k d = p_string (fun v -> p_sp $ p_string (fun v' -> k (v, v'))) d in
+    p_list1 param begin fun params ->
+      p_sp $ p_nstring @@ fun id ->
+      p_sp $ p_nstring @@ fun desc ->
+      p_sp $ p_string  @@ fun enc ->
+      p_sp $ p_uint    @@ fun octets ->
+      k {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
+    end d
 
 (*
    body-extension  = nstring / number /
@@ -1213,10 +1224,10 @@ let p_body_fields k d =
                        ; revisions of this specification.
 *)
 
-let rec b_extension k d =
-  if is_digit $ cur d then p_uint32 (fun n -> k $ `Number n) d else
-  if cur d = '(' then p_list1 b_extension (fun xs -> k $ `List xs) d else
-  p_nstring (function Some x -> k $ `String x | None -> k $ `None) d
+  let rec b_extension k d =
+    if is_digit $ cur d then p_uint32 (fun n -> k $ `Number n) d else
+    if cur d = '(' then p_list1 b_extension (fun xs -> k $ `List xs) d else
+    p_nstring (function Some x -> k $ `String x | None -> k $ `None) d
 
 (*
    body-fld-md5    = nstring
@@ -1238,61 +1249,61 @@ let rec b_extension k d =
                        ; "BODY" fetch
 *)
 
-(* let body_fld_dsp = *)
-(*   alt *)
-(*     begin *)
-(*       char '(' >> *)
-(*       imap_string >>= fun dsp_type -> *)
-(*       char ' ' >> *)
-(*       body_fld_param >>= fun dsp_attributes -> *)
-(*       char ')' >> *)
-(*       ret (Some {dsp_type; dsp_attributes}) *)
-(*     end *)
-(*     (nil >> ret None) *)
+  (* let body_fld_dsp = *)
+  (*   alt *)
+  (*     begin *)
+  (*       char '(' >> *)
+  (*       imap_string >>= fun dsp_type -> *)
+  (*       char ' ' >> *)
+  (*       body_fld_param >>= fun dsp_attributes -> *)
+  (*       char ')' >> *)
+  (*       ret (Some {dsp_type; dsp_attributes}) *)
+  (*     end *)
+  (*     (nil >> ret None) *)
 
-let p_fld_lang k d =
-  if cur d = '(' then p_list1 p_string k d else
-  p_nstring (function Some x -> k [x] | None -> k []) d
+  let p_fld_lang k d =
+    if cur d = '(' then p_list1 p_string k d else
+    p_nstring (function Some x -> k [x] | None -> k []) d
 
-(* let body_ext_1part k d = *)
-(*   body_fld_md5 >>= fun bd_md5 -> *)
-(*   opt *)
-(*     begin *)
-(*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
-(*       opt *)
-(*         begin *)
-(*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
-(*           opt *)
-(*             begin *)
-(*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
-(*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
-(*               ret {bd_md5; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
-(*             end *)
-(*             {bd_md5; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
-(*         end *)
-(*         {bd_md5; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
-(*     end *)
-(*     {bd_md5 = None; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  (* let body_ext_1part k d = *)
+  (*   body_fld_md5 >>= fun bd_md5 -> *)
+  (*   opt *)
+  (*     begin *)
+  (*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
+  (*       opt *)
+  (*         begin *)
+  (*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
+  (*           opt *)
+  (*             begin *)
+  (*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
+  (*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
+  (*               ret {bd_md5; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
+  (*             end *)
+  (*             {bd_md5; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
+  (*         end *)
+  (*         {bd_md5; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  (*     end *)
+  (*     {bd_md5 = None; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
 
-(* let body_ext_mpart = *)
-(*   char ' ' >> body_fld_param >>= fun bd_parameter -> *)
-(*   opt *)
-(*     begin *)
-(*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
-(*       opt *)
-(*         begin *)
-(*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
-(*           opt *)
-(*             begin *)
-(*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
-(*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
-(*               ret {bd_parameter; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
-(*             end *)
-(*             {bd_parameter; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
-(*         end *)
-(*         {bd_parameter; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
-(*     end *)
-(*     {bd_parameter; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  (* let body_ext_mpart = *)
+  (*   char ' ' >> body_fld_param >>= fun bd_parameter -> *)
+  (*   opt *)
+  (*     begin *)
+  (*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
+  (*       opt *)
+  (*         begin *)
+  (*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
+  (*           opt *)
+  (*             begin *)
+  (*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
+  (*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
+  (*               ret {bd_parameter; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
+  (*             end *)
+  (*             {bd_parameter; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
+  (*         end *)
+  (*         {bd_parameter; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  (*     end *)
+  (*     {bd_parameter; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
 
 (*
    body-fld-lines  = number
@@ -1328,26 +1339,26 @@ let p_fld_lang k d =
    body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 
-let rec p_mbody k d = (* TODO ext *)
-  let rec loop acc d =
-    if cur d = '(' then p_body (fun x -> loop (x :: acc)) d else
-    if cur d = ' ' then readc $ p_string (fun m -> k $ `Multiple (List.rev acc, m)) $ d else
-    err_unexpected $ cur d $ d
-  in
-  loop [] d
+  let rec p_mbody k d = (* TODO ext *)
+    let rec loop acc d =
+      if cur d = '(' then p_body (fun x -> loop (x :: acc)) d else
+      if cur d = ' ' then readc $ p_string (fun m -> k $ `Multiple (List.rev acc, m)) $ d else
+      err_unexpected $ cur d $ d
+    in
+    loop [] d
 
-and p_sbody k d = (* TODO ext *)
-  let msg f k d = p_t3 p_envelope p_body p_uint (fun e b n -> k $ `Message (f, e, b, n)) d in
-  let nxt m t f d =
-    if m -- "MESSAGE" && t -- "RFC822" then p_sp $ msg f k $ d else
-    if m -- "TEXT" then p_sp $ p_uint (fun n -> k $ `Text (t, f, n)) $ d else
-    k $ `Basic (m, t, f) $ d
-  in
-  p_t3 p_string p_string p_body_fields nxt d
+  and p_sbody k d = (* TODO ext *)
+    let msg f k d = p_t3 p_envelope p_body p_uint (fun e b n -> k $ `Message (f, e, b, n)) d in
+    let nxt m t f d =
+      if m -- "MESSAGE" && t -- "RFC822" then p_sp $ msg f k $ d else
+      if m -- "TEXT" then p_sp $ p_uint (fun n -> k $ `Text (t, f, n)) $ d else
+      k $ `Basic (m, t, f) $ d
+    in
+    p_t3 p_string p_string p_body_fields nxt d
 
-and p_body k d =
-  let nxt k d = if cur d = '(' then p_mbody k d else p_sbody k d in
-  p_ch '(' $ nxt (fun x d -> p_ch ')' $ k x $ d) $ d
+  and p_body k d =
+    let nxt k d = if cur d = '(' then p_mbody k d else p_sbody k d in
+    p_ch '(' $ nxt (fun x d -> p_ch ')' $ k x $ d) $ d
 
 (*
    date-day-fixed  = (SP DIGIT) / 2DIGIT
@@ -1371,8 +1382,8 @@ and p_body k d =
                      SP time SP zone DQUOTE
 *)
 
-let p_date_time k d =
-  p_literal 28 k d (* TODO parse date_time *)
+  let p_date_time k d =
+    p_literal 28 k d (* TODO parse date_time *)
 
 (*
    header-fld-name = astring
@@ -1394,26 +1405,26 @@ let p_date_time k d =
    section         = "[" [section-spec] "]"
 *)
 
-let p_msgtext k d =
-  p_atom begin fun a d ->
-    if a -- "HEADER" then k `Header d else
-    if a -- "HEADER.FIELDS" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields xs) $ d else
-    if a -- "HEADER.FIELDS.NOT" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields_not xs) $ d else
-    if a -- "TEXT" then k `Text d else
-    if a -- "MIME" then k `Mime d else
-    err_unexpected_s a d
-  end d
+  let p_msgtext k d =
+    p_atom begin fun a d ->
+      if a -- "HEADER" then k `Header d else
+      if a -- "HEADER.FIELDS" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields xs) $ d else
+      if a -- "HEADER.FIELDS.NOT" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields_not xs) $ d else
+      if a -- "TEXT" then k `Text d else
+      if a -- "MIME" then k `Mime d else
+      err_unexpected_s a d
+    end d
 
-let rec p_part k d =
-  if is_digit $ cur d then p_uint (fun n -> p_ch '.' $ p_part (fun s -> k $ `Part (n, s))) d else
-  p_msgtext k d
+  let rec p_part k d =
+    if is_digit $ cur d then p_uint (fun n -> p_ch '.' $ p_part (fun s -> k $ `Part (n, s))) d else
+    p_msgtext k d
 
-let p_section k d =
-  let nxt d =
-    if cur d = ']' then readc $ k `All $ d else
-    p_part (fun s -> p_ch ']' $ k s) d
-  in
-  p_ch '[' nxt d
+  let p_section k d =
+    let nxt d =
+      if cur d = ']' then readc $ k `All $ d else
+      p_part (fun s -> p_ch ']' $ k s) d
+    in
+    p_ch '[' nxt d
 
 (*
    uniqueid        = nz-number
@@ -1453,31 +1464,31 @@ let p_section k d =
                           ; https://developers.google.com/gmail/imap_extensions
 *)
 
-let p_msg_att k d =
-  p_atom begin fun a d ->
-    if a -- "FLAGS" then p_sp $ p_list p_flag_fetch (fun xs -> k $ `Flags xs) $ d else
-    if a -- "ENVELOPE" then p_sp $ p_envelope (fun x -> k $ `Envelope x) $ d else
-    if a -- "INTERNALDATE" then p_sp $ p_date_time (fun x -> k $ `Internal_date x) $ d else
-    if a -- "RFC822.HEADER" then p_sp $ p_nstring (fun x -> k $ `Rfc822_header x) $ d else
-    if a -- "RFC822.TEXT" then p_sp $ p_nstring (fun x -> k $ `Rfc822_text x) $ d else
-    if a -- "RFC822.SIZE" then p_sp $ p_uint (fun x -> k $ `Rfc822_size x) $ d else
-    if a -- "RFC822" then p_sp $ p_nstring (fun x -> k $ `Rfc822 x) $ d else
-    if a -- "BODYSTRUCTURE" then p_sp $ p_body (fun x -> k $ `Body_structure x) $ d else
-    if a -- "BODY" then
-      let orig k d =
-        if cur d = '<' then readc $ p_uint (fun n -> p_ch '>' $ k (Some n)) $ d else
-        k None d
-      in
-      if cur d = ' ' then readc $ p_body (fun x -> k $ `Body x) $ d else
-      p_section (fun s -> orig (fun n -> p_sp $ p_nstring (fun x -> k $ `Body_section (s, n, x)))) d
-    else
-    if a -- "UID" then p_sp $ p_uint32 (fun x -> k $ `Uid x) $ d else
-    if a -- "MODSEQ" then p_sp $ p_ch '(' (p_uint64 (fun n -> p_ch ')' $ k (`Modseq n))) $ d else
-    if a -- "X-GM-MSGID" then p_sp $ p_uint64 (fun n -> k $ `Gm_msgid n) $ d else
-    if a -- "X-GM-THRID" then p_sp $ p_uint64 (fun n -> k $ `Gm_thrid n) $ d else
-    if a -- "X-GM-LABELS" then p_sp $ p_list p_astring (fun xs -> k $ `Gm_labels xs) $ d else
-    err_unexpected_s a d
-  end d
+  let p_msg_att k d =
+    p_atom begin fun a d ->
+      if a -- "FLAGS" then p_sp $ p_list p_flag_fetch (fun xs -> k $ `Flags xs) $ d else
+      if a -- "ENVELOPE" then p_sp $ p_envelope (fun x -> k $ `Envelope x) $ d else
+      if a -- "INTERNALDATE" then p_sp $ p_date_time (fun x -> k $ `Internal_date x) $ d else
+      if a -- "RFC822.HEADER" then p_sp $ p_nstring (fun x -> k $ `Rfc822_header x) $ d else
+      if a -- "RFC822.TEXT" then p_sp $ p_nstring (fun x -> k $ `Rfc822_text x) $ d else
+      if a -- "RFC822.SIZE" then p_sp $ p_uint (fun x -> k $ `Rfc822_size x) $ d else
+      if a -- "RFC822" then p_sp $ p_nstring (fun x -> k $ `Rfc822 x) $ d else
+      if a -- "BODYSTRUCTURE" then p_sp $ p_body (fun x -> k $ `Body_structure x) $ d else
+      if a -- "BODY" then
+        let orig k d =
+          if cur d = '<' then readc $ p_uint (fun n -> p_ch '>' $ k (Some n)) $ d else
+          k None d
+        in
+        if cur d = ' ' then readc $ p_body (fun x -> k $ `Body x) $ d else
+        p_section (fun s -> orig (fun n -> p_sp $ p_nstring (fun x -> k $ `Body_section (s, n, x)))) d
+      else
+      if a -- "UID" then p_sp $ p_uint32 (fun x -> k $ `Uid x) $ d else
+      if a -- "MODSEQ" then p_sp $ p_ch '(' (p_uint64 (fun n -> p_ch ')' $ k (`Modseq n))) $ d else
+      if a -- "X-GM-MSGID" then p_sp $ p_uint64 (fun n -> k $ `Gm_msgid n) $ d else
+      if a -- "X-GM-THRID" then p_sp $ p_uint64 (fun n -> k $ `Gm_thrid n) $ d else
+      if a -- "X-GM-LABELS" then p_sp $ p_list p_astring (fun xs -> k $ `Gm_labels xs) $ d else
+      err_unexpected_s a d
+    end d
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -1507,59 +1518,59 @@ let p_msg_att k d =
    response-data =/ "*" SP enable-data CRLF
 *)
 
-let p_response_data_t k d =
-  p_atom begin fun a d ->
-    if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
-    if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
-    if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
-    if a -- "BYE" then p_sp $ p_resp_text (fun c t -> k $ `Bye (c, t)) $ d else
-    if a -- "FLAGS" then p_sp $ p_list p_flag (fun xs -> k $ `Flags xs) $ d else
-    if a -- "LIST" then p_sp $ p_mailbox_list (fun xs c m -> k $ `List (xs, c, m)) $ d else
-    if a -- "LSUB" then p_sp $ p_mailbox_list (fun xs c m -> k $ `Lsub (xs, c, m)) $ d else
-    if a -- "SEARCH" then
-      let rec nxt acc d =
+  let p_response_data_t k d =
+    p_atom begin fun a d ->
+      if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
+      if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
+      if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
+      if a -- "BYE" then p_sp $ p_resp_text (fun c t -> k $ `Bye (c, t)) $ d else
+      if a -- "FLAGS" then p_sp $ p_list p_flag (fun xs -> k $ `Flags xs) $ d else
+      if a -- "LIST" then p_sp $ p_mailbox_list (fun xs c m -> k $ `List (xs, c, m)) $ d else
+      if a -- "LSUB" then p_sp $ p_mailbox_list (fun xs c m -> k $ `Lsub (xs, c, m)) $ d else
+      if a -- "SEARCH" then
+        let rec nxt acc d =
+          let nxt d =
+            if cur d = '(' then
+              readc $ p_atomf "MODSEQ"
+                (p_sp (p_uint64 (fun n -> p_ch ')' $ k (`Search (List.rev acc, Some n))))) $ d
+            else
+            p_uint32 (fun n -> nxt (n :: acc)) d
+          in
+          if cur d = ' ' then readc nxt d else
+          k $ `Search (List.rev acc, None) $ d
+        in
+        nxt [] d else
+      if a -- "STATUS" then
+        let nxt m d = p_sp $ p_list p_status_att (fun a -> k $ `Status (m, a)) $ d in
+        p_sp $ p_mailbox nxt $ d else
+      if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
+      if a -- "PREAUTH" then p_sp $ p_resp_text (fun c t -> k $ `Preauth (c, t)) $ d else
+      if a -- "VANISHED" then
         let nxt d =
           if cur d = '(' then
-            readc $ p_atomf "MODSEQ"
-              (p_sp (p_uint64 (fun n -> p_ch ')' $ k (`Search (List.rev acc, Some n))))) $ d
+            readc $ p_atomf "EARLIER" (p_ch ')' $ p_sp (p_set (fun s -> k $ `Vanished_earlier s))) $ d
           else
-          p_uint32 (fun n -> nxt (n :: acc)) d
+          p_set (fun s -> k $ `Vanished s) d
         in
-        if cur d = ' ' then readc nxt d else
-        k $ `Search (List.rev acc, None) $ d
-      in
-      nxt [] d else
-    if a -- "STATUS" then
-      let nxt m d = p_sp $ p_list p_status_att (fun a -> k $ `Status (m, a)) $ d in
-      p_sp $ p_mailbox nxt $ d else
-    if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
-    if a -- "PREAUTH" then p_sp $ p_resp_text (fun c t -> k $ `Preauth (c, t)) $ d else
-    if a -- "VANISHED" then
-      let nxt d =
-        if cur d = '(' then
-          readc $ p_atomf "EARLIER" (p_ch ')' $ p_sp (p_set (fun s -> k $ `Vanished_earlier s))) $ d
-        else
-        p_set (fun s -> k $ `Vanished s) d
-      in
-      p_sp nxt d
-    else
-    if a -- "ENABLED" then p_sep p_cap (fun xs -> k $ `Enabled xs) d else
-    err_unexpected_s a d
-  end d
+        p_sp nxt d
+      else
+      if a -- "ENABLED" then p_sep p_cap (fun xs -> k $ `Enabled xs) d else
+      err_unexpected_s a d
+    end d
 
-let p_response_data_n k d =
-  let nxt n a d =
-    if a -- "EXPUNGE" then k $ `Expunge n $ d else
-    if a -- "FETCH" then p_sp $ p_list1 p_msg_att (fun a -> k $ `Fetch (n, a)) $ d else
-    if a -- "EXISTS" then k $ `Exists (Uint32.to_int n) $ d else
-    if a -- "RECENT" then k $ `Recent (Uint32.to_int n) $ d else
-    err_unexpected_s a d
-  in
-  p_t2 p_uint32 p_atom nxt d (* FIXME uint vs uint32 *)
+  let p_response_data_n k d =
+    let nxt n a d =
+      if a -- "EXPUNGE" then k $ `Expunge n $ d else
+      if a -- "FETCH" then p_sp $ p_list1 p_msg_att (fun a -> k $ `Fetch (n, a)) $ d else
+      if a -- "EXISTS" then k $ `Exists (Uint32.to_int n) $ d else
+      if a -- "RECENT" then k $ `Recent (Uint32.to_int n) $ d else
+      err_unexpected_s a d
+    in
+    p_t2 p_uint32 p_atom nxt d (* FIXME uint vs uint32 *)
 
-let p_untagged k d = (* '*' was eaten *)
-  let nxt d = if is_digit $ cur d then p_response_data_n k d else p_response_data_t k d in
-  p_sp nxt d
+  let p_untagged k d = (* '*' was eaten *)
+    let nxt d = if is_digit $ cur d then p_response_data_n k d else p_response_data_t k d in
+    p_sp nxt d
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -1581,29 +1592,29 @@ let p_untagged k d = (* '*' was eaten *)
    response-done   = response-tagged / response-fatal
 *)
 
-let is_tag_char c =
-  is_astring_char c && c != '+'
+  let is_tag_char c =
+    is_astring_char c && c != '+'
 
-let p_tag k d =
-  p_while1 is_tag_char k d
+  let p_tag k d =
+    p_while1 is_tag_char k d
 
-let p_tagged k d =
-  p_t2 p_tag p_resp_cond_state k d
+  let p_tagged k d =
+    p_t2 p_tag p_resp_cond_state k d
 
-let p_continue_req k d = (* '+' was eaten *)
-  if cur d = ' ' then readc $ p_text k $ d else
-  p_text k d
+  let p_continue_req k d = (* '+' was eaten *)
+    if cur d = ' ' then readc $ p_text k $ d else
+    p_text k d
 
-let p_response k d =
-  let k x d = p_crlf $ k x $ d in
-  if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
-  if cur d = '*' then readc $ p_untagged k $ d else
-  p_tagged (fun t s -> k $ `Tagged (t, s)) d
+  let p_response k d =
+    let k x d = p_crlf $ k x $ d in
+    if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
+    if cur d = '*' then readc $ p_untagged k $ d else
+    p_tagged (fun t s -> k $ `Tagged (t, s)) d
 
-let decoder s =
-  { i = s; i_pos = 0; i_max = String.length s; buf = Buffer.create 4096; k = p_response ret }
+  let decoder src =
+    { src; i = ""; i_pos = 0; i_max = 0; buf = Buffer.create 4096; k = p_response ret }
 
-(* Encoder *)
+end
 
 type search_key =
   [ `All
@@ -1639,14 +1650,14 @@ type search_key =
   | `Sent_on of int * int * int
   | `Sent_since of int * int * int
   | `Smaller of int
-  | `Uid of set
+  | `Uid of (Uint32.t * Uint32.t) list
   | `Undraft
-  | `In_set of set
+  | `In_set of (Uint32.t * Uint32.t) list
   | `And of search_key * search_key
-  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * uint64
+  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
   | `Gm_raw of string
-  | `Gm_msgid of uint64
-  | `Gm_thrid of uint64
+  | `Gm_msgid of Uint64.t
+  | `Gm_thrid of Uint64.t
   | `Gm_labels of string list ]
 
 type fetch_att =
@@ -1674,184 +1685,272 @@ type status_att =
   | `Unseen
   | `Highest_modseq ]
 
-let pp_status ppf = function
-  | `Envelope -> pp ppf "envelope"
-  | `Internal_date -> pp ppf "internal-date"
-  | `Rfc822_header -> pp ppf "rfc822-header"
-  | `Rfc822_text -> pp ppf "rfc822-text"
-  | `Rfc822_size -> pp ppf "rfc822-size"
-  | `Rfc822 -> pp ppf "Rfc822"
-  | `Body -> pp ppf "body"
-  | `Body_section _ -> pp ppf "(body-section ???)"
-  | `Body_peek_section _ -> pp ppf "(body-peek-section ???)"
-  | `Body_structure -> pp ppf "body-structure"
-  | `Uid -> pp ppf "uid"
-  | `Flags -> pp ppf "flags"
+module E = struct
 
-type fragment =
-  [ `R of string
-  | `K of search_key
-  | `U
-  | `S of string
-  | `B of string
-  | `L of fragment list
-  | `F of flag
-  | `X of status_att
-  | `M of (uint32 * uint32) list
-  | `G of fetch_att
-  | `Z ]
+  (* Encoder *)
 
-type dst =
-  [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
+  type dst =
+    [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
-type encode =
-  [ `Ok of fragment | `Await | `End ]
+  type encode =
+    [ `Ok of string | `Await | `End ]
 
-type encoder =
-  { dst : dst;
-    mutable o : string;
-    mutable o_pos : int;
-    mutable o_max : int;
-    mutable k : encoder -> encode -> [ `Cont | `Ok | `Partial ] }
+  type encoder =
+    { dst : dst;
+      mutable o : string;
+      mutable o_pos : int;
+      mutable o_max : int;
+      mutable k : encoder -> encode -> [ `Ok | `Partial ] }
 
-let encode_dst_rem e = e.o_max - e.o_pos
+  let encode_dst_rem e = e.o_max - e.o_pos
 
-let encode_dst e s j l =
-  if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
-  e.o <- s; e.o_pos <- j; e.o_max <- j + l
+  let encode_dst e s j l =
+    if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
+    e.o <- s; e.o_pos <- j; e.o_max <- j + l
 
-let partial k e = function
-  | `Await -> k e
-  | `Ok _ | `End -> invalid_arg "cannot encode now, use `Await first"
+  let partial k e = function
+    | `Await -> k e
+    | `Ok _ | `End -> invalid_arg "cannot encode now, use `Await first"
 
-let flush k e = match e.dst with
-  | `Manual -> e.k <- partial k; `Partial
-  | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
-  | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
+  let flush k e = match e.dst with
+    | `Manual -> e.k <- partial k; `Partial
+    | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
+    | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
 
-let rec writes s ?(j = 0) ?(l = String.length s) k e =
-  let rem = encode_dst_rem e in
-  let len = if l > rem then rem else l in
-  String.unsafe_blit s j e.o e.o_pos len;
-  e.o_pos <- e.o_pos + len;
-  if len < l then flush (writes s ~j:(j + len) ~l:(l - len) k) e else k e
+  let rec writes s ?(j = 0) ?(l = String.length s) k e =
+    let rem = encode_dst_rem e in
+    let len = if l > rem then rem else l in
+    String.unsafe_blit s j e.o e.o_pos len;
+    e.o_pos <- e.o_pos + len;
+    if len < l then flush (writes s ~j:(j + len) ~l:(l - len) k) e else k e
 
-let e_search_key _ _ _ =
-  assert false
+  let encode_ e = function
+    | `Await -> e.k e `Await
+    | `Ok x -> writes x (fun _ -> `Ok) e
+    | `End -> assert false (* FIXME *)
 
-let e_flag _ _ _ =
-  assert false
+  let encoder dst =
+    { dst; o = ""; o_pos = 0; o_max = 0; k = encode_ }
 
-let e_status _ _ _ =
-  assert false
+  let encode e v = e.k e v
+end
 
-let e_set _ _ _ =
-  assert false
+type error =
+  [ `Incorrect_tag of string * string
+  | `Decode_error of decode_error
+  | `Not_running
+  | `Bad
+  | `Bye
+  | `No ]
 
-let rec e_value f k e =
-  match f with
-  | `R s  -> writes s k e
-  | `K s  -> e_search_key s k e
-  | `U    -> writes " " k e
-  | `L [] -> writes "NIL" k e (* FIXME "NIL" or "()" *)
-  | `L l  ->
-      let rec loop xs e = match xs with
-        | x :: xs -> e_value x $ loop xs $ e
-        | []      -> k e
-      in
-      loop l e
-  | `F f  -> e_flag f k e
-  | `X s  -> e_status s k e
-  | `M m  -> e_set m k e
-  | `Z    -> writes "\r\n" k e
+type mailbox =
+  { name : string;
+    mutable exists : int;
+    mutable uidvalidity : Uint32.t;
+    mutable uidnext : Uint32.t;
+    mutable highestmodseq : Uint64.t }
 
-let encode e v = e.k e v
+type i_state =
+  [ `Connected
+  | `Authenticated
+  | `Selected of mailbox
+  | `Logout ]
 
-let capability    = `R"CAPABILITY"
-let noop          = `R"NOOP"
-let logout        = `R"LOGOUT"
-let starttls      = `R"STARTTLS"
-let login u p     = `L[`R"LOGIN"; `U; `S u; `U; `S p]
-let create m      = `L[`R"CREATE"; `U; `B m]
-let rename m1 m2  = `L[`R"RENAME"; `U; `B m1; `U; `B m2]
-let subscribe m   = `L[`R"SUBSCRIBE"; `U; `B m]
-let unsubscribe m = `L[`R"UNSUBSCRIBE"; `U; `B m]
-let list m1 m2    = `L[`R"LIST"; `U; `B m1; `U; `B m2]
-let lsub m1 m2    = `L[`R"LSUB"; `U; `B m1; `U; `B m2]
-let status m a    = `L[`R"STATUS"; `U; `B m; `U; `L (List.map (fun x -> `X x) a)]
-let copy s m      = `L[`R"COPY"; `U; `M s; `U; `B m]
-let uid_copy s m  = `L[`R"UID COPY"; `U; `M s; `U; `B m]
-let check         = `R"CHECK"
-let close         = `R"CLOSE"
-let expunge       = `R"EXPUNGE"
+type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
-let search k = `L[`R"SEARCH"; `U; `K k]
-let uid_search k = `L[`R"UID SEARCH"; `U; `K k]
-let select_condstore m = `L[`R"SELECT"; `U; `B m; `U; `R"(CONDSTORE)"]
-let select m = `L[`R"SELECT"; `U; `B m]
-let examine_condstore m = `L[`R"EXAMINE"; `U; `B m; `U; `R"(CONDSTORE)"]
-let examine m = `L[`R"EXAMINE"; `U; `B m]
+type conn =
+  { e : E.encoder;
+    d : D.decoder;
+    mutable i_st : i_state; (* IMAP state *)
+    mutable i_cap : capability list; (* the results of last IMAP capabilities message. *)
+    mutable i_text : string;
+    mutable r : bool; (* Whether a command is running. *)
+    mutable t : int;  (* Next tag to utilize *)
+    mutable k : conn -> result }
 
-let capability_to_string = function
-  | _ -> "error"
+type command = conn -> result
 
-let enable caps =
-  `L[`R"ENABLE"; `L(List.map (fun c -> `L[`U; `R(capability_to_string c)]) caps)]
+type src = D.src
 
-type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ]
+type dst = E.dst
 
-let fetch_aux c s ft ~changed ~vanished =
-  let ft = match ft with
-    | `All -> `R"ALL"
-    | `Fast -> `R"FAST"
-    | `Full -> `R"FULL"
-    | `Att fl -> `L(List.map (fun x -> `G x) fl)
+let ret v k c = c.k <- k; v
+
+let rec eor c = ret (`Error `Not_running) eor c
+
+let conn src dst =
+  { e = E.encoder dst; d = D.decoder src; i_st = `Connected;
+    i_text = ""; i_cap = []; r = false; t = 0; k = eor }
+
+let begin_run st =
+  assert (not st.r);
+  st.r <- true
+
+let end_run st =
+  assert st.r;
+  st.r <- false
+
+let encode x k c =
+  let rec loop = function
+    | `Partial -> ret `Await_dst (fun c -> loop (E.encode c.e `Await)) c
+    | `Ok      -> k c
   in
-  let changed = match changed with
-    | None -> `R""
-    | Some c -> `L[`U; `R"(CHANGEDSINCE "; `R(Uint64.to_string c); if vanished then `R" VANISHED)" else `R")"]
+  loop (E.encode c.e (`Ok x))
+
+let w_raw s k c = encode s k c
+
+let decode k c =
+  let rec loop = function
+    | `Ok x    -> k x c
+    | `Await   -> ret `Await_src (fun c -> loop (D.decode c.d)) c
+    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
   in
-  `L[`R c; `U; `M s; `U; ft; changed]
+  loop (D.decode c.d)
 
-let fetch_changed s ft ~changed =
-  fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:false
-let fetch_vanished s ft ~changed =
-    fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:true
-let uid_fetch_changed s ft ~changed =
-  fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:false
-let uid_fetch_vanished s ft ~changed =
-    fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:true
-let fetch s ft =
-  fetch_aux "FETCH" s ft ~changed:None ~vanished:false
-let uid_fetch s ft =
-  fetch_aux "UID FETCH" s ft ~changed:None ~vanished:false
+let rec decode_to_cont k c =
+  decode (function `Cont _ -> k | _ -> decode_to_cont k (* FIXME error ? *) ) c
 
-type store_spec = [ `Add | `Set | `Remove]
+let classify_string s =
+  `Literal (* FIXME *)
 
-let store_aux c s ?silent g ?unchanged fs =
-  let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in
-  let l = match silent with
-    | None | Some false -> `R"FLAGS"
-    | Some true -> `R"FLAGS.SILENT"
+let sf = Printf.sprintf
+
+let w_string x k c =
+  match classify_string x with
+  | `Raw     -> encode x k c
+  | `Quoted  -> encode "\"" (encode x (encode "\"" k)) c
+  | `Literal -> encode (sf "{%d}\r\n" (String.length x)) (decode_to_cont k) c
+
+(* let begin_encode x k c = *)
+(*   begin_run c; *)
+(*   let x = `L[`R (string_of_int c.t); `R " "; x; `R "\r\n"] in *)
+(*   encodef x k c *)
+
+let run c = c.k c
+
+let r_response c =
+  let rec loop r c =
+    match r with
+    | #untagged as r      -> ret (`Untagged r) (decode loop) c
+    | `Tagged (t, `Ok _)  -> ret `Ok eor c
+    | `Tagged (_, `Bad _) -> ret (`Error `Bad) eor c
+    | `Tagged (_, `No _)  -> ret (`Error `No) eor c
+    | `Bye _ as r         -> ret (`Error `Bye) eor c
+    | `Preauth _          -> assert false (* FIXME *)
+    | `Cont _             -> assert false (* FIXME *)
   in
-  let u = match unchanged with
-    | None -> `R""
-    | Some u -> `L[`R"(UNCHANGEDSINCE "; `R(Uint64.to_string u); `R")"; `U]
+  decode loop c
+
+let w_sep l k c =
+  let rec loop xs c =
+    match xs with
+    | [] -> k c
+    | x :: [] -> x k c
+    | x :: xs -> x (w_raw " " (loop xs)) c
   in
-  `L[`R"STORE"; `U; `M s; `U; u; g; l; `L (List.map (fun f -> `F f) fs)]
+  loop l c
 
-let store s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs
-let uid_store s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs
-let store_unchanged s ?(silent = false) u g fs = store_aux "STORE" s ~silent ~unchanged:u g fs
-let uid_store_unchanged s ?(silent = false) u g fs = store_aux "UID STORE" s ~silent ~unchanged:u g fs
+(* let decode_end c = *)
+(*   decode (fun r c -> end_run c; r) c *)
 
-let store_aux c s ?silent g fs =
-  let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in
-  let l = match silent with
-    | None | Some false -> `R"X-GM-LABELS"
-    | Some true -> `R"X-GM-LABELS.SILENT"
-  in
-  `L[`R"STORE"; `U; `M s; `U; g; l; `L (List.map (fun f -> `S f) fs)]
+let w_tag k c =
+  encode (string_of_int c.t) (encode " " k) c
 
-let store_labels s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs
-let uid_store_labels s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs
+let w_crlf k c =
+  encode "\r\n" k c
+
+let capability c =
+  w_tag (w_raw "CAPABILITY" (w_crlf r_response)) c
+
+let noop c =
+  w_tag (w_raw "NOOP" (w_crlf r_response)) c
+
+let create m c =
+  w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf r_response)) c
+
+(* let logout e = writes "LOGOUT" e *)
+(* let starttls = writes "STARTTLS" e *)
+(* let login u p e = writes "LOGIN " (fun e -> `L[`R"LOGIN"; `U; `S u; `U; `S p] *)
+(* let create m = `L[`R"CREATE"; `U; `B m] *)
+(* let rename m1 m2  = `L[`R"RENAME"; `U; `B m1; `U; `B m2] *)
+(* let subscribe m   = `L[`R"SUBSCRIBE"; `U; `B m] *)
+(* let unsubscribe m = `L[`R"UNSUBSCRIBE"; `U; `B m] *)
+(* let list m1 m2    = `L[`R"LIST"; `U; `B m1; `U; `B m2] *)
+(* let lsub m1 m2    = `L[`R"LSUB"; `U; `B m1; `U; `B m2] *)
+(* let status m a    = `L[`R"STATUS"; `U; `B m; `U; `L (List.map (fun x -> `X x) a)] *)
+(* let copy s m      = `L[`R"COPY"; `U; `M s; `U; `B m] *)
+(* let uid_copy s m  = `L[`R"UID COPY"; `U; `M s; `U; `B m] *)
+(* let check         = `R"CHECK" *)
+(* let close         = `R"CLOSE" *)
+(* let expunge       = `R"EXPUNGE" *)
+
+(* let search k = `L[`R"SEARCH"; `U; `K k] *)
+(* let uid_search k = `L[`R"UID SEARCH"; `U; `K k] *)
+(* let select_condstore m = `L[`R"SELECT"; `U; `B m; `U; `R"(CONDSTORE)"] *)
+(* let select m = `L[`R"SELECT"; `U; `B m] *)
+(* let examine_condstore m = `L[`R"EXAMINE"; `U; `B m; `U; `R"(CONDSTORE)"] *)
+(* let examine m = `L[`R"EXAMINE"; `U; `B m] *)
+
+(* let capability_to_string = function *)
+(*   | _ -> "error" *)
+
+(* let enable caps = *)
+(*   `L[`R"ENABLE"; `L(List.map (fun c -> `L[`U; `R(capability_to_string c)]) caps)] *)
+
+(* type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ] *)
+
+(* let fetch_aux c s ft ~changed ~vanished = *)
+(*   let ft = match ft with *)
+(*     | `All -> `R"ALL" *)
+(*     | `Fast -> `R"FAST" *)
+(*     | `Full -> `R"FULL" *)
+(*     | `Att fl -> `L(List.map (fun x -> `G x) fl) *)
+(*   in *)
+(*   let changed = match changed with *)
+(*     | None -> `R"" *)
+(*     | Some c -> `L[`U; `R"(CHANGEDSINCE "; `R(Uint64.to_string c); if vanished then `R" VANISHED)" else `R")"] *)
+(*   in *)
+(*   `L[`R c; `U; `M s; `U; ft; changed] *)
+
+(* let fetch_changed s ft ~changed = *)
+(*   fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:false *)
+(* let fetch_vanished s ft ~changed = *)
+(*   fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:true *)
+(* let uid_fetch_changed s ft ~changed = *)
+(*   fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:false *)
+(* let uid_fetch_vanished s ft ~changed = *)
+(*   fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:true *)
+(* let fetch s ft = *)
+(*   fetch_aux "FETCH" s ft ~changed:None ~vanished:false *)
+(* let uid_fetch s ft = *)
+(*   fetch_aux "UID FETCH" s ft ~changed:None ~vanished:false *)
+
+(* type store_spec = [ `Add | `Set | `Remove] *)
+
+(* let store_aux c s ?silent g ?unchanged fs = *)
+(*   let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in *)
+(*   let l = match silent with *)
+(*     | None | Some false -> `R"FLAGS" *)
+(*     | Some true -> `R"FLAGS.SILENT" *)
+(*   in *)
+(*   let u = match unchanged with *)
+(*     | None -> `R"" *)
+(*     | Some u -> `L[`R"(UNCHANGEDSINCE "; `R(Uint64.to_string u); `R")"; `U] *)
+(*   in *)
+(*   `L[`R"STORE"; `U; `M s; `U; u; g; l; `L (List.map (fun f -> `F f) fs)] *)
+
+(* let store s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs *)
+(* let uid_store s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs *)
+(* let store_unchanged s ?(silent = false) u g fs = store_aux "STORE" s ~silent ~unchanged:u g fs *)
+(* let uid_store_unchanged s ?(silent = false) u g fs = store_aux "UID STORE" s ~silent ~unchanged:u g fs *)
+
+(* let store_aux c s ?silent g fs = *)
+(*   let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in *)
+(*   let l = match silent with *)
+(*     | None | Some false -> `R"X-GM-LABELS" *)
+(*     | Some true -> `R"X-GM-LABELS.SILENT" *)
+(*   in *)
+(*   `L[`R"STORE"; `U; `M s; `U; g; l; `L (List.map (fun f -> `S f) fs)] *)
+
+(* let store_labels s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs *)
+(* let uid_store_labels s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs *)
