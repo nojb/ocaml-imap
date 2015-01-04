@@ -525,9 +525,7 @@ module D = struct
   let cur d = d.i.[d.i_pos]
   let badd d = Buffer.add_char d.buf $ cur d
   let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
-  let decode d =
-    Printf.eprintf "decode i_pos=%d i_max=%d c=%C\n%!" d.i_pos d.i_max $ cur d;
-    d.k d
+  let decode d = d.k d
   let rec eoi d = d.k <- (fun _ -> err_unexpected_eoi)
 
   let src d s j l =                                     (* set [d.i] with [s]. *)
@@ -543,7 +541,7 @@ module D = struct
         (src d d.i 0 rc; k d)
 
   let readc k d =
-    if d.i_pos < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else
+    if d.i_pos + 1 < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else (* CHECK + 1 *)
     refill k d
 
   let p_ch c k d =
@@ -634,8 +632,8 @@ module D = struct
                           ; Internet standard newline
 *)
 
-  let p_crlf k d =
-    p_ch '\r' $ p_ch '\n' k $ d
+  let p_crlf k d = (* does not advance the i_pos pointer beyond the '\n' character because we might be at eoi *)
+    p_ch '\r' (fun d -> if cur d = '\n' then k d else err_expected '\n' d) d
 
 (*
    number          = 1*DIGIT
@@ -701,7 +699,7 @@ module D = struct
 
   let p_string k d =
     if cur d = '"' then readc $ p_quoted k $ d else
-    if cur d = '{' then readc $ p_uint (fun n -> p_ch '}' $ p_crlf (p_literal n k)) $ d else
+    if cur d = '{' then readc $ p_uint (fun n -> p_ch '}' $ p_crlf (readc (p_literal n k))) $ d else
     err_unexpected $ cur d $ d
 
 (*
@@ -1626,11 +1624,13 @@ module D = struct
     p_text k d
 
   let rec p_response k d =
-    if d.i_pos >= d.i_max then readc (p_response k) d else
+    (* if d.i_pos >= d.i_max then readc (p_response k) d else *)
     let k x d = p_crlf $ k x $ d in
     if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
     if cur d = '*' then readc $ p_untagged k $ d else
     p_tagged (fun t s -> k $ `Tagged (t, s)) d
+
+  let p_response d = readc (p_response ret) d
 
   let decoder src =
     let i, i_pos, i_max = match src with
@@ -1639,7 +1639,7 @@ module D = struct
       | `Channel _ -> Bytes.create io_buffer_size, 0, 0
     in
     { src = (src :> src); i; i_pos; i_max;
-      buf = Buffer.create 4096; k = p_response ret }
+      buf = Buffer.create 4096; k = p_response }
 
 end
 
@@ -1729,7 +1729,7 @@ module E = struct
       mutable o_max : int;
       mutable k : encoder -> encode -> [ `Ok | `Partial ] }
 
-  let encode_dst_rem e = e.o_max - e.o_pos
+  let dst_rem e = e.o_max - e.o_pos
 
   let dst e s j l =
     if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
@@ -1741,14 +1741,13 @@ module E = struct
 
   let flush k e =
     match e.dst with
-    | `Manual -> e.k <- partial k; `Partial
+    | `Manual -> if e.o_pos > 0 then (e.k <- partial k; `Partial) else k e
     | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
     | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
 
   let rec writes s k e =
-   let rec loop j l e =
-     (* Printf.eprintf "writes %S j=%d l=%d\n%!" s j l; *)
-     let rem = encode_dst_rem e in
+    let rec loop j l e =
+      let rem = dst_rem e in
       let len = if l > rem then rem else l in
       String.unsafe_blit s j e.o e.o_pos len;
       e.o_pos <- e.o_pos + len;
@@ -1791,7 +1790,8 @@ type mailbox =
     mutable highestmodseq : Uint64.t }
 
 type i_state =
-  [ `Connected
+  [ `Disconnected
+  | `Connected
   | `Authenticated
   | `Selected of mailbox
   | `Logout ]
@@ -1801,6 +1801,7 @@ type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Aw
 type conn =
   { e : E.encoder;
     d : D.decoder;
+    mutable g : bool; (* Greetings stage *)
     mutable i_st : i_state; (* IMAP state *)
     mutable i_cap : capability list; (* the results of last IMAP capabilities message. *)
     mutable i_text : string;
@@ -1814,18 +1815,19 @@ type src = D.src
 
 type dst = E.dst
 
-let src c = D.src c.d
+module Manual = struct
+  let src c = D.src c.d
 
-let dst c = E.dst c.e
+  let dst c = E.dst c.e
+
+  let dst_rem c = E.dst_rem c.e
+end
 
 let ret v k c = c.k <- k; v
 
 let rec eor c = ret (`Error `Not_running) eor c
 
-let conn src dst =
-  { e = E.encoder dst; d = D.decoder src; i_st = `Connected;
-    i_text = ""; i_cap = []; r = false; t = 0; k = eor }
-
+(* FLUSH should be returned tot he user ? *)
 let encode_ x k c =
   let rec loop = function
     | `Partial -> ret `Await_dst (fun c -> loop (E.encode c.e `Await)) c
@@ -1840,12 +1842,13 @@ let flush k c = encode_ `Flush k c
 let w_raw s k c = encode s k c
 
 let decode k c =
-  let rec loop = function
+  let rec loop v c =
+    match v with
     | `Ok x    -> k x c
-    | `Await   -> ret `Await_src (fun c -> loop (D.decode c.d)) c
+    | `Await   -> ret `Await_src (fun c -> loop (D.decode c.d) c) c
     | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
   in
-  loop (D.decode c.d)
+  loop (D.decode c.d) c
 
 let rec decode_to_cont k c =
   decode (function `Cont _ -> k | _ -> decode_to_cont k (* FIXME error ? *) ) c
@@ -1879,22 +1882,35 @@ let w_string x k c =
   match classify_string x with
   | `Raw     -> encode x k c
   | `Quoted  -> encode "\"" (encode x (encode "\"" k)) c
-  | `Literal -> encode (sf "{%d}\r\n" (String.length x)) (flush (decode_to_cont k)) c
+  | `Literal ->
+      encode (sf "{%d}\r\n" (String.length x)) (flush (decode_to_cont (encode x k))) c
 
 let run c = c.k c
 
 let r_response c =
+  if not c.r then invalid_arg "imap not running" else
+  let end_ t x c = c.i_text <- t; c.r <- false; c.t <- c.t + 1; ret x eor c in
   let rec loop r c =
     match r with
-    | #untagged as r           -> ret (`Untagged r) (decode loop) c
-    | `Tagged (g, `Ok (d, t))  -> c.i_text <- t; ret `Ok eor c
-    | `Tagged (_, `Bad (d, t)) -> c.i_text <- t; ret (`Error `Bad) eor c
-    | `Tagged (_, `No (d, t))  -> c.i_text <- t; ret (`Error `No) eor c
-    | `Bye (d, t)              -> c.i_text <- t; ret (`Error `Bye) eor c
-    | `Preauth _               -> assert false (* FIXME *)
+    | #untagged as r ->
+        if c.g then match r with
+          | `Ok (d, t) -> c.g <- false; end_ t `Ok c
+          | _ -> assert false (* FIXME report bad greeting *)
+        else
+        ret (`Untagged r) (decode loop) c
+    | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c
+    | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c
+    | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c
+    | `Bye (d, t)              -> end_ t (`Error `Bye) c
+    | `Preauth (d, t) when c.g -> c.g <- false; c.i_st <- `Authenticated; end_ t `Ok c
+    | `Preauth _               -> assert false (* FIXME ret (`Error `Unexpected_preauth) eor c *)
     | `Cont _                  -> ret (`Error `Unexpected_cont) eor c
   in
-  decode loop c
+  flush (decode loop) c
+
+let conn src dst =
+  { e = E.encoder dst; d = D.decoder src; g = true; i_st = `Connected;
+    i_text = ""; i_cap = []; r = true; t = 0; k = r_response }
 
 let w_sep l k c =
   let rec loop xs c =
@@ -1905,23 +1921,22 @@ let w_sep l k c =
   in
   loop l c
 
-(* let decode_end c = *)
-(*   decode (fun r c -> end_run c; r) c *)
-
 let w_tag k c =
+  if c.r then invalid_arg "imap already running" else
+  c.r <- true;
   encode (string_of_int c.t) (encode " " k) c
 
 let w_crlf k c =
   encode "\r\n" k c
 
 let capability c =
-  w_tag (w_raw "CAPABILITY" (w_crlf (flush r_response))) c
+  w_tag (w_raw "CAPABILITY" (w_crlf r_response)) c
 
 let noop c =
-  w_tag (w_raw "NOOP" (w_crlf (flush r_response))) c
+  w_tag (w_raw "NOOP" (w_crlf r_response)) c
 
 let create m c =
-  w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf (flush r_response))) c
+  w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf r_response)) c
 
 (* let logout e = writes "LOGOUT" e *)
 (* let starttls = writes "STARTTLS" e *)
@@ -2034,27 +2049,41 @@ let create m c =
 (*     in *)
 (* end *)
 
-(* module Test = struct *)
-(*   let (>>=) = Lwt.(>>=) *)
-(*   let connect h l u = *)
-(*     let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in *)
-(*     let he = Unix.gethostbyname h in *)
-(*     Unix.connect fd (Unix.ADDR_INET (he.Lwt_unix.h_addr_list.(0), 993)); *)
-(*     let ssl = Ssl.embed_socket fd (Ssl.create_context Ssl.TLSv1 Ssl.Client_context) in *)
-(*     Ssl.connect ssl; *)
-(*     let c = conn `Manual `Manual in *)
-(*     let i = Bytes.create E.io_buffer_size in *)
-(*     let o = Bytes.create E.io_buffer_size in *)
-(*     let rec loop = function *)
-(*       | `Await_src -> *)
-(*           let rc = Ssl.read ssl i ? ? in *)
-(*           src c i ? rc; *)
-(*           loop (run c) *)
-(*       | `Await_dst -> *)
-(*           let rc = Ssl.write ssl o ? ? in *)
-(*           dst c o ? ?; *)
-(*           loop (run c) *)
-(*       | `Untagged r -> `Untagged r *)
-(*       | `Ok -> `Ok *)
-(*     in *)
-(* end *)
+module Test = struct
+
+  let rec write_fully ssl s off len =
+    if len > 0 then
+      let rc = Ssl.write ssl s off len in
+      write_fully ssl s (off + rc) (len - rc)
+
+  let rec step ssl i o c = function
+    | `Await_src ->
+        (* Printf.eprintf "Await_src\n%!"; *)
+        let rc = Ssl.read ssl i 0 (Bytes.length i) in
+        Printf.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
+        Manual.src c i 0 rc;
+        step ssl i o c (run c)
+    | `Await_dst ->
+        (* Printf.eprintf "Await_dst\n%!"; *)
+        let rc = Bytes.length o - Manual.dst_rem c in
+        write_fully ssl o 0 rc;
+        Printf.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
+        Manual.dst c o 0 (Bytes.length o);
+        step ssl i o c (run c)
+    | `Untagged _ as r -> r
+    | `Ok -> `Ok
+    | `Error _ as e -> e
+
+  let connect h l u =
+    Ssl.init ();
+    let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+    let he = Unix.gethostbyname h in
+    Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), 993));
+    let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
+    let ssl = Ssl.embed_socket fd ctx in
+    Ssl.connect ssl;
+    let c = conn `Manual `Manual in
+    let i = Bytes.create io_buffer_size in
+    let o = Bytes.create io_buffer_size in
+    step ssl i o c (run c)
+end

@@ -12,4 +12,4 @@ Library imap
   Install: true
   FindlibName: imap
   Modules: Imap
-  BuildDepends: uutf, base64, uint
+  BuildDepends: uutf, base64, uint, ssl

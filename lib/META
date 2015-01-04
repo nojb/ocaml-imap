@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: dea0a97bfee83b7a4b29e947f664682b)
-version = "0.9.0"
-description = "BitTorrent library and client using Lwt"
-requires = "uutf base64 uint"
+# DO NOT EDIT (digest: 0c5cd27851b2506320d022e7c9524281)
+version = "0.30.0"
+description = "IMAP4rev1 protocol codec"
+requires = "uutf base64 uint ssl"
 archive(byte) = "imap.cma"
 archive(byte, plugin) = "imap.cma"
 archive(native) = "imap.cmxa"

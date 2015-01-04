@@ -5,6 +5,7 @@
 #install_printer Uint64.printer
 #require "uutf"
 #require "base64"
+#require "ssl"
 
 #directory "_build/lib"
-#use "lib/imap.ml"
+#load "imap.cma"

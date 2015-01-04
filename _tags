@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 78ed5d9260e318a7b872b4862dfb1634)
+# DO NOT EDIT (digest: 607b4090608d394b2c8869d5a2dd6e33)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -17,6 +17,7 @@ true: annot, bin_annot
 # Library imap
 "lib/imap.cmxs": use_imap
 <lib/*.ml{,i,y}>: pkg_base64
+<lib/*.ml{,i,y}>: pkg_ssl
 <lib/*.ml{,i,y}>: pkg_uint
 <lib/*.ml{,i,y}>: pkg_uutf
 # OASIS_STOP

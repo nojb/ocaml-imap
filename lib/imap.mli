@@ -479,6 +479,12 @@ type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
 val conn : [< src] -> [< dst] -> conn
 val run : conn -> result
+
+module Manual : sig
+  val src : conn -> string -> int -> int -> unit
+  val dst : conn -> string -> int -> int -> unit
+  val dst_rem : conn -> int
+end
 (* val decoder_src : state -> .. -> unit *)
 (* val encoder_dst : state -> .. -> unit *)
 
