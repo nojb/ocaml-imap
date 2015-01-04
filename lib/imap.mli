@@ -92,6 +92,8 @@ type capability =
   | `Gmail
   | `Other of string ]
 
+val string_of_capability : capability -> string
+
 type fields =
   { fld_params : (string * string) list;
     fld_id : string option;
@@ -485,25 +487,25 @@ module Manual : sig
   val dst : conn -> string -> int -> int -> unit
   val dst_rem : conn -> int
 end
-(* val decoder_src : state -> .. -> unit *)
-(* val encoder_dst : state -> .. -> unit *)
 
-(* val capability          : command *)
-(* (\** The [CAPABILITY] command. *\) *)
+val capability          : command
+(** The [CAPABILITY] command. *)
 
-(* val noop                : command *)
-(* (\** The [NOOP] command. *\) *)
+val login : string -> string -> command
+(** [login u p] is the [LOGIN] command with user [u] and password [p]. *)
 
-(* val logout              : command *)
-(* (\** The [LOGOUT] command. *\) *)
+val logout              : command
+(** The [LOGOUT] command. *)
 
-(* val login               : string -> string -> command *)
-(* (\** [login u p] is the [LOGIN] command with user [u] and password [p]. *\) *)
+val noop                : command
+(** The [NOOP] command. *)
 
-(* val create              : string -> command *)
-(* (\** [create m] is the [CREATE] command. *\) *)
+val create              : string -> command
+(** [create m] creates a mailbox named [m] (assumed to be UTF-8 encoded). *)
 
-(* val rename              : string -> string -> command *)
+val rename : string -> string -> command
+(** [rename old new] renames mailbox [old] to [new]. *)
+
 (* val subscribe           : string -> command *)
 (* val unsubscribe         : string -> command *)
 (* val list                : string -> string -> command *)

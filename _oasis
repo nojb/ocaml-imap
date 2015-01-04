@@ -13,3 +13,10 @@ Library imap
   FindlibName: imap
   Modules: Imap
   BuildDepends: uutf, base64, uint, ssl
+
+Executable imap_shell
+  Build$: true
+  Install$: false
+  Path: examples
+  MainIs: imap_shell.ml
+  BuildDepends: lambda-term, lwt.syntax, lwt, str, cmdliner, imap, lwt.ssl

@@ -3,5 +3,10 @@ PKG uint
 PKG base64
 PKG lwt
 PKG ssl
-B _build
+PKG lambda-term
+PKG cmdliner
+B _build/lib
+B _build/examples
 S lib
+S examples
+EXT lwt

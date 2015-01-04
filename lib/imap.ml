@@ -145,6 +145,33 @@ type capability =
   | `Gmail
   | `Other of string ]
 
+let string_of_capability = function
+  | `Acl -> "ACL"
+  | `Binary -> "BINARY"
+  | `Catenate -> "CATENATE"
+  | `Children -> "CHILDREN"
+  | `Compress_deflate -> "COMPRESS=DEFLATE"
+  | `Condstore -> "CONDSTORE"
+  | `Enable -> "ENABLE"
+  | `Idle -> "IDLE"
+  | `Id -> "ID"
+  | `Literal_plus -> "LITERAL+"
+  | `Multi_append -> "MULTIAPPEND"
+  | `Namespace -> "NAMESPACE"
+  | `Qresync -> "QRESYNC"
+  | `Quote -> "QUOTE"
+  | `Sort -> "SORT"
+  | `Start_tls -> "STARTTLS"
+  | `Uid_plus -> "UIDPLUS"
+  | `Unselect -> "UNSELECT"
+  | `Xlist -> "XLIST"
+  | `Auth `Anonymous -> "AUTH=ANONYMOUS"
+  | `Auth `Login -> "AUTH=LOGIN"
+  | `Auth `Plain -> "AUTH=PLAIN"
+  | `Xoauth2 -> "XOAUTH2"
+  | `Gmail -> "X-GM-EXT-1"
+  | `Other s -> s
+
 type fields =
   { fld_params : (string * string) list;
     fld_id : string option;
@@ -1948,17 +1975,22 @@ let w_crlf k c =
 let capability c =
   w_tag (w_raw "CAPABILITY" (w_crlf r_response)) c
 
+let login user pass c =
+  w_tag (w_sep [w_raw "LOGIN"; w_string user; w_string pass] (w_crlf r_response)) c
+
+let logout c =
+  w_tag (w_raw "LOGOUT" (w_crlf r_response)) c
+
 let noop c =
   w_tag (w_raw "NOOP" (w_crlf r_response)) c
 
 let create m c =
   w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf r_response)) c
 
-(* let logout e = writes "LOGOUT" e *)
+let rename m1 m2 c =
+  w_tag (w_sep [w_raw "RENAME"; w_string (Mutf7.encode m1); w_string (Mutf7.encode m2)] (w_crlf r_response)) c
+
 (* let starttls = writes "STARTTLS" e *)
-(* let login u p e = writes "LOGIN " (fun e -> `L[`R"LOGIN"; `U; `S u; `U; `S p] *)
-(* let create m = `L[`R"CREATE"; `U; `B m] *)
-(* let rename m1 m2  = `L[`R"RENAME"; `U; `B m1; `U; `B m2] *)
 (* let subscribe m   = `L[`R"SUBSCRIBE"; `U; `B m] *)
 (* let unsubscribe m = `L[`R"UNSUBSCRIBE"; `U; `B m] *)
 (* let list m1 m2    = `L[`R"LIST"; `U; `B m1; `U; `B m2] *)
@@ -2065,44 +2097,44 @@ let create m c =
 (*     in *)
 (* end *)
 
-module Test = struct
+(* module Test = struct *)
 
-  let rec write_fully ssl s off len =
-    if len > 0 then
-      let rc = Ssl.write ssl s off len in
-      write_fully ssl s (off + rc) (len - rc)
+(*   let rec write_fully ssl s off len = *)
+(*     if len > 0 then *)
+(*       let rc = Ssl.write ssl s off len in *)
+(*       write_fully ssl s (off + rc) (len - rc) *)
 
-  let rec step ssl i o c = function
-    | `Await_src ->
-        (* Printf.eprintf "Await_src\n%!"; *)
-        let rc = Ssl.read ssl i 0 (Bytes.length i) in
-        Printf.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
-        Manual.src c i 0 rc;
-        step ssl i o c (run c)
-    | `Await_dst ->
-        (* Printf.eprintf "Await_dst\n%!"; *)
-        let rc = Bytes.length o - Manual.dst_rem c in
-        write_fully ssl o 0 rc;
-        Printf.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
-        Manual.dst c o 0 (Bytes.length o);
-        step ssl i o c (run c)
-    | `Untagged _ as r -> r
-    | `Ok -> `Ok
-    | `Error _ as e -> e
+(*   let rec step ssl i o c = function *)
+(*     | `Await_src -> *)
+(*         (\* Printf.eprintf "Await_src\n%!"; *\) *)
+(*         let rc = Ssl.read ssl i 0 (Bytes.length i) in *)
+(*         Printf.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc); *)
+(*         Manual.src c i 0 rc; *)
+(*         step ssl i o c (run c) *)
+(*     | `Await_dst -> *)
+(*         (\* Printf.eprintf "Await_dst\n%!"; *\) *)
+(*         let rc = Bytes.length o - Manual.dst_rem c in *)
+(*         write_fully ssl o 0 rc; *)
+(*         Printf.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc); *)
+(*         Manual.dst c o 0 (Bytes.length o); *)
+(*         step ssl i o c (run c) *)
+(*     | `Untagged _ as r -> r *)
+(*     | `Ok -> `Ok *)
+(*     | `Error _ as e -> e *)
 
-  let c = conn `Manual `Manual
+(*   let c = conn `Manual `Manual *)
 
-  let connect c h l u =
-    Ssl.init ();
-    let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-    let he = Unix.gethostbyname h in
-    Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), 993));
-    let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-    let ssl = Ssl.embed_socket fd ctx in
-    Ssl.connect ssl;
-    let i = Bytes.create io_buffer_size in
-    let o = Bytes.create io_buffer_size in
-    Manual.dst c o 0 (Bytes.length o);
-    let _ = step ssl i o c (run c) in
-    step ssl i o c (capability c)
-end
+(*   let connect c h l u = *)
+(*     Ssl.init (); *)
+(*     let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in *)
+(*     let he = Unix.gethostbyname h in *)
+(*     Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), 993)); *)
+(*     let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in *)
+(*     let ssl = Ssl.embed_socket fd ctx in *)
+(*     Ssl.connect ssl; *)
+(*     let i = Bytes.create io_buffer_size in *)
+(*     let o = Bytes.create io_buffer_size in *)
+(*     Manual.dst c o 0 (Bytes.length o); *)
+(*     let _ = step ssl i o c (run c) in *)
+(*     step ssl i o c (capability c) *)
+(* end *)
