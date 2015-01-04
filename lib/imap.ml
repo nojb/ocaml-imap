@@ -1630,7 +1630,9 @@ module D = struct
     if cur d = '*' then readc $ p_untagged k $ d else
     p_tagged (fun t s -> k $ `Tagged (t, s)) d
 
-  let p_response d = readc (p_response ret) d
+  let rec p_response_ d =
+    let ret x d = d.k <- p_response_; ret x d in
+    readc (p_response ret) d
 
   let decoder src =
     let i, i_pos, i_max = match src with
@@ -1639,7 +1641,7 @@ module D = struct
       | `Channel _ -> Bytes.create io_buffer_size, 0, 0
     in
     { src = (src :> src); i; i_pos; i_max;
-      buf = Buffer.create 4096; k = p_response }
+      buf = Buffer.create 4096; k = p_response_ }
 
 end
 
@@ -1749,6 +1751,7 @@ module E = struct
     let rec loop j l e =
       let rem = dst_rem e in
       let len = if l > rem then rem else l in
+      (* Printf.eprintf "writes j=%d l=%d s=%S rem=%d len=%d\n%!" j l s rem len; *)
       String.unsafe_blit s j e.o e.o_pos len;
       e.o_pos <- e.o_pos + len;
       if len < l then flush (loop (j + len) (l - len)) e else k e
@@ -1827,8 +1830,14 @@ let ret v k c = c.k <- k; v
 
 let rec eor c = ret (`Error `Not_running) eor c
 
+let string_of_encode = function
+  | `Ok s -> Printf.sprintf "`Ok %S" s
+  | `Await -> "`Await"
+  | `Flush -> "`Flush"
+
 (* FLUSH should be returned tot he user ? *)
 let encode_ x k c =
+  (* Printf.eprintf "encode_ %s\n%!" (string_of_encode x); *)
   let rec loop = function
     | `Partial -> ret `Await_dst (fun c -> loop (E.encode c.e `Await)) c
     | `Ok      -> k c
@@ -1837,9 +1846,14 @@ let encode_ x k c =
 
 let encode x k c = encode_ (`Ok x) k c
 
-let flush k c = encode_ `Flush k c
+let flush k c = (* Printf.eprintf "flush\n%!"; *) encode_ `Flush k c
 
 let w_raw s k c = encode s k c
+
+let string_of_decode = function
+  | `Ok _ -> "`Ok"
+  | `Await -> "`Await"
+  | `Error _ -> "`Error"
 
 let decode k c =
   let rec loop v c =
@@ -1888,6 +1902,7 @@ let w_string x k c =
 let run c = c.k c
 
 let r_response c =
+  (* Printf.eprintf "r_response\n%!"; *)
   if not c.r then invalid_arg "imap not running" else
   let end_ t x c = c.i_text <- t; c.r <- false; c.t <- c.t + 1; ret x eor c in
   let rec loop r c =
@@ -1923,6 +1938,7 @@ let w_sep l k c =
 
 let w_tag k c =
   if c.r then invalid_arg "imap already running" else
+  (* Printf.eprintf "tag %d\n%!" c.t; *)
   c.r <- true;
   encode (string_of_int c.t) (encode " " k) c
 
@@ -2074,7 +2090,9 @@ module Test = struct
     | `Ok -> `Ok
     | `Error _ as e -> e
 
-  let connect h l u =
+  let c = conn `Manual `Manual
+
+  let connect c h l u =
     Ssl.init ();
     let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
     let he = Unix.gethostbyname h in
@@ -2082,8 +2100,9 @@ module Test = struct
     let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
     let ssl = Ssl.embed_socket fd ctx in
     Ssl.connect ssl;
-    let c = conn `Manual `Manual in
     let i = Bytes.create io_buffer_size in
     let o = Bytes.create io_buffer_size in
-    step ssl i o c (run c)
+    Manual.dst c o 0 (Bytes.length o);
+    let _ = step ssl i o c (run c) in
+    step ssl i o c (capability c)
 end
