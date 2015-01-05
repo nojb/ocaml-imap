@@ -296,15 +296,6 @@ type response =
   | `Cont of string
   | `Tagged of string * state ]
 
-type decode_error =
-  [ `Expected_char of char
-  | `Expected_string of string
-  | `Unexpected_char of char
-  | `Unexpected_string of string
-  | `Illegal_char of char
-  | `Illegal_range
-  | `Unexpected_eoi ]
-
 let pp = Format.fprintf
 
 let pp_list f ppf = function
@@ -505,27 +496,36 @@ let pp_response : _ -> response -> _ = fun ppf r ->
   | `Vanished_earlier s -> pp ppf "@[<2>(vanished-earlier@ %a)@]" pp_set s
   | `Enabled s          -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list pp_cap) s
 
-let pp_decode_error ppf = function
-  | `Expected_char c     -> pp ppf "@[Expected@ character@ %C@]" c
-  | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
-  | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
-  | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
-  | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
-  | `Illegal_range       -> pp ppf "@[Illegal@ range@]" (* FIXME *)
-  | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
-
 module D = struct
 
   (* Decoder *)
 
   type src = [ `String of string | `Channel of in_channel | `Manual ]
 
-  type decode = [ `Ok of response | `Await | `Error of decode_error ]
+  type error =
+    [ `Expected_char of char
+    | `Expected_string of string
+    | `Unexpected_char of char
+    | `Unexpected_string of string
+    | `Illegal_char of char
+    | `Illegal_range
+    | `Unexpected_eoi ]
+
+  let pp_error ppf = function
+    | `Expected_char c     -> pp ppf "@[Expected@ character@ %C@]" c
+    | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
+    | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
+    | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
+    | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
+    | `Illegal_range       -> pp ppf "@[Illegal@ range@]" (* FIXME *)
+    | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
+
+  type decode = [ `Ok of response | `Await | `Error of error ]
 
   let pp_decode ppf = function
     | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
     | `Await -> pp ppf "`Await"
-    | `Error e -> pp ppf "@[`Error %a@]" pp_decode_error e
+    | `Error e -> pp ppf "@[`Error %a@]" pp_error e
 
   type decoder =
     { src : src;
@@ -533,7 +533,7 @@ module D = struct
       mutable i_pos : int;
       mutable i_max : int;
       buf : Buffer.t;
-      mutable k : decoder -> [ `Ok of response | `Await | `Error of decode_error ] }
+      mutable k : decoder -> [ `Ok of response | `Await | `Error of error ] }
 
   external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
 
@@ -1748,13 +1748,7 @@ type status_att =
   | `Unseen
   | `Highest_modseq ]
 
-type uid_flag = [ `Uid | `Seq ]
-
-type condstore_flag = [ `Condstore | `Normal ]
-
-type silent_flag = [ `Silent | `Loud ]
-
-type tagged =
+type command =
   [ `Login of string * string
   | `Capability
   | `Create of string
@@ -1766,19 +1760,17 @@ type tagged =
   | `List of string * string
   | `Lsub of string * string
   | `Status of string * status_att list
-  | `Copy of uid_flag * (Uint32.t * Uint32.t) list * string
+  | `Copy of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * string
   | `Check
   | `Close
   | `Expunge
-  | `Search of uid_flag * search_key
-  | `Select of condstore_flag * string
-  | `Examine of condstore_flag * string
+  | `Search of [ `Uid | `Seq ] * search_key
+  | `Select of [ `Condstore | `Plain ] * string
+  | `Examine of [ `Condstore | `Plain ] * string
   | `Enable of capability list
-  | `Fetch of uid_flag * [ `All | `Fast | `Full | `List of fetch_att list ]
-  | `Store of uid_flag * (Uint32.t * Uint32.t) list * silent_flag *
+  | `Fetch of [ `Uid | `Seq ] * [ `All | `Fast | `Full | `List of fetch_att list ]
+  | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
-
-type query = [ `Tagged of string * tagged ]
 
 module E = struct
 
@@ -1788,7 +1780,12 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Ok of query | `Await | `Flush ]
+    [ `Ok of string * command | `Await | `Flush ]
+
+  let pp_encode : _ -> encode -> _ = fun ppf e -> match e with
+    | `Ok _ -> pp ppf "`Ok" (* FIXME *)
+    | `Await -> pp ppf "`Await"
+    | `Flush -> pp ppf "`Flush"
 
   type encoder =
     { dst : dst;
@@ -1807,8 +1804,7 @@ module E = struct
     | `Await -> k e
     | `Ok _ | `Flush -> invalid_arg "cannot encode now, use `Await first"
 
-  let flush k e =
-    match e.dst with
+  let flush k e = match e.dst with
     | `Manual -> if e.o_pos > 0 then (e.k <- partial k; `Partial) else k e
     | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
     | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
@@ -1852,16 +1848,14 @@ module E = struct
     if needs quotes str then `Quoted else
     `Raw
 
-  let w_string x k e =
-    match classify_string x with
+  let w_string x k e = match classify_string x with
     | `Raw     -> w_raw x k e
     | `Quoted  -> w_raw "\"" (w_raw x (w_raw "\"" k)) e
     | `Literal ->
         w_raw (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w_raw x k))) e
 
   let w_sep l k e =
-    let rec loop xs e =
-      match xs with
+    let rec loop xs e = match xs with
       | [] -> k e
       | x :: [] -> x k e
       | x :: xs -> x (w_raw " " (loop xs)) e
@@ -1871,23 +1865,36 @@ module E = struct
   let w_crlf k e =
     w_raw "\r\n" k e
 
-  let w_tagged t k e =
-    match t with
+  let w_status_att a k e = match a with
+    | `Messages -> w_raw "MESSAGES" k e
+    | `Recent -> w_raw "RECENT" k e
+    | `Uid_next -> w_raw "UIDNEXT" k e
+    | `Uid_validity -> w_raw "UIDVALIDITY" k e
+    | `Unseen -> w_raw "UNSEEN" k e
+    | `Highest_modseq -> w_raw "HIGHESTMODSEQ" k e
+
+  let w_list l k e =
+    let rec loop ws e = match ws with
+      | [] -> w_raw ")" k e
+      | [w] -> w (w_raw ")" k) e
+      | w :: ws -> w (w_raw " " (loop ws)) e
+    in
+    w_raw "(" (loop l) e
+
+  let w_tagged t k e = match t with
     | `Capability -> w_raw "CAPABILITY" k e
     | `Login (u, p) -> w_sep [w_raw "LOGIN"; w_string u; w_string p] k e
     | `Noop -> w_raw "NOOP" k e
-    | `Select (`Normal, m) -> w_sep [w_raw "SELECT"; w_string (Mutf7.encode m)] k e
+    | `Select (`Plain, m) -> w_sep [w_raw "SELECT"; w_string (Mutf7.encode m)] k e
     | `Select (`Condstore, m) -> w_sep [w_raw "SELECT"; w_string (Mutf7.encode m); w_raw "(CONDSTORE)"] k e
-    | _ -> assert false
-
-  let encode_query x k e =
-    match x with
-    | `Tagged (t, m) -> w_raw t (w_raw " " (w_tagged m (w_crlf k))) e
+    | `Create m -> w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] k e
+    | `Rename (m1, m2) -> w_sep [w_raw "RENAME"; w_string (Mutf7.encode m1); w_string (Mutf7.encode m2)] k e
+    | `Status (m, att) -> w_sep [w_raw "STATUS"; w_string (Mutf7.encode m); w_list (List.map w_status_att att)] k e
     | _ -> assert false
 
   let rec encode_ e = function
     | `Await -> `Ok
-    | `Ok x -> encode_query x encode_loop e
+    | `Ok (tag, x) -> w_raw tag (w_raw " " (w_tagged x (w_crlf encode_loop))) e
     | `Flush -> flush encode_loop e
 
   and encode_loop e = e.k <- encode_; `Ok
@@ -1905,41 +1912,20 @@ end
 
 type error =
   [ `Incorrect_tag of string * string
-  | `Decode_error of decode_error
+  | `Decode_error of D.error
   | `Unexpected_cont
   | `Not_running
   | `Bad
   | `Bye
   | `No ]
 
-type mailbox =
-  { name : string;
-    mutable exists : int;
-    mutable uidvalidity : Uint32.t;
-    mutable uidnext : Uint32.t;
-    mutable highestmodseq : Uint64.t }
-
-type i_state =
-  [ `Disconnected
-  | `Connected
-  | `Authenticated
-  | `Selected of mailbox
-  | `Logout ]
-
-type 'a result = [ `Untagged of untagged | `Ok of 'a | `Error of error | `Await_src | `Await_dst ]
+type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
 type connection =
   { e : E.encoder;
     d : D.decoder;
-    mutable g : bool; (* Greetings stage *)
-    mutable i_st : i_state; (* IMAP state *)
-    mutable i_cap : capability list; (* the results of last IMAP capabilities message. *)
-    mutable i_text : string;
-    mutable r : bool; (* Whether a command is running. *)
-    mutable t : int }  (* Next tag to utilize *)
-
-type 'a run =
-  { mutable k : connection -> 'a run -> 'a result }
+    mutable tag : int;
+    mutable k : connection -> [ `Cmd of command | `Await ] -> result }  (* Next tag to utilize *)
 
 type src = D.src
 
@@ -1951,105 +1937,71 @@ module Manual = struct
   let dst_rem c = E.dst_rem c.e
 end
 
-type 'a command = connection -> 'a run
+let ret v k c = c.k <- k; v
 
-let ret v k _ r = r.k <- k; v
+(* let rec eor c _ = ret (`Error `Not_running) eor c (\* FIXME *\) *)
 
-let rec eor c r = ret (`Error `Not_running) eor c r (* FIXME *)
-
-let decode k c r =
-  let rec loop = function
-    | `Ok x -> k x c r
-    | `Await -> ret `Await_src (fun c r -> loop (D.decode c.d)) c r
-    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c r (* FIXME *)
+let decode k c =
+  let rec partial c = function
+    | `Await -> loop (D.decode c.d)
+    | _ -> invalid_arg "command in progress"
+  and loop = function
+    | `Ok x -> k x c
+    | `Await -> ret `Await_src partial c
+    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
   in
   loop (D.decode c.d)
 
-let rec decode_to_cont k c r = (* FIXME error ?? *)
-  decode (function `Cont _ -> k | _ -> decode_to_cont k) c r
-
-let string_of_encode = function
-  | `Ok s -> Printf.sprintf "`Ok %S" s
-  | `Await -> "`Await"
-  | `Flush -> "`Flush"
+let rec decode_to_cont k c = (* FIXME error ?? *)
+  decode (function `Cont _ -> k | _ -> decode_to_cont k) c
 
 (* FLUSH should be returned tot he user ? *)
-let encode_ x k c r =
+let encode x k c =
   (* Printf.eprintf "encode_ %s\n%!" (string_of_encode x); *)
-  let rec loop = function
-    | `Partial -> ret `Await_dst (fun c _ -> loop (E.encode c.e `Await)) c r
-    | `Wait_for_cont -> decode_to_cont (fun c _ -> loop (E.encode c.e `Await)) c r
-    | `Ok -> k c r
+  let rec partial c = function
+    | `Await -> loop (E.encode c.e `Await)
+    | _ -> invalid_arg "command in progress"
+  and loop = function
+    | `Partial -> ret `Await_dst partial c
+    | `Wait_for_cont -> decode_to_cont (fun c -> loop (E.encode c.e `Await)) c
+    | `Ok -> k c
   in
   loop (E.encode c.e x)
 
-let encode x k c r = encode_ (`Ok x) k c r
+let run c = c.k c
 
-let flush k c r = (* Printf.eprintf "flush\n%!"; *) encode_ `Flush k c r
-
-let run c r = r.k c r
-
-let r_response h i c r =
+let rec r_response c =
   (* Printf.eprintf "r_response\n%!"; *)
-  (* if not c.r then invalid_arg "imap not running"; *)
-  let end_ t x c r = c.i_text <- t; c.r <- false; c.t <- c.t + 1; ret x eor c r in
-  let rec loop i resp c r =
-    match resp with
-    | #untagged as resp        -> ret (`Untagged resp) (decode (loop (h i resp))) c r
-    | `Tagged (g, `Ok (d, t))  -> end_ t (`Ok i) c r
-    | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c r
-    | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c r
-    | `Bye (d, t)              -> end_ t (`Error `Bye) c r
+  let end_ t x c = (* c.i_text <- t; *) c.tag <- c.tag + 1; ret x r_response_loop c in
+  let rec partial c = function
+    | `Await -> decode loop c
+    | _ -> invalid_arg "command in progress"
+  and loop r c = match r with
+    | #untagged as r           -> ret (`Untagged r) partial c
+    | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c
+    | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c
+    | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c
+    | `Bye (d, t)              -> end_ t (`Error `Bye) c
     | `Preauth _               -> assert false (* FIXME ret (`Error `Unexpected_preauth) eor c *)
     | `Cont _                  -> assert false
   in
-  flush (decode (loop i)) c r
+  encode `Flush (decode loop) c
+
+and r_response_loop c = function
+  | `Cmd cmd -> encode (`Ok (string_of_int c.tag, cmd)) r_response c
+  | `Await -> `Ok
+
+let r_greetings c = function
+  | `Cmd _ -> invalid_arg "waiting for greetings"
+  | `Await ->
+    let loop r c = match r with
+      | `Ok (d, t)  -> ret `Ok r_response_loop c
+      | _ -> assert false (* Fixme signal bad greetings *)
+    in
+    decode loop c
 
 let connection src dst =
-  { e = E.encoder dst; d = D.decoder src; g = true; i_st = `Connected;
-    i_text = ""; i_cap = []; r = true; t = 0 }
-
-let connect c =
-  let k c r =
-    let end_ t x c r = c.i_text <- t; c.r <- false; ret x eor c r in
-    let rec loop resp c r =
-      match resp with
-      | `Ok (d, t)      -> end_ t (`Ok `Needs_auth) c r
-      | `Bad (d, t)     -> end_ t (`Error `Bad) c r
-      | `No (d, t)      -> end_ t (`Error `No) c r
-      | #untagged       -> decode loop c r
-      | `Tagged _       -> assert false
-      | `Bye (d, t)     -> end_ t (`Error `Bye) c r
-      | `Preauth (d, t) -> end_ t (`Ok `Pre_auth) c r
-      | `Cont _         -> assert false
-    in
-    decode loop c r
-  in
-  {k}
-
-let ret i _ = i
-
-let capability c =
-  let h l = function `Capability caps -> caps | _ -> l in
-  {k = encode (`Tagged (string_of_int c.t, `Capability)) (r_response h [])}
-
-let login user pass c =
-  {k = encode (`Tagged (string_of_int c.t, `Login (user, pass))) (r_response ret ())}
-
-let noop c =
-  {k = encode (`Tagged (string_of_int c.t, `Noop)) (r_response ret ())}
-
-let select m c =
-  {k = encode (`Tagged (string_of_int c.t, `Select (`Normal, m))) (r_response ret ())}
-
-let select_condstore m c =
-  {k = encode (`Tagged (string_of_int c.t, `Select (`Condstore, m))) (r_response ret ())}
-
-(* let create m c = *)
-  (* w_tag (w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] (w_crlf r_response)) c *)
-
-(* let rename m1 m2 c = *)
-  (* w_tag (w_sep [w_raw "RENAME"; w_string (Mutf7.encode m1); w_string (Mutf7.encode m2)] (w_crlf r_response)) c *)
+  { e = E.encoder dst; d = D.decoder src; (* i_text = ""; *) tag = 0; k = r_greetings }
 
 (* let starttls = writes "STARTTLS" e *)
 (* let subscribe m   = `L[`R"SUBSCRIBE"; `U; `B m] *)

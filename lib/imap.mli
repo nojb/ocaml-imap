@@ -380,19 +380,10 @@ type response =
   | `Tagged of string * state ]
 (** Tagged response: tag, result status. *)
 
-type decode_error =
-  [ `Expected_char of char
-  | `Expected_string of string
-  | `Unexpected_char of char
-  | `Unexpected_string of string
-  | `Illegal_char of char
-  | `Illegal_range
-  | `Unexpected_eoi ]
-
 val pp_response : Format.formatter -> response -> unit
 (** Pretty print a server response. *)
 
-val pp_decode_error : Format.formatter -> decode_error -> unit
+(* val pp_decode_error : Format.formatter -> decode_error -> unit *)
 (** Pretty print a decoding error. *)
 
 (** Keys used for [SEARCH] command. *)
@@ -462,25 +453,72 @@ type status_att =
   | `Unseen
   | `Highest_modseq ]
 
+type command =
+  [ `Login of string * string
+  (** The [LOGIN] command to authenticate with the server.  Note that this
+      should only be used on a connection that is protected by TLS or similar
+      protocol, as the login and password are sent in plain. *)
+
+  | `Capability
+  (** The [CAPABILITY] command.  Returns the list of capabilities supported by
+      the server.  Note that this list can change when passing from a
+      non-authenticated to an authenticated state. *)
+
+  | `Create of string
+  (** The [CREATE] command used to create a new mailbox. *)
+
+  | `Rename of string * string
+  (** The [RENAME] command renames an existing mailbox. *)
+
+  | `Logout
+  (** The [LOGOUT] command used to gracefully terminate a session. *)
+
+  | `Noop
+  (** The [NOOP] command used to keep the connection alive. *)
+
+  | `Subscribe of string
+  | `Unsubscribe of string
+  | `List of string * string
+  | `Lsub of string * string
+  | `Status of string * status_att list
+  | `Copy of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * string
+  | `Check
+  | `Close
+  (** The [CLOSE] command, used to close for access the currently selected
+      mailbox. *)
+
+  | `Expunge
+  | `Search of [ `Uid | `Seq ] * search_key
+  | `Select of [ `Condstore | `Plain ] * string
+  | `Examine of [ `Condstore | `Plain ] * string
+  | `Enable of capability list
+  | `Fetch of [ `Uid | `Seq ] * [ `All | `Fast | `Full | `List of fetch_att list ]
+  | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
+              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
+
 (** {1 Commands} *)
 
 type error =
   [ `Incorrect_tag of string * string
-  | `Decode_error of decode_error
+  | `Decode_error of
+      [ `Expected_char of char
+      | `Expected_string of string
+      | `Unexpected_char of char
+      | `Unexpected_string of string
+      | `Illegal_char of char
+      | `Illegal_range
+      | `Unexpected_eoi ]
   | `Unexpected_cont
   | `Not_running
   | `Bad
   | `Bye
   | `No ]
 
-type 'a result = [ `Untagged of untagged | `Ok of 'a | `Error of error | `Await_src | `Await_dst ]
 type connection
-type 'a run
 type src = [ `String of string | `Channel of in_channel | `Manual ]
 type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
 val connection : [< src] -> [< dst] -> connection
-val run : connection -> 'a run -> 'a result
 
 module Manual : sig
   val src : connection -> string -> int -> int -> unit
@@ -488,26 +526,17 @@ module Manual : sig
   val dst_rem : connection -> int
 end
 
-type 'a command = connection -> 'a run
+val run : connection -> [ `Cmd of command | `Await ] ->
+  [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
-val connect : [ `Needs_auth | `Pre_auth ] command
+(* type command = connection -> result *)
 
-val capability          : capability list command
-(** The [CAPABILITY] command. *)
+(* val connect : [ `Needs_auth | `Pre_auth ] command *)
 
-val login : string -> string -> unit command
-(** [login u p] is the [LOGIN] command with user [u] and password [p]. *)
+(* val select              : string -> unit command *)
+(* (\** The [SELECT] command. *\) *)
 
-(* val logout              : unit command *)
-(* (\** The [LOGOUT] command. *\) *)
-
-val noop                : unit command
-(** The [NOOP] command. *)
-
-val select              : string -> unit command
-(** The [SELECT] command. *)
-
-val select_condstore    : string -> unit command
+(* val select_condstore    : string -> unit command *)
 (** The [SELECT (CONDSTORE)] command. *)
 
 (* val create              : string -> unit command *)
