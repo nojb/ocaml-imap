@@ -473,38 +473,48 @@ type error =
   | `Bye
   | `No ]
 
-type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
-type conn
-type command = conn -> result
+type 'a result = [ `Untagged of untagged | `Ok of 'a | `Error of error | `Await_src | `Await_dst ]
+type connection
+type 'a run
 type src = [ `String of string | `Channel of in_channel | `Manual ]
 type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
-val conn : [< src] -> [< dst] -> conn
-val run : conn -> result
+val connection : [< src] -> [< dst] -> connection
+val run : connection -> 'a run -> 'a result
 
 module Manual : sig
-  val src : conn -> string -> int -> int -> unit
-  val dst : conn -> string -> int -> int -> unit
-  val dst_rem : conn -> int
+  val src : connection -> string -> int -> int -> unit
+  val dst : connection -> string -> int -> int -> unit
+  val dst_rem : connection -> int
 end
 
-val capability          : command
+type 'a command = connection -> 'a run
+
+val connect : [ `Needs_auth | `Pre_auth ] command
+
+val capability          : capability list command
 (** The [CAPABILITY] command. *)
 
-val login : string -> string -> command
+val login : string -> string -> unit command
 (** [login u p] is the [LOGIN] command with user [u] and password [p]. *)
 
-val logout              : command
-(** The [LOGOUT] command. *)
+(* val logout              : unit command *)
+(* (\** The [LOGOUT] command. *\) *)
 
-val noop                : command
+val noop                : unit command
 (** The [NOOP] command. *)
 
-val create              : string -> command
-(** [create m] creates a mailbox named [m] (assumed to be UTF-8 encoded). *)
+val select              : string -> unit command
+(** The [SELECT] command. *)
 
-val rename : string -> string -> command
-(** [rename old new] renames mailbox [old] to [new]. *)
+val select_condstore    : string -> unit command
+(** The [SELECT (CONDSTORE)] command. *)
+
+(* val create              : string -> unit command *)
+(* (\** [create m] creates a mailbox named [m] (assumed to be UTF-8 encoded). *\) *)
+
+(* val rename : string -> string -> unit command *)
+(* (\** [rename old new] renames mailbox [old] to [new]. *\) *)
 
 (* val subscribe           : string -> command *)
 (* val unsubscribe         : string -> command *)
@@ -518,8 +528,6 @@ val rename : string -> string -> command
 (* val expunge             : command *)
 (* val search              : search_key -> command *)
 (* val uid_search          : search_key -> command *)
-(* val select_condstore    : string -> command *)
-(* val select              : string -> command *)
 (* val examine_condstore   : string -> command *)
 (* val examine             : string -> command *)
 (* val enable              : capability list -> command *)

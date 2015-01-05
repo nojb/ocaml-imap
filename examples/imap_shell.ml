@@ -16,12 +16,12 @@ let () = Ssl.init ()
 type s =
   { i : string;
     o : string;
-    mutable c : Imap.conn;
+    mutable c : Imap.connection;
     mutable sock : Lwt_ssl.socket option }
 
-type result = [ `Untagged of Imap.untagged | `Ok | `Error of Imap.error ]
+type 'a result = [ `Untagged of Imap.untagged | `Ok of 'a | `Error of Imap.error ]
 
-let rec step s v : result Lwt.t =
+let rec run s r =
   let rec write_fully sock s off len =
     if len > 0 then
       Lwt_ssl.write sock s off len >>= fun rc ->
@@ -30,23 +30,25 @@ let rec step s v : result Lwt.t =
     Lwt.return_unit
   in
   let sock = match s.sock with None -> invalid_arg "not connected" | Some sock -> sock in
-  match v with
-  | `Await_src ->
-      (* Printf.eprintf "Await_src\n%!"; *)
-      Lwt_ssl.read sock s.i 0 (Bytes.length s.i) >>= fun rc ->
-      Printf.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub s.i 0 rc);
-      Imap.Manual.src s.c s.i 0 rc;
-      step s (Imap.run s.c)
-  | `Await_dst ->
-      (* Printf.eprintf "Await_dst\n%!"; *)
-      let rc = Bytes.length s.o - Imap.Manual.dst_rem s.c in
-      write_fully sock s.o 0 rc >>= fun () ->
-      Printf.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub s.o 0 rc);
-      Imap.Manual.dst s.c s.o 0 (Bytes.length s.o);
-      step s (Imap.run s.c)
-  | `Untagged _ as r -> Lwt.return r
-  | `Ok -> Lwt.return `Ok
-  | `Error _ as e -> Lwt.return e
+  let rec loop = function
+    | `Await_src ->
+        (* Printf.eprintf "Await_src\n%!"; *)
+        Lwt_ssl.read sock s.i 0 (Bytes.length s.i) >>= fun rc ->
+        LTerm.eprintlf ">>> %d\n%s>>>%!" rc (String.sub s.i 0 rc) >>= fun () ->
+        Imap.Manual.src s.c s.i 0 rc;
+        loop (Imap.run s.c r)
+    | `Await_dst ->
+        (* Printf.eprintf "Await_dst\n%!"; *)
+        let rc = Bytes.length s.o - Imap.Manual.dst_rem s.c in
+        write_fully sock s.o 0 rc >>= fun () ->
+        LTerm.eprintlf "<<< %d\n%s<<<%!" rc (String.sub s.o 0 rc) >>= fun () ->
+        Imap.Manual.dst s.c s.o 0 (Bytes.length s.o);
+        loop (Imap.run s.c r)
+    | `Untagged _ as r -> Lwt.return r
+    | `Ok x -> Lwt.return (`Ok x)
+    | `Error _ as e -> Lwt.return e
+  in
+  loop (Imap.run s.c r)
 
 let connect s host port =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
@@ -55,22 +57,21 @@ let connect s host port =
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
   s.sock <- Some sock;
-  step s (Imap.run s.c)
+  let r = Imap.connect s.c in
+  run s r
 
 let capability s =
-  step s (Imap.capability s.c)
+  run s (Imap.capability s.c)
+  (* step s (Imap.capability s.c) *)
 
-let login s user pass =
-  step s (Imap.login user pass s.c)
-
-let run s =
-  step s (Imap.run s.c)
+(* let login s user pass = *)
+  (* step s (Imap.login user pass s.c) *)
 
 let g =
   let s =
     { i = Bytes.create io_buffer_size;
       o = Bytes.create io_buffer_size;
-      c = Imap.conn `Manual `Manual;
+      c = Imap.connection `Manual `Manual;
       sock = None }
   in
   Imap.Manual.dst s.c s.o 0 (Bytes.length s.o);
@@ -94,6 +95,10 @@ let password =
   let doc = Arg.info ~docv:"PASSWORD" ~doc:"Password." [] in
   Arg.(required & pos 1 (some string) None & doc)
 
+let mailbox =
+  let doc = Arg.info ~docv:"MAILBOX" ~doc:"Mailbox (UTF-8 encoded)." [] in
+  Arg.(required & pos 0 (some string) None & doc)
+
 (* CONNECT *)
 let connect_doc = "Connecto to an IMAPS server."
 let connect =
@@ -103,8 +108,10 @@ let connect =
     `P "The $(b,connect) command tries to establish a connction to an IMAP server over TLS."
   ] in
   let connect host port =
-    connect g host port >>= fun _ ->
-    Lwt.return_unit
+    connect g host port >>= function
+    | `Ok `Needs_auth -> LTerm.printl "OK, needs authorization."
+    | `Ok `Pre_auth -> LTerm.printl "OK, already authorized."
+    | _ -> Lwt.return_unit
   in
   Term.(pure connect $ host $ port), Term.info "connect" ~doc ~man
 
@@ -118,15 +125,16 @@ let capability =
         server by sending a $(b,CAPABILITY) command."
   ] in
   let capability () =
-    let rec loop : result -> unit Lwt.t = function
-      | `Untagged (`Capability caps) ->
+    let r = Imap.capability g.c in
+    let rec loop = function
+      | `Untagged _ -> run g r >>= loop
+      | `Ok caps ->
           LTerm.printl (String.concat ", " (List.map Imap.string_of_capability caps)) >>= fun () ->
-          run g >>= loop
-      | `Untagged _ -> run g >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
+          LTerm.printl "OK"
+      | _ ->
+          Lwt.return_unit
     in
-    capability g >>= loop
+    run g r >>= loop
   in
   Term.(pure capability $ pure ()), Term.info "capability" ~doc ~man
 
@@ -139,13 +147,37 @@ let login =
     `P "The $(b,login) command sends login credentials to the IMAP server."
   ] in
   let login user pass =
-    let rec loop : result -> unit Lwt.t = function
-      | `Ok -> LTerm.printl "OK"
-      | _ -> run g >>= loop
+    let r = Imap.login user pass g.c in
+    let rec loop = function
+      | `Untagged _ -> run g r >>= loop
+      | `Ok () ->
+          LTerm.printl "OK"
+      | _ ->
+          Lwt.return_unit
     in
-    login g user pass >>= loop
+    run g r >>= loop
   in
   Term.(pure login $ user $ password), Term.info "login" ~doc ~man
+
+(* NOOP *)
+let noop_doc = "Sends a NOOP command to the IMAP server."
+let noop =
+  let doc = noop_doc in
+  let man = [
+    `S "DESCRIPTION";
+    `P "The $(b,noop) command pings the IMAP server.  \
+        It is useful to keep a connection from closing due to inactivity."
+  ] in
+  let noop () =
+    let r = Imap.noop g.c in
+    let rec loop = function
+      | `Untagged _ -> run g r >>= loop
+      | `Ok () -> LTerm.printl "OK"
+      | _ -> Lwt.return_unit
+    in
+    run g r >>= loop
+  in
+  Term.(pure noop $ pure ()), Term.info "noop" ~doc ~man
 
 (* AUTHENTICATE *)
 let authenticate_doc = "Authenticate with an IMAP server."
@@ -160,11 +192,33 @@ let authenticate =
   in
   Term.(pure authenticate $ user $ password), Term.info "authenticate" ~doc ~man
 
+(* SELECT *)
+let select_doc = "Select a mailbox for further manipulation."
+let select =
+  let doc = select_doc in
+  let man = [
+    `S "DESCRIPTION";
+    `P "The $(b,select) command opens a mailbox in read-write mode in order \
+        to inspect and change its contents."
+  ] in
+  let select m =
+    let r = Imap.select m g.c in
+    let rec loop = function
+      | `Untagged _ -> run g r >>= loop
+      | `Ok () -> LTerm.printl "OK"
+      | _ -> Lwt.return_unit
+    in
+    run g r >>= loop
+  in
+  Term.(pure select $ mailbox), Term.info "select" ~doc ~man
+
 let commands = [
   connect;
   capability;
   login;
-  authenticate
+  noop;
+  authenticate;
+  select
 ]
 
 (* A mini shell *)
