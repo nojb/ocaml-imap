@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 9e5277863e9cf1e745df82d663aed5d5)
+# DO NOT EDIT (digest: 326a0775cd92670aa244213b91d5d0f9)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -17,30 +17,28 @@ true: annot, bin_annot
 # Library imap
 "lib/imap.cmxs": use_imap
 <lib/*.ml{,i,y}>: pkg_base64
-<lib/*.ml{,i,y}>: pkg_ssl
 <lib/*.ml{,i,y}>: pkg_uint
 <lib/*.ml{,i,y}>: pkg_uutf
-# Executable imap_shell
-"examples/imap_shell.byte": pkg_base64
-"examples/imap_shell.byte": pkg_cmdliner
-"examples/imap_shell.byte": pkg_lambda-term
-"examples/imap_shell.byte": pkg_lwt
-"examples/imap_shell.byte": pkg_lwt.ssl
-"examples/imap_shell.byte": pkg_lwt.syntax
-"examples/imap_shell.byte": pkg_ssl
-"examples/imap_shell.byte": pkg_str
-"examples/imap_shell.byte": pkg_uint
-"examples/imap_shell.byte": pkg_uutf
-"examples/imap_shell.byte": use_imap
-<examples/*.ml{,i,y}>: pkg_base64
-<examples/*.ml{,i,y}>: pkg_cmdliner
-<examples/*.ml{,i,y}>: pkg_lambda-term
-<examples/*.ml{,i,y}>: pkg_lwt
-<examples/*.ml{,i,y}>: pkg_lwt.ssl
-<examples/*.ml{,i,y}>: pkg_lwt.syntax
-<examples/*.ml{,i,y}>: pkg_ssl
-<examples/*.ml{,i,y}>: pkg_str
-<examples/*.ml{,i,y}>: pkg_uint
-<examples/*.ml{,i,y}>: pkg_uutf
-<examples/*.ml{,i,y}>: use_imap
+# Executable imapsh
+"imapsh/imapsh.byte": pkg_base64
+"imapsh/imapsh.byte": pkg_cmdliner
+"imapsh/imapsh.byte": pkg_lambda-term
+"imapsh/imapsh.byte": pkg_lwt
+"imapsh/imapsh.byte": pkg_lwt.ssl
+"imapsh/imapsh.byte": pkg_lwt.syntax
+"imapsh/imapsh.byte": pkg_str
+"imapsh/imapsh.byte": pkg_uint
+"imapsh/imapsh.byte": pkg_uutf
+"imapsh/imapsh.byte": use_imap
+<imapsh/*.ml{,i,y}>: pkg_base64
+<imapsh/*.ml{,i,y}>: pkg_cmdliner
+<imapsh/*.ml{,i,y}>: pkg_lambda-term
+<imapsh/*.ml{,i,y}>: pkg_lwt
+<imapsh/*.ml{,i,y}>: pkg_lwt.ssl
+<imapsh/*.ml{,i,y}>: pkg_lwt.syntax
+<imapsh/*.ml{,i,y}>: pkg_str
+<imapsh/*.ml{,i,y}>: pkg_uint
+<imapsh/*.ml{,i,y}>: pkg_uutf
+<imapsh/*.ml{,i,y}>: use_imap
 # OASIS_STOP
+<lib>: include

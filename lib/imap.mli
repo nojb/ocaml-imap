@@ -103,12 +103,12 @@ type fields =
     fld_enc : string;
     fld_octets : int }
 
-(** Message body *)
-type body =
+(** MIME message types *)
+type mime =
   [ `Text of string * fields * int
-  | `Message of fields * envelope * body * int
+  | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
-  | `Multiple of body list * string ]
+  | `Multiple of mime list * string ]
 
 (** Message flags *)
 type flag =
@@ -133,16 +133,18 @@ type section =
 (** Message attributes. *)
 type msg_att =
   [ `Flags of [ flag | `Recent ] list
-  (** Flags. *)
+  (** A parenthesized list of flags that are set for this message. *)
 
   | `Envelope of envelope
-  (** Envelope information. *)
+  (** A list that describes the envelope structure of a message.  This is
+      computed by the server by parsing the [RFC-2822] header into the component
+      parts, defaulting various fields as necessary. *)
 
   | `Internal_date of string
-  (** The internal date of the message. *)
+  (** A string representing the internal date of the message. *)
 
   | `Rfc822 of string option
-  (** The raw message contents (header & body). *)
+  (** Equivalent to [BODY[]]. *)
 
   | `Rfc822_header of string option
   (** The message header. *)
@@ -151,20 +153,21 @@ type msg_att =
   (** The message body. *)
 
   | `Rfc822_size of int
-  (** The size of the message. *)
+  (** The [RFC-2822] size of the message. *)
 
-  | `Body of body
-  (** TODO *)
+  | `Body of mime
+  (** A form of [BODYSTRUCTURE] without extension data. *)
 
-  | `Body_structure of body
-  (** TODO *)
+  | `Body_structure of mime
+  (** A parenthesized list that describes the [MIME-IMB] body structure of a
+      message.  This is computed by the server by parsing the [MIME-IMB] header
+      fields, defaulting various fields as necessary.  *)
 
   | `Body_section of section * int option * string option
   (** A message MIME part, starting offset, part data. *)
 
   | `Uid of Uint32.t
-  (** UID.  Typically constant between sessions, but needs to be re-requested if
-      the mailbox [UIDVALIDITY] value changes. *)
+  (** The unique identifier of the message. *)
 
   | `Modseq of Uint64.t
   (** The modification sequence number of this message.  Requires [CONDSTORE]. *)
@@ -314,7 +317,8 @@ type untagged =
   (** Untagged status response. *)
 
   | `Flags of flag list
-  (** List of labels are valid for the messages contained within. *)
+  (** The [FLAGS] response occurs as a result of a [SELECT] or [EXAMINE]
+      command. *)
 
   | `List of mbx_flag list * char option * string
   (** [LIST] response: mailbox flags, character used as path delimiter
@@ -332,20 +336,27 @@ type untagged =
   (** [STATUS] response: mailbox name, list of status items. *)
 
   | `Exists of int
-  (** Number of messages in the currently selected mailbox.  This response may
-      be sent unrequested as part of a response to any command to inform the
-      client of new messages. *)
+  (** The [EXISTS] response reports the number of messages in the mailbox.  This
+      response occurs as a result of a [SELECT] or [EXAMINE] command, and if the
+      size of the mailbox changes (e.g., new messages). *)
 
   | `Recent of int
-  (** Number of messages with the [\Recent] flag. *)
+  (** The [RECENT] response reports the number of messages with the
+      {v \Recent v} flag set.  This response occurs as a result of a [SELECT] or
+      [EXAMINE] command, and if the size of the mailbox changes (e.g., new
+      messages). *)
 
   | `Expunge of Uint32.t
-  (** Inform that a message has been permanently deleted from the current
-      mailbox.  The message number is always a Sequence number. *)
+  (** The [EXPUNGE] response reports that the specified message sequence number
+      has been permanently removed from the mailbox.  The message sequence
+      number for each successive message in the mailbox is immediately
+      decremented by 1. *)
 
   | `Fetch of Uint32.t * msg_att list
-  (** [FETCH] or [UID FETCH] response: message number (UID of Sequence), list of
-      attributes requested. *)
+  (** The [FETCH] response returns data about a message to the client.  The data
+      are pairs of data item names and their values in parentheses.  This
+      response occurs as the result of a [FETCH] or [STORE] command, as well as
+      by unilateral server decision (e.g., flag updates). *)
 
   | `Capability of capability list
   (** List of capabilities supported by the server. *)
@@ -516,39 +527,85 @@ type search_key =
   (** Messages that do not have the {v \Seen v} flag set. *)
 
   | `And of search_key * search_key
-  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
+  (** Messages that satisfy both search criteria. *)
+
+  | `Modseq of Uint64.t
+  (** Messages that have equal or greater modification sequence numbers. *)
+
   | `Gm_raw of string
   | `Gm_msgid of Uint64.t
+  (** Messages with a given Gmail Message ID. *)
+
   | `Gm_thrid of Uint64.t
-  | `Gm_labels of string list ]
+  (** Messages with a given Gmail Thread ID. *)
+
+  | `Gm_labels of string list
+  (** Messages with given Gmail labels. *) ]
 
 type fetch_att =
   [ `Envelope
+  (** The envelope structure of the message.  This is computed by the server by
+      parsing the header into the component parts, defaulting various fields as
+      necessary. *)
+
   | `Internal_date
+  (** The internal date of the message. *)
+
   | `Rfc822_header
+  (** Functionally equivalent to [BODY.PEEK[HEADER]], differing in the syntax of
+       the resulting untagged [FETCH] data ([RFC822.HEADER] is returned). *)
+
   | `Rfc822_text
+  (** Functionally equivalent to [BODY[TEXT]], differing in the syntax of the
+      resulting untagged [FETCH] data ([RFC822.TEXT] is returned). *)
+
   | `Rfc822_size
+  (** The size of the message. *)
+
   | `Rfc822
+  (** Functionally equivalent to [BODY[]], differing in the syntax of the
+      resulting untagged [FETCH] data ([RFC822] is returned). *)
+
   | `Body
-  | `Body_section of section * (int * int) option
-  | `Body_peek_section of section * (int * int) option
+  (** Non-extensible form of [BODYSTRUCTURE]. *)
+
+  | `Body_section of [ `Peek | `Look ] * section * (int * int) option
+  (** The text of a particular body section.  The [`Peek] flag is an alternate
+      form that does not implicitly set the {v \Seen v} flag. *)
+
   | `Body_structure
+  (** The MIME body structure of the message.  This is computed by the
+      server by parsing the MIME header fields in the [RFC-2822] header
+      and MIME headers. *)
+
   | `Uid
-  | `Flags ]
+  (** The unique identifier for the message. *)
+
+  | `Flags
+  (** The flags that are set for this message. *) ]
 
 type status_att =
   [ `Messages
+  (** The number of messages in the mailbox. *)
+
   | `Recent
+  (** The number of messages with the {v \Recent v} flag set. *)
+
   | `Uid_next
+  (** The next unique identifier value of the mailbox. *)
+
   | `Uid_validity
+  (** The unique identifier validity value of the mailbox. *)
+
   | `Unseen
+  (** The number of messages which do not have the {v \Seen v} flag set. *)
+
   | `Highest_modseq ]
 
 type command =
   [ `Login of string * string
-  (** The [LOGIN] command to authenticate with the server.  Note that this
-      should only be used on a connection that is protected by TLS or similar
-      protocol, as the login and password are sent in plain. *)
+  (** The [LOGIN] command identifies the client to the server and carries the
+      plaintext password authenticating this user. *)
 
   | `Capability
   (** The [CAPABILITY] command.  Returns the list of capabilities supported by
@@ -556,10 +613,10 @@ type command =
       non-authenticated to an authenticated state. *)
 
   | `Create of string
-  (** The [CREATE] command used to create a new mailbox. *)
+  (** The CREATE command creates a mailbox with the given name. *)
 
   | `Rename of string * string
-  (** The [RENAME] command renames an existing mailbox. *)
+  (** The [RENAME] command changes the name of a mailbox. *)
 
   | `Logout
   (** The [LOGOUT] command used to gracefully terminate a session. *)
@@ -568,27 +625,64 @@ type command =
   (** The [NOOP] command used to keep the connection alive. *)
 
   | `Subscribe of string
+  (** The [SUBSCRIBE] command adds the specified mailbox name to the server's
+      set of "active" or "subscribed" mailboxes as returned by the [LSUB]
+      command. *)
+
   | `Unsubscribe of string
+  (** The [UNSUBSCRIBE] command removes the specified mailbox name from the
+      server's set of "active" or "subscribed" mailboxes as returned by the
+      [LSUB] command. *)
+
   | `List of string * string
+  (** The [LIST] command returns a subset of names from the complete
+      set of all names available to the client. *)
+
   | `Lsub of string * string
+  (** The [LSUB] command returns a subset of names from the set of names that
+      the user has declared as being "active" or "subscribed". *)
+
   | `Status of string * status_att list
+  (** The STATUS command requests the status of the indicated mailbox. *)
+
   | `Copy of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * string
   | `Check
-  | `Close
-  (** The [CLOSE] command, used to close for access the currently selected
+  (** The [CHECK] command requests a checkpoint of the currently selected
       mailbox. *)
 
+  | `Close
+  (** The [CLOSE] command permanently removes all messages that have the
+      {v \Deleted v} flag set from the currently selected mailbox, and returns to
+      the authenticated state from the selected state. *)
+
   | `Expunge
+  (** The EXPUNGE command permanently removes all messages that have the
+      {v \Deleted v} flag set from the currently selected mailbox.  *)
+
   | `Search of [ `Uid | `Seq ] * search_key
+  (** The [SEARCH] command searches the mailbox for messages that match the
+      given searching criteria. *)
+
   | `Select of [ `Condstore | `Plain ] * string
+  (** The [SELECT] command selects a mailbox so that messages in the mailbox can
+      be accessed. *)
+
   | `Examine of [ `Condstore | `Plain ] * string
-  | `Enable of capability list
+  (** The [EXAMINE] command is identical to [SELECT] and returns the same
+      output; however, the selected mailbox is identified as read-only. *)
+
   | `Fetch of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list *
               [ `All | `Fast | `Full | `List of fetch_att list ] *
               [ `Changed_since of Uint64.t | `Changed_since_vanished of Uint64.t | `All ]
+  (** The [FETCH] command retrieves data associated with a message in the
+      mailbox. *)
+
   | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
               [ `Unchanged_since of Uint64.t | `All ] *
-              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
+              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
+  (** The STORE command alters data associated with a message in the mailbox. *)
+
+  | `Enable of capability list ]
 
 (** {1 Commands} *)
 
@@ -603,10 +697,11 @@ type error =
       | `Illegal_range
       | `Unexpected_eoi ]
   | `Unexpected_cont
-  | `Not_running
   | `Bad
   | `Bye
   | `No ]
+
+val pp_error : Format.formatter -> error -> unit
 
 type connection
 type src = [ `String of string | `Channel of in_channel | `Manual ]
@@ -623,6 +718,7 @@ end
 val run : connection -> [ `Cmd of command | `Await ] ->
   [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
-(* val search              : search_key -> command *)
-(* val uid_search          : search_key -> command *)
-(* val enable              : capability list -> command *)
+(** {1:limitations Limitations}
+
+    - no body structure extensions
+    - "simple" search modseq criteria *)

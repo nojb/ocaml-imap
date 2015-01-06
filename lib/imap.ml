@@ -22,6 +22,16 @@
 
 let io_buffer_size = 65536                           (* IO_BUFFER_SIZE 4.0.0 *)
 
+module Uint32 = struct
+  include Uint32
+  let printer ppf n = Format.pp_print_string ppf (to_string n)
+end
+
+module Uint64 = struct
+  include Uint64
+  let printer ppf n = Format.pp_print_string ppf (to_string n)
+end
+
 module Mutf7 = struct
 
   (* Modified UTF-7 *)
@@ -185,11 +195,29 @@ type fields =
     fld_enc : string;
     fld_octets : int }
 
-type body =
+type body_extension =
+  [ `List of body_extension list
+  | `Number of Uint32.t
+  | `String of string
+  | `None ]
+
+type part_extension =
+  { ext_dsp : (string * (string * string) list) option;
+    ext_lang : string list;
+    ext_loc : string option;
+    ext_ext : body_extension list }
+
+(* type mime_sext = *)
+(*   string option * part_extension *)
+
+(* type mime_mext = *)
+(*   (string * string) list * part_extension *)
+
+type mime =
   [ `Text of string * fields * int
-  | `Message of fields * envelope * body * int
+  | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
-  | `Multiple of body list * string ]
+  | `Multiple of mime list * string ]
 
 type flag =
   [ `Answered
@@ -217,8 +245,8 @@ type msg_att =
   | `Rfc822_header of string option
   | `Rfc822_text of string option
   | `Rfc822_size of int
-  | `Body of body
-  | `Body_structure of body
+  | `Body of mime
+  | `Body_structure of mime
   | `Body_section of section * int option * string option
   | `Uid of Uint32.t
   | `Modseq of Uint64.t
@@ -364,28 +392,38 @@ let pp_fields ppf f =
     (pp_list pp_param) f.fld_params (pp_opt pp_string) f.fld_id (pp_opt pp_string) f.fld_desc f.fld_enc
     f.fld_octets
 
-let rec pp_body ppf = function
+let rec pp_mime ppf = function
   | `Text (m, f, i) ->
       pp ppf "@[<2>(text@ %S@ %a@ %d)@]" m pp_fields f i
   | `Message (f, e, b, i) ->
-      pp ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]" pp_fields f pp_envelope e pp_body b i
+      pp ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]" pp_fields f pp_envelope e pp_mime b i
   | `Basic (m, t, f) ->
       pp ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
   | `Multiple (b, m) ->
-      pp ppf "@[<2>(multiple@ %a@ %S)@]" (pp_list pp_body) b m
+      pp ppf "@[<2>(multiple@ %a@ %S)@]" (pp_list pp_mime) b m
+
+let rec pp_section ppf : section -> _ = function
+  | `Header -> pp ppf "header"
+  | `Header_fields l -> pp ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
+  | `Header_fields_not l -> pp ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
+  | `Text -> pp ppf "text"
+  | `Mime -> pp ppf "mime"
+  | `Part (n, s) -> pp ppf "@[<2>(part %d@ %a)@]" n pp_section s
+  | `All -> pp ppf "all"
 
 let pp_msg_att : _ -> msg_att -> _ = fun ppf att ->
   match att with
   | `Flags r          -> pp ppf "@[<2>(flags %a)@]" (pp_list pp_flag_fetch) r
-  | `Envelope e       -> (* FIXME *) pp_envelope ppf e
+  | `Envelope e       -> pp_envelope ppf e
   | `Internal_date dt -> pp ppf "(internal-date %S)" dt
   | `Rfc822 s         -> pp ppf "(rfc822 %a)" (pp_opt pp_qstr) s
   | `Rfc822_header s  -> pp ppf "(rfc822-header %a)" (pp_opt pp_qstr) s
   | `Rfc822_text s    -> pp ppf "(rfc822-text %a)" (pp_opt pp_qstr) s
   | `Rfc822_size n    -> pp ppf "(rfc822-size %i)" n
-  | `Body b           -> pp ppf "@[<2>(body@ %a)@]" pp_body b
-  | `Body_structure b -> pp ppf "@[<2>(bodystructure@ %a)@]" pp_body b
-  | `Body_section _   -> pp ppf "@[<2>(body-section TODO)@]"
+  | `Body b           -> pp ppf "@[<2>(body@ %a)@]" pp_mime b
+  | `Body_structure b -> pp ppf "@[<2>(bodystructure@ %a)@]" pp_mime b
+  | `Body_section (s, n, x) -> pp ppf "@[<2>(body-section@ %a@ %a@ %a)@]"
+                                 pp_section s (pp_opt Format.pp_print_int) n (pp_opt pp_qstr) x
   | `Uid n            -> pp ppf "(uid %a)" Uint32.printer n
   | `Modseq m         -> pp ppf "(modseq %a)" Uint64.printer m
   | `Gm_msgid m       -> pp ppf "(gm-msgid %a)" Uint64.printer m
@@ -1261,9 +1299,12 @@ module D = struct
                      body-fld-enc SP body-fld-octets
 *)
 
-  let p_body_fields k d =
+  let p_fld_param k d =
     let param k d = p_string (fun v -> p_sp $ p_string (fun v' -> k (v, v'))) d in
-    p_list1 param begin fun params ->
+    p_list param k d
+
+  let p_body_fields k d =
+    p_fld_param begin fun params ->
       p_sp $ p_nstring @@ fun id ->
       p_sp $ p_nstring @@ fun desc ->
       p_sp $ p_string  @@ fun enc ->
@@ -1282,9 +1323,9 @@ module D = struct
                        ; revisions of this specification.
 *)
 
-  let rec b_extension k d =
+  let rec p_body_ext k d =
     if is_digit $ cur d then p_uint32 (fun n -> k $ `Number n) d else
-    if cur d = '(' then p_list1 b_extension (fun xs -> k $ `List xs) d else
+    if cur d = '(' then p_list1 p_body_ext (fun xs -> k $ `List xs) d else
     p_nstring (function Some x -> k $ `String x | None -> k $ `None) d
 
 (*
@@ -1307,61 +1348,31 @@ module D = struct
                        ; "BODY" fetch
 *)
 
-  (* let body_fld_dsp = *)
-  (*   alt *)
-  (*     begin *)
-  (*       char '(' >> *)
-  (*       imap_string >>= fun dsp_type -> *)
-  (*       char ' ' >> *)
-  (*       body_fld_param >>= fun dsp_attributes -> *)
-  (*       char ')' >> *)
-  (*       ret (Some {dsp_type; dsp_attributes}) *)
-  (*     end *)
-  (*     (nil >> ret None) *)
+  let p_fld_dsp k d =
+    if cur d = '(' then
+      readc $ p_string (fun s -> p_sp $ p_fld_param (fun p -> p_ch ')' $ k (Some (s, p)))) $ d
+    else
+    p_atomf "NIL" (k None) d
 
   let p_fld_lang k d =
     if cur d = '(' then p_list1 p_string k d else
     p_nstring (function Some x -> k [x] | None -> k []) d
 
-  (* let body_ext_1part k d = *)
-  (*   body_fld_md5 >>= fun bd_md5 -> *)
-  (*   opt *)
-  (*     begin *)
-  (*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
-  (*       opt *)
-  (*         begin *)
-  (*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
-  (*           opt *)
-  (*             begin *)
-  (*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
-  (*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
-  (*               ret {bd_md5; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
-  (*             end *)
-  (*             {bd_md5; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
-  (*         end *)
-  (*         {bd_md5; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
-  (*     end *)
-  (*     {bd_md5 = None; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  let r_body_ext k d =
+    if cur d = ' ' then readc $ p_fld_dsp (fun dsp d ->
+        if cur d = ' ' then readc $ p_fld_lang (fun lang d ->
+            if cur d = ' ' then readc $ p_nstring (fun loc ->
+                p_sep p_body_ext (fun ext ->
+                    k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})) $ d else
+            k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d) $ d else
+        k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d) $ d else
+    k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
 
-  (* let body_ext_mpart = *)
-  (*   char ' ' >> body_fld_param >>= fun bd_parameter -> *)
-  (*   opt *)
-  (*     begin *)
-  (*       char ' ' >> body_fld_dsp >>= fun bd_disposition -> *)
-  (*       opt *)
-  (*         begin *)
-  (*           char ' ' >> some body_fld_lang >>= fun bd_language -> *)
-  (*           opt *)
-  (*             begin *)
-  (*               char ' ' >> body_fld_loc >>= fun bd_loc -> *)
-  (*               rep (char ' ' >> delay body_extension ()) >>= fun bd_extension_list -> *)
-  (*               ret {bd_parameter; bd_disposition; bd_language; bd_loc; bd_extension_list} *)
-  (*             end *)
-  (*             {bd_parameter; bd_disposition; bd_language; bd_loc = None; bd_extension_list = []} *)
-  (*         end *)
-  (*         {bd_parameter; bd_disposition; bd_language = None; bd_loc = None; bd_extension_list = []} *)
-  (*     end *)
-  (*     {bd_parameter; bd_disposition = None; bd_language = None; bd_loc = None; bd_extension_list = []} *)
+  let r_sbody_ext k d =
+    p_nstring (fun md5 -> r_body_ext (k md5)) d
+
+  let r_mbody_ext k d =
+    p_fld_param (fun params -> r_body_ext (k params)) d
 
 (*
    body-fld-lines  = number
@@ -1397,20 +1408,24 @@ module D = struct
    body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 
-  let rec p_mbody k d = (* TODO ext *)
+  let rec p_mbody k d = (* TODO Return the extension data *)
     let rec loop acc d =
       if cur d = '(' then p_body (fun x -> loop (x :: acc)) d else
-      if cur d = ' ' then readc $ p_string (fun m -> k $ `Multiple (List.rev acc, m)) $ d else
+      if cur d = ' ' then
+        readc $ p_string (fun m d ->
+            if cur d = ' ' then readc $ r_mbody_ext (fun _ _ -> k $ `Multiple (List.rev acc, m)) $ d else
+            k $ `Multiple (List.rev acc, m) $ d) $ d else
       err_unexpected $ cur d $ d
     in
     loop [] d
 
-  and p_sbody k d = (* TODO ext *)
-    let msg f k d = p_t3 p_envelope p_body p_uint (fun e b n -> k $ `Message (f, e, b, n)) d in
+  and p_sbody k d = (* TODO Return the extension data *)
+    let ext k d = if cur d = ' ' then readc $ r_sbody_ext (fun _ _ -> k) $ d else k d in
+    let msg f k d = p_t3 p_envelope p_body p_uint (fun e b n -> ext $ k (`Message (f, e, b, n))) d in
     let nxt m t f d =
       if m -- "MESSAGE" && t -- "RFC822" then p_sp $ msg f k $ d else
-      if m -- "TEXT" then p_sp $ p_uint (fun n -> k $ `Text (t, f, n)) $ d else
-      k $ `Basic (m, t, f) $ d
+      if m -- "TEXT" then p_sp $ p_uint (fun n -> ext $ k (`Text (t, f, n))) $ d else
+      ext $ k (`Basic (m, t, f)) $ d
     in
     p_t3 p_string p_string p_body_fields nxt d
 
@@ -1723,7 +1738,7 @@ type search_key =
   | `Unkeyword of string
   | `Unseen
   | `And of search_key * search_key
-  | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
+  | `Modseq of Uint64.t
   | `Gm_raw of string
   | `Gm_msgid of Uint64.t
   | `Gm_thrid of Uint64.t
@@ -1737,8 +1752,7 @@ type fetch_att =
   | `Rfc822_size
   | `Rfc822
   | `Body
-  | `Body_section of section * (int * int) option
-  | `Body_peek_section of section * (int * int) option
+  | `Body_section of [ `Peek | `Look ] * section * (int * int) option
   | `Body_structure
   | `Uid
   | `Flags ]
@@ -1773,13 +1787,13 @@ type command =
   | `Search of [ `Uid | `Seq ] * search_key
   | `Select of [ `Condstore | `Plain ] * string
   | `Examine of [ `Condstore | `Plain ] * string
-  | `Enable of capability list
   | `Fetch of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list *
               [ `All | `Fast | `Full | `List of fetch_att list ] *
               [ `Changed_since of Uint64.t | `Changed_since_vanished of Uint64.t | `All ]
   | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
               [ `Unchanged_since of Uint64.t | `All ] *
-              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
+              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
+  | `Enable of capability list ]
 
 module E = struct
 
@@ -1954,14 +1968,22 @@ module E = struct
     | `Not sk -> w "NOT" & w_p w_search_key sk
     | `Or (sk1, sk2) -> w "OR" & w_p w_search_key sk1 & w_p w_search_key sk2
     | `And (sk1, sk2) -> w_p w_search_key sk1 & w_p w_search_key sk2
-    | `Modseq _ -> assert false
-    (* | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t *)
+    | `Modseq m -> w "MODSEQ" & w_uint64 m
     | `Gm_raw s -> w "X-GM-RAW" & w_string s
     | `Gm_msgid m -> w "X-GM-MSGID" & w_uint64 m
     | `Gm_thrid m -> w "X-GM-THRID" & w_uint64 m
     | `Gm_labels l -> w "X-GM-LABELS" & w_list w_string l
 
-  let w_fetch_att = function
+  let rec w_section : section -> _ = function
+    | `Header -> w "HEADER"
+    | `Header_fields l -> w "HEADER.FIELDS" & w_list w l
+    | `Header_fields_not l -> w "HEADER.FIELDS.NOT" & w_list w l
+    | `Text -> w "TEXT"
+    | `Mime -> w "MIME"
+    | `Part (n, s) -> w_int n $ w "." $ w_section s
+    | `All -> w ""
+
+  let w_fetch_att : fetch_att -> _ = function
     | `Envelope -> w "ENVELOPE"
     | `Internal_date -> w "INTERNALDATE"
     | `Rfc822_header -> w "RFC822.HEADER"
@@ -1969,8 +1991,13 @@ module E = struct
     | `Rfc822_size -> w "RFC822.SIZE"
     | `Rfc822 -> w "RFC822"
     | `Body -> w "BODY"
-    | `Body_section _ -> assert false
-    | `Body_peek_section _ -> assert false
+    | `Body_section (peek, s, partial) ->
+        let cmd = match peek with `Peek -> "BODY.PEEK" | `Look -> "BODY" in
+        let partial = match partial with
+          | None -> w ""
+          | Some (n, l) -> w "<" $ w_int n $ w "." $ w_int l $ w ">"
+        in
+        w cmd $ w "[" $ w_section s $ w "]" $ partial
     | `Body_structure -> w "BODYSTRUCTURE"
     | `Uid -> w "UID"
     | `Flags -> w "FLAGS"
@@ -2003,8 +2030,7 @@ module E = struct
     | `Close -> w "CLOSE"
     | `Check -> w "CHECK"
     | `Expunge -> w "EXPUNGE"
-    | `Fetch (_, _, (`Fast | `Full | `All), _) -> assert false
-    | `Fetch (uid, set, `List att, changed_since) ->
+    | `Fetch (uid, set, att, changed_since) ->
         let changed_since = match changed_since with
           | `All -> w ""
           | `Changed_since m ->
@@ -2013,7 +2039,14 @@ module E = struct
               w "(" $ w "CHANGEDSINCE" & w_uint64 m & w "VANISHED" $ w ")"
         in
         let cmd = match uid with `Seq -> "FETCH" | `Uid -> "UID FETCH" in
-        w cmd & w_set set & w_list w_fetch_att att & changed_since
+        let att = match att with
+          | `Fast -> w "FAST"
+          | `Full -> w "FULL"
+          | `All -> w "ALL"
+          | `List [x] -> w_fetch_att x
+          | `List l -> w_list w_fetch_att l
+        in
+        w cmd & w_set set & att & changed_since
     | `Store (uid, set, silent, unchanged_since, mode, att) ->
         let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
         let silent = match silent with `Silent -> ".SILENT" | `Loud -> "" in
@@ -2062,10 +2095,17 @@ type error =
   [ `Incorrect_tag of string * string
   | `Decode_error of D.error
   | `Unexpected_cont
-  | `Not_running
   | `Bad
   | `Bye
   | `No ]
+
+let pp_error ppf = function
+  | `Incorrect_tag (exp, tag) -> pp ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
+  | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" D.pp_error e
+  | `Unexpected_cont -> pp ppf "@[Unexpected continuation request@]"
+  | `Bad -> pp ppf "@[Server did not understand request@]"
+  | `Bye -> pp ppf "@[Server closed the connection@]"
+  | `No -> pp ppf "@[Server denied the request@]"
 
 type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
@@ -2073,7 +2113,7 @@ type connection =
   { e : E.encoder;
     d : D.decoder;
     mutable tag : int;
-    mutable k : connection -> [ `Cmd of command | `Await ] -> result }  (* Next tag to utilize *)
+    mutable k : connection -> [ `Cmd of command | `Await ] -> result }
 
 type src = D.src
 
@@ -2086,8 +2126,6 @@ module Manual = struct
 end
 
 let ret v k c = c.k <- k; v
-
-(* let rec eor c _ = ret (`Error `Not_running) eor c (\* FIXME *\) *)
 
 let decode k c =
   let rec partial c = function
@@ -2154,15 +2192,6 @@ let connection src dst =
 (* let starttls = writes "STARTTLS" e *)
 (* let copy s m      = `L[`R"COPY"; `U; `M s; `U; `B m] *)
 (* let uid_copy s m  = `L[`R"UID COPY"; `U; `M s; `U; `B m] *)
-
-(* let search k = `L[`R"SEARCH"; `U; `K k] *)
-(* let uid_search k = `L[`R"UID SEARCH"; `U; `K k] *)
-
-(* let capability_to_string = function *)
-(*   | _ -> "error" *)
-
-(* let enable caps = *)
-(*   `L[`R"ENABLE"; `L(List.map (fun c -> `L[`U; `R(capability_to_string c)]) caps)] *)
 
 (* module Test = struct *)
 (*   let (>>=) = Lwt.(>>=) *)

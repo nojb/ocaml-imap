@@ -1,8 +1,8 @@
 # OASIS_START
-# DO NOT EDIT (digest: 0c5cd27851b2506320d022e7c9524281)
+# DO NOT EDIT (digest: 297f4682928c629a8270b17e16607b65)
 version = "0.30.0"
 description = "IMAP4rev1 protocol codec"
-requires = "uutf base64 uint ssl"
+requires = "uutf base64 uint"
 archive(byte) = "imap.cma"
 archive(byte, plugin) = "imap.cma"
 archive(native) = "imap.cmxa"

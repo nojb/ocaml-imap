@@ -154,9 +154,10 @@ let fetch_att =
   let att =
     [ "envelope", `Envelope, "Envelope information";
       "internaldate", `Internal_date, "Internal date";
-      "rfc822.header", `Rfc822_header, "Header text";
-      "rfc822.text", `Rfc822_text, "Body text";
-      "rfc822.size", `Rfc822_size, "Size";
+      "rfc822", `Rfc822, "Full text (header & body)";
+      "rfc822-header", `Rfc822_header, "Header text";
+      "rfc822-text", `Rfc822_text, "Body text";
+      "rfc822-size", `Rfc822_size, "Size";
       "body", `Body, "? ? ?";
       "bodystructure", `Body_structure, "Body structure";
       "uid", `Uid, "UID";
@@ -240,6 +241,43 @@ let search_key =
   in
   loop keys
 
+let capabilities =
+  let caps =
+    [ "acl", `Acl;
+      "binary", `Binary;
+      "catenate", `Catenate;
+      "children", `Children;
+      "compress-deflate", `Compress_deflate;
+      "condstore", `Condstore;
+      "enable", `Enable;
+      "idle", `Idle;
+      "id", `Id;
+      "literal-plus", `Literal_plus;
+      "multi-append", `Multi_append;
+      "namespace", `Namespace;
+      "qresync", `Qresync;
+      "quote", `Quote;
+      "sort", `Sort;
+      "start-tls", `Start_tls;
+      "uid-plus", `Uid_plus;
+      "unselect", `Unselect;
+      "xlist", `Xlist;
+      "auth-anonymous", `Auth `Anonymous;
+      "auth-login", `Auth `Login;
+      "auth-plain", `Auth `Plain;
+      "xoauth2", `Xoauth2;
+      "gmail", `Gmail ]
+  in
+  let rec loop = function
+    | (n, a) :: rem ->
+        let arg = Arg.(value & flag & info ~docs ~doc:n [n]) in
+        Term.(pure (fun x rem -> if x then a :: rem else rem) $ arg $ loop rem)
+    | [] ->
+        let doc = Arg.info ~docs ~docv:"CAPABILITY" ~doc:"Capability to enable" ["cap"] in
+        Term.(pure (List.map (fun x -> `Other x)) $ Arg.(value & opt_all string [] & doc))
+  in
+  loop caps
+
 (* CONNECT *)
 let connect_doc = "Connecto to an IMAPS server."
 let connect =
@@ -255,6 +293,17 @@ let connect =
   in
   Term.(pure connect $ host $ port), Term.info "connect" ~doc ~man
 
+let rec handle h = function
+  | `Untagged u ->
+      h u >>= fun () ->
+      run g `Await >>= handle h
+  | `Ok -> LTerm.printl "OK"
+  | `Error e ->
+      Imap.pp_error Format.str_formatter e;
+      LTerm.printlf "ERROR: %s" (Format.flush_str_formatter ())
+
+let handle_unit r = handle (fun _ -> Lwt.return_unit) r
+
 (* CAPABILITY *)
 let capability_doc = "Query the capabilities of an IMAP server."
 let capability =
@@ -265,16 +314,13 @@ let capability =
         server by sending a $(b,CAPABILITY) command."
   ] in
   let capability () =
-    let rec loop = function
-      | `Untagged (`Capability _ as u) ->
+    let h = function
+      | `Capability _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd `Capability) >>= loop
+    run g (`Cmd `Capability) >>= handle h
   in
   Term.(pure capability $ pure ()), Term.info "capability" ~doc ~man
 
@@ -286,14 +332,7 @@ let login =
     `S "DESCRIPTION";
     `P "The $(b,login) command sends login credentials to the IMAP server."
   ] in
-  let login user pass =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd (`Login (user, pass))) >>= loop
-  in
+  let login user pass = run g (`Cmd (`Login (user, pass))) >>= handle_unit in
   Term.(pure login $ user $ password), Term.info "login" ~doc
 
 (* LOGOUT *)
@@ -304,15 +343,7 @@ let logout =
     `S "DESCRIPTION";
     `P "The $(b,logout) command logs out from an IMAP server."
   ] in
-  let logout () =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      (* | `Error `Bye -> LTerm.printl "BYE" >>= fun () -> run g `Await >>= loop *)
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd `Logout) >>= loop
-  in
+  let logout () = run g (`Cmd `Logout) >>= handle_unit in
   Term.(pure logout $ pure ()), Term.info "logout" ~doc
 
 (* NOOP *)
@@ -324,14 +355,7 @@ let noop =
     `P "The $(b,noop) command pings the IMAP server.  \
         It is useful to keep a connection from closing due to inactivity."
   ] in
-  let noop () =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd `Noop) >>= loop
-  in
+  let noop () = run g (`Cmd `Noop) >>= handle_unit in
   Term.(pure noop $ pure ()), Term.info "noop" ~doc ~man
 
 (* AUTHENTICATE *)
@@ -355,14 +379,7 @@ let subscribe =
     `S "DESCRIPTION";
     `P "The $(b,subscribe) command subscribes the client to a mailbox."
   ] in
-  let subscribe m =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd (`Subscribe m)) >>= loop
-  in
+  let subscribe m = run g (`Cmd (`Subscribe m)) >>= handle_unit in
   Term.(pure subscribe $ mailbox), Term.info "subscribe" ~doc ~man
 
 (* UNSUBSCRIBE *)
@@ -373,14 +390,7 @@ let unsubscribe =
     `S "DESCRIPTION";
     `P "The $(b,unsubscribe) command unsubscribes the client to a mailbox."
   ] in
-  let unsubscribe m =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd (`Unsubscribe m)) >>= loop
-  in
+  let unsubscribe m = run g (`Cmd (`Unsubscribe m)) >>= handle_unit in
   Term.(pure unsubscribe $ mailbox), Term.info "unsubscribe" ~doc ~man
 
 (* LIST *)
@@ -392,16 +402,13 @@ let list =
     `P "The $(b,list) command shows a list of available mailboxes matching a certain patter."
   ] in
   let list m p =
-    let rec loop = function
-      | `Untagged (`List _ as u) ->
+    let h = function
+      | `List _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd (`List (m, p))) >>= loop
+    run g (`Cmd (`List (m, p))) >>= handle h
   in
   Term.(pure list $ list_reference $ list_wildcard), Term.info "list" ~doc ~man
 
@@ -414,16 +421,13 @@ let lsub =
     `P "The $(b,lsub) command shows a list of subscribed mailboxes matching a certain patter."
   ] in
   let lsub m p =
-    let rec loop = function
-      | `Untagged (`Lsub _ as u) ->
+    let h = function
+      | `Lsub _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd (`Lsub (m, p))) >>= loop
+    run g (`Cmd (`Lsub (m, p))) >>= handle h
   in
   Term.(pure lsub $ list_reference $ list_wildcard), Term.info "lsub" ~doc ~man
 
@@ -437,13 +441,8 @@ let select =
         to inspect and change its contents."
   ] in
   let select condstore m =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
     let mode = if condstore then `Condstore else `Plain in
-    run g (`Cmd (`Select (mode, m))) >>= loop
+    run g (`Cmd (`Select (mode, m))) >>= handle_unit
   in
   Term.(pure select $ condstore $ mailbox), Term.info "select" ~doc ~man
 
@@ -457,13 +456,8 @@ let examine =
         to inspect its contents."
   ] in
   let examine condstore m =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
     let mode = if condstore then `Condstore else `Plain in
-    run g (`Cmd (`Examine (mode, m))) >>= loop
+    run g (`Cmd (`Examine (mode, m))) >>= handle_unit
   in
   Term.(pure examine $ condstore $ mailbox), Term.info "examine" ~doc ~man
 
@@ -476,12 +470,7 @@ let create =
     `P "The $(b,create) command creates a new mailbox."
   ] in
   let create m =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd (`Create m)) >>= loop
+    run g (`Cmd (`Create m)) >>= handle_unit
   in
   Term.(pure create $ mailbox), Term.info "create" ~doc ~man
 
@@ -493,14 +482,7 @@ let rename =
     `S "DESCRIPTION";
     `P "The $(b,rename) command renames an existing mailbox."
   ] in
-  let rename oldm newm =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd (`Rename (oldm, newm))) >>= loop
-  in
+  let rename oldm newm = run g (`Cmd (`Rename (oldm, newm))) >>= handle_unit in
   Term.(pure rename $ mailbox $ mailbox), Term.info "rename" ~doc ~man
 
 (* STATUS *)
@@ -513,16 +495,13 @@ let status =
         information (number of messages, etc.)."
   ] in
   let status m atts =
-    let rec loop = function
-      | `Untagged (`Status _ as u) ->
+    let h = function
+      | `Status _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd (`Status (m, atts))) >>= loop
+    run g (`Cmd (`Status (m, atts))) >>= handle h
   in
   Term.(pure status $ mailbox $ status_att), Term.info "status" ~doc ~man
 
@@ -534,14 +513,7 @@ let close =
     `S "DESCRIPTION";
     `P "The $(b,close) command closes the currently selected mailbox."
   ] in
-  let close () =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
-    run g (`Cmd `Close) >>= loop
-  in
+  let close () = run g (`Cmd `Close) >>= handle_unit in
   Term.(pure close $ pure ()), Term.info "close" ~doc ~man
 
 (* FETCH *)
@@ -553,12 +525,10 @@ let fetch =
     `P "The $(b,fetch) command retrieves message properties."
   ] in
   let fetch set uid att changed_since vanished =
-    let rec loop = function
-      | `Untagged (`Fetch _ as u) ->
+    let h = function
+      | `Fetch _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
     let uid = if uid then `Uid else `Seq in
@@ -567,7 +537,7 @@ let fetch =
       | Some m, false -> `Changed_since m
       | Some m, true -> `Changed_since_vanished m
     in
-    run g (`Cmd (`Fetch (uid, set, `List att, changed_since))) >>= loop
+    run g (`Cmd (`Fetch (uid, set, `List att, changed_since))) >>= handle h
   in
   Term.(pure fetch $ set $ uid $ fetch_att $ changed_since $ vanished), Term.info "fetch" ~doc ~man
 
@@ -581,11 +551,6 @@ let store =
         with a given set of messages."
   ] in
   let store mode set uid silent unchanged_since flags labels =
-    let rec loop = function
-      | `Untagged _ -> run g `Await >>= loop
-      | `Ok -> LTerm.printl "OK"
-      | _ -> Lwt.return_unit
-    in
     let uid = if uid then `Uid else `Seq in
     let silent = if silent then `Silent else `Loud in
     let unchanged_since = match unchanged_since with
@@ -594,12 +559,12 @@ let store =
     in
     begin
       if List.length flags > 0
-      then run g (`Cmd (`Store (uid, set, silent, unchanged_since, mode, `Flags flags))) >>= loop else
+      then run g (`Cmd (`Store (uid, set, silent, unchanged_since, mode, `Flags flags))) >>= handle_unit else
       Lwt.return_unit
     end >>= fun () ->
     begin
       if List.length labels > 0
-      then run g (`Cmd (`Store (uid, set, silent, unchanged_since, mode, `Labels labels))) >>= loop else
+      then run g (`Cmd (`Store (uid, set, silent, unchanged_since, mode, `Labels labels))) >>= handle_unit else
       Lwt.return_unit
     end
   in
@@ -612,21 +577,31 @@ let search =
   let doc = search_doc in
   let search uid key =
     let uid = if uid then `Uid else `Seq in
-    let rec loop = function
-      | `Untagged (`Search _ as u) ->
+    let h = function
+      | `Search _ as u ->
           Imap.pp_response Format.str_formatter u;
-          LTerm.printl (Format.flush_str_formatter ()) >>= fun () ->
-          run g `Await >>= loop
-      | `Untagged _ ->
-          run g `Await >>= loop
-      | `Ok ->
-          LTerm.printl "OK"
+          LTerm.printl (Format.flush_str_formatter ())
       | _ ->
           Lwt.return_unit
     in
-    run g (`Cmd (`Search (uid, key))) >>= loop
+    run g (`Cmd (`Search (uid, key))) >>= handle h
   in
   Term.(pure search $ uid $ search_key), Term.info "search" ~doc
+
+(* ENABLE *)
+let enable_doc = "Enable server capabilities."
+let enable =
+  let doc = enable_doc in
+  let enable caps =
+    let h = function
+      | `Enabled _ as u ->
+          Imap.pp_response Format.str_formatter u;
+          LTerm.printl (Format.flush_str_formatter ())
+      | _ -> Lwt.return_unit
+    in
+    run g (`Cmd (`Enable caps)) >>= handle h
+  in
+  Term.(pure enable $ capabilities), Term.info "enable" ~doc
 
 let commands =
   [ connect;
@@ -647,7 +622,8 @@ let commands =
     close;
     fetch;
     store;
-    search ]
+    search;
+    enable ]
 
 (* A mini shell *)
 
