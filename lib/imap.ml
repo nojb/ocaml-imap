@@ -100,6 +100,12 @@ module Mutf7 = struct
     Buffer.contents b
 end
 
+(* type month = *)
+(*   [ `Jan | `Feb | `Mar | `Apr | `May | `Jun *)
+(*   | `Jul | `Aug | `Sep | `Oct | `Nov | `Dec ] *)
+
+type date = { day : int; month : int ; year : int }
+
 type address =
   { ad_name : string;
     ad_adl : string;
@@ -1680,42 +1686,42 @@ module D = struct
 end
 
 type search_key =
-  [ `All
+  [ `Seq of (Uint32.t * Uint32.t) list
+  | `All
   | `Answered
   | `Bcc of string
-  | `Before of int * int * int
+  | `Before of date
   | `Body of string
   | `Cc of string
   | `Deleted
+  | `Draft
   | `Flagged
   | `From of string
+  | `Header of string * string
   | `Keyword of string
+  | `Larger of int
   | `New
+  | `Not of search_key
   | `Old
-  | `On of int * int * int
+  | `On of date
+  | `Or of search_key * search_key
   | `Recent
   | `Seen
-  | `Since of int * int * int
+  | `Sent_before of date
+  | `Sent_on of date
+  | `Sent_since of date
+  | `Since of date
+  | `Smaller of int
   | `Subject of string
   | `Text of string
   | `To of string
+  | `Uid of (Uint32.t * Uint32.t) list
   | `Unanswered
   | `Undeleted
+  | `Undraft
   | `Unflagged
   | `Unkeyword of string
   | `Unseen
-  | `Draft
-  | `Header of string * string
-  | `Larger of int
-  | `Not of search_key
-  | `Or of search_key * search_key
-  | `Sent_before of int * int * int
-  | `Sent_on of int * int * int
-  | `Sent_since of int * int * int
-  | `Smaller of int
-  | `Uid of (Uint32.t * Uint32.t) list
-  | `Undraft
-  | `In_set of (Uint32.t * Uint32.t) list
   | `And of search_key * search_key
   | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
   | `Gm_raw of string
@@ -1768,8 +1774,11 @@ type command =
   | `Select of [ `Condstore | `Plain ] * string
   | `Examine of [ `Condstore | `Plain ] * string
   | `Enable of capability list
-  | `Fetch of [ `Uid | `Seq ] * [ `All | `Fast | `Full | `List of fetch_att list ]
+  | `Fetch of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list *
+              [ `All | `Fast | `Full | `List of fetch_att list ] *
+              [ `Changed_since of Uint64.t | `Changed_since_vanished of Uint64.t | `All ]
   | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
+              [ `Unchanged_since of Uint64.t | `All ] *
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
 
 module E = struct
@@ -1823,7 +1832,7 @@ module E = struct
     in
     loop 0 (String.length s) e
 
-  let w_raw s k e = writes s k e
+  let w s k e = writes s k e
 
   let classify_string str =
     let literal = function
@@ -1849,52 +1858,191 @@ module E = struct
     `Raw
 
   let w_string x k e = match classify_string x with
-    | `Raw     -> w_raw x k e
-    | `Quoted  -> w_raw "\"" (w_raw x (w_raw "\"" k)) e
+    | `Raw     -> w x k e
+    | `Quoted  -> w "\"" (w x (w "\"" k)) e
     | `Literal ->
-        w_raw (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w_raw x k))) e
+        w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e
 
-  let w_sep l k e =
+  let w_sep ?(sep = ' ') f l k e =
     let rec loop xs e = match xs with
       | [] -> k e
-      | x :: [] -> x k e
-      | x :: xs -> x (w_raw " " (loop xs)) e
+      | x :: [] -> f x k e
+      | x :: xs -> f x (w (String.make 1 sep) (loop xs)) e
     in
     loop l e
 
+  let (&) x y k e = x (w " " (y k)) e
+  let ($) x y k e = x (y k) e
+
   let w_crlf k e =
-    w_raw "\r\n" k e
+    w "\r\n" k e
 
-  let w_status_att a k e = match a with
-    | `Messages -> w_raw "MESSAGES" k e
-    | `Recent -> w_raw "RECENT" k e
-    | `Uid_next -> w_raw "UIDNEXT" k e
-    | `Uid_validity -> w_raw "UIDVALIDITY" k e
-    | `Unseen -> w_raw "UNSEEN" k e
-    | `Highest_modseq -> w_raw "HIGHESTMODSEQ" k e
+  let w_status_att = function
+    | `Messages -> w "MESSAGES"
+    | `Recent -> w "RECENT"
+    | `Uid_next -> w "UIDNEXT"
+    | `Uid_validity -> w "UIDVALIDITY"
+    | `Unseen -> w "UNSEEN"
+    | `Highest_modseq -> w "HIGHESTMODSEQ"
 
-  let w_list l k e =
-    let rec loop ws e = match ws with
-      | [] -> w_raw ")" k e
-      | [w] -> w (w_raw ")" k) e
-      | w :: ws -> w (w_raw " " (loop ws)) e
+  let w_int n = w (string_of_int n)
+  let w_uint32 m = w (Uint32.to_string m)
+  let w_uint64 m = w (Uint64.to_string m)
+
+  let w_label l =
+    w_string (Mutf7.encode l)
+
+  let w_list f l k e =
+    let rec loop xs e = match xs with
+      | [] -> w ")" k e
+      | [x] -> f x (w ")" k) e
+      | x :: xs -> f x (w " " (loop xs)) e
     in
-    w_raw "(" (loop l) e
+    w "(" (loop l) e
 
-  let w_tagged t k e = match t with
-    | `Capability -> w_raw "CAPABILITY" k e
-    | `Login (u, p) -> w_sep [w_raw "LOGIN"; w_string u; w_string p] k e
-    | `Noop -> w_raw "NOOP" k e
-    | `Select (`Plain, m) -> w_sep [w_raw "SELECT"; w_string (Mutf7.encode m)] k e
-    | `Select (`Condstore, m) -> w_sep [w_raw "SELECT"; w_string (Mutf7.encode m); w_raw "(CONDSTORE)"] k e
-    | `Create m -> w_sep [w_raw "CREATE"; w_string (Mutf7.encode m)] k e
-    | `Rename (m1, m2) -> w_sep [w_raw "RENAME"; w_string (Mutf7.encode m1); w_string (Mutf7.encode m2)] k e
-    | `Status (m, att) -> w_sep [w_raw "STATUS"; w_string (Mutf7.encode m); w_list (List.map w_status_att att)] k e
-    | _ -> assert false
+  let w_set s k e =
+    let f (lo, hi) = if lo = hi then w_uint32 lo else w_uint32 lo $ w ":" $ w_uint32 hi in
+    w_sep ~sep:',' f s k e
+
+  let w_mailbox s =
+    w_string (Mutf7.encode s)
+
+  let months =
+    [| "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun";
+       "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec" |]
+
+  let w_date d =
+    w (Printf.sprintf "%d-%s-%4d" d.day months.(d.month) d.year)
+
+  let w_p f x = w "(" $ f x $ w ")"
+
+  let rec w_search_key : search_key -> _ = function
+    | `Seq s -> w_set s
+    | `All -> w "ALL"
+    | `Answered -> w "ANSWERED"
+    | `Bcc s -> w "BCC" & w_string s
+    | `Before d -> w "BEFORE" & w_date d
+    | `Body s -> w "BODY" & w_string s
+    | `Cc s -> w "CC" & w_string s
+    | `Deleted -> w "DELETED"
+    | `Draft -> w "DRAFT"
+    | `Flagged -> w "FLAGGED"
+    | `From s -> w "FROM" & w_string s
+    | `Header (s1, s2) -> w "HEADER" & w_string s1 & w_string s2
+    | `Keyword s -> w "KEYWORD" & w_string s
+    | `Larger n -> w "LARGER" & w_int n
+    | `New -> w "NEW"
+    | `Old -> w "OLD"
+    | `On d -> w "ON" & w_date d
+    | `Recent -> w "RECENT"
+    | `Seen -> w "SEEN"
+    | `Sent_before d -> w "SENTBEFORE" & w_date d
+    | `Sent_on d -> w "SENT_ON" & w_date d
+    | `Sent_since d -> w "SENTSINCE" & w_date d
+    | `Since d -> w "SINCE" & w_date d
+    | `Smaller n -> w "SMALLER" & w_int n
+    | `Subject s -> w "SUBJECT" & w_string s
+    | `Text s -> w "TEXT" & w_string s
+    | `To s -> w "TO" & w_string s
+    | `Uid s -> w "UID" & w_set s
+    | `Unanswered -> w "UNANSWERED"
+    | `Undeleted -> w "UNDELETED"
+    | `Undraft -> w "UNDRAFT"
+    | `Unflagged -> w "UNFLAGGED"
+    | `Unkeyword s -> w "UNKEYWORD" & w_string s
+    | `Unseen -> w "UNSEEN"
+    | `Not sk -> w "NOT" & w_p w_search_key sk
+    | `Or (sk1, sk2) -> w "OR" & w_p w_search_key sk1 & w_p w_search_key sk2
+    | `And (sk1, sk2) -> w_p w_search_key sk1 & w_p w_search_key sk2
+    | `Modseq _ -> assert false
+    (* | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t *)
+    | `Gm_raw s -> w "X-GM-RAW" & w_string s
+    | `Gm_msgid m -> w "X-GM-MSGID" & w_uint64 m
+    | `Gm_thrid m -> w "X-GM-THRID" & w_uint64 m
+    | `Gm_labels l -> w "X-GM-LABELS" & w_list w_string l
+
+  let w_fetch_att = function
+    | `Envelope -> w "ENVELOPE"
+    | `Internal_date -> w "INTERNALDATE"
+    | `Rfc822_header -> w "RFC822.HEADER"
+    | `Rfc822_text -> w "RFC822.TEXT"
+    | `Rfc822_size -> w "RFC822.SIZE"
+    | `Rfc822 -> w "RFC822"
+    | `Body -> w "BODY"
+    | `Body_section _ -> assert false
+    | `Body_peek_section _ -> assert false
+    | `Body_structure -> w "BODYSTRUCTURE"
+    | `Uid -> w "UID"
+    | `Flags -> w "FLAGS"
+
+  let w_flag = function
+    | `Answered -> w "\\Answered"
+    | `Flagged -> w "\\Flagged"
+    | `Deleted -> w "\\Deleted"
+    | `Seen -> w "\\Seen"
+    | `Draft -> w "\\Draft"
+    | `Keyword s -> w s
+    | `Extension s -> w ("\\" ^ s)
+
+  let w_tagged : command -> _ = function
+    | `Capability -> w "CAPABILITY"
+    | `Login (u, p) -> w "LOGIN" & w_string u & w_string p
+    | `Logout -> w "LOGOUT"
+    | `Noop -> w "NOOP"
+    | `Subscribe m -> w "SUBSCRIBE" & w_mailbox m
+    | `Unsubscribe m -> w "UNSUBSCRIBE" & w_mailbox m
+    | `List (m, s) -> w "LIST" & w_mailbox m & w_string s
+    | `Lsub (m, s) -> w "LSUB" & w_mailbox m & w_string s
+    | `Select (`Plain, m) -> w "SELECT" & w_mailbox m
+    | `Select (`Condstore, m) -> w "SELECT" & w_mailbox m & w "(CONDSTORE)"
+    | `Examine (`Plain, m) -> w "EXAMINE" & w_mailbox m
+    | `Examine (`Condstore, m) -> w "EXAMINE" & w_mailbox m & w "(CONDSTORE)"
+    | `Create m -> w "CREATE" & w_mailbox m
+    | `Rename (m1, m2) -> w "RENAME" & w_mailbox m1 & w_mailbox m2
+    | `Status (m, att) -> w "STATUS" & w_mailbox m & w_list w_status_att att
+    | `Close -> w "CLOSE"
+    | `Check -> w "CHECK"
+    | `Expunge -> w "EXPUNGE"
+    | `Fetch (_, _, (`Fast | `Full | `All), _) -> assert false
+    | `Fetch (uid, set, `List att, changed_since) ->
+        let changed_since = match changed_since with
+          | `All -> w ""
+          | `Changed_since m ->
+              w "(" $ w "CHANGEDSINCE" & w_uint64 m $ w ")"
+          | `Changed_since_vanished m ->
+              w "(" $ w "CHANGEDSINCE" & w_uint64 m & w "VANISHED" $ w ")"
+        in
+        let cmd = match uid with `Seq -> "FETCH" | `Uid -> "UID FETCH" in
+        w cmd & w_set set & w_list w_fetch_att att & changed_since
+    | `Store (uid, set, silent, unchanged_since, mode, att) ->
+        let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
+        let silent = match silent with `Silent -> ".SILENT" | `Loud -> "" in
+        let base = match att with
+          | `Flags _ -> mode ^ "FLAGS" ^ silent
+          | `Labels _ -> mode ^ "X-GM-LABELS" ^ silent
+        in
+        let att = match att with
+          | `Flags flags -> w_list w_flag flags
+          | `Labels labels -> w_list w_label labels
+        in
+        let unchanged_since = match unchanged_since with
+          | `All -> w ""
+          | `Unchanged_since m -> w "(" $ w "UNCHANGEDSINCE" & w_uint64 m $ w ")"
+        in
+        let cmd = match uid with `Seq -> "STORE" | `Uid -> "UID STORE" in
+        w cmd & w_set set & unchanged_since & w base & att
+    | `Copy (uid, set, m) ->
+        let cmd = match uid with `Seq -> "COPY" | `Uid -> "UID COPY" in
+        w cmd & w_set set & w_mailbox m
+    | `Search (uid, sk) ->
+        let cmd = match uid with `Seq -> "SEARCH" | `Uid -> "UID SEARCH" in
+        w cmd & w_search_key sk
+    | `Enable c ->
+        w "ENABLE" & w_sep (fun x -> w (string_of_capability x)) c
 
   let rec encode_ e = function
     | `Await -> `Ok
-    | `Ok (tag, x) -> w_raw tag (w_raw " " (w_tagged x (w_crlf encode_loop))) e
+    | `Ok (tag, x) -> w tag (w " " (w_tagged x (w_crlf encode_loop))) e
     | `Flush -> flush encode_loop e
 
   and encode_loop e = e.k <- encode_; `Ok
@@ -2004,87 +2152,17 @@ let connection src dst =
   { e = E.encoder dst; d = D.decoder src; (* i_text = ""; *) tag = 0; k = r_greetings }
 
 (* let starttls = writes "STARTTLS" e *)
-(* let subscribe m   = `L[`R"SUBSCRIBE"; `U; `B m] *)
-(* let unsubscribe m = `L[`R"UNSUBSCRIBE"; `U; `B m] *)
-(* let list m1 m2    = `L[`R"LIST"; `U; `B m1; `U; `B m2] *)
-(* let lsub m1 m2    = `L[`R"LSUB"; `U; `B m1; `U; `B m2] *)
-(* let status m a    = `L[`R"STATUS"; `U; `B m; `U; `L (List.map (fun x -> `X x) a)] *)
 (* let copy s m      = `L[`R"COPY"; `U; `M s; `U; `B m] *)
 (* let uid_copy s m  = `L[`R"UID COPY"; `U; `M s; `U; `B m] *)
-(* let check         = `R"CHECK" *)
-(* let close         = `R"CLOSE" *)
-(* let expunge       = `R"EXPUNGE" *)
 
 (* let search k = `L[`R"SEARCH"; `U; `K k] *)
 (* let uid_search k = `L[`R"UID SEARCH"; `U; `K k] *)
-(* let select_condstore m = `L[`R"SELECT"; `U; `B m; `U; `R"(CONDSTORE)"] *)
-(* let select m = `L[`R"SELECT"; `U; `B m] *)
-(* let examine_condstore m = `L[`R"EXAMINE"; `U; `B m; `U; `R"(CONDSTORE)"] *)
-(* let examine m = `L[`R"EXAMINE"; `U; `B m] *)
 
 (* let capability_to_string = function *)
 (*   | _ -> "error" *)
 
 (* let enable caps = *)
 (*   `L[`R"ENABLE"; `L(List.map (fun c -> `L[`U; `R(capability_to_string c)]) caps)] *)
-
-(* type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ] *)
-
-(* let fetch_aux c s ft ~changed ~vanished = *)
-(*   let ft = match ft with *)
-(*     | `All -> `R"ALL" *)
-(*     | `Fast -> `R"FAST" *)
-(*     | `Full -> `R"FULL" *)
-(*     | `Att fl -> `L(List.map (fun x -> `G x) fl) *)
-(*   in *)
-(*   let changed = match changed with *)
-(*     | None -> `R"" *)
-(*     | Some c -> `L[`U; `R"(CHANGEDSINCE "; `R(Uint64.to_string c); if vanished then `R" VANISHED)" else `R")"] *)
-(*   in *)
-(*   `L[`R c; `U; `M s; `U; ft; changed] *)
-
-(* let fetch_changed s ft ~changed = *)
-(*   fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:false *)
-(* let fetch_vanished s ft ~changed = *)
-(*   fetch_aux "FETCH" s ft ~changed:(Some changed) ~vanished:true *)
-(* let uid_fetch_changed s ft ~changed = *)
-(*   fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:false *)
-(* let uid_fetch_vanished s ft ~changed = *)
-(*   fetch_aux "UID FETCH" s ft ~changed:(Some changed) ~vanished:true *)
-(* let fetch s ft = *)
-(*   fetch_aux "FETCH" s ft ~changed:None ~vanished:false *)
-(* let uid_fetch s ft = *)
-(*   fetch_aux "UID FETCH" s ft ~changed:None ~vanished:false *)
-
-(* type store_spec = [ `Add | `Set | `Remove] *)
-
-(* let store_aux c s ?silent g ?unchanged fs = *)
-(*   let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in *)
-(*   let l = match silent with *)
-(*     | None | Some false -> `R"FLAGS" *)
-(*     | Some true -> `R"FLAGS.SILENT" *)
-(*   in *)
-(*   let u = match unchanged with *)
-(*     | None -> `R"" *)
-(*     | Some u -> `L[`R"(UNCHANGEDSINCE "; `R(Uint64.to_string u); `R")"; `U] *)
-(*   in *)
-(*   `L[`R"STORE"; `U; `M s; `U; u; g; l; `L (List.map (fun f -> `F f) fs)] *)
-
-(* let store s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs *)
-(* let uid_store s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs *)
-(* let store_unchanged s ?(silent = false) u g fs = store_aux "STORE" s ~silent ~unchanged:u g fs *)
-(* let uid_store_unchanged s ?(silent = false) u g fs = store_aux "UID STORE" s ~silent ~unchanged:u g fs *)
-
-(* let store_aux c s ?silent g fs = *)
-(*   let g = match g with `Add -> `R"+" | `Set -> `R"" | `Remove -> `R"-" in *)
-(*   let l = match silent with *)
-(*     | None | Some false -> `R"X-GM-LABELS" *)
-(*     | Some true -> `R"X-GM-LABELS.SILENT" *)
-(*   in *)
-(*   `L[`R"STORE"; `U; `M s; `U; g; l; `L (List.map (fun f -> `S f) fs)] *)
-
-(* let store_labels s ?(silent = false) g fs = store_aux "STORE" s ~silent g fs *)
-(* let uid_store_labels s ?(silent = false) g fs = store_aux "UID STORE" s ~silent g fs *)
 
 (* module Test = struct *)
 (*   let (>>=) = Lwt.(>>=) *)

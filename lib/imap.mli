@@ -45,6 +45,8 @@
     {e {{:https://tools.ietf.org/html/rfc4315}Internet Message Access Protocol (IMAP) - UIDPLUS extension}, 2005}}}
 *)
 
+type date = { day : int; month : int ; year : int }
+
 type address =
   { ad_name : string;
     ad_adl : string;
@@ -383,47 +385,136 @@ type response =
 val pp_response : Format.formatter -> response -> unit
 (** Pretty print a server response. *)
 
-(* val pp_decode_error : Format.formatter -> decode_error -> unit *)
-(** Pretty print a decoding error. *)
-
 (** Keys used for [SEARCH] command. *)
 type search_key =
-  [ `All
+  [  `Seq of (Uint32.t * Uint32.t) list
+  (** Messages with message sequence numbers corresponding to the specified
+      message sequence number set. *)
+
+  | `All
+  (** All messages in the mailbox; the default initial key for ANDing. *)
+
   | `Answered
+  (** Messages with the {v \Answered v} flag set. *)
+
   | `Bcc of string
-  | `Before of int * int * int
+  (** Messages that contain the specified string in the envelope structure's
+      "BCC" field. *)
+
+  | `Before of date
+  (** Messages whose internal date (disregarding time and timezone) is earlier
+      than the specified date. *)
+
   | `Body of string
+  (** Messages that contain the specified string in the body of the message. *)
+
   | `Cc of string
+  (** Messages that contain the specified string in the envelope structure's
+      "CC" field. *)
+
   | `Deleted
-  | `Flagged
-  | `From of string
-  | `Keyword of string
-  | `New
-  | `Old
-  | `On of int * int * int
-  | `Recent
-  | `Seen
-  | `Since of int * int * int
-  | `Subject of string
-  | `Text of string
-  | `To of string
-  | `Unanswered
-  | `Undeleted
-  | `Unflagged
-  | `Unkeyword of string
-  | `Unseen
+  (** Messages with the {v \Deleted v} flag set. *)
+
   | `Draft
+  (** Messages with the {v \Draft v} flag set. *)
+
+  | `Flagged
+  (** Messages with the {v \Flagged v} flag set. *)
+
+  | `From of string
+  (** Messages that contain the specified string in the envelope structure's
+      "FROM" field. *)
+
   | `Header of string * string
+  (** Messages that have a header with the specified field-name and that
+      contains the specified string in the text of the header (what comes after
+      the colon).  If the string to search is zero-length, this matches all
+      messages that have a header line with the specified field-name regardless
+      of the contents. *)
+
+  | `Keyword of string
+  (** Messages with the specified keyword flag set. *)
+
   | `Larger of int
+  (** Messages with a size larger than the specified number of octets. *)
+
+  | `New
+  (** Messages that have the {v \Recent v} flag set but not the {v \Seen v}
+      flag.  This is functionally equivalent to [`And (`Recent, `Unseen)]. *)
+
   | `Not of search_key
+  (** Messages that do not match the specified search key. *)
+
+  | `Old
+  (** Messages that do not have the {v \Recent v} flag set.  This is
+      functionally equivalent to [`Not `Recent] (as opposed to [`Not `New]). *)
+
+  | `On of date
+  (** Messages whose internal date (disregarding time and timezone) is within
+      the specified date.  *)
+
   | `Or of search_key * search_key
-  | `Sent_before of int * int * int
-  | `Sent_on of int * int * int
-  | `Sent_since of int * int * int
+  (** Messages that match either search key. *)
+
+  | `Recent
+  (** Messages that have the {v \Recent v} flag set. *)
+
+  | `Seen
+  (** Messages that have the {v \Seen v} flag set. *)
+
+  | `Sent_before of date
+  (** Messages whose "Date:" header (disregarding time and timezone) is earlier
+      than the specified date. *)
+
+  | `Sent_on of date
+  (** Messages whose "Date:" header (disregarding time and timezone) is within
+      the specified date. *)
+
+  | `Sent_since of date
+  (** Messages whose "Date:" header (disregarding time and timezone) is within
+      or later than the specified date.  *)
+
+  | `Since of date
+  (** Messages whose internal date (disregarding time and timezone) is within or
+      later than the specified date.  *)
+
   | `Smaller of int
+  (** Messages with a size smaller than the specified number of octets. *)
+
+  | `Subject of string
+  (** Messages that contain the specified string in the envelope structure's
+      "SUBJECT" field. *)
+
+  | `Text of string
+  (** Messages that contain the specified string in the header or body of the
+      message. *)
+
+  | `To of string
+  (** Messages that contain the specified string in the envelope structure's
+      "TO" field. *)
+
   | `Uid of (Uint32.t * Uint32.t) list
+  (** Messages with unique identifiers corresponding to the specified unique
+      identifier set.  Sequence set ranges are permitted. *)
+
+  | `Unanswered
+  (** Messages that do not have the {v \Answered v} flag set. *)
+
+  | `Undeleted
+  (** Messages that do not have the {v \Deleted v} flag set. *)
+
   | `Undraft
-  | `In_set of (Uint32.t * Uint32.t) list
+  (** Messages that do not have the {v \Draft v} flag set. *)
+
+  | `Unflagged
+  (** Messages that do not have the {v \Flagged v} flag set. *)
+
+  | `Unkeyword of string
+  (** Messages that do not have the specified keyword flag set. *)
+
+  | `Unseen
+  (** Messages that do not have the {v \Seen v} flag set. *)
+
   | `And of search_key * search_key
   | `Modseq of (flag * [ `Priv | `Shared | `All ]) option * Uint64.t
   | `Gm_raw of string
@@ -492,8 +583,11 @@ type command =
   | `Select of [ `Condstore | `Plain ] * string
   | `Examine of [ `Condstore | `Plain ] * string
   | `Enable of capability list
-  | `Fetch of [ `Uid | `Seq ] * [ `All | `Fast | `Full | `List of fetch_att list ]
+  | `Fetch of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list *
+              [ `All | `Fast | `Full | `List of fetch_att list ] *
+              [ `Changed_since of Uint64.t | `Changed_since_vanished of Uint64.t | `All ]
   | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
+              [ `Unchanged_since of Uint64.t | `All ] *
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] ]
 
 (** {1 Commands} *)
@@ -529,52 +623,6 @@ end
 val run : connection -> [ `Cmd of command | `Await ] ->
   [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
-(* type command = connection -> result *)
-
-(* val connect : [ `Needs_auth | `Pre_auth ] command *)
-
-(* val select              : string -> unit command *)
-(* (\** The [SELECT] command. *\) *)
-
-(* val select_condstore    : string -> unit command *)
-(** The [SELECT (CONDSTORE)] command. *)
-
-(* val create              : string -> unit command *)
-(* (\** [create m] creates a mailbox named [m] (assumed to be UTF-8 encoded). *\) *)
-
-(* val rename : string -> string -> unit command *)
-(* (\** [rename old new] renames mailbox [old] to [new]. *\) *)
-
-(* val subscribe           : string -> command *)
-(* val unsubscribe         : string -> command *)
-(* val list                : string -> string -> command *)
-(* val lsub                : string -> string -> command *)
-(* val status              : string -> status_att list -> command *)
-(* val copy                : set -> string -> command *)
-(* val uid_copy            : set -> string -> command *)
-(* val check               : command *)
-(* val close               : command *)
-(* val expunge             : command *)
 (* val search              : search_key -> command *)
 (* val uid_search          : search_key -> command *)
-(* val examine_condstore   : string -> command *)
-(* val examine             : string -> command *)
 (* val enable              : capability list -> command *)
-
-(* type fetch_spec = [ `All | `Fast | `Full | `Att of fetch_att list ] *)
-
-(* val fetch_changed       : set -> [< fetch_spec] -> changed:uint64 -> command *)
-(* val fetch_vanished      : set -> [< fetch_spec] -> changed:uint64 -> command *)
-(* val uid_fetch_changed   : set -> [< fetch_spec] -> changed:uint64 -> command *)
-(* val uid_fetch_vanished  : set -> [< fetch_spec] -> changed:uint64 -> command *)
-(* val fetch               : set -> [< fetch_spec] -> command *)
-(* val uid_fetch           : set -> [< fetch_spec] -> command *)
-
-(* type store_spec = [ `Add | `Set | `Remove ] *)
-
-(* val store               : set -> ?silent:bool -> [< store_spec] -> flag list -> command *)
-(* val uid_store           : set -> ?silent:bool -> [< store_spec] -> flag list -> command *)
-(* val store_unchanged     : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> command *)
-(* val uid_store_unchanged : set -> ?silent:bool -> uint64 -> [< store_spec] -> flag list -> command *)
-(* val store_labels        : set -> ?silent:bool -> [< store_spec] -> string list -> command *)
-(* val uid_store_labels    : set -> ?silent:bool -> [< store_spec] -> string list -> command *)
