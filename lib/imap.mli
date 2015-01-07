@@ -715,7 +715,7 @@ module Manual : sig
   val dst_rem : connection -> int
 end
 
-val run : connection -> [ `Cmd of command | `Await ] ->
+val run : connection -> [ `Cmd of command | `Await | `Idle | `Idle_done ] ->
   [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
 (** {1:limitations Limitations}

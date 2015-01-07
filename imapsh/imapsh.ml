@@ -603,6 +603,16 @@ let enable =
   in
   Term.(pure enable $ capabilities), Term.info "enable" ~doc
 
+(* IDLE *)
+let idle_doc = "IDLE"
+let idle =
+  let doc = idle_doc in
+  let idle () =
+    let h _ = run g `Idle_done >>= handle_unit in
+    run g `Idle >>= handle h
+  in
+  Term.(pure idle $ pure ()), Term.info "idle" ~doc
+
 let commands =
   [ connect;
     capability;
@@ -623,7 +633,8 @@ let commands =
     fetch;
     store;
     search;
-    enable ]
+    enable;
+    idle ]
 
 (* A mini shell *)
 

@@ -1803,12 +1803,14 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Ok of string * command | `Await | `Flush ]
+    [ `Cmd of string * command | `Idle of string | `Idle_done | `Await | `Flush ]
 
   let pp_encode : _ -> encode -> _ = fun ppf e -> match e with
-    | `Ok _ -> pp ppf "`Ok" (* FIXME *)
+    | `Cmd _ -> pp ppf "`Cmd" (* FIXME *)
     | `Await -> pp ppf "`Await"
     | `Flush -> pp ppf "`Flush"
+    | `Idle tag -> pp ppf "`Idle %S" tag
+    | `Idle_done -> pp ppf "`Idle_done"
 
   type encoder =
     { dst : dst;
@@ -1825,7 +1827,8 @@ module E = struct
 
   let partial k e = function
     | `Await -> k e
-    | `Ok _ | `Flush -> invalid_arg "cannot encode now, use `Await first"
+    | `Cmd _ | `Flush | `Idle _ | `Idle_done ->
+        invalid_arg "cannot encode now, use `Await first"
 
   let flush k e = match e.dst with
     | `Manual -> if e.o_pos > 0 then (e.k <- partial k; `Partial) else k e
@@ -1839,7 +1842,6 @@ module E = struct
     let rec loop j l e =
       let rem = dst_rem e in
       let len = if l > rem then rem else l in
-      (* Printf.eprintf "writes j=%d l=%d s=%S rem=%d len=%d\n%!" j l s rem len; *)
       String.unsafe_blit s j e.o e.o_pos len;
       e.o_pos <- e.o_pos + len;
       if len < l then flush (loop (j + len) (l - len)) e else k e
@@ -2075,7 +2077,9 @@ module E = struct
 
   let rec encode_ e = function
     | `Await -> `Ok
-    | `Ok (tag, x) -> w tag (w " " (w_tagged x (w_crlf encode_loop))) e
+    | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf encode_loop))) e
+    | `Idle tag -> w tag (w " " (w "IDLE" (w_crlf encode_loop))) e
+    | `Idle_done -> w "DONE" (w_crlf encode_loop) e
     | `Flush -> flush encode_loop e
 
   and encode_loop e = e.k <- encode_; `Ok
@@ -2113,7 +2117,7 @@ type connection =
   { e : E.encoder;
     d : D.decoder;
     mutable tag : int;
-    mutable k : connection -> [ `Cmd of command | `Await ] -> result }
+    mutable k : connection -> [ `Cmd of command | `Await | `Idle | `Idle_done ] -> result }
 
 type src = D.src
 
@@ -2130,7 +2134,8 @@ let ret v k c = c.k <- k; v
 let decode k c =
   let rec partial c = function
     | `Await -> loop (D.decode c.d)
-    | _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done (* FIXME *)
+    | `Cmd _ -> invalid_arg "command in progress"
   and loop = function
     | `Ok x -> k x c
     | `Await -> ret `Await_src partial c
@@ -2141,9 +2146,7 @@ let decode k c =
 let rec decode_to_cont k c = (* FIXME error ?? *)
   decode (function `Cont _ -> k | _ -> decode_to_cont k) c
 
-(* FLUSH should be returned tot he user ? *)
 let encode x k c =
-  (* Printf.eprintf "encode_ %s\n%!" (string_of_encode x); *)
   let rec partial c = function
     | `Await -> loop (E.encode c.e `Await)
     | _ -> invalid_arg "command in progress"
@@ -2156,35 +2159,77 @@ let encode x k c =
 
 let run c = c.k c
 
-let rec r_response c =
-  (* Printf.eprintf "r_response\n%!"; *)
-  let end_ t x c = (* c.i_text <- t; *) c.tag <- c.tag + 1; ret x r_response_loop c in
+let decode_idle k c =
+  let rec partial c = function
+    | `Await -> loop (D.decode c.d)
+    | `Idle_done -> encode `Idle_done (fun c -> loop (D.decode c.d)) c
+    | `Idle | `Cmd _ -> invalid_arg "idle command in progress"
+  and loop = function
+    | `Ok x -> k x c
+    | `Await -> ret `Await_src partial c
+    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
+  in
+  loop (D.decode c.d)
+
+let rec h_tagged tag r c =
+  (* TODO check tags are ok *)
+  c.tag <- c.tag + 1;
+  match r with
+  | `Ok (d, t) -> ret `Ok r_response_loop c
+  | `Bad (d, t) -> ret (`Error `Bad) r_response_loop c
+  | `No (d, t) -> ret (`Error `No) r_response_loop c
+
+and r_response c =
+  (* let end_ t x c = (\* c.i_text <- t; *\) c.tag <- c.tag + 1; ret x r_response_loop c in *)
   let rec partial c = function
     | `Await -> decode loop c
     | _ -> invalid_arg "command in progress"
   and loop r c = match r with
     | #untagged as r           -> ret (`Untagged r) partial c
-    | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c
-    | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c
-    | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c
-    | `Bye (d, t)              -> end_ t (`Error `Bye) c
+    | `Tagged (g, r) -> h_tagged g r c
+    (* | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c *)
+    (* | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c *)
+    (* | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c *)
+    | `Bye (d, t)              -> ret (`Error `Bye) r_response_loop c (* end_ t (`Error `Bye) c *) (* FXME *)
     | `Preauth _               -> assert false (* FIXME ret (`Error `Unexpected_preauth) eor c *)
     | `Cont _                  -> assert false
   in
   encode `Flush (decode loop) c
 
+and r_idle_response c =
+  (* let end_ t x c = (\* c.i_text <- t; *\) c.tag <- c.tag + 1; ret x r_response_loop c in *)
+  let rec partial c = function
+    | `Await -> decode_idle loop c
+    | `Idle_done -> encode `Idle_done r_response c (* FIXME *)
+    | `Idle | `Cmd _ -> invalid_arg "idle command in progress"
+  and loop r c = match r with
+    | #untagged as r -> ret (`Untagged r) partial c
+    | `Cont _ -> decode_idle loop c
+    | `Tagged (g, r) -> h_tagged g r c
+    (* | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c *)
+    (* | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c *)
+    (* | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c *)
+    | `Bye (d, t)              -> ret (`Error `Bye) r_response_loop c (* end_ t (`Error `Bye) c FIXME *)
+    | `Preauth _ -> assert false
+  in
+  encode `Flush (decode loop) c
+
 and r_response_loop c = function
-  | `Cmd cmd -> encode (`Ok (string_of_int c.tag, cmd)) r_response c
+  | `Cmd cmd -> encode (`Cmd (string_of_int c.tag, cmd)) r_response c
+  | `Idle -> encode (`Idle (string_of_int c.tag)) r_idle_response c
+  | `Idle_done -> invalid_arg "no idle in progress"
   | `Await -> `Ok
 
 let r_greetings c = function
-  | `Cmd _ -> invalid_arg "waiting for greetings"
+  | `Cmd _
+  | `Idle
+  | `Idle_done -> invalid_arg "waiting for greetings"
   | `Await ->
-    let loop r c = match r with
-      | `Ok (d, t)  -> ret `Ok r_response_loop c
-      | _ -> assert false (* Fixme signal bad greetings *)
-    in
-    decode loop c
+      let loop r c = match r with
+        | `Ok (d, t)  -> ret `Ok r_response_loop c
+        | _ -> assert false (* Fixme signal bad greetings *)
+      in
+      decode loop c
 
 let connection src dst =
   { e = E.encoder dst; d = D.decoder src; (* i_text = ""; *) tag = 0; k = r_greetings }
