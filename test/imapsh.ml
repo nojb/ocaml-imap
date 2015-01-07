@@ -30,13 +30,11 @@ let run c v =
   let sock = match c.sock with None -> invalid_arg "not connected" | Some sock -> sock in
   let rec loop = function
     | `Await_src ->
-        (* Printf.eprintf "Await_src\n%!"; *)
         Lwt_ssl.read sock c.i 0 (Bytes.length c.i) >>= fun rc ->
         LTerm.eprintlf ">>> %d\n%s>>>%!" rc (String.sub c.i 0 rc) >>= fun () ->
         Imap.Manual.src c.c c.i 0 rc;
         loop (Imap.run c.c `Await)
     | `Await_dst ->
-        (* Printf.eprintf "Await_dst\n%!"; *)
         let rc = Bytes.length c.o - Imap.Manual.dst_rem c.c in
         write_fully sock c.o 0 rc >>= fun () ->
         LTerm.eprintlf "<<< %d\n%s<<<%!" rc (String.sub c.o 0 rc) >>= fun () ->
@@ -44,6 +42,10 @@ let run c v =
         loop (Imap.run c.c `Await)
     | `Untagged _ as r -> Lwt.return r
     | `Ok -> Lwt.return `Ok
+    | `Error (`Decode_error (`Expected_char (_, n))) as e ->
+        LTerm.eprintlf "ERROR near %d: %S" n
+          (String.sub c.i n (min 10 (Bytes.length c.i - n))) >>= fun () ->
+        Lwt.return e
     | `Error _ as e -> Lwt.return e
   in
   loop (Imap.run c.c v)
@@ -401,16 +403,16 @@ let list =
     `S "DESCRIPTION";
     `P "The $(b,list) command shows a list of available mailboxes matching a certain patter."
   ] in
-  let list m p =
+  let list m =
     let h = function
       | `List _ as u ->
           Imap.pp_response Format.str_formatter u;
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd (Imap.list m p)) >>= handle h
+    run g (`Cmd (Imap.list m)) >>= handle h
   in
-  Term.(pure list $ list_reference $ list_wildcard), Term.info "list" ~doc ~man
+  Term.(pure list $ list_wildcard), Term.info "list" ~doc ~man
 
 (* LSUB *)
 let lsub_doc = "List subscribed mailboxes."
@@ -420,16 +422,16 @@ let lsub =
     `S "DESCRIPTION";
     `P "The $(b,lsub) command shows a list of subscribed mailboxes matching a certain patter."
   ] in
-  let lsub m p =
+  let lsub m =
     let h = function
       | `Lsub _ as u ->
           Imap.pp_response Format.str_formatter u;
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run g (`Cmd (Imap.lsub m p)) >>= handle h
+    run g (`Cmd (Imap.lsub m)) >>= handle h
   in
-  Term.(pure lsub $ list_reference $ list_wildcard), Term.info "lsub" ~doc ~man
+  Term.(pure lsub $ list_wildcard), Term.info "lsub" ~doc ~man
 
 (* SELECT *)
 let select_doc = "Select a mailbox for further manipulation."
@@ -607,6 +609,16 @@ let idle =
   in
   Term.(pure idle $ forever), Term.info "idle" ~doc
 
+(* CODE *)
+let code_doc = "Show the last response code."
+let code =
+  let doc = code_doc in
+  let code () =
+    Imap.pp_code Format.str_formatter (Imap.last_code g.c);
+    LTerm.printl (Format.flush_str_formatter ())
+  in
+  Term.(pure code $ pure ()), Term.info "code" ~doc
+
 let commands =
   [ connect;
     capability;
@@ -628,7 +640,8 @@ let commands =
     store;
     search;
     enable;
-    idle ]
+    idle;
+    code ]
 
 (* A mini shell *)
 

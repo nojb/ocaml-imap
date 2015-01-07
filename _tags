@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 326a0775cd92670aa244213b91d5d0f9)
+# DO NOT EDIT (digest: 339efd328e597adc747a744b037e8f05)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -20,25 +20,33 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_uint
 <lib/*.ml{,i,y}>: pkg_uutf
 # Executable imapsh
-"imapsh/imapsh.byte": pkg_base64
-"imapsh/imapsh.byte": pkg_cmdliner
-"imapsh/imapsh.byte": pkg_lambda-term
-"imapsh/imapsh.byte": pkg_lwt
-"imapsh/imapsh.byte": pkg_lwt.ssl
-"imapsh/imapsh.byte": pkg_lwt.syntax
-"imapsh/imapsh.byte": pkg_str
-"imapsh/imapsh.byte": pkg_uint
-"imapsh/imapsh.byte": pkg_uutf
-"imapsh/imapsh.byte": use_imap
-<imapsh/*.ml{,i,y}>: pkg_base64
-<imapsh/*.ml{,i,y}>: pkg_cmdliner
-<imapsh/*.ml{,i,y}>: pkg_lambda-term
-<imapsh/*.ml{,i,y}>: pkg_lwt
-<imapsh/*.ml{,i,y}>: pkg_lwt.ssl
-<imapsh/*.ml{,i,y}>: pkg_lwt.syntax
-<imapsh/*.ml{,i,y}>: pkg_str
-<imapsh/*.ml{,i,y}>: pkg_uint
-<imapsh/*.ml{,i,y}>: pkg_uutf
-<imapsh/*.ml{,i,y}>: use_imap
+"test/imapsh.byte": pkg_base64
+"test/imapsh.byte": pkg_cmdliner
+"test/imapsh.byte": pkg_lambda-term
+"test/imapsh.byte": pkg_lwt
+"test/imapsh.byte": pkg_lwt.ssl
+"test/imapsh.byte": pkg_lwt.syntax
+"test/imapsh.byte": pkg_str
+"test/imapsh.byte": pkg_uint
+"test/imapsh.byte": pkg_uutf
+"test/imapsh.byte": use_imap
+<test/*.ml{,i,y}>: pkg_lambda-term
+<test/*.ml{,i,y}>: pkg_lwt
+<test/*.ml{,i,y}>: pkg_lwt.ssl
+<test/*.ml{,i,y}>: pkg_lwt.syntax
+<test/*.ml{,i,y}>: pkg_str
+# Executable wait_mail
+"test/wait_mail.byte": pkg_base64
+"test/wait_mail.byte": pkg_cmdliner
+"test/wait_mail.byte": pkg_ssl
+"test/wait_mail.byte": pkg_uint
+"test/wait_mail.byte": pkg_uutf
+"test/wait_mail.byte": use_imap
+<test/*.ml{,i,y}>: pkg_base64
+<test/*.ml{,i,y}>: pkg_cmdliner
+<test/*.ml{,i,y}>: pkg_ssl
+<test/*.ml{,i,y}>: pkg_uint
+<test/*.ml{,i,y}>: pkg_uutf
+<test/*.ml{,i,y}>: use_imap
 # OASIS_STOP
 <lib>: include

@@ -17,10 +17,17 @@ Library imap
 
 Executable imapsh
   Build$:       true
-  Install$:     true
-  Path:         imapsh
+  Install$:     false
+  Path:         test
   MainIs:       imapsh.ml
   BuildDepends: lambda-term, lwt.syntax, lwt, str, cmdliner, imap, lwt.ssl
+
+Executable wait_mail
+  Build$:       true
+  Install:      false
+  Path:         test
+  MainIs:       wait_mail.ml
+  BuildDepends: ssl, imap, cmdliner
 
 Document api
   Title:                Documentation and API reference
@@ -29,4 +36,4 @@ Document api
   XOcamlbuildPath:      doc
   XOcamlbuildModules:   Imap
   Install:              true
-  XOCamlbuildExtraArgs: -docflag -colorize-code -docflag -css-style -docflag style.css
+  XOCamlbuildExtraArgs: -docflag -colorize-code -docflag -css-style -docflag ../doc/style.css
