@@ -45,7 +45,13 @@
     {e {{:https://tools.ietf.org/html/rfc4315}Internet Message Access Protocol (IMAP) - UIDPLUS extension}, 2005}}}
 *)
 
+type uint32 = Uint32.t
+type uint64 = Uint64.t
+
+(** {1 Responses} *)
+
 type date = { day : int; month : int ; year : int }
+type time = { hours : int; minutes : int; seconds : int; zone : int }
 
 type address =
   { ad_name : string;
@@ -130,7 +136,8 @@ type section =
   | `Part of int * section
   | `All ]
 
-(** Message attributes. *)
+(** Message attributes returned in the {{:#TYPEuntagged}untagged} [`Fetch]
+    response to the {!fetch} command. *)
 type msg_att =
   [ `Flags of [ flag | `Recent ] list
   (** A parenthesized list of flags that are set for this message. *)
@@ -140,7 +147,7 @@ type msg_att =
       computed by the server by parsing the [RFC-2822] header into the component
       parts, defaulting various fields as necessary. *)
 
-  | `Internal_date of string
+  | `Internal_date of date * time
   (** A string representing the internal date of the message. *)
 
   | `Rfc822 of string option
@@ -181,7 +188,7 @@ type msg_att =
   | `Gm_labels of string list
   (** Gmail labels. *) ]
 
-(** Response codes *)
+(** Response codes. *)
 type code =
   [ `Alert
   (** An alert that should be presented to the user as such. *)
@@ -284,7 +291,8 @@ type mbx_flag =
   | `Trash
   | `Extension of string ]
 
-(** Mailbox status items. *)
+(** Mailbox status items returned in the {{:#TYPEuntagged}untagged} [`Status]
+    response to the [status] command. *)
 type mbx_status =
   [ `Messages of int
   (** Number of messages in the mailbox. *)
@@ -317,8 +325,9 @@ type untagged =
   (** Untagged status response. *)
 
   | `Flags of flag list
-  (** The [FLAGS] response occurs as a result of a [SELECT] or [EXAMINE]
-      command. *)
+  (** The [`Flags] response occurs as a result of a {!select} or {!examine}
+      command.  Contains the list of flag that are applicable for this
+      mailbox. *)
 
   | `List of mbx_flag list * char option * string
   (** [LIST] response: mailbox flags, character used as path delimiter
@@ -336,27 +345,42 @@ type untagged =
   (** [STATUS] response: mailbox name, list of status items. *)
 
   | `Exists of int
-  (** The [EXISTS] response reports the number of messages in the mailbox.  This
-      response occurs as a result of a [SELECT] or [EXAMINE] command, and if the
-      size of the mailbox changes (e.g., new messages). *)
+  (** The [`Exists] response reports the number of messages in the mailbox.
+      This response occurs as a result of a {!select} or {!examine} command, and
+      if the size of the mailbox changes (e.g., new messages). *)
 
   | `Recent of int
-  (** The [RECENT] response reports the number of messages with the
-      {v \Recent v} flag set.  This response occurs as a result of a [SELECT] or
-      [EXAMINE] command, and if the size of the mailbox changes (e.g., new
+  (** The [`Recent] response reports the number of messages with the
+      {v \Recent v} flag set.  This response occurs as a result of a {!select} or
+      {!examine} command, and if the size of the mailbox changes (e.g., new
       messages). *)
 
   | `Expunge of Uint32.t
-  (** The [EXPUNGE] response reports that the specified message sequence number
+  (** The [`Expunge] response reports that the specified message sequence number
       has been permanently removed from the mailbox.  The message sequence
       number for each successive message in the mailbox is immediately
-      decremented by 1. *)
+      decremented by 1, and this decrement is reflected in message sequence
+      numbers in subsequent responses (including other untagged [`Expunge]
+      responses).
+
+      The [`Expunge] response also decrements the number of messages in the
+      mailbox; it is not necessary to send an [`Exists] response with the new
+      value.
+
+      As a result of the immediate decrement rule, message sequence numbers that
+      appear in a set of successive [`Expunge] responses depend upon whether the
+      messages are removed starting from lower numbers to higher numbers, or
+      from higher numbers to lower numbers.  For example, if the last 5 messages
+      in a 9-message mailbox are expunged, a "lower to higher" server will send
+      five untagged EXPUNGE responses for message sequence number 5, whereas a
+      "higher to lower server" will send successive untagged [`Expunge]
+      responses for message sequence numbers 9, 8, 7, 6, and 5. *)
 
   | `Fetch of Uint32.t * msg_att list
-  (** The [FETCH] response returns data about a message to the client.  The data
-      are pairs of data item names and their values in parentheses.  This
-      response occurs as the result of a [FETCH] or [STORE] command, as well as
-      by unilateral server decision (e.g., flag updates). *)
+  (** The [`Fetch] response returns data about a message to the client.  It
+      contains the message number and the list of data items and their values.
+      This response occurs as the result of a {!fetch} or {!store} command, as
+      well as by unilateral server decision (e.g., flag updates). *)
 
   | `Capability of capability list
   (** List of capabilities supported by the server. *)
@@ -390,13 +414,15 @@ type response =
   (** Continuation request: the server is waiting for client data.  The client
       must wait for this message before sending literal data. *)
 
-  | `Tagged of string * state ]
-(** Tagged response: tag, result status. *)
+  | `Tagged of string * state
+  (** Tagged response: tag, result status. *) ]
 
 val pp_response : Format.formatter -> response -> unit
 (** Pretty print a server response. *)
 
-(** Keys used for [SEARCH] command. *)
+(** {1 Commands} *)
+
+(** Search keys. See {!search} command. *)
 type search_key =
   [  `Seq of (Uint32.t * Uint32.t) list
   (** Messages with message sequence numbers corresponding to the specified
@@ -542,6 +568,7 @@ type search_key =
   | `Gm_labels of string list
   (** Messages with given Gmail labels. *) ]
 
+(** Message attributes.  See {!fetch} command. *)
 type fetch_att =
   [ `Envelope
   (** The envelope structure of the message.  This is computed by the server by
@@ -584,6 +611,7 @@ type fetch_att =
   | `Flags
   (** The flags that are set for this message. *) ]
 
+(** Mailbox status items.  See {!status} command. *)
 type status_att =
   [ `Messages
   (** The number of messages in the mailbox. *)
@@ -602,89 +630,140 @@ type status_att =
 
   | `Highest_modseq ]
 
-type command =
-  [ `Login of string * string
-  (** The [LOGIN] command identifies the client to the server and carries the
-      plaintext password authenticating this user. *)
+type command
 
-  | `Capability
-  (** The [CAPABILITY] command.  Returns the list of capabilities supported by
-      the server.  Note that this list can change when passing from a
-      non-authenticated to an authenticated state. *)
+val login : string -> string -> command
+(** [login user pass] identifies the client to the server and carries the
+    plaintext password authenticating this [user] with password [pass].  A
+    server MAY include a [`Capability] response {{:#TYPEcode}code} in the tagged
+    [`Ok] response to a successful [login] command in order to send capabilities
+    automatically. *)
 
-  | `Create of string
-  (** The CREATE command creates a mailbox with the given name. *)
+val capability : command
+(** [capability] returns the list of capabilities supported by the server.  The
+    server MUST send a single {{:#TYPEuntagged}untagged} [`Capability] response
+    with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
+    response.  See the type describing the possible
+    {{:#TYPEcapability}capabilities}. *)
 
-  | `Rename of string * string
-  (** The [RENAME] command changes the name of a mailbox. *)
+val create : string -> command
+(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
+    if a new mailbox with that name has been created.  It is an error to attempt
+    to create "INBOX" or a mailbox with a name that refers to an extant mailbox.
+    Any error in creation will return a tagged [`No] response. *)
 
-  | `Logout
-  (** The [LOGOUT] command used to gracefully terminate a session. *)
+val rename : string -> string -> command
+(** [rename oldname newname] command changes the name of a mailbox from
+    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
+    mailbox has been renamed.  It is an error to attempt to rename from a
+    mailbox name that does not exist or to a mailbox name that already exists.
+    Any error in renaming will return a tagged [`No] response. *)
 
-  | `Noop
-  (** The [NOOP] command used to keep the connection alive. *)
+val logout : command
+(** [logout] gracefully terminates a session.  The server MUST send a [`Bye]
+    {{:#TYPEuntagged}untagged} response before the (tagged) [`Ok] response. *)
 
-  | `Subscribe of string
-  (** The [SUBSCRIBE] command adds the specified mailbox name to the server's
-      set of "active" or "subscribed" mailboxes as returned by the [LSUB]
-      command. *)
+val noop : command
+(** [noop] does nothing.  Since any command can return a status update as
+    untagged data, the [noop] command can be used as a periodic poll for new
+    messages or message status updates during a period of inactivity (this is
+    the preferred method to do this). *)
 
-  | `Unsubscribe of string
-  (** The [UNSUBSCRIBE] command removes the specified mailbox name from the
-      server's set of "active" or "subscribed" mailboxes as returned by the
-      [LSUB] command. *)
+val subscribe : string -> command
+(** The [SUBSCRIBE] command adds the specified mailbox name to the server's
+    set of "active" or "subscribed" mailboxes as returned by the [LSUB]
+    command. *)
 
-  | `List of string * string
-  (** The [LIST] command returns a subset of names from the complete
-      set of all names available to the client. *)
+val unsubscribe : string -> command
+(** The [UNSUBSCRIBE] command removes the specified mailbox name from the
+    server's set of "active" or "subscribed" mailboxes as returned by the
+    [LSUB] command. *)
 
-  | `Lsub of string * string
-  (** The [LSUB] command returns a subset of names from the set of names that
-      the user has declared as being "active" or "subscribed". *)
+val list : string -> string -> command
+(** The [LIST] command returns a subset of names from the complete set of all
+    names available to the client. *)
 
-  | `Status of string * status_att list
-  (** The STATUS command requests the status of the indicated mailbox. *)
+val lsub : string -> string -> command
+(** The [LSUB] command returns a subset of names from the set of names that
+    the user has declared as being "active" or "subscribed". *)
 
-  | `Copy of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * string
-  | `Check
-  (** The [CHECK] command requests a checkpoint of the currently selected
-      mailbox. *)
+val status : string -> status_att list -> command
+(** [status] requests the status of the indicated mailbox.  An
+    {{:#TYPEuntagged}untagged} [`Status] response is returned with the requested
+    information.  See the type describing {{:#TYPEmbx_status}status items} which
+    are returned. *)
 
-  | `Close
-  (** The [CLOSE] command permanently removes all messages that have the
-      {v \Deleted v} flag set from the currently selected mailbox, and returns to
-      the authenticated state from the selected state. *)
+val copy : ?uid:bool -> (Uint32.t * Uint32.t) list -> string -> command
 
-  | `Expunge
-  (** The EXPUNGE command permanently removes all messages that have the
-      {v \Deleted v} flag set from the currently selected mailbox.  *)
+val check : command
+(** [check] requests a checkpoint of the currently selected mailbox.  A
+    checkpoint refers to any implementation-dependent housekeeping associated
+    with the mailbox. *)
 
-  | `Search of [ `Uid | `Seq ] * search_key
-  (** The [SEARCH] command searches the mailbox for messages that match the
-      given searching criteria. *)
+val close : command
+(** [close] permanently removes all messages that have the {v \Deleted v} flag
+    set from the currently selected mailbox, and returns to the authenticated
+    state from the selected state. *)
 
-  | `Select of [ `Condstore | `Plain ] * string
-  (** The [SELECT] command selects a mailbox so that messages in the mailbox can
-      be accessed. *)
+val expunge : command
+(** [expunge] permanently removes all messages that have the {v \Deleted v} flag
+    set from the currently selected mailbox.  Before returning an [`Ok] to the
+    client, an {{:#TYPEuntagged}untagged} [`Expunge] response is sent for each
+    message that is removed. *)
 
-  | `Examine of [ `Condstore | `Plain ] * string
-  (** The [EXAMINE] command is identical to [SELECT] and returns the same
-      output; however, the selected mailbox is identified as read-only. *)
+val search : ?uid:bool -> search_key -> command
+(** [search uid sk] searches the mailbox for messages that match the given
+    searching criteria.  If [uid] is [true] (the default), then the matching
+    messages' unique identification numbers are returned.  Otherwise, their
+    sequence numbers are.  The {{:#TYPEuntagged}untagged} [`Search] response
+    from the server contains a listing of message numbers corresponding to those
+    messages that match the searching criteria. *)
 
-  | `Fetch of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list *
-              [ `All | `Fast | `Full | `List of fetch_att list ] *
-              [ `Changed_since of Uint64.t | `Changed_since_vanished of Uint64.t | `All ]
-  (** The [FETCH] command retrieves data associated with a message in the
-      mailbox. *)
+val select : ?condstore:bool -> string -> command
+(** [select condstore m] selects the mailbox [m] so that its messages can be
+    accessed.  If [condstore] (default value [false]) is [true], then the server
+    will return the [`Modseq] data item in all subsequent
+    {{:#TYPEuntagged}untagged} [`Fetch] responses. *)
 
-  | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
-              [ `Unchanged_since of Uint64.t | `All ] *
-              [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
-  (** The STORE command alters data associated with a message in the mailbox. *)
+val examine : ?condstore:bool -> string -> command
+(** [examine condstore m] is identical to [select condstore m] and returns the
+    same output; however, the selected mailbox is identified as read-only. *)
 
-  | `Enable of capability list ]
+type set = (uint32 * uint32) list
 
-(** {1 Commands} *)
+val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> fetch_att list -> command
+val fetch_fast : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
+val fetch_full : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
+val fetch_all  : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
+(** The [FETCH] command retrieves data associated with a message in the
+    mailbox. *)
+
+val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
+val store_set_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
+val store_remove_flags  : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
+val store_add_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
+val store_set_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
+val store_remove_labels : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
+(** The [STORE] command alters data associated with a message in the mailbox. *)
+
+val enable : capability list -> command
+
+(** {1 Authenticators} *)
+
+type authenticator =
+  { name : string;
+    step : string -> [ `Ok of [ `Last | `More ] * string | `Error of string ] }
+
+val plain : string -> string -> authenticator
+(** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
+    and password [pass]. *)
+
+val xoauth2 : string -> string -> authenticator
+(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
+    [user] and access token [token].  The access token should be obtained
+    independently. *)
+
+(** {1 Running commands} *)
 
 type error =
   [ `Incorrect_tag of string * string
@@ -697,6 +776,8 @@ type error =
       | `Illegal_range
       | `Unexpected_eoi ]
   | `Unexpected_cont
+  | `Bad_greeting
+  | `Auth_error of string
   | `Bad
   | `Bye
   | `No ]
@@ -715,7 +796,8 @@ module Manual : sig
   val dst_rem : connection -> int
 end
 
-val run : connection -> [ `Cmd of command | `Await | `Idle | `Idle_done ] ->
+val run : connection ->
+  [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] ->
   [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
 
 (** {1:limitations Limitations}

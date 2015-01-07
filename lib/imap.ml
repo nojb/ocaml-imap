@@ -32,6 +32,9 @@ module Uint64 = struct
   let printer ppf n = Format.pp_print_string ppf (to_string n)
 end
 
+type uint32 = Uint32.t
+type uint64 = Uint64.t
+
 module Mutf7 = struct
 
   (* Modified UTF-7 *)
@@ -115,6 +118,7 @@ end
 (*   | `Jul | `Aug | `Sep | `Oct | `Nov | `Dec ] *)
 
 type date = { day : int; month : int ; year : int }
+type time = { hours : int; minutes : int; seconds : int; zone : int }
 
 type address =
   { ad_name : string;
@@ -240,7 +244,7 @@ type section =
 type msg_att =
   [ `Flags of [ flag | `Recent ] list
   | `Envelope of envelope
-  | `Internal_date of string
+  | `Internal_date of date * time
   | `Rfc822 of string option
   | `Rfc822_header of string option
   | `Rfc822_text of string option
@@ -411,11 +415,15 @@ let rec pp_section ppf : section -> _ = function
   | `Part (n, s) -> pp ppf "@[<2>(part %d@ %a)@]" n pp_section s
   | `All -> pp ppf "all"
 
+let pp_date_time ppf (d, t) =
+  pp ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
+    d.day d.month d.year t.hours t.minutes t.seconds t.zone
+
 let pp_msg_att : _ -> msg_att -> _ = fun ppf att ->
   match att with
   | `Flags r          -> pp ppf "@[<2>(flags %a)@]" (pp_list pp_flag_fetch) r
   | `Envelope e       -> pp_envelope ppf e
-  | `Internal_date dt -> pp ppf "(internal-date %S)" dt
+  | `Internal_date (d, t) -> pp ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
   | `Rfc822 s         -> pp ppf "(rfc822 %a)" (pp_opt pp_qstr) s
   | `Rfc822_header s  -> pp ppf "(rfc822-header %a)" (pp_opt pp_qstr) s
   | `Rfc822_text s    -> pp ppf "(rfc822-text %a)" (pp_opt pp_qstr) s
@@ -805,7 +813,8 @@ module D = struct
     | _ -> false
 
   let p_text k d =
-    p_while1 is_text_char k d
+    if is_text_char $ cur d then p_while1 is_text_char k d else
+    k "" d (* allow empty texts for greater tolerance *)
 
 (*
    nil             = "NIL"
@@ -1015,7 +1024,8 @@ module D = struct
     is_text_char c && (c <> ']')
 
   let p_text_1 k d =
-    p_while1 is_text_other_char k d
+    if is_text_other_char $ cur d then p_while1 is_text_other_char k d else
+    k "" d (* We allow empty text_1 *)
 
   let p_cap k d =
     p_atom begin fun a d ->
@@ -1451,12 +1461,37 @@ module D = struct
                        ; from the given time will give the UT form.
                        ; The Universal Time zone is "+0000".
 
+   date-year       = 4DIGIT
+
    date-time       = DQUOTE date-day-fixed "-" date-month "-" date-year
                      SP time SP zone DQUOTE
 *)
 
   let p_date_time k d =
-    p_literal 28 k d (* TODO parse date_time *)
+    let p s d =
+      try
+        Scanf.sscanf s "%2d-%3s-%4d %2d:%2d:%2d %5d" begin fun day m year hr mn sc z ->
+          let month =
+            if m -- "Jan" then 0 else
+            if m -- "Feb" then 1 else
+            if m -- "Mar" then 2 else
+            if m -- "Apr" then 3 else
+            if m -- "May" then 4 else
+            if m -- "Jun" then 5 else
+            if m -- "Jul" then 6 else
+            if m -- "Aug" then 7 else
+            if m -- "Sep" then 8 else
+            if m -- "Oct" then 9 else
+            if m -- "Nov" then 10 else
+            if m -- "Dec" then 11 else
+            assert false
+          in
+          p_ch '"' $ k { day; month; year } { hours = hr; minutes = mn; seconds = sc; zone = z } $ d
+        end
+      with _ ->
+        err_unexpected_s s d
+    in
+    p_ch '"' $ p_literal 26 p $ d
 
 (*
    header-fld-name = astring
@@ -1541,7 +1576,7 @@ module D = struct
     p_atom begin fun a d ->
       if a -- "FLAGS" then p_sp $ p_list p_flag_fetch (fun xs -> k $ `Flags xs) $ d else
       if a -- "ENVELOPE" then p_sp $ p_envelope (fun x -> k $ `Envelope x) $ d else
-      if a -- "INTERNALDATE" then p_sp $ p_date_time (fun x -> k $ `Internal_date x) $ d else
+      if a -- "INTERNALDATE" then p_sp $ p_date_time (fun d t -> k $ `Internal_date (d, t)) $ d else
       if a -- "RFC822.HEADER" then p_sp $ p_nstring (fun x -> k $ `Rfc822_header x) $ d else
       if a -- "RFC822.TEXT" then p_sp $ p_nstring (fun x -> k $ `Rfc822_text x) $ d else
       if a -- "RFC822.SIZE" then p_sp $ p_uint (fun x -> k $ `Rfc822_size x) $ d else
@@ -1679,7 +1714,6 @@ module D = struct
     p_text k d
 
   let rec p_response k d =
-    (* if d.i_pos >= d.i_max then readc (p_response k) d else *)
     let k x d = p_crlf $ k x $ d in
     if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
     if cur d = '*' then readc $ p_untagged k $ d else
@@ -1793,7 +1827,71 @@ type command =
   | `Store of [ `Uid | `Seq ] * (Uint32.t * Uint32.t) list * [ `Silent | `Loud ] *
               [ `Unchanged_since of Uint64.t | `All ] *
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
-  | `Enable of capability list ]
+  | `Enable of capability list
+
+  | `Idle
+  | `Authenticate of string ]
+
+let login u p = `Login (u, p)
+let capability = `Capability
+let create m = `Create m
+let rename m1 m2 = `Rename (m1, m2)
+let logout = `Logout
+let noop = `Noop
+let subscribe m = `Subscribe m
+let unsubscribe m = `Unsubscribe m
+let list m s = `List (m, s)
+let lsub m s = `Lsub (m, s)
+let status m att = `Status (m, att)
+let copy ?(uid = true) s m = let uid = if uid then `Uid else `Seq in `Copy (uid, s, m)
+let check = `Check
+let close = `Close
+let expunge = `Expunge
+let search ?(uid = true) sk = let uid = if uid then `Uid else `Seq in `Search (uid, sk)
+let select ?(condstore = false) m =
+  let condstore = if condstore then `Condstore else `Plain in `Select (condstore, m)
+let examine ?(condstore = false) m =
+  let condstore = if condstore then `Condstore else `Plain in `Examine (condstore, m)
+
+type set = (uint32 * uint32) list
+
+let fetch_aux ~uid ~changed ~vanished set att =
+  let uid = if uid then `Uid else `Seq in
+  let changed = match changed, vanished with
+    | None, true -> invalid_arg "VANISHED requires CHANGEDSINCE"
+    | None, false -> `All
+    | Some m, true -> `Changed_since_vanished m
+    | Some m, false -> `Changed_since m
+  in
+  `Fetch (uid, set, att, changed)
+let fetch ?(uid = true) ?changed ?(vanished = false) set att =
+  fetch_aux ~uid ~changed ~vanished set (`List att)
+let fetch_fast ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_aux ~uid ~changed ~vanished set `Fast
+let fetch_full ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_aux ~uid ~changed ~vanished set `Full
+let fetch_all ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_aux ~uid ~changed ~vanished set `All
+
+let store_aux ~uid ~silent ~unchanged mode set att =
+  let uid = if uid then `Uid else `Seq in
+  let unchanged = match unchanged with None -> `All | Some m -> `Unchanged_since m in
+  let silent = if silent then `Silent else `Loud in
+  `Store (uid, set, silent, unchanged, mode, att)
+let store_add_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_aux ~uid ~silent ~unchanged `Add set (`Flags flags)
+let store_set_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_aux ~uid ~silent ~unchanged `Set set (`Flags flags)
+let store_remove_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_aux ~uid ~silent ~unchanged `Remove set (`Flags flags)
+let store_add_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_aux ~uid ~silent ~unchanged `Add set (`Labels labels)
+let store_set_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_aux ~uid ~silent ~unchanged `Set set (`Labels labels)
+let store_remove_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_aux ~uid ~silent ~unchanged `Remove set (`Labels labels)
+
+let enable caps = `Enable caps
 
 module E = struct
 
@@ -1803,14 +1901,13 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Cmd of string * command | `Idle of string | `Idle_done | `Await | `Flush ]
+    [ `Cmd of string * command | `Idle_done | `Auth_step of string | `Await ]
 
   let pp_encode : _ -> encode -> _ = fun ppf e -> match e with
     | `Cmd _ -> pp ppf "`Cmd" (* FIXME *)
     | `Await -> pp ppf "`Await"
-    | `Flush -> pp ppf "`Flush"
-    | `Idle tag -> pp ppf "`Idle %S" tag
     | `Idle_done -> pp ppf "`Idle_done"
+    | `Auth_step _ -> pp ppf "`Auth_step"
 
   type encoder =
     { dst : dst;
@@ -1827,7 +1924,7 @@ module E = struct
 
   let partial k e = function
     | `Await -> k e
-    | `Cmd _ | `Flush | `Idle _ | `Idle_done ->
+    | `Cmd _ | `Idle_done | `Auth_step _ ->
         invalid_arg "cannot encode now, use `Await first"
 
   let flush k e = match e.dst with
@@ -2074,13 +2171,15 @@ module E = struct
         w cmd & w_search_key sk
     | `Enable c ->
         w "ENABLE" & w_sep (fun x -> w (string_of_capability x)) c
+    | `Idle -> w "IDLE"
+    | `Authenticate name ->
+        w "AUTHENTICATE" & w name
 
   let rec encode_ e = function
     | `Await -> `Ok
-    | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf encode_loop))) e
-    | `Idle tag -> w tag (w " " (w "IDLE" (w_crlf encode_loop))) e
-    | `Idle_done -> w "DONE" (w_crlf encode_loop) e
-    | `Flush -> flush encode_loop e
+    | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf (flush encode_loop)))) e
+    | `Idle_done -> w "DONE" (w_crlf (flush encode_loop)) e
+    | `Auth_step data -> w data (w_crlf (flush encode_loop)) e
 
   and encode_loop e = e.k <- encode_; `Ok
 
@@ -2095,10 +2194,33 @@ module E = struct
   let encode e v = e.k e v
 end
 
+(* Authenticator *)
+
+type authenticator =
+  { name : string;
+    step : string -> [ `Ok of [ `Last | `More ] * string | `Error of string ] }
+
+let plain user pass =
+  let step _ = `Ok (`Last, Printf.sprintf "\000%s\000%s" user pass) in
+  { name = "PLAIN"; step }
+
+let xoauth2 user token =
+  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
+  let stage = ref `Begin in
+  let step _ = match !stage with
+    | `Begin -> stage := `Error; `Ok (`Last, s)
+    | `Error -> `Ok (`Last, "") (* CHECK *)
+  in
+  { name = "XOAUTH2"; step }
+
+(* Running commands *)
+
 type error =
   [ `Incorrect_tag of string * string
   | `Decode_error of D.error
   | `Unexpected_cont
+  | `Bad_greeting
+  | `Auth_error of string
   | `Bad
   | `Bye
   | `No ]
@@ -2107,6 +2229,8 @@ let pp_error ppf = function
   | `Incorrect_tag (exp, tag) -> pp ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
   | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" D.pp_error e
   | `Unexpected_cont -> pp ppf "@[Unexpected continuation request@]"
+  | `Bad_greeting -> pp ppf "@[Bad greeting@]"
+  | `Auth_error s -> pp ppf "@[Authentication error: %s@]" s
   | `Bad -> pp ppf "@[Server did not understand request@]"
   | `Bye -> pp ppf "@[Server closed the connection@]"
   | `No -> pp ppf "@[Server denied the request@]"
@@ -2117,7 +2241,8 @@ type connection =
   { e : E.encoder;
     d : D.decoder;
     mutable tag : int;
-    mutable k : connection -> [ `Cmd of command | `Await | `Idle | `Idle_done ] -> result }
+    mutable k : connection ->
+      [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] -> result }
 
 type src = D.src
 
@@ -2130,26 +2255,15 @@ module Manual = struct
 end
 
 let ret v k c = c.k <- k; v
-
-let decode k c =
-  let rec partial c = function
-    | `Await -> loop (D.decode c.d)
-    | `Idle | `Idle_done (* FIXME *)
-    | `Cmd _ -> invalid_arg "command in progress"
-  and loop = function
-    | `Ok x -> k x c
-    | `Await -> ret `Await_src partial c
-    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
-  in
-  loop (D.decode c.d)
+let run c = c.k c
 
 let rec decode_to_cont k c = (* FIXME error ?? *)
-  decode (function `Cont _ -> k | _ -> decode_to_cont k) c
+  decode false (function `Cont _ -> k | _ -> decode_to_cont k) c
 
-let encode x k c =
+and encode x k c =
   let rec partial c = function
     | `Await -> loop (E.encode c.e `Await)
-    | _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done | `Cmd _ | `Authenticate _ -> invalid_arg "command in progress"
   and loop = function
     | `Partial -> ret `Await_dst partial c
     | `Wait_for_cont -> decode_to_cont (fun c -> loop (E.encode c.e `Await)) c
@@ -2157,13 +2271,11 @@ let encode x k c =
   in
   loop (E.encode c.e x)
 
-let run c = c.k c
-
-let decode_idle k c =
+and decode idling k c =
   let rec partial c = function
     | `Await -> loop (D.decode c.d)
-    | `Idle_done -> encode `Idle_done (fun c -> loop (D.decode c.d)) c
-    | `Idle | `Cmd _ -> invalid_arg "idle command in progress"
+    | `Idle_done when idling -> encode `Idle_done (fun c -> loop (D.decode c.d)) c
+    | `Idle | `Idle_done | `Cmd _ | `Authenticate _ -> invalid_arg "command in progress"
   and loop = function
     | `Ok x -> k x c
     | `Await -> ret `Await_src partial c
@@ -2172,71 +2284,76 @@ let decode_idle k c =
   loop (D.decode c.d)
 
 let rec h_tagged tag r c =
-  (* TODO check tags are ok *)
+  let cur = string_of_int c.tag in
   c.tag <- c.tag + 1;
+  if tag <> cur then ret (`Error (`Incorrect_tag (cur, tag))) (fun _ -> assert false) c else
   match r with
-  | `Ok (d, t) -> ret `Ok r_response_loop c
-  | `Bad (d, t) -> ret (`Error `Bad) r_response_loop c
-  | `No (d, t) -> ret (`Error `No) r_response_loop c
+  | `Ok (d, t) -> ret `Ok h_response_loop c
+  | `Bad (d, t) -> ret (`Error `Bad) h_response_loop c
+  | `No (d, t) -> ret (`Error `No) h_response_loop c
 
-and r_response c =
-  (* let end_ t x c = (\* c.i_text <- t; *\) c.tag <- c.tag + 1; ret x r_response_loop c in *)
+and h_response idling c =
   let rec partial c = function
-    | `Await -> decode loop c
-    | _ -> invalid_arg "command in progress"
+    | `Await                      -> decode idling loop c
+    | `Idle_done when idling      -> encode `Idle_done (h_response false) c
+    | `Idle | `Idle_done | `Cmd _
+    | `Authenticate _ -> invalid_arg "command in progress"
   and loop r c = match r with
-    | #untagged as r           -> ret (`Untagged r) partial c
-    | `Tagged (g, r) -> h_tagged g r c
-    (* | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c *)
-    (* | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c *)
-    (* | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c *)
-    | `Bye (d, t)              -> ret (`Error `Bye) r_response_loop c (* end_ t (`Error `Bye) c *) (* FXME *)
-    | `Preauth _               -> assert false (* FIXME ret (`Error `Unexpected_preauth) eor c *)
-    | `Cont _                  -> assert false
+    | #untagged as r      -> ret (`Untagged r) partial c
+    | `Cont _ when idling -> decode true loop c
+    | `Cont _             -> ret (`Error `Unexpected_cont) (fun _ -> assert false) c (* r_response_loop c *)
+    | `Tagged (g, r)      -> h_tagged g r c
+    | `Bye (d, t)         -> ret (`Error `Bye) h_response_loop c (* end_ t (`Error `Bye) c FIXME *)
+    | `Preauth _          -> assert false
   in
-  encode `Flush (decode loop) c
+  decode idling loop c
 
-and r_idle_response c =
-  (* let end_ t x c = (\* c.i_text <- t; *\) c.tag <- c.tag + 1; ret x r_response_loop c in *)
-  let rec partial c = function
-    | `Await -> decode_idle loop c
-    | `Idle_done -> encode `Idle_done r_response c (* FIXME *)
-    | `Idle | `Cmd _ -> invalid_arg "idle command in progress"
-  and loop r c = match r with
-    | #untagged as r -> ret (`Untagged r) partial c
-    | `Cont _ -> decode_idle loop c
+and h_authenticate auth c =
+  let rec partial needs_more c = function
+    | `Await                      -> decode false (loop needs_more) c
+    | `Idle | `Idle_done | `Cmd _
+    | `Authenticate _ -> invalid_arg "command in progress"
+  and loop needs_more r c = match r with
+    | #untagged as r -> ret (`Untagged r) (partial needs_more) c
     | `Tagged (g, r) -> h_tagged g r c
-    (* | `Tagged (g, `Ok (d, t))  -> end_ t `Ok c *)
-    (* | `Tagged (_, `Bad (d, t)) -> end_ t (`Error `Bad) c *)
-    (* | `Tagged (_, `No (d, t))  -> end_ t (`Error `No) c *)
-    | `Bye (d, t)              -> ret (`Error `Bye) r_response_loop c (* end_ t (`Error `Bye) c FIXME *)
+    | `Cont _ when not needs_more ->
+        ret (`Error (`Auth_error "bad negotiation")) (fun _ -> assert false) c
+    | `Cont data ->
+        let data = B64.decode data in
+        begin match auth.step data with
+        | `Ok (needs_more, data) ->
+            let data = B64.encode ~pad:true data in
+            let needs_more = match needs_more with `Last -> false | `More -> true in
+            encode (`Auth_step data) (decode false (loop needs_more)) c
+        | `Error s ->
+            ret (`Error (`Auth_error s)) (fun _ -> assert false) c
+        end
+    | `Bye (d, t) -> ret (`Error `Bye) h_response_loop c
     | `Preauth _ -> assert false
   in
-  encode `Flush (decode loop) c
+  decode false (loop true) c
 
-and r_response_loop c = function
-  | `Cmd cmd -> encode (`Cmd (string_of_int c.tag, cmd)) r_response c
-  | `Idle -> encode (`Idle (string_of_int c.tag)) r_idle_response c
+and h_response_loop c = function
+  | `Cmd cmd   -> encode (`Cmd (string_of_int c.tag, cmd)) (h_response false) c
+  | `Idle      -> encode (`Cmd (string_of_int c.tag, `Idle)) (h_response true) c
   | `Idle_done -> invalid_arg "no idle in progress"
-  | `Await -> `Ok
+  | `Authenticate auth ->
+      encode (`Cmd (string_of_int c.tag, `Authenticate auth.name)) (h_authenticate auth) c
+  | `Await     -> `Ok
 
-let r_greetings c = function
-  | `Cmd _
-  | `Idle
-  | `Idle_done -> invalid_arg "waiting for greetings"
+let h_greetings c = function
+  | `Cmd _ | `Idle | `Idle_done | `Authenticate _ -> invalid_arg "waiting for greetings"
   | `Await ->
-      let loop r c = match r with
-        | `Ok (d, t)  -> ret `Ok r_response_loop c
-        | _ -> assert false (* Fixme signal bad greetings *)
+      let hello r c = match r with
+        | `Ok (d, t)  -> ret `Ok h_response_loop c
+        | _ -> ret (`Error `Bad_greeting) (fun _ -> assert false) c (* FIXME *)
       in
-      decode loop c
+      decode false hello c
 
 let connection src dst =
-  { e = E.encoder dst; d = D.decoder src; (* i_text = ""; *) tag = 0; k = r_greetings }
+  { e = E.encoder dst; d = D.decoder src; (* i_text = ""; *) tag = 0; k = h_greetings }
 
 (* let starttls = writes "STARTTLS" e *)
-(* let copy s m      = `L[`R"COPY"; `U; `M s; `U; `B m] *)
-(* let uid_copy s m  = `L[`R"UID COPY"; `U; `M s; `U; `B m] *)
 
 (* module Test = struct *)
 (*   let (>>=) = Lwt.(>>=) *)
