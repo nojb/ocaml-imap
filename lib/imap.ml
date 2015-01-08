@@ -1817,6 +1817,7 @@ type command =
   | `Search of [ `Uid | `Seq ] * search_key
   | `Select of [ `Condstore | `Plain ] * string
   | `Examine of [ `Condstore | `Plain ] * string
+  | `Append of string * flag list option * (date * time) option * string
   | `Fetch of [ `Uid | `Seq ] * eset *
               [ `All | `Fast | `Full | `List of fetch_query list ] *
               [ `Changed_since of uint64 | `Changed_since_vanished of uint64 | `All ]
@@ -1848,6 +1849,9 @@ let select ?(condstore = false) m =
   let condstore = if condstore then `Condstore else `Plain in `Select (condstore, m)
 let examine ?(condstore = false) m =
   let condstore = if condstore then `Condstore else `Plain in `Examine (condstore, m)
+
+let append m ?flags data =
+  `Append (m, flags, None, data)
 
 let fetch_aux ~uid ~changed ~vanished set att =
   let uid = if uid then `Uid else `Seq in
@@ -1965,11 +1969,13 @@ module E = struct
     if needs quotes str then `Quoted else
     `Raw
 
+  let w_literal x k e =
+    w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e
+
   let w_string x k e = match classify_string x with
     | `Raw     -> w x k e
     | `Quoted  -> w "\"" (w x (w "\"" k)) e
-    | `Literal ->
-        w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e
+    | `Literal -> w_literal x k e
 
   let w_sep ?(sep = ' ') f l k e =
     let rec loop xs e = match xs with
@@ -2122,6 +2128,10 @@ module E = struct
     | `Select (`Condstore, m) -> w "SELECT" & w_mailbox m & w "(CONDSTORE)"
     | `Examine (`Plain, m) -> w "EXAMINE" & w_mailbox m
     | `Examine (`Condstore, m) -> w "EXAMINE" & w_mailbox m & w "(CONDSTORE)"
+    | `Append (m, flags, internaldate, data) ->
+        let flags = match flags with None -> w "" | Some f -> w " " $ w_list w_flag f in
+        (* TODO internaldate *)
+        w "APPEND" & w_mailbox m $ flags & w_literal data
     | `Create m -> w "CREATE" & w_mailbox m
     | `Rename (m1, m2) -> w "RENAME" & w_mailbox m1 & w_mailbox m2
     | `Status (m, att) -> w "STATUS" & w_mailbox m & w_list w_status_att att

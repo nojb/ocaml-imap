@@ -818,6 +818,9 @@ val status : string -> status_query list -> command
     the requested information. *)
 
 val copy : ?uid:bool -> eset -> string -> command
+(** [copy uid set m] copies the messages in [set] to the end of the specified
+    mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
+    [true] (the default) or sequence numbers if [uid] is [false]. *)
 
 val check : command
 (** [check] requests a checkpoint of the currently selected mailbox.  A
@@ -852,6 +855,15 @@ val select : ?condstore:bool -> string -> command
 val examine : ?condstore:bool -> string -> command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
+
+val append : string -> ?flags:flag list -> string -> command
+(** [append m flags id data] appends [data] as a new message to the end of the
+    mailbox [m].  This argument should be in the format of an [RFC-2822]
+    message.
+
+    If a flag list is specified, the flags should be set in the resulting
+    message; otherwise, the flag list of the resulting message is set to empty
+    by default.  In either case, the [`Recent] flag is also set. *)
 
 (** {2 Fetch commands}
 
@@ -1042,7 +1054,7 @@ val dst_rem : connection -> int
     can be in three states: {e awaiting the server greeting}, {e executing a
     command}, or {e awaiting commands}.
 
-    After {{!value:connection}creation}, [c] is {e awaiting the server
+    After {{!val:connection}creation}, [c] is {e awaiting the server
     greeting.}  {!run} must be passed [`Await] until getting back [`Ok] which
     signals that the greeting has been received and [c] is now {e awaiting
     commands.}  A command can then be initiated by passing [`Cmd], [`Idle] or
@@ -1135,11 +1147,10 @@ val run : connection ->
 let debug_flag = ref false
 ]}
 
-    The function [run] takes care of I/O.  Its return type is [[ `Untagged of
-    untagged | `Ok ]].
+    The function [run] takes care of managing I/O.
 
 {[
-  let run sock i o c v =
+  let run sock i o c v : [ `Untagged of Imap.untagged | `Ok ] =
     let rec write_fully s off len =
       if len > 0 then
         let rc = Ssl.write sock s off len in

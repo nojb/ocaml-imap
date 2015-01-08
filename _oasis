@@ -16,17 +16,19 @@ Library imap
   BuildDepends: uutf, base64, uint
 
 Executable imap_shell
-  Build$:       true
+  Build$:       false
   Install$:     false
   Path:         test
   MainIs:       imap_shell.ml
+  CompiledObject:     native
   BuildDepends: lambda-term, lwt.syntax, lwt, str, cmdliner, imap, lwt.ssl
 
 Executable wait_mail
-  Build$:       true
+  Build$:       false
   Install:      false
   Path:         test
   MainIs:       wait_mail.ml
+  CompiledObject:     native
   BuildDepends: ssl, imap, cmdliner
 
 Document api
@@ -36,4 +38,4 @@ Document api
   XOcamlbuildPath:      doc
   XOcamlbuildModules:   Imap
   Install:              true
-  XOCamlbuildExtraArgs: -docflag -colorize-code -docflag -css-style -docflag ../doc/style.css
+  XOCamlbuildExtraArgs: -docflag -colorize-code -docflag -css-style -docflag style.css
