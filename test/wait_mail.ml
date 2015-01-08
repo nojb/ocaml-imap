@@ -14,13 +14,13 @@ let run sock i o c v =
     | `Await_src ->
         let rc = Ssl.read sock i 0 (Bytes.length i) in
         if !debug_flag then Format.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
-        Imap.Manual.src c i 0 rc;
+        Imap.src c i 0 rc;
         loop (Imap.run c `Await)
     | `Await_dst ->
-        let rc = Bytes.length o - Imap.Manual.dst_rem c in
+        let rc = Bytes.length o - Imap.dst_rem c in
         write_fully o 0 rc;
         if !debug_flag then Format.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
-        Imap.Manual.dst c o 0 (Bytes.length o);
+        Imap.dst c o 0 (Bytes.length o);
         loop (Imap.run c `Await)
     | `Untagged _ as r -> r
     | `Ok -> `Ok
@@ -40,10 +40,10 @@ let wait_mail host port user pass mbox =
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   let sock = Ssl.embed_socket fd ctx in
   Ssl.connect sock;
-  let c = Imap.connection `Manual `Manual in
+  let c = Imap.connection () in
   let i = Bytes.create io_buffer_size in
   let o = Bytes.create io_buffer_size in
-  Imap.Manual.dst c o 0 (Bytes.length o);
+  Imap.dst c o 0 (Bytes.length o);
   match run sock i o c `Await with
   | `Ok ->
       let rec logout = function
@@ -57,13 +57,13 @@ let wait_mail host port user pass mbox =
         | `Untagged _ -> idle_done uidn (run sock i o c `Await)
         | `Ok ->
             search uidn Uint32.zero
-              (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, Uint32.max_int]))))
+              (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, None]))))
       and search uidn n = function
         | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
         | `Untagged _ -> search uidn n (run sock i o c `Await)
         | `Ok ->
             if n = Uint32.zero then idle uidn (run sock i o c `Idle) else
-            let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, n] [`Envelope] in
+            let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, Some n] [`Envelope] in
             fetch uidn n None (run sock i o c (`Cmd cmd))
       and fetch uidn n name = function
         | `Untagged (`Fetch (_, att)) ->
@@ -73,7 +73,9 @@ let wait_mail host port user pass mbox =
                    | `Envelope e ->
                        begin match e.Imap.env_from with
                        | [] -> name
-                       | ad :: _ -> Some ad.Imap.ad_name
+                       | ad :: _ ->
+                           Some (Printf.sprintf "\"%s\" <%s@%s>"
+                                   ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host)
                        end
                    | _ -> name) name att
             in

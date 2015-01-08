@@ -35,6 +35,8 @@ end
 type uint32 = Uint32.t
 type uint64 = Uint64.t
 
+type set = (uint32 * uint32) list
+
 module Mutf7 = struct
 
   (* Modified UTF-7 *)
@@ -241,7 +243,7 @@ type section =
   | `Part of int * section
   | `All ]
 
-type msg_att =
+type fetch_response =
   [ `Flags of [ flag | `Recent ] list
   | `Envelope of envelope
   | `Internal_date of date * time
@@ -258,7 +260,7 @@ type msg_att =
   | `Gm_thrid of uint64
   | `Gm_labels of string list ]
 
-type code_type =
+type code =
   [ `Alert
   | `Bad_charset of string list
   | `Capability of capability list
@@ -282,8 +284,6 @@ type code_type =
   | `Use_attr
   | `None ]
 
-type code = code_type * string
-
 type mbx_flag =
   [ `Noselect
   | `Marked
@@ -300,7 +300,7 @@ type mbx_flag =
   | `Trash
   | `Extension of string ]
 
-type mbx_status =
+type status_response =
   [ `Messages of int
   | `Recent of int
   | `Uid_next of uint32
@@ -309,30 +309,28 @@ type mbx_status =
   | `Highest_modseq of uint64 ]
 
 type state =
-  [ `Ok of code
-  | `No of code
-  | `Bad of code ]
+  [ `Ok of code * string | `No of code * string | `Bad of code * string ]
 
 type untagged =
   [ state
-  | `Bye of code
+  | `Bye of code * string
   | `Flags of flag list
   | `List of mbx_flag list * char option * string
   | `Lsub of mbx_flag list * char option * string
   | `Search of uint32 list * uint64 option
-  | `Status of string * mbx_status list
+  | `Status of string * status_response list
   | `Exists of int
   | `Recent of int
   | `Expunge of uint32
-  | `Fetch of uint32 * msg_att list
+  | `Fetch of uint32 * fetch_response list
   | `Capability of capability list
-  | `Vanished of (uint32 * uint32) list
-  | `Vanished_earlier of (uint32 * uint32) list
+  | `Vanished of set
+  | `Vanished_earlier of set
   | `Enabled of capability list ]
 
 type response =
   [ untagged
-  | `Preauth of code
+  | `Preauth of code * string
   | `Cont of string
   | `Tagged of string * state ]
 
@@ -408,7 +406,7 @@ let rec pp_mime ppf = function
   | `Multiple (b, m) ->
       pp ppf "@[<2>(multiple@ %a@ %S)@]" (pp_list pp_mime) b m
 
-let rec pp_section ppf : section -> _ = function
+let rec pp_section ppf : [< section] -> _ = function
   | `Header -> pp ppf "header"
   | `Header_fields l -> pp ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
   | `Header_fields_not l -> pp ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
@@ -421,7 +419,7 @@ let pp_date_time ppf (d, t) =
   pp ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
     d.day d.month d.year t.hours t.minutes t.seconds t.zone
 
-let pp_msg_att : _ -> msg_att -> _ = fun ppf att ->
+let pp_msg_att : _ -> [< fetch_response] -> _ = fun ppf att ->
   match att with
   | `Flags r          -> pp ppf "@[<2>(flags %a)@]" (pp_list pp_flag_fetch) r
   | `Envelope e       -> pp_envelope ppf e
@@ -471,7 +469,7 @@ let pp_cap ppf = function
   | `Gmail            -> pp ppf "gmail"
   | `Other s          -> pp ppf "(other %S)" s
 
-let pp_code_type : _ -> code_type -> _ = fun ppf c ->
+let pp_code : _ -> [< code] -> _ = fun ppf c ->
   match c with
   | `Alert                -> pp ppf "alert"
   | `Bad_charset cs       -> pp ppf "@[<2>(badcharset %a)@]" (pp_list pp_string) cs
@@ -496,15 +494,12 @@ let pp_code_type : _ -> code_type -> _ = fun ppf c ->
   | `Use_attr             -> pp ppf "use-attr"
   | `None                 -> pp ppf "none"
 
-let pp_code ppf (c, t) =
-  pp ppf "@[<2>%a@ %S@]" pp_code_type c t
-
 let pp_state ppf = function
-  | `Ok c  -> pp ppf "@[<2>(ok@ %a)@]" pp_code c
-  | `No c  -> pp ppf "@[<2>(no@ %a)@]" pp_code c
-  | `Bad c -> pp ppf "@[<2>(bad@ %a)@]" pp_code c
+  | `Ok (c, t)  -> pp ppf "@[<2>(ok@ %a@ %S)@]" pp_code c t
+  | `No (c, t)  -> pp ppf "@[<2>(no@ %a@ %S)@]" pp_code c t
+  | `Bad (c, t) -> pp ppf "@[<2>(bad@ %a@ %S)@]" pp_code c t
 
-let pp_mbx_flag : _ -> mbx_flag -> _ = fun ppf f ->
+let pp_mbx_flag : _ -> [< mbx_flag] -> _ = fun ppf f ->
   match f with
   | `Noselect      -> pp ppf "noselect"
   | `Marked        -> pp ppf "marked"
@@ -521,7 +516,7 @@ let pp_mbx_flag : _ -> mbx_flag -> _ = fun ppf f ->
   | `Trash         -> pp ppf "trash"
   | `Extension s   -> pp ppf "(extension %s)" s
 
-let pp_mbx_status : _ -> mbx_status -> _ = fun ppf s ->
+let pp_mbx_status : _ -> [< status_response] -> _ = fun ppf s ->
   match s with
   | `Messages n       -> pp ppf "(messages %i)" n
   | `Recent n         -> pp ppf "(recent %i)" n
@@ -533,7 +528,7 @@ let pp_mbx_status : _ -> mbx_status -> _ = fun ppf s ->
 let pp_response : _ -> [< response] -> _ = fun ppf r ->
   match r with
   | #state as s         -> pp_state ppf s
-  | `Bye c              -> pp ppf "@[<2>(bye@ %a)@]" pp_code c
+  | `Bye (c, t)         -> pp ppf "@[<2>(bye@ %a@ %S)@]" pp_code c t
   | `Flags flags        -> pp ppf "@[<2>(flags@ %a)@]" (pp_list pp_flag) flags
   | `List (f, s, m)     -> pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
                              (pp_opt pp_char) s m
@@ -546,7 +541,7 @@ let pp_response : _ -> [< response] -> _ = fun ppf r ->
   | `Expunge n          -> pp ppf "(expunge %a)" Uint32.printer n
   | `Fetch (n, atts)    -> pp ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list pp_msg_att) atts
   | `Capability r       -> pp ppf "@[<2>(capability %a)@]" (pp_list pp_cap) r
-  | `Preauth c          -> pp ppf "@[<2>(preauth@ %a)@]" pp_code c
+  | `Preauth (c, t)     -> pp ppf "@[<2>(preauth@ %a@ %S)@]" pp_code c t
   | `Cont s             -> pp ppf "@[<2>(cont@ %S)@]" s
   | `Tagged (t, s)      -> pp ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
   | `Vanished s         -> pp ppf "@[<2>(vanished@ %a)@]" pp_set s
@@ -1739,8 +1734,12 @@ module D = struct
 
 end
 
+(* Commands *)
+
+type eset = (uint32 * uint32 option) list
+
 type search_key =
-  [ `Seq of (uint32 * uint32) list
+  [ `Seq of eset
   | `All
   | `Answered
   | `Bcc of string
@@ -1769,7 +1768,7 @@ type search_key =
   | `Subject of string
   | `Text of string
   | `To of string
-  | `Uid of (uint32 * uint32) list
+  | `Uid of eset
   | `Unanswered
   | `Undeleted
   | `Undraft
@@ -1783,7 +1782,7 @@ type search_key =
   | `Gm_thrid of uint64
   | `Gm_labels of string list ]
 
-type fetch_att =
+type fetch_query =
   [ `Envelope
   | `Internal_date
   | `Rfc822_header
@@ -1796,10 +1795,7 @@ type fetch_att =
   | `Uid
   | `Flags ]
 
-type store_sign =
-  [ `Set | `Add | `Remove ]
-
-type status_att =
+type status_query =
   [ `Messages
   | `Recent
   | `Uid_next
@@ -1818,18 +1814,18 @@ type command =
   | `Unsubscribe of string
   | `List of string * string
   | `Lsub of string * string
-  | `Status of string * status_att list
-  | `Copy of [ `Uid | `Seq ] * (uint32 * uint32) list * string
+  | `Status of string * status_query list
+  | `Copy of [ `Uid | `Seq ] * eset * string
   | `Check
   | `Close
   | `Expunge
   | `Search of [ `Uid | `Seq ] * search_key
   | `Select of [ `Condstore | `Plain ] * string
   | `Examine of [ `Condstore | `Plain ] * string
-  | `Fetch of [ `Uid | `Seq ] * (uint32 * uint32) list *
-              [ `All | `Fast | `Full | `List of fetch_att list ] *
+  | `Fetch of [ `Uid | `Seq ] * eset *
+              [ `All | `Fast | `Full | `List of fetch_query list ] *
               [ `Changed_since of uint64 | `Changed_since_vanished of uint64 | `All ]
-  | `Store of [ `Uid | `Seq ] * (uint32 * uint32) list * [ `Silent | `Loud ] *
+  | `Store of [ `Uid | `Seq ] * eset * [ `Silent | `Loud ] *
               [ `Unchanged_since of uint64 | `All ] *
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
   | `Enable of capability list
@@ -1857,8 +1853,6 @@ let select ?(condstore = false) m =
   let condstore = if condstore then `Condstore else `Plain in `Select (condstore, m)
 let examine ?(condstore = false) m =
   let condstore = if condstore then `Condstore else `Plain in `Examine (condstore, m)
-
-type set = (uint32 * uint32) list
 
 let fetch_aux ~uid ~changed ~vanished set att =
   let uid = if uid then `Uid else `Seq in
@@ -2018,8 +2012,12 @@ module E = struct
     in
     w "(" (loop l) e
 
-  let w_set s k e =
-    let f (lo, hi) = if lo = hi then w_uint32 lo else w_uint32 lo $ w ":" $ w_uint32 hi in
+  let w_eset s k e =
+    let f = function
+      | (lo, Some hi) when lo = hi -> w_uint32 lo
+      | (lo, Some hi) -> w_uint32 lo $ w ":" $ w_uint32 hi
+      | (lo, None) -> w_uint32 lo $ w ":*"
+    in
     w_sep ~sep:',' f s k e
 
   let w_mailbox s =
@@ -2034,8 +2032,8 @@ module E = struct
 
   let w_p f x = w "(" $ f x $ w ")"
 
-  let rec w_search_key : search_key -> _ = function
-    | `Seq s -> w_set s
+  let rec w_search_key : [< search_key] -> _ = function
+    | `Seq s -> w_eset s
     | `All -> w "ALL"
     | `Answered -> w "ANSWERED"
     | `Bcc s -> w "BCC" & w_string s
@@ -2062,7 +2060,7 @@ module E = struct
     | `Subject s -> w "SUBJECT" & w_string s
     | `Text s -> w "TEXT" & w_string s
     | `To s -> w "TO" & w_string s
-    | `Uid s -> w "UID" & w_set s
+    | `Uid s -> w "UID" & w_eset s
     | `Unanswered -> w "UNANSWERED"
     | `Undeleted -> w "UNDELETED"
     | `Undraft -> w "UNDRAFT"
@@ -2078,7 +2076,7 @@ module E = struct
     | `Gm_thrid m -> w "X-GM-THRID" & w_uint64 m
     | `Gm_labels l -> w "X-GM-LABELS" & w_list w_string l
 
-  let rec w_section : section -> _ = function
+  let rec w_section : [< section] -> _ = function
     | `Header -> w "HEADER"
     | `Header_fields l -> w "HEADER.FIELDS" & w_list w l
     | `Header_fields_not l -> w "HEADER.FIELDS.NOT" & w_list w l
@@ -2087,7 +2085,7 @@ module E = struct
     | `Part (n, s) -> w_int n $ w "." $ w_section s
     | `All -> w ""
 
-  let w_fetch_att : fetch_att -> _ = function
+  let w_fetch_att : [< fetch_query] -> _ = function
     | `Envelope -> w "ENVELOPE"
     | `Internal_date -> w "INTERNALDATE"
     | `Rfc822_header -> w "RFC822.HEADER"
@@ -2115,7 +2113,7 @@ module E = struct
     | `Keyword s -> w s
     | `Extension s -> w ("\\" ^ s)
 
-  let w_tagged : command -> _ = function
+  let w_tagged : [< command] -> _ = function
     | `Capability -> w "CAPABILITY"
     | `Login (u, p) -> w "LOGIN" & w_string u & w_string p
     | `Logout -> w "LOGOUT"
@@ -2150,7 +2148,7 @@ module E = struct
           | `List [x] -> w_fetch_att x
           | `List l -> w_list w_fetch_att l
         in
-        w cmd & w_set set & att & changed_since
+        w cmd & w_eset set & att & changed_since
     | `Store (uid, set, silent, unchanged_since, mode, att) ->
         let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
         let silent = match silent with `Silent -> ".SILENT" | `Loud -> "" in
@@ -2167,10 +2165,10 @@ module E = struct
           | `Unchanged_since m -> w "(" $ w "UNCHANGEDSINCE" & w_uint64 m $ w ")"
         in
         let cmd = match uid with `Seq -> "STORE" | `Uid -> "UID STORE" in
-        w cmd & w_set set & unchanged_since & w base & att
+        w cmd & w_eset set & unchanged_since & w base & att
     | `Copy (uid, set, m) ->
         let cmd = match uid with `Seq -> "COPY" | `Uid -> "UID COPY" in
-        w cmd & w_set set & w_mailbox m
+        w cmd & w_eset set & w_mailbox m
     | `Search (uid, sk) ->
         let cmd = match uid with `Seq -> "SEARCH" | `Uid -> "UID SEARCH" in
         w cmd & w_search_key sk
@@ -2244,19 +2242,12 @@ type connection =
   { e : E.encoder;
     d : D.decoder;
     mutable tag : int;
-    mutable last_code : code;
     mutable k : connection ->
       [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] -> result }
 
-type src = D.src
-
-type dst = E.dst
-
-module Manual = struct
-  let src c = D.src c.d
-  let dst c = E.dst c.e
-  let dst_rem c = E.dst_rem c.e
-end
+let src c = D.src c.d
+let dst c = E.dst c.e
+let dst_rem c = E.dst_rem c.e
 
 let ret v k c = c.k <- k; v
 let run c = c.k c
@@ -2292,9 +2283,9 @@ let rec h_tagged tag r c =
   c.tag <- c.tag + 1;
   if tag <> cur then ret (`Error (`Incorrect_tag (cur, tag))) (fun _ -> assert false) c else
   match r with
-  | `Ok code -> c.last_code <- code; ret `Ok h_response_loop c
-  | `Bad code -> c.last_code <- code; ret (`Error `Bad) h_response_loop c
-  | `No code -> c.last_code <- code; ret (`Error `No) h_response_loop c
+  | `Ok code -> ret `Ok h_response_loop c
+  | `Bad code -> ret (`Error `Bad) h_response_loop c
+  | `No code -> ret (`Error `No) h_response_loop c
 
 and h_response idling c =
   let rec partial c = function
@@ -2352,10 +2343,7 @@ let h_greetings c = function
       in
       decode false hello c
 
-let connection src dst =
-  { e = E.encoder dst; d = D.decoder src; last_code = `None, ""; tag = 0; k = h_greetings }
-
-let last_code c =
-  c.last_code
+let connection () =
+  { e = E.encoder `Manual; d = D.decoder `Manual; tag = 0; k = h_greetings }
 
 (* let starttls = writes "STARTTLS" e *)

@@ -22,39 +22,40 @@
 
 (** Non-blocking IMAP4 protocol codec.
 
-    [Imap] is a non-blocking codec to {{!section:decode}decode} and
-    {{!section:encode}encode} the full
+    [Imap] is a non-blocking codec to encode and decode the full
     {{:https://tools.ietf.org/html/rfc3501}IMAP4} protocol, together with some
-    {{!section:extensions}extensions}.  It can process input without blocking on
-    IO.
+    {{!section:limitations}extensions}.  It can process input without blocking
+    on IO and is completely independent of any particular buffering and/or IO
+    strategry (concurrent, like {{:https://github.com/ocsigen/lwt}Lwt} or
+    {{:https://github.com/janestreet/async}Async}, sequential, etc.).
 
-    Consult the {{!ex}examples} of use.
+    Most users should begin by looking at the {{!ex}examples}, the types and
+    functions describing {{!type:connection}connections},
+    {{!section:commands}commands}, and the {!run} function.
+
+    See the {{!ex}examples} of use.
 
     {3 References}
     {ul
     {- M. Crispin
-    {e {{:https://tools.ietf.org/html/rfc3501}INTERNET MESSAGE ACCESS PROTOCOL - VERSION 4rev1}, 2003}}
-    {- A. Melnikov, S. Hole
-    {e {{:https://tools.ietf.org/html/rfc4551}IMAP Extension for Conditional STORE Operation or Quick Flag Changes Resynchronization}, 2006}}
-    {- A. Melnikov, D. Cridland, C. Wilson
-    {e {{:https://tools.ietf.org/html/rfc5162}IMAP4 Extensions for Quick Mailbox Resynchronization}, 2008}}
-    {- A. Gulbrandsen, Ed., A. Melnikov, Ed.
-    {e {{:https://tools.ietf.org/html/rfc5161}The IMAP ENABLE Extension}, 2008}}
-    {- B. Leiba, J. Nicolson
-    {e {{:https://tools.ietf.org/html/rfc6154}IMAP LIST Extension for Special-Use Mailboxes}, 2011}}
-    {- M. Crispin
-    {e {{:https://tools.ietf.org/html/rfc4315}Internet Message Access Protocol (IMAP) - UIDPLUS extension}, 2005}}}
+    {e {{:https://tools.ietf.org/html/rfc3501}INTERNET MESSAGE ACCESS PROTOCOL - VERSION 4rev1}, 2003}}}
 *)
 
-(** {1 Types} *)
+(** {1 Common types for IMAP} *)
 
+(** Unsigned 32-bit integers are used for: message sequence numbers, unique
+    identification numbers (UIDs). *)
 type uint32 = Uint32.t
+
+(** Unsigned 64-bit integers are used for: mod-sequence numbers, Gmail message
+    and thread IDs. *)
 type uint64 = Uint64.t
 
 type date = { day : int; month : int ; year : int }
 type time = { hours : int; minutes : int; seconds : int; zone : int }
 
-(** Message flags *)
+(** Message flags.  The underlying string of [`Extension s] is ['\\' ^ s], while
+    [`Keyword s] is [s]. *)
 type flag =
   [ `Answered
   | `Flagged
@@ -64,7 +65,8 @@ type flag =
   | `Keyword of string
   | `Extension of string ]
 
-(** List of standard capabilites. *)
+(** List of standard capabilites.  These are returned by the {!capability}
+    command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
 type capability =
   [ `Acl
   | `Binary
@@ -85,14 +87,34 @@ type capability =
   | `Uid_plus
   | `Unselect
   | `Xlist
-  | `Auth of [ `Anonymous
-             | `Login
-             | `Plain ]
+  | `Auth of [ `Anonymous | `Login | `Plain ]
   | `Xoauth2
   | `Gmail
   | `Other of string ]
 
-(** {1 Responses} *)
+(** {1 Types for responses}
+
+    These types describe all possible responses from the server.  Typically one
+    would pattern-match on the {!untagged} type to extract the desired data.
+    See the {{!ex}examples.} *)
+
+(** Message number (either sequence or UIDs) sets, as a union of intervals.  It
+    is the responsability of the client to make any necessary validity check, as
+    none is performed by the library.
+
+    For example, the IMAP sequence set [1,2:3] is represented by [[(1, 1); (2, 3)]]. *)
+type set = (uint32 * uint32) list
+
+(** {3 Envelope information}
+
+    It is returned when fetching the [`Envelope] message
+    {{!fetch_query}attribute} using the {!fetch} command.
+
+    If [val a : address], then the expression
+{[
+Printf.printf "\"%s\" <%s@%s>" a.ad_name a.ad_mailbox a.ad_host
+]}
+    will output [a] in the usual format ["name" <user\@host.com>]. *)
 
 type address =
   { ad_name : string;
@@ -100,7 +122,6 @@ type address =
     ad_mailbox : string;
     ad_host : string }
 
-(** Message envelope information *)
 type envelope =
   { env_date : string;
     env_subject : string;
@@ -113,6 +134,17 @@ type envelope =
     env_in_reply_to : string;
     env_message_id : string }
 
+(** {3 MIME message structure}
+
+    The following types describe the bodies of
+    {{:http://en.wikipedia.org/wiki/MIME}MIME} emails.  The IMAP server can
+    parse the MIME structure of the messages and return individual parts.  This
+    saves the client from having to do that parsing itself.  See
+    {ul
+    {- {{:http://tools.ietf.org/html/rfc2045}RFC 2045: Format of Internet Message Bodies}}
+    {- {{:http://tools.ietf.org/html/rfc2046}RFC 2046: Media Types}}}
+    and related RFCs for details. *)
+
 type fields =
   { fld_params : (string * string) list;
     fld_id : string option;
@@ -120,14 +152,12 @@ type fields =
     fld_enc : string;
     fld_octets : int }
 
-(** MIME message types *)
 type mime =
   [ `Text of string * fields * int
   | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
   | `Multiple of mime list * string ]
 
-(** MIME part *)
 type section =
   [ `Header
   | `Header_fields of string list
@@ -137,9 +167,12 @@ type section =
   | `Part of int * section
   | `All ]
 
-(** Message attributes returned in the untagged [`Fetch]
-    {{:#TYPEuntagged}response} to the {!fetch} command. *)
-type msg_att =
+(** {3 Fetch responses}
+
+    Message attributes returned in the untagged [`Fetch] {{!untagged}response}
+    to the {!fetch} command. *)
+
+type fetch_response =
   [ `Flags of [ flag | `Recent ] list
   (** A parenthesized list of flags that are set for this message. *)
 
@@ -189,21 +222,18 @@ type msg_att =
   | `Gm_labels of string list
   (** Gmail labels. *) ]
 
-(** {2 Response codes.}
+(** {3 Response codes}
 
     Status responses are [`Ok], [`No], [`Bad], [`Preauth] and [`Bye].  [`Ok],
     [`No], and [`Bad] can be tagged or untagged.  [`Preauth] and [`Bye] are
     always untagged.
 
-    Status responses MAY include an OPTIONAL "response code".  The response code
-    contains additional information or status codes for client software beyond
-    the [`Ok], [`No], [`Bad], and are defined when there is a specific action
-    that a client can take based upon the additional information.
+    Status responses may include a "response code".  The response code contains
+    additional information or status codes for client software beyond the [`Ok],
+    [`No], [`Bad], and are defined when there is a specific action that a client
+    can take based upon the additional information. *)
 
-    The last response code is cached by the library and can be accessed using
-    {!last_code}. *)
-
-type code_type =
+type code =
   [ `Alert
   (** A special alert that MUST be presented to the user in a fashion that calls
       the user's attention to the message. *)
@@ -224,7 +254,7 @@ type code_type =
 
   | `Permanent_flags of [ flag | `All ] list
   (** The list of flags the client can change permanently.  Any flags that are
-      in the untagged [`Flags] {{:#TYPEuntagged}response}, but not in the
+      in the untagged [`Flags] {{!untagged}response}, but not in the
       [`Permanent_flags] list, can not be set permanently.  If the client
       attempts to {!store} a flag that is not in the [`Permanent_flags] list,
       the server will either ignore the change or store the state change for the
@@ -268,13 +298,13 @@ type code_type =
 
   | `Highest_modseq of uint64
   (** The highest mod-sequence value of all messages in the mailbox.  Returned
-      in an untagged [`Ok] {{:#TYPEuntagged}response} to the {!select} and
+      in an untagged [`Ok] {{!untagged}response} to the {!select} and
       {!examine} commands. *)
 
   | `No_modseq
   (** A server that doesn't support the persistent storage of mod-sequences for
       the mailbox MUST send this code in an untagged [`Ok]
-      {{:#TYPEuntagged}response} to every successful {!select} or {!examine}
+      {{!untagged}response} to every successful {!select} or {!examine}
       command. *)
 
   | `Modified of (uint32 * uint32) list
@@ -308,17 +338,20 @@ type code_type =
       {!select} command. *)
 
   | `Compression_active
-  (** Compression has been activated. *)
+  (** Compression has been activated.  Requires the [COMPRESS=DEFLATE]
+      capability. *)
 
   | `Use_attr
-  (** A [CREATE] command failed due to the special-use attribute requested. *)
+  (** A {!create} command failed due to the special-use attribute requested. *)
 
   | `None
   (** No response code was sent. *) ]
 
-type code = code_type * string
+(** {3 Mailbox flags}
 
-(** Mailbox flags *)
+    Returned by the {!list} or {!lsub} commands and also in some
+    status {{!code}codes}. *)
+
 type mbx_flag =
   [ `Noselect
   | `Marked
@@ -335,9 +368,12 @@ type mbx_flag =
   | `Trash
   | `Extension of string ]
 
-(** Mailbox status items returned in the untagged [`Status]
-    {{:#TYPEuntagged}response} to the [status] command. *)
-type mbx_status =
+(** {3 Mailbox status responses}
+
+    Mailbox status items returned in the untagged [`Status]
+    {{!untagged}response} to the {!status} command. *)
+
+type status_response =
   [ `Messages of int
   (** Number of messages in the mailbox. *)
 
@@ -358,17 +394,27 @@ type mbx_status =
   (** The highest modification sequence number of all the messages in the
       mailbox.  This is only sent back if [CONDSTORE] is enabled. *) ]
 
-type state =
-  [ `Ok of code
-  | `No of code
-  | `Bad of code ]
+(** {3 Status responses}
 
-(** Server data responses. *)
+    These can be either {{!response}tagged} or {{!untagged}untagged}. The string
+    carries a human-readable explanation of the {!code}. *)
+
+type state =
+  [ `Ok of code * string | `No of code * string | `Bad of code * string ]
+
+(** {3 Server responses.}
+
+    Sending a command will typically result in a sequence of [untagged] items
+    being sent back, ending in a [`Tagged] response.  Normally the user will not
+    deal with the type {!response} directly, but rather with the type returned by
+    {!run}. *)
+
 type untagged =
   [ state
   (** Untagged status response. *)
 
-  | `Bye of code
+  | `Bye of code * string
+  (** The server will be closing the connection soon. *)
 
   | `Flags of flag list
   (** The [`Flags] response occurs as a result of a {!select} or {!examine}
@@ -387,7 +433,7 @@ type untagged =
       Sequence), and optionally the highest modification sequence number of the
       returned list of messages if [CONDSTORE] is enabled. *)
 
-  | `Status of string * mbx_status list
+  | `Status of string * status_response list
   (** [STATUS] response: mailbox name, list of status items. *)
 
   | `Exists of int
@@ -421,7 +467,7 @@ type untagged =
       "higher to lower server" will send successive untagged [`Expunge]
       responses for message sequence numbers 9, 8, 7, 6, and 5. *)
 
-  | `Fetch of uint32 * msg_att list
+  | `Fetch of uint32 * fetch_response list
   (** The [`Fetch] response returns data about a message to the client.  It
       contains the message number and the list of data items and their values.
       This response occurs as the result of a {!fetch} or {!store} command, as
@@ -441,14 +487,11 @@ type untagged =
   | `Enabled of capability list
   (** List of capabilities enabled after issuing {!enable} command. *) ]
 
-(** Server responses.  Sending a command will typically result in a
-    sequence of [untagged] items being sent back, ending in a [`Tagged]
-    response or possibly [`Bye]. *)
 type response =
   [ untagged
   (** Untagged data response. *)
 
-  | `Preauth of code
+  | `Preauth of code * string
   (** The session as been Pre-Authorized and no authentication is necessary.
       This should not occur in normal circumstances. *)
 
@@ -459,14 +502,29 @@ type response =
   | `Tagged of string * state
   (** Tagged response: tag, result status. *) ]
 
-val pp_response : Format.formatter -> [< response] -> unit
-(** Pretty print a server response. *)
+(** {3 Pretty printing responses}
 
-(** {1 Commands} *)
+    Will print the given response in s-expression format. *)
+
+val pp_response : Format.formatter -> [< response] -> unit
+
+(** {1 Types for queries}
+
+    These types are used to describe queries to the server using the different
+    {{!section:commands}commands}. *)
+
+(** {e Extended} message numbers sets, as a union of intervals.  The second
+    component of an interval being [None] means that it should take the largest
+    possible value appearing in the mailbox (this is denoted ['*'] in the IMAP
+    protocol).
+
+    For example, the IMAP extended set [1,2:3,4:*] will be represented by
+    [[(1, Some 1); (2, Some 3); (4, None)]]. *)
+type eset = (uint32 * uint32 option) list
 
 (** Search keys. See {!search} command. *)
 type search_key =
-  [  `Seq of (uint32 * uint32) list
+  [  `Seq of eset
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
 
@@ -492,13 +550,13 @@ type search_key =
       "CC" field. *)
 
   | `Deleted
-  (** Messages with the [`Deleted] {{:#TYPEflag}flag} set. *)
+  (** Messages with the [`Deleted] {!flag} set. *)
 
   | `Draft
-  (** Messages with the [`Draft] {{:#TYPEflag}flag} set. *)
+  (** Messages with the [`Draft] {!flag} set. *)
 
   | `Flagged
-  (** Messages with the [`Flagged] {{:#TYPEflag}flag} set. *)
+  (** Messages with the [`Flagged] {!flag} set. *)
 
   | `From of string
   (** Messages that contain the specified string in the envelope structure's
@@ -512,21 +570,21 @@ type search_key =
       of the contents. *)
 
   | `Keyword of string
-  (** Messages with the specified keyword flag set. *)
+  (** Messages with the specified keyword {!flag} set. *)
 
   | `Larger of int
   (** Messages with a size larger than the specified number of octets. *)
 
   | `New
-  (** Messages that have the [`Recent] {{:#TYPEflag}flag} set but not the
-      [`Seen] {{:#TYPEflag}flag}.  This is functionally equivalent to
+  (** Messages that have the [`Recent] {!flag} set but not the
+      [`Seen] {!flag}.  This is functionally equivalent to
       [`And (`Recent, `Unseen)]. *)
 
   | `Not of search_key
   (** Messages that do not match the specified search key. *)
 
   | `Old
-  (** Messages that do not have the [`Recent] {{:#TYPEflag}flag} set.  This is
+  (** Messages that do not have the [`Recent] {!flag} set.  This is
       functionally equivalent to [`Not `Recent] (as opposed to [`Not `New]). *)
 
   | `On of date
@@ -537,10 +595,10 @@ type search_key =
   (** Messages that match either search key. *)
 
   | `Recent
-  (** Messages that have the [`Recent] {{:#TYPEflag}flag} set. *)
+  (** Messages that have the [`Recent] {!flag} set. *)
 
   | `Seen
-  (** Messages that have the [`Seen] {{:#TYPEflag}flag} set. *)
+  (** Messages that have the [`Seen] {!flag} set. *)
 
   | `Sent_before of date
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
@@ -573,27 +631,27 @@ type search_key =
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  | `Uid of (uint32 * uint32) list
+  | `Uid of eset
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set.  Sequence set ranges are permitted. *)
 
   | `Unanswered
-  (** Messages that do not have the [`Answered] {{:#TYPEflag}flag} set. *)
+  (** Messages that do not have the [`Answered] {!flag} set. *)
 
   | `Undeleted
-  (** Messages that do not have the [`Deleted] {{:#TYPEflag}flag} set. *)
+  (** Messages that do not have the [`Deleted] {!flag} set. *)
 
   | `Undraft
-  (** Messages that do not have the [`Draft] {{:#TYPeflag}flag} set. *)
+  (** Messages that do not have the [`Draft] {!flag} set. *)
 
   | `Unflagged
-  (** Messages that do not have the [`Flagged] {{:#TYPEflag}flag} set. *)
+  (** Messages that do not have the [`Flagged] {!flag} set. *)
 
   | `Unkeyword of string
-  (** Messages that do not have the specified keyword {{:#TYPEflag}flag} set. *)
+  (** Messages that do not have the specified keyword {!flag} set. *)
 
   | `Unseen
-  (** Messages that do not have the [`Seen] {{:#TYPEflag}flag} set. *)
+  (** Messages that do not have the [`Seen] {!flag} set. *)
 
   | `And of search_key * search_key
   (** Messages that satisfy both search criteria. *)
@@ -613,8 +671,8 @@ type search_key =
   | `Gm_labels of string list
   (** Messages with given Gmail labels. *) ]
 
-(** Message attributes.  See {!fetch} command. *)
-type fetch_att =
+(** Message attributes that can be requested using the {!fetch} command. *)
+type fetch_query =
   [ `Envelope
   (** The envelope structure of the message.  This is computed by the server by
       parsing the header into the component parts, defaulting various fields as
@@ -626,11 +684,11 @@ type fetch_att =
   | `Rfc822_header
   (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
       differing in the syntax of the resulting untagged [`Fetch]
-      {{:#TYPEuntagged}data} ([`Rfc822_header] is returned). *)
+      {{!untagged}data} ([`Rfc822_header] is returned). *)
 
   | `Rfc822_text
   (** Functionally equivalent to [`Body_section (`Look, `Text, None)], differing
-      in the syntax of the resulting untagged [`Fetch] {{:#TYPEuntagged}data}
+      in the syntax of the resulting untagged [`Fetch] {{!untagged}data}
       ([`Rfc822_text] is returned). *)
 
   | `Rfc822_size
@@ -638,7 +696,7 @@ type fetch_att =
 
   | `Rfc822
   (** Functionally equivalent to [`Body_section (`Look, `All, None)], differing
-      in the syntax of the resulting untagged [`Fetch] {{:#TYPEuntagged}data}
+      in the syntax of the resulting untagged [`Fetch] {{!untagged}data}
       ([`Rfc822] is returned). *)
 
   | `Body
@@ -646,7 +704,7 @@ type fetch_att =
 
   | `Body_section of [ `Peek | `Look ] * section * (int * int) option
   (** The text of a particular body section.  The [`Peek] flag is an alternate
-      form that does not implicitly set the [`Seen] {{:#TYPEflag}flag}. *)
+      form that does not implicitly set the [`Seen] {!flag}. *)
 
   | `Body_structure
   (** The MIME body structure of the message.  This is computed by the
@@ -657,15 +715,15 @@ type fetch_att =
   (** The unique identifier for the message. *)
 
   | `Flags
-  (** The {{:#TYPEflag}flags} that are set for this message. *) ]
+  (** The {{!flag}flags} that are set for this message. *) ]
 
-(** Mailbox status items.  See {!status} command. *)
-type status_att =
+(** Mailbox attibutes that can be requested with the {!status} command. *)
+type status_query =
   [ `Messages
   (** The number of messages in the mailbox. *)
 
   | `Recent
-  (** The number of messages with the [`Recent] {{:#TYPEflag}flag} set. *)
+  (** The number of messages with the [`Recent] {!flag} set. *)
 
   | `Uid_next
   (** The next unique identifier value of the mailbox. *)
@@ -674,27 +732,41 @@ type status_att =
   (** The unique identifier validity value of the mailbox. *)
 
   | `Unseen
-  (** The number of messages which do not have the [`Seen] {{:#TYPEflag}flag}
+  (** The number of messages which do not have the [`Seen] {!flag}
       set. *)
 
   | `Highest_modseq
   (** TODO *) ]
 
+(** {1:commands Commands}
+
+    These are the available commands that can be sent to an IMAP server.  Not
+    all commands will be supported in every IMAP server as they will depend on
+    certain capabilities being enabled.  A command is executed using {!run}.
+    It is a programmer error to try to run more than one command at the same
+    time.  If this is required, more than one connection should be opened to the
+    server.
+
+    Some commands have a [?uid] optional argument.  When [true] it means to use
+    the variant of the command that uses UIDs (instead of sequence numbers).
+    See for example {!copy}, {!search}, {!fetch} and {!store_add_flags}. *)
+
 type command
+(** The type of client commands.  They are executed using {!run}. *)
 
 val login : string -> string -> command
 (** [login user pass] identifies the client to the server and carries the
     plaintext password authenticating this [user] with password [pass].  A
-    server MAY include a [`Capability] response {{:#TYPEcode}code} in the tagged
+    server MAY include a [`Capability] response {{!code}code} in the tagged
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
 
 val capability : command
 (** [capability] returns the list of capabilities supported by the server.  The
-    server MUST send a single untagged [`Capability] {{:#TYPEuntagged}response}
+    server must send a single untagged [`Capability] {{!untagged}response}
     with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
     response.  See the type describing the possible
-    {{:#TYPEcapability}capabilities}. *)
+    {{!capability}capabilities}. *)
 
 val create : string -> command
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
@@ -711,7 +783,7 @@ val rename : string -> string -> command
 
 val logout : command
 (** [logout] gracefully terminates a session.  The server MUST send an untagged
-    [`Bye] {{:#TYPEuntagged}response} before the (tagged) [`Ok] response. *)
+    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
 
 val noop : command
 (** [noop] does nothing.  Since any command can return a status update as
@@ -730,7 +802,7 @@ val unsubscribe : string -> command
 val list : ?ref:string -> string -> command
 (** [list ref m] returns a subset of names from the complete set of all names
     available to the client.  Zero or more untagged [`List]
-    {{:#TYPEuntagged}replies} are returned, containing the name attributes,
+    {{!untagged}replies} are returned, containing the name attributes,
     hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
     or a level of mailbox hierarchy, and indicates the context in which the
     mailbox name is interpreted.*)
@@ -740,12 +812,12 @@ val lsub : ?ref:string -> string -> command
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status : string -> status_att list -> command
-(** [status] requests {{:#TYPEmbx_status}status information} of the indicated
-    mailbox.  An untagged [`Status] {{:#TYPEuntagged}response} is returned with
+val status : string -> status_query list -> command
+(** [status] requests {{!status_query}status information} of the indicated
+    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
 
-val copy : ?uid:bool -> (uint32 * uint32) list -> string -> command
+val copy : ?uid:bool -> eset -> string -> command
 
 val check : command
 (** [check] requests a checkpoint of the currently selected mailbox.  A
@@ -754,20 +826,20 @@ val check : command
 
 val close : command
 (** [close] permanently removes all messages that have the [`Deleted]
-    {{:#TYPEflag}flag} set from the currently selected mailbox, and returns to
+    {!flag} set from the currently selected mailbox, and returns to
     the authenticated state from the selected state. *)
 
 val expunge : command
 (** [expunge] permanently removes all messages that have the [`Deleted]
-    {{:#TYPEflag}flag} set from the currently selected mailbox.  Before
+    {!flag} set from the currently selected mailbox.  Before
     returning an [`Ok] to the client, an untagged [`Expunge]
-    {{:#TYPEuntagged}response} is sent for each message that is removed. *)
+    {{!untagged}response} is sent for each message that is removed. *)
 
 val search : ?uid:bool -> search_key -> command
 (** [search uid sk] searches the mailbox for messages that match the given
     searching criteria.  If [uid] is [true] (the default), then the matching
     messages' unique identification numbers are returned.  Otherwise, their
-    sequence numbers are.  The untagged [`Search] {{:#TYPEuntagged}response}
+    sequence numbers are.  The untagged [`Search] {{!untagged}response}
     from the server contains a listing of message numbers corresponding to those
     messages that match the searching criteria. *)
 
@@ -775,28 +847,65 @@ val select : ?condstore:bool -> string -> command
 (** [select condstore m] selects the mailbox [m] so that its messages can be
     accessed.  If [condstore] (default value [false]) is [true], then the server
     will return the [`Modseq] data item in all subsequent untagged [`Fetch]
-    {{:#TYPEuntagged}responses}. *)
+    {{!untagged}responses}. *)
 
 val examine : ?condstore:bool -> string -> command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
-type set = (uint32 * uint32) list
+val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch_query list -> command
+(** [fetch uid changed vanished set att] retrieves data associated with the
+    message set [set] in the current mailbox.  [set] is interpeted as being a
+    set of UIDs or sequence numbers depending on whether [uid] is [true] (the
+    default) or [false].  Specifying a [?changed] argument will further reduce
+    the set of returned messages to those whose [CHANGEDSINCE] mod-sequence
+    value is at least the passed value (requires the [CONDSTORE] extension).
+    The [vanished] optional parameter specifies whether one wants to receive
+    [`Vanished] responses as well.  It is an error to request [`Vanished]
+    responses if no value is passed to [?changed]. *)
 
-val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> fetch_att list -> command
-val fetch_fast : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
-val fetch_full : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
-val fetch_all  : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> set -> command
-(** The [FETCH] command retrieves data associated with a message in the
-    mailbox. *)
+val fetch_all  : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+(** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
 
-val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
-val store_set_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
-val store_remove_flags  : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> flag list -> command
-val store_add_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
-val store_set_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
-val store_remove_labels : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> set -> string list -> command
-(** The [STORE] command alters data associated with a message in the mailbox. *)
+val fetch_fast : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+(** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+    [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
+
+val fetch_full : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+(** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
+    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
+
+val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+(** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
+    message set [set].  [set] is interpreter as being a set of UIDs or sequence
+    numbers depending on whether [uid] is [true] (the default) or [false].  The
+    server will return the updated flags for the affected messages in untagged
+    [`Fetch] {{!untagged}responses} depending on whether [silent] is [true] (the
+    default) or [false].  Specifying a [?unchanged] argument will further reduce
+    the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
+    value is at least the passed value (requires the [CONDSTORE] extension). *)
+
+val store_set_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+(** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
+    instead of adding to it. *)
+
+val store_remove_flags  : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+(** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
+    adding them. *)
+
+val store_add_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+(** [store_add_labels] is like {!store_add_flags} but adds
+    {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
+    instead of regular flags. *)
+
+val store_set_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+(** [store_set_labels] is like {!store_add_labels} but replaces the set of
+    labels instead of adding to it. *)
+
+val store_remove_labels : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+(** [store_remove_labels] is like {!store_add_labels} but removes labels instead
+    of adding them. *)
 
 val enable : capability list -> command
 
@@ -817,7 +926,7 @@ val xoauth2 : string -> string -> authenticator
     [user] and access token [token].  The access token should be obtained
     independently. *)
 
-(** {1 Running and Processing Commands} *)
+(** {1 Running commands and receiving responses} *)
 
 type error =
   [ `Incorrect_tag of string * string
@@ -839,42 +948,78 @@ val pp_error : Format.formatter -> error -> unit
 
 type connection
 
-type src = [ `String of string | `Channel of in_channel | `Manual ]
-type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
+val connection : unit -> connection
 
-val connection : [< src] -> [< dst] -> connection
+val src : connection -> string -> int -> int -> unit
+(** [src c s i l] provides [c] with input taken from [l] bytes from [s] starting
+    at [i]. *)
 
-module Manual : sig
-  (** {2 Performing IO} *)
-  val src : connection -> string -> int -> int -> unit
-  val dst : connection -> string -> int -> int -> unit
-  val dst_rem : connection -> int
-end
+val dst : connection -> string -> int -> int -> unit
+(** [dst c s i l] provides [c] with [l] bytes of output storage in [s] starting
+    at [i]. *)
+
+val dst_rem : connection -> int
+(** [dst_rem c] is the number of bytes still available for output in the
+    current output buffer of [c]. *)
 
 val run : connection ->
   [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] ->
   [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
+(** [run c v] is:
 
-val last_code : connection -> code
+    {ul
+    {- [`Untagged u] if an untagged {{!untagged}response} has been received from the
+       server.}
+    {- [`Ok] if no command is in progress and the server is ready to receive a new
+       command from the client.}
+    {- [`Error e] if an error ocurred during the processing of the current command.
+       If the {!error} is not fatal, then the client can continue using this connection.
+       Otherwise, the connection should be discarded immediately.}
+    {- [`Await_src] if the connection is awaiting for more input.  The client must use
+       {!src} to provide a new buffer and then call {!run} with [`Await].}
+    {- [`Await_dst] if the connection needs more output storage.  The client must use
+       {!dst} to provide a new buffer and then call {!run} with [`Await].}}
 
-(** {1:limitations Limitations}
+    See the {{!ex}examples} for more details. *)
 
-    - no body structure extensions
-    - "simple" search modseq criteria *)
+(** {1:limitations Supported extensions and limitations}
+
+    The following extensions are supported:
+    - {{:https://tools.ietf.org/html/rfc4551}CONDSTORE}
+    - {{:https://tools.ietf.org/html/rfc5162}QRESYNC}
+    - {{:http://tools.ietf.org/html/rfc5161}ENABLE}
+    - {{:https://tools.ietf.org/html/rfc4315}UIDPLUS}
+    - {{:https://tools.ietf.org/html/rfc6154}SPECIAL-USE}
+    - {{:https://tools.ietf.org/html/rfc2177}IDLE}
+    - {{:https://developers.google.com/gmail/imap_extensions}X-GM-EXT-1}
+
+    {3 Limitations}
+
+    Error handling is very simplistic.  In particular there is no error recovery
+    from simple parsing errors.  Some form of this could be added if
+    required. *)
 
 (** {1:ex Example: checking for new mail}
 
     [wait_mail host port user pass mbox] logs into the IMAP server
-    [host] on port [port] over SSL, authenticates user [user] with password
-    [pass] and watches mailbox [mbox] until a new message arrives.  When a
-    new message arrives, it outputs the sender's name and stops.
+    [host] on port [port] over {{:https://github.com/savonet/ocaml-ssl}SSL},
+    authenticates user [user] with password [pass] and watches mailbox [mbox] until a
+    new message arrives.  When a new message arrives, it outputs the sender's name
+    and address and stops.
 
     In order to detect new messages, we record the next UID value of the
     [INBOX] mailbox as soon as we open it.  Then we wait for the server to
-    alert us of activity in this mailbox using the [IDLE] command.  And we look
-    for messages with UIDs larger than this one using the [SEARCH] command.
+    alert us of activity in this mailbox using the {{!run}idle} command.  And we look
+    for messages with UIDs larger than this one using the {!search} command.
+
+    Setting [debug_flag := true] will output all the data exchanged with the
+    server which can be quite instructive.  See the
+    {{:https://github.com/nojb/ocaml-imap/blob/master/test/wait_mail.ml}wait_mail.ml}
+    file for a more complete example.
 
 {[
+let debug_flag = ref false
+
 let run sock i o c v =
   let rec write_fully s off len =
     if len > 0 then
@@ -885,13 +1030,13 @@ let run sock i o c v =
     | `Await_src ->
         let rc = Ssl.read sock i 0 (Bytes.length i) in
         if !debug_flag then Format.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
-        Imap.Manual.src c i 0 rc;
+        Imap.src c i 0 rc;
         loop (Imap.run c `Await)
     | `Await_dst ->
-        let rc = Bytes.length o - Imap.Manual.dst_rem c in
+        let rc = Bytes.length o - Imap.dst_rem c in
         write_fully o 0 rc;
         if !debug_flag then Format.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
-        Imap.Manual.dst c o 0 (Bytes.length o);
+        Imap.dst c o 0 (Bytes.length o);
         loop (Imap.run c `Await)
     | `Untagged _ as r -> r
     | `Ok -> `Ok
@@ -914,7 +1059,7 @@ let wait_mail host port user pass mbox =
   let c = Imap.connection `Manual `Manual in
   let i = Bytes.create io_buffer_size in
   let o = Bytes.create io_buffer_size in
-  Imap.Manual.dst c o 0 (Bytes.length o);
+  Imap.dst c o 0 (Bytes.length o);
   match run sock i o c `Await with
   | `Ok ->
       let rec logout = function
@@ -945,7 +1090,9 @@ let wait_mail host port user pass mbox =
                    | `Envelope e ->
                        begin match e.Imap.env_from with
                        | [] -> name
-                       | ad :: _ -> Some ad.Imap.ad_name
+                       | ad :: _ ->
+                           Some (Printf.sprintf "\"%s\" <%s@%s>"
+                                   ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host)
                        end
                    | _ -> name) name att
             in

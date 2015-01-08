@@ -32,13 +32,13 @@ let run c v =
     | `Await_src ->
         Lwt_ssl.read sock c.i 0 (Bytes.length c.i) >>= fun rc ->
         LTerm.eprintlf ">>> %d\n%s>>>%!" rc (String.sub c.i 0 rc) >>= fun () ->
-        Imap.Manual.src c.c c.i 0 rc;
+        Imap.src c.c c.i 0 rc;
         loop (Imap.run c.c `Await)
     | `Await_dst ->
-        let rc = Bytes.length c.o - Imap.Manual.dst_rem c.c in
+        let rc = Bytes.length c.o - Imap.dst_rem c.c in
         write_fully sock c.o 0 rc >>= fun () ->
         LTerm.eprintlf "<<< %d\n%s<<<%!" rc (String.sub c.o 0 rc) >>= fun () ->
-        Imap.Manual.dst c.c c.o 0 (Bytes.length c.o);
+        Imap.dst c.c c.o 0 (Bytes.length c.o);
         loop (Imap.run c.c `Await)
     | `Untagged _ as r -> Lwt.return r
     | `Ok -> Lwt.return `Ok
@@ -63,10 +63,10 @@ let g =
   let s =
     { i = Bytes.create io_buffer_size;
       o = Bytes.create io_buffer_size;
-      c = Imap.connection `Manual `Manual;
+      c = Imap.connection ();
       sock = None }
   in
-  Imap.Manual.dst s.c s.o 0 (Bytes.length s.o);
+  Imap.dst s.c s.o 0 (Bytes.length s.o);
   s
 
 open Cmdliner
@@ -127,12 +127,15 @@ let status_att =
 
 let range =
   let f s =
-    try Scanf.sscanf s "%s@:%s" (fun a b -> `Ok (Uint32.of_string a, Uint32.of_string b)) with
-    | _ -> try let a = Uint32.of_string s in `Ok (a, a) with _ -> `Error "range"
+    try Scanf.sscanf s "%s@:%s" (fun a b -> `Ok (Uint32.of_string a, Some (Uint32.of_string b))) with
+    | _ -> try let a = Uint32.of_string s in `Ok (a, Some a) with _ -> `Error "range"
   in
-  let g ppf (lo, hi) =
-    if lo = hi then Format.pp_print_string ppf (Uint32.to_string lo) else
-    Format.fprintf ppf "%s:%s" (Uint32.to_string lo) (Uint32.to_string hi)
+  let g ppf = function
+    | (lo, Some hi) ->
+        if lo = hi then Format.pp_print_string ppf (Uint32.to_string lo) else
+        Format.fprintf ppf "%s:%s" (Uint32.to_string lo) (Uint32.to_string hi)
+    | (lo, None) ->
+        Format.fprintf ppf "%s:*" (Uint32.to_string lo)
   in
   f, g
 
@@ -609,16 +612,6 @@ let idle =
   in
   Term.(pure idle $ forever), Term.info "idle" ~doc
 
-(* CODE *)
-let code_doc = "Show the last response code."
-let code =
-  let doc = code_doc in
-  let code () =
-    Imap.pp_code Format.str_formatter (Imap.last_code g.c);
-    LTerm.printl (Format.flush_str_formatter ())
-  in
-  Term.(pure code $ pure ()), Term.info "code" ~doc
-
 let commands =
   [ connect;
     capability;
@@ -640,8 +633,7 @@ let commands =
     store;
     search;
     enable;
-    idle;
-    code ]
+    idle ]
 
 (* A mini shell *)
 
