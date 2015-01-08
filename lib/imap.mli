@@ -1246,7 +1246,7 @@ let debug_flag = ref false
       in
       let rec login = function
         | `Untagged _ -> login (run sock i o c `Await)
-        | `Ok -> select Uint32.zero (run sock i o c (`Cmd (Imap.select mbox)))
+        | `Ok -> select Uint32.zero (run sock i o c (`Cmd (Imap.examine mbox)))
       in
       login (run sock i o c (`Cmd (Imap.login user pass)))
   | `Untagged _ -> assert false
