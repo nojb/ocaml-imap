@@ -947,8 +947,19 @@ type error =
 val pp_error : Format.formatter -> error -> unit
 
 type connection
+(** The type for connections.  It manages the encoder and decoder states and
+    keeps track of message tags. *)
 
 val connection : unit -> connection
+(** [connection ()] creates a new connection object.  The connection should be
+    supplied with input and output buffers as necessary using {!src} and {!dst}.
+    Other that that, it is completely independent of any particular connection
+    and/or IO mechanism.
+
+    After creation, the connection should be run with [`Await] until [`Ok] to
+    process the server greeting and start issuing commands.
+
+    See the {{!ex}examples}. *)
 
 val src : connection -> string -> int -> int -> unit
 (** [src c s i l] provides [c] with input taken from [l] bytes from [s] starting
@@ -963,10 +974,29 @@ val dst_rem : connection -> int
     current output buffer of [c]. *)
 
 val run : connection ->
-  [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] ->
-  [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
-(** [run c v] is:
+  [ `Cmd of command
+  | `Await
+  | `Idle
+  | `Idle_done
+  | `Authenticate of authenticator ] -> [ `Untagged of untagged
+                                        | `Ok
+                                        | `Error of error
+                                        | `Await_src
+                                        | `Await_dst ]
+(** [run c v] performs [v] on the connection [c].  The meaning of the different values
+    of [v] is:
+    {ul
+    {- [`Cmd c]: execute the {!command} [c].}
+    {- [`Await]: perform periodic IO processing to complete the execution of currently
+       executing command.}
+    {- [`Idle]: start IDLE command.  When this command is executing the client will receive
+       a stream of incoming untagged {{!untagged}responses} until IDLE ends.  IDLE can end by server
+       decision of by passing [v = `Idle_run].  See the relevent
+       {{:https://tools.ietf.org/html/rfc2177}RFC} and the {{!ex}examples} for more details.}
+    {- [`Idle_done]: stop IDLE command.}
+    {- [`Authenticate a]: perform SASL authentication using the {!authenticator} [a].}}
 
+    The value of [run c v] is:
     {ul
     {- [`Untagged u] if an untagged {{!untagged}response} has been received from the
        server.}
@@ -979,6 +1009,11 @@ val run : connection ->
        {!src} to provide a new buffer and then call {!run} with [`Await].}
     {- [`Await_dst] if the connection needs more output storage.  The client must use
        {!dst} to provide a new buffer and then call {!run} with [`Await].}}
+
+    It is an error to start a new command (either a [`Cmd], [`Idle] or
+    [`Authenticate]) while another one is in progress.  An exception to this rule is
+    that [`Idle_done] can be executed while [`Idle] is in progress in order to
+    exit [IDLE] mode.
 
     See the {{!ex}examples} for more details. *)
 
