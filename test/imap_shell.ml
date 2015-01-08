@@ -1,11 +1,4 @@
-(*
- * imap_shell.ml
- * --------
- * Copyright : (c) 2015, Nicolas Ojeda Bar <n.oje.bar@gmail.com>
- * Licence   : MIT
- *
- * This file is a part of ocaml-imap
- *)
+(* this code is in the public domain *)
 
 let io_buffer_size = 65 * 1024
 
@@ -41,8 +34,8 @@ let run c v =
         Imap.dst c.c c.o 0 (Bytes.length c.o);
         loop (Imap.run c.c `Await)
     | `Untagged _ as r -> Lwt.return r
-    | `Ok -> Lwt.return `Ok
-    | `Error (`Decode_error (`Expected_char (_, n))) as e ->
+    | `Ok _ -> Lwt.return `Ok
+    | `Error (`Decode_error (`Expected_char _, _, n)) as e ->
         LTerm.eprintlf "ERROR near %d: %S" n
           (String.sub c.i n (min 10 (Bytes.length c.i - n))) >>= fun () ->
         Lwt.return e
@@ -644,91 +637,10 @@ open LTerm_style
 open LTerm_text
 open LTerm_geom
 
-(* +-----------------------------------------------------------------+
-   | Prompt creation                                                 |
-   +-----------------------------------------------------------------+ *)
-
-(* The function [make_prompt] creates the prompt. Parameters are:
-
-   - size: the current size of the terminal.
-   - exit_code: the exit code of the last executed command.
-   - time: the current time. *)
-let make_prompt size exit_code time =
-  let tm = Unix.localtime time in
-  let code = string_of_int exit_code in
-
-  (* Replace the home directory by "~" in the current path. *)
-  let path = Sys.getcwd () in
-  let path =
-    try
-      let home = Sys.getenv "HOME" in
-      if Zed_utf8.starts_with path home then
-        Zed_utf8.replace path 0 (Zed_utf8.length home) "~"
-      else
-        path
-    with Not_found ->
-      path
-  in
-
-  (* Shorten the path if it is too large for the size of the
-     terminal. *)
-  let path_len = Zed_utf8.length path in
-  let size_for_path = size.cols - 24 - Zed_utf8.length code in
-  let path =
-    if path_len > size_for_path then
-      if size_for_path >= 2 then
-        ".." ^ Zed_utf8.after path (path_len - size_for_path + 2)
-      else
-        path
-    else
-      path
-  in
-
-  eval [
-    B_bold true;
-
-    B_fg lcyan;
-    S"─( ";
-    B_fg lmagenta; S(Printf.sprintf "%02d:%02d:%02d" tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec); E_fg;
-    S" )─< ";
-    B_fg lyellow; S path; E_fg;
-    S" >─";
-    S(Zed_utf8.make
-        (size.cols - 24 - Zed_utf8.length code - Zed_utf8.length path)
-        (UChar.of_int 0x2500));
-    S"[ ";
-    B_fg(if exit_code = 0 then lwhite else lred); S code; E_fg;
-    S" ]─";
-    E_fg;
-    S"\n";
-
-    B_fg lred; S(try Sys.getenv "USER" with Not_found -> ""); E_fg;
-    B_fg lgreen; S"@"; E_fg;
-    B_fg lblue; S(Unix.gethostname ()); E_fg;
-    B_fg lgreen; S" $ "; E_fg;
-
-    E_bold;
-  ]
-
-(* +-----------------------------------------------------------------+
-   | Listing binaries of the path for completion                     |
-   +-----------------------------------------------------------------+ *)
-
 module String_set = Set.Make(String)
 
 let space_re = Str.regexp "[ \t]+"
 let split s = Str.split space_re s
-
-(* +-----------------------------------------------------------------+
-   | Customization of the read-line engine                           |
-   +-----------------------------------------------------------------+ *)
-
-(* Signal updated every second with the current time. *)
-let time =
-  let time, set_time = S.create (Unix.time ()) in
-  (* Update the time every second. *)
-  ignore (Lwt_engine.on_timer 1.0 true (fun _ -> set_time (Unix.time ())));
-  time
 
 class read_line ~term ~history = object(self)
   inherit LTerm_read_line.read_line ~history ()
@@ -740,10 +652,6 @@ class read_line ~term ~history = object(self)
     (* self#set_prompt (S.l2 (fun size time -> make_prompt size 345 time) self#size time) *)
 end
 
-(* +-----------------------------------------------------------------+
-   | Main loop                                                       |
-   +-----------------------------------------------------------------+ *)
-
 let make_formatter term =
   let m = Lwt_mutex.create () in
   let open Format in
@@ -751,7 +659,7 @@ let make_formatter term =
   let out_flush () = ignore (Lwt_mutex.with_lock m (fun () -> LTerm.flush term)) in
   make_formatter out_string out_flush
 
-let rec loop term history exit_code =
+let rec loop term history =
   let std_formatter = make_formatter term in
   match_lwt
     try_lwt
@@ -761,38 +669,29 @@ let rec loop term history exit_code =
       return None
   with
     | Some command ->
-        lwt status =
+        lwt () =
           let s = Array.of_list (split command) in
           if Array.length s > 0 then
-            let t = List.find (fun (_, i) -> Term.name i = s.(0)) commands in
-            let r = Term.eval ~help:std_formatter ~err:std_formatter ~argv:s t in
-            match r with
-            | `Version | `Help | `Error _ -> Lwt.return (Unix.WEXITED 1)
-            | `Ok v -> v >>= fun _ -> Lwt.return (Unix.WEXITED 0)
+            try
+              let t = List.find (fun (_, i) -> Term.name i = s.(0)) commands in
+              let r = Term.eval ~help:std_formatter ~err:std_formatter ~argv:s t in
+              match r with
+              | `Version | `Help | `Error _ -> Lwt.return_unit
+              | `Ok v -> v >>= fun _ -> Lwt.return_unit
+            with
+            | Not_found ->
+                LTerm.printlf "Command %S not found!" s.(0)
           else
-          Lwt.return (Unix.WEXITED 0)
-          (* try_lwt *)
-          (*   Lwt_process.exec (Lwt_process.shell command) *)
-          (* with Unix.Unix_error (Unix.ENOENT, _, _) -> *)
-          (*   lwt () = LTerm.fprintls term (eval [B_fg lred; S "command not found"]) in *)
-          (*   return (Unix.WEXITED 127) *)
+          Lwt.return_unit
         in
         LTerm_history.add history command;
         loop
           term
           history
-          (match status with
-             | Unix.WEXITED code -> code
-             | Unix.WSIGNALED code -> code
-             | Unix.WSTOPPED code -> code)
     | None ->
-        loop term history 130
+        loop term history
 
-(* +-----------------------------------------------------------------+
-   | Entry point                                                     |
-   +-----------------------------------------------------------------+ *)
-
-let history_file = Filename.concat (Sys.getenv "HOME") "/.imapsh_history"
+let history_file = Filename.concat (Sys.getenv "HOME") "/.imap_shell_history"
 
 lwt () =
   lwt () = LTerm_inputrc.load () in
@@ -800,6 +699,6 @@ lwt () =
   try_lwt
     lwt () = LTerm_history.load hist history_file in
     lwt term = Lazy.force LTerm.stdout in
-    loop term hist 0
+    loop term hist
   with LTerm_read_line.Interrupt ->
     LTerm_history.save hist ~perm:0o600 history_file

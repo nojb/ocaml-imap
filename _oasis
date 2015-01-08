@@ -15,11 +15,11 @@ Library imap
   Modules:      Imap
   BuildDepends: uutf, base64, uint
 
-Executable imapsh
+Executable imap_shell
   Build$:       true
   Install$:     false
   Path:         test
-  MainIs:       imapsh.ml
+  MainIs:       imap_shell.ml
   BuildDepends: lambda-term, lwt.syntax, lwt, str, cmdliner, imap, lwt.ssl
 
 Executable wait_mail

@@ -314,6 +314,7 @@ type state =
 type untagged =
   [ state
   | `Bye of code * string
+  | `Preauth of code * string
   | `Flags of flag list
   | `List of mbx_flag list * char option * string
   | `Lsub of mbx_flag list * char option * string
@@ -330,7 +331,6 @@ type untagged =
 
 type response =
   [ untagged
-  | `Preauth of code * string
   | `Cont of string
   | `Tagged of string * state ]
 
@@ -555,22 +555,20 @@ module D = struct
   type src = [ `String of string | `Channel of in_channel | `Manual ]
 
   type error =
-    [ `Expected_char of char * int
+    [ `Expected_char of char
     | `Expected_string of string
     | `Unexpected_char of char
     | `Unexpected_string of string
     | `Illegal_char of char
     | `Unexpected_eoi ]
 
-  let pp_error ppf = function
-    | `Expected_char (c, i)-> pp ppf "@[Expected@ character@ %C near %d@]" c i
+  let pp_error ppf (e, _, _) = match e with
+    | `Expected_char c -> pp ppf "@[Expected@ character@ %C@]" c
     | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
     | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
     | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
     | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
     | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
-
-  type decode = [ `Ok of response | `Await | `Error of error ]
 
   let pp_decode ppf = function
     | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
@@ -583,7 +581,7 @@ module D = struct
       mutable i_pos : int;
       mutable i_max : int;
       buf : Buffer.t;
-      mutable k : decoder -> [ `Ok of response | `Await | `Error of error ] }
+      mutable k : decoder -> [ `Ok of response | `Await | `Error of error * string * int ] }
 
   external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
 
@@ -596,20 +594,20 @@ module D = struct
     in
     loop 0
 
-  let err e = `Error e
-  let err_expected c d = err (`Expected_char (c, d.i_pos))
-  let err_expected_s s _ = err (`Expected_string s)
-  let err_unexpected_s a _ = err (`Unexpected_string a)
-  let err_unexpected c _ = err (`Unexpected_char c)
-  let err_quoted c _ = err (`Illegal_char c)
-  let err_unexpected_eoi = err `Unexpected_eoi
+  let err e d = `Error (e, d.i, d.i_pos)
+  let err_expected c d = err (`Expected_char c) d
+  let err_expected_s s d = err (`Expected_string s) d
+  let err_unexpected_s a d = err (`Unexpected_string a) d
+  let err_unexpected c d = err (`Unexpected_char c) d
+  let err_quoted c d = err (`Illegal_char c) d
+  let err_unexpected_eoi d = err `Unexpected_eoi d
 
   let ret x _ = `Ok x
   let cur d = d.i.[d.i_pos]
   let badd d = Buffer.add_char d.buf $ cur d
   let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
   let decode d = d.k d
-  let rec eoi d = d.k <- (fun _ -> err_unexpected_eoi)
+  let rec eoi d = d.k <- err_unexpected_eoi
 
   let src d s j l =                                     (* set [d.i] with [s]. *)
     if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds" else
@@ -1897,13 +1895,14 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Cmd of string * command | `Idle_done | `Auth_step of string | `Await ]
+    [ `Cmd of string * command | `Idle_done | `Auth_step of string | `Auth_error | `Await ]
 
   let pp_encode : _ -> encode -> _ = fun ppf e -> match e with
     | `Cmd _ -> pp ppf "`Cmd" (* FIXME *)
     | `Await -> pp ppf "`Await"
     | `Idle_done -> pp ppf "`Idle_done"
     | `Auth_step _ -> pp ppf "`Auth_step"
+    | `Auth_error -> pp ppf "`Auth_error"
 
   type encoder =
     { dst : dst;
@@ -1920,7 +1919,7 @@ module E = struct
 
   let partial k e = function
     | `Await -> k e
-    | `Cmd _ | `Idle_done | `Auth_step _ ->
+    | `Cmd _ | `Idle_done | `Auth_step _ | `Auth_error ->
         invalid_arg "cannot encode now, use `Await first"
 
   let flush k e = match e.dst with
@@ -2180,6 +2179,7 @@ module E = struct
     | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf (flush encode_loop)))) e
     | `Idle_done -> w "DONE" (w_crlf (flush encode_loop)) e
     | `Auth_step data -> w data (w_crlf (flush encode_loop)) e
+    | `Auth_error -> w "*" (w_crlf (flush encode_loop)) e
 
   and encode_loop e = e.k <- encode_; `Ok
 
@@ -2198,18 +2198,18 @@ end
 
 type authenticator =
   { name : string;
-    step : string -> [ `Ok of [ `Last | `More ] * string | `Error of string ] }
+    step : string -> [ `Ok of string | `Error of string ] }
 
 let plain user pass =
-  let step _ = `Ok (`Last, Printf.sprintf "\000%s\000%s" user pass) in
+  let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
   { name = "PLAIN"; step }
 
 let xoauth2 user token =
   let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
   let stage = ref `Begin in
   let step _ = match !stage with
-    | `Begin -> stage := `Error; `Ok (`Last, s)
-    | `Error -> `Ok (`Last, "") (* CHECK *)
+    | `Begin -> stage := `Error; `Ok s
+    | `Error -> `Ok "" (* CHECK *)
   in
   { name = "XOAUTH2"; step }
 
@@ -2217,23 +2217,28 @@ let xoauth2 user token =
 
 type error =
   [ `Incorrect_tag of string * string
-  | `Decode_error of D.error
+  | `Decode_error of D.error * string * int
   | `Unexpected_cont
   | `Bad_greeting
   | `Auth_error of string
-  | `Bad
-  | `No ]
+  | `Bad of code * string
+  | `No of code * string ]
 
-let pp_error ppf = function
+let pp_error ppf : error -> _ = function
   | `Incorrect_tag (exp, tag) -> pp ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
   | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" D.pp_error e
   | `Unexpected_cont -> pp ppf "@[Unexpected continuation request@]"
   | `Bad_greeting -> pp ppf "@[Bad greeting@]"
   | `Auth_error s -> pp ppf "@[Authentication error: %s@]" s
-  | `Bad -> pp ppf "@[Server did not understand request@]"
-  | `No -> pp ppf "@[Server denied the request@]"
+  | `Bad (c, t) -> pp ppf "@[BAD:@ %a@ %S@]" pp_code c t
+  | `No (c, t) -> pp ppf "@[NO:@ %a@ %S@]" pp_code c t
 
-type result = [ `Untagged of untagged | `Ok | `Error of error | `Await_src | `Await_dst ]
+type result =
+  [ `Untagged of untagged
+  | `Ok of code * string
+  | `Error of error
+  | `Await_src
+  | `Await_dst ]
 
 type connection =
   { e : E.encoder;
@@ -2248,8 +2253,9 @@ let dst_rem c = E.dst_rem c.e
 
 let ret v k c = c.k <- k; v
 let run c = c.k c
+let fatal _ = invalid_arg "connection should not be used"
 
-let rec decode_to_cont k c = (* FIXME error ?? *)
+let rec decode_to_cont k c = (* FIXME signal error ? *)
   decode false (function `Cont _ -> k | _ -> decode_to_cont k) c
 
 and encode x k c =
@@ -2271,18 +2277,18 @@ and decode idling k c =
   and loop = function
     | `Ok x -> k x c
     | `Await -> ret `Await_src partial c
-    | `Error e -> ret (`Error (`Decode_error e)) (fun _ -> assert false) c (* FIXME *)
+    | `Error e -> ret (`Error (`Decode_error e)) fatal c (* FIXME resume on the next line of input *)
   in
   loop (D.decode c.d)
 
 let rec h_tagged tag r c =
   let cur = string_of_int c.tag in
   c.tag <- c.tag + 1;
-  if tag <> cur then ret (`Error (`Incorrect_tag (cur, tag))) (fun _ -> assert false) c else
+  if tag <> cur then ret (`Error (`Incorrect_tag (cur, tag))) fatal c else (* FIXME alert the user and continue ? *)
   match r with
-  | `Ok code -> ret `Ok h_response_loop c
-  | `Bad code -> ret (`Error `Bad) h_response_loop c
-  | `No code -> ret (`Error `No) h_response_loop c
+  | `Ok _ as ok -> ret ok h_response_loop c
+  | `Bad _ as bad -> ret (`Error bad) h_response_loop c
+  | `No _ as no -> ret (`Error no) h_response_loop c
 
 and h_response idling c =
   let rec partial c = function
@@ -2293,35 +2299,30 @@ and h_response idling c =
   and loop r c = match r with
     | #untagged as r      -> ret (`Untagged r) partial c
     | `Cont _ when idling -> decode true loop c
-    | `Cont _             -> ret (`Error `Unexpected_cont) (fun _ -> assert false) c (* r_response_loop c *)
+    | `Cont _             -> ret (`Error `Unexpected_cont) fatal c (* FIXME ignore and continue ? *)
     | `Tagged (g, r)      -> h_tagged g r c
-    | `Preauth _          -> assert false
   in
   decode idling loop c
 
 and h_authenticate auth c =
-  let rec partial needs_more c = function
-    | `Await -> decode false (loop needs_more) c
+  let rec partial c = function
+    | `Await -> decode false loop c
     | `Idle | `Idle_done | `Cmd _
     | `Authenticate _ -> invalid_arg "command in progress"
-  and loop needs_more r c = match r with
-    | #untagged as r -> ret (`Untagged r) (partial needs_more) c
+  and loop r c = match r with
+    | #untagged as r -> ret (`Untagged r) partial c
     | `Tagged (g, r) -> h_tagged g r c
-    | `Cont _ when not needs_more ->
-        ret (`Error (`Auth_error "bad negotiation")) (fun _ -> assert false) c
     | `Cont data ->
         let data = B64.decode data in
         begin match auth.step data with
-        | `Ok (needs_more, data) ->
+        | `Ok data ->
             let data = B64.encode ~pad:true data in
-            let needs_more = match needs_more with `Last -> false | `More -> true in
-            encode (`Auth_step data) (decode false (loop needs_more)) c
+            encode (`Auth_step data) (decode false loop) c
         | `Error s ->
-            ret (`Error (`Auth_error s)) (fun _ -> assert false) c
+            encode `Auth_error (ret (`Error (`Auth_error s)) partial) c
         end
-    | `Preauth _ -> assert false
   in
-  decode false (loop true) c
+  decode false loop c
 
 and h_response_loop c = function
   | `Cmd cmd   -> encode (`Cmd (string_of_int c.tag, cmd)) (h_response false) c
@@ -2329,18 +2330,16 @@ and h_response_loop c = function
   | `Idle_done -> invalid_arg "no idle in progress"
   | `Authenticate auth ->
       encode (`Cmd (string_of_int c.tag, `Authenticate auth.name)) (h_authenticate auth) c
-  | `Await     -> `Ok
+  | `Await     -> `Ok (`None, "")
 
 let h_greetings c = function
   | `Cmd _ | `Idle | `Idle_done | `Authenticate _ -> invalid_arg "waiting for greetings"
   | `Await ->
       let hello r c = match r with
-        | `Ok (d, t)  -> ret `Ok h_response_loop c
-        | _ -> ret (`Error `Bad_greeting) (fun _ -> assert false) c (* FIXME *)
+        | `Ok _ as ok -> ret ok h_response_loop c
+        | _ -> ret (`Error `Bad_greeting) fatal c (* FIXME continue until [`Ok] ? *)
       in
       decode false hello c
 
 let connection () =
   { e = E.encoder `Manual; d = D.decoder `Manual; tag = 0; k = h_greetings }
-
-(* let starttls = writes "STARTTLS" e *)

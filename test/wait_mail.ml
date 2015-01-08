@@ -23,7 +23,7 @@ let run sock i o c v =
         Imap.dst c o 0 (Bytes.length o);
         loop (Imap.run c `Await)
     | `Untagged _ as r -> r
-    | `Ok -> `Ok
+    | `Ok _ -> `Ok
     | `Error e ->
         Format.eprintf "@[IMAP Error: %a@]@." Imap.pp_error e;
         failwith "imap error"

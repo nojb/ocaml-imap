@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 339efd328e597adc747a744b037e8f05)
+# DO NOT EDIT (digest: 0207468abbf16b978a9560da8366fedc)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -19,17 +19,17 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_base64
 <lib/*.ml{,i,y}>: pkg_uint
 <lib/*.ml{,i,y}>: pkg_uutf
-# Executable imapsh
-"test/imapsh.byte": pkg_base64
-"test/imapsh.byte": pkg_cmdliner
-"test/imapsh.byte": pkg_lambda-term
-"test/imapsh.byte": pkg_lwt
-"test/imapsh.byte": pkg_lwt.ssl
-"test/imapsh.byte": pkg_lwt.syntax
-"test/imapsh.byte": pkg_str
-"test/imapsh.byte": pkg_uint
-"test/imapsh.byte": pkg_uutf
-"test/imapsh.byte": use_imap
+# Executable imap_shell
+"test/imap_shell.byte": pkg_base64
+"test/imap_shell.byte": pkg_cmdliner
+"test/imap_shell.byte": pkg_lambda-term
+"test/imap_shell.byte": pkg_lwt
+"test/imap_shell.byte": pkg_lwt.ssl
+"test/imap_shell.byte": pkg_lwt.syntax
+"test/imap_shell.byte": pkg_str
+"test/imap_shell.byte": pkg_uint
+"test/imap_shell.byte": pkg_uutf
+"test/imap_shell.byte": use_imap
 <test/*.ml{,i,y}>: pkg_lambda-term
 <test/*.ml{,i,y}>: pkg_lwt
 <test/*.ml{,i,y}>: pkg_lwt.ssl

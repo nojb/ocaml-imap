@@ -402,7 +402,7 @@ type status_response =
 type state =
   [ `Ok of code * string | `No of code * string | `Bad of code * string ]
 
-(** {3 Server responses.}
+(** {3 Server responses}
 
     Sending a command will typically result in a sequence of [untagged] items
     being sent back, ending in a [`Tagged] response.  Normally the user will not
@@ -415,6 +415,10 @@ type untagged =
 
   | `Bye of code * string
   (** The server will be closing the connection soon. *)
+
+  | `Preauth of code * string
+  (** The session as been Pre-Authorized and no authentication is necessary.
+      This should not occur in normal circumstances. *)
 
   | `Flags of flag list
   (** The [`Flags] response occurs as a result of a {!select} or {!examine}
@@ -490,10 +494,6 @@ type untagged =
 type response =
   [ untagged
   (** Untagged data response. *)
-
-  | `Preauth of code * string
-  (** The session as been Pre-Authorized and no authentication is necessary.
-      This should not occur in normal circumstances. *)
 
   | `Cont of string
   (** Continuation request: the server is waiting for client data.  The client
@@ -853,6 +853,20 @@ val examine : ?condstore:bool -> string -> command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
+(** {2 Fetch commands}
+
+    The IMAP [FETCH] command is used to retrieve the data associated to a
+    message (or a set of messages).  Messages are identified either by their
+    sequence number (i.e., their position in the mailbox), or by their unique
+    identification number (UID).
+
+    For those servers that support the [CONDSTORE] extension, one can pass a
+    mod-sequence value [?changed] to restrict the set of affected messages to
+    those that are not yet known by the client.  One can further use the
+    [?vanished] argument to learn of recently expunged messages.  It is a
+    programmer error to set [?vanished] to [true] but not to pass a value for
+    [?changed]. *)
+
 val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch_query list -> command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
@@ -861,8 +875,7 @@ val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch
     the set of returned messages to those whose [CHANGEDSINCE] mod-sequence
     value is at least the passed value (requires the [CONDSTORE] extension).
     The [vanished] optional parameter specifies whether one wants to receive
-    [`Vanished] responses as well.  It is an error to request [`Vanished]
-    responses if no value is passed to [?changed]. *)
+    [`Vanished] responses as well. *)
 
 val fetch_all  : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
 (** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
@@ -875,6 +888,8 @@ val fetch_fast : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> comma
 val fetch_full : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
 (** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
     [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
+
+(** {2 Store commands} *)
 
 val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
@@ -911,11 +926,26 @@ val enable : capability list -> command
 
 (** {1 Authenticators}
 
-    These are used to implement SASL authentication. *)
+    These are used to implement SASL authentication. SASL authentication is
+    initiated by passing [`Authenticate] to {!run} and typically would occur
+    right after receiving the server greeting.
+
+    The authentication protocol exchange consists of a series of server
+    challenges and client responses that are specific to the authentication
+    mechanism.  If [a] is the authenticator being used, [a.step] will be called
+    with each of the server's challenges.  The return value of [a.step] can
+    signal an error or give the corresponding response.
+
+    [step] functions do {e not} have to perform base64-encoding and decoding, as
+    this is handled automatically by the library.
+
+    The implementation of particular SASL authenticaton methods is outside the
+    scope of this library and should be provided independently. Only [PLAIN] and
+    [XOAUTH2] are provided as way of example. *)
 
 type authenticator =
   { name : string;
-    step : string -> [ `Ok of [ `Last | `More ] * string | `Error of string ] }
+    step : string -> [ `Ok of string | `Error of string ] }
 
 val plain : string -> string -> authenticator
 (** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
@@ -930,24 +960,53 @@ val xoauth2 : string -> string -> authenticator
 
 type error =
   [ `Incorrect_tag of string * string
+  (** The server response tag does not have a matching message tag.  The
+      connection should be closed. *)
+
   | `Decode_error of
-      [ `Expected_char of char * int
+      [ `Expected_char of char
       | `Expected_string of string
       | `Unexpected_char of char
       | `Unexpected_string of string
       | `Illegal_char of char
-      | `Unexpected_eoi ]
+      | `Unexpected_eoi ] * string * int
+  (** Decoding error. It contains the reason, the curren tinput buffer and the
+      current position.  The connection should be closed after this.  In some
+      cases it might be possible to continue fater a decoding error, but this is
+      not yet implemented. *)
+
   | `Unexpected_cont
+  (** A continuation request '+' is received from the server at an unexpected
+      time.  The connection should be closed after seeing this error, as there is no
+      safe way to continue. *)
+
   | `Bad_greeting
+  (** The server did not send a valid greeting message.  The connection should
+      be closed. *)
+
   | `Auth_error of string
-  | `Bad
-  | `No ]
+  (** An client-side SASL authentication error ocurred.  This error can only
+      appear when using the SASL-based [`Authenticate] {{!run}command.}  The
+      error is communicated to the server and the server responds with a [BAD]
+      response.  Thus, after receiving this error the client should pass
+      [`Await] to {!run} until [`Error `Bad] is received, and then take
+      appropiate action. *)
+
+  | `Bad of code * string
+  (** The server could not parse the request. *)
+
+  | `No of code * string
+  (** The server could not perform the requested action. *) ]
 
 val pp_error : Format.formatter -> error -> unit
 
+(** {3 Connections}
+
+    {{!connection}Connections} manage the encoder and decoder states and keeps
+    track of message tags. *)
+
 type connection
-(** The type for connections.  It manages the encoder and decoder states and
-    keeps track of message tags. *)
+(** The type for connections. *)
 
 val connection : unit -> connection
 (** [connection ()] creates a new connection object.  The connection should be
@@ -959,6 +1018,11 @@ val connection : unit -> connection
     process the server greeting and start issuing commands.
 
     See the {{!ex}examples}. *)
+
+(** {3 I/O interface}
+
+    The following functions are used to provide input and/or output buffers to
+    {!run} when it returns [`Await_src] and/or [`Await_dst]. *)
 
 val src : connection -> string -> int -> int -> unit
 (** [src c s i l] provides [c] with input taken from [l] bytes from [s] starting
@@ -972,13 +1036,39 @@ val dst_rem : connection -> int
 (** [dst_rem c] is the number of bytes still available for output in the
     current output buffer of [c]. *)
 
+(** {3 Executing commands}
+
+    The {!run} function encodes the connection state machine.  A connection [c]
+    can be in three states: {e awaiting the server greeting}, {e executing a
+    command}, or {e awaiting commands}.
+
+    After {{!value:connection}creation}, [c] is {e awaiting the server
+    greeting.}  {!run} must be passed [`Await] until getting back [`Ok] which
+    signals that the greeting has been received and [c] is now {e awaiting
+    commands.}  A command can then be initiated by passing [`Cmd], [`Idle] or
+    [`Authenticate].  After a command is initiated, [c] will be {e executing a
+    command} and {!run} will return a sequence of [`Await_src] and/or
+    [`Await_dst] values interspaced with [`Untagged] values, and finally ending
+    with [`Ok].  The client should call {!run} with [`Await] to step through
+    this process (possibly after providing more input and output storage using
+    {!src} and {!dst}).
+
+    After returning [`Ok], [c] is again {e awaiting commands} and the process can be
+    reinitiated.
+
+    It is an error to execute a command if [c] is not {e awaiting commands.}  The
+    only exception to this is that [`Idle_done] can be executed while [`Idle] is
+    in progress.
+
+    See the {{!ex}examples.} *)
+
 val run : connection ->
   [ `Cmd of command
   | `Await
   | `Idle
   | `Idle_done
   | `Authenticate of authenticator ] -> [ `Untagged of untagged
-                                        | `Ok
+                                        | `Ok of code * string
                                         | `Error of error
                                         | `Await_src
                                         | `Await_dst ]
@@ -1007,14 +1097,7 @@ val run : connection ->
     {- [`Await_src] if the connection is awaiting for more input.  The client must use
        {!src} to provide a new buffer and then call {!run} with [`Await].}
     {- [`Await_dst] if the connection needs more output storage.  The client must use
-       {!dst} to provide a new buffer and then call {!run} with [`Await].}}
-
-    It is an error to start a new command (either a [`Cmd], [`Idle] or
-    [`Authenticate]) while another one is in progress.  An exception to this rule is
-    that [`Idle_done] can be executed while [`Idle] is in progress in order to
-    exit [IDLE] mode.
-
-    See the {{!ex}examples} for more details. *)
+       {!dst} to provide a new buffer and then call {!run} with [`Await].}} *)
 
 (** {1:limitations Supported extensions and limitations}
 
@@ -1041,78 +1124,86 @@ val run : connection ->
     new message arrives.  When a new message arrives, it outputs the sender's name
     and address and stops.
 
+    See the
+    {{:https://github.com/nojb/ocaml-imap/blob/master/test/wait_mail.ml}wait_mail.ml}
+    file for a more complete version of this example.
+
+    Setting [debug_flag := true] will output all the data exchanged with the
+    server which can be quite instructive.
+
+{[
+let debug_flag = ref false
+]}
+
+    The function [run] takes care of I/O.  Its return type is [[ `Untagged of
+    untagged | `Ok ]].
+
+{[
+  let run sock i o c v =
+    let rec write_fully s off len =
+      if len > 0 then
+        let rc = Ssl.write sock s off len in
+        write_fully s (off + rc) (len - rc)
+    in
+    let rec loop = function
+      | `Await_src ->
+          let rc = Ssl.read sock i 0 (Bytes.length i) in
+          if !debug_flag then Format.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
+          Imap.src c i 0 rc;
+          loop (Imap.run c `Await)
+      | `Await_dst ->
+          let rc = Bytes.length o - Imap.dst_rem c in
+          write_fully o 0 rc;
+          if !debug_flag then Format.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
+          Imap.dst c o 0 (Bytes.length o);
+          loop (Imap.run c `Await)
+      | `Untagged _ as r -> r
+      | `Ok _ -> `Ok
+      | `Error e ->
+          Format.eprintf "@[IMAP Error: %a@]@." Imap.pp_error e;
+          failwith "imap error"
+    in
+    loop (Imap.run c v)
+]}
+
     In order to detect new messages, we record the next UID value of the
     [INBOX] mailbox as soon as we open it.  Then we wait for the server to
     alert us of activity in this mailbox using the {{!run}idle} command.  And we look
     for messages with UIDs larger than this one using the {!search} command.
 
-    Setting [debug_flag := true] will output all the data exchanged with the
-    server which can be quite instructive.  See the
-    {{:https://github.com/nojb/ocaml-imap/blob/master/test/wait_mail.ml}wait_mail.ml}
-    file for a more complete example.
-
 {[
-let debug_flag = ref false
+  let () = Ssl.init ()
 
-let run sock i o c v =
-  let rec write_fully s off len =
-    if len > 0 then
-      let rc = Ssl.write sock s off len in
-      write_fully s (off + rc) (len - rc)
-  in
-  let rec loop = function
-    | `Await_src ->
-        let rc = Ssl.read sock i 0 (Bytes.length i) in
-        if !debug_flag then Format.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
-        Imap.src c i 0 rc;
-        loop (Imap.run c `Await)
-    | `Await_dst ->
-        let rc = Bytes.length o - Imap.dst_rem c in
-        write_fully o 0 rc;
-        if !debug_flag then Format.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
-        Imap.dst c o 0 (Bytes.length o);
-        loop (Imap.run c `Await)
-    | `Untagged _ as r -> r
-    | `Ok -> `Ok
-    | `Error e ->
-        Format.eprintf "@[IMAP Error: %a@]@." Imap.pp_error e;
-        failwith "imap error"
-  in
-  loop (Imap.run c v)
-
-let () =
-  Ssl.init ()
-
-let wait_mail host port user pass mbox =
-  let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-  let he = Unix.gethostbyname host in
-  Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
-  let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-  let sock = Ssl.embed_socket fd ctx in
-  Ssl.connect sock;
-  let c = Imap.connection `Manual `Manual in
-  let i = Bytes.create io_buffer_size in
-  let o = Bytes.create io_buffer_size in
-  Imap.dst c o 0 (Bytes.length o);
-  match run sock i o c `Await with
-  | `Ok ->
-      let rec logout = function
-        | `Untagged _ -> logout (run sock i o c `Await)
-        | `Ok -> ()
-      in
-      let rec idle uidn = function
-        | `Untagged (`Exists _) -> idle_done uidn (run sock i o c (`Idle_done))
-        | `Untagged _ -> idle uidn (run sock i o c `Await) | `Ok -> idle_done uidn `Ok
-      and idle_done uidn = function
-        | `Untagged _ -> idle_done uidn (run sock i o c `Await)
-        | `Ok ->
-            search uidn Uint32.zero
-              (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, Uint32.max_int]))))
-      and search uidn n = function
-        | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
-        | `Untagged _ -> search uidn n (run sock i o c `Await)
-        | `Ok ->
-            (* n = 0 means that we couldn't find the message after all. *)
+  let wait_mail host port user pass mbox =
+    let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+    let he = Unix.gethostbyname host in
+    Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
+    let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
+    let sock = Ssl.embed_socket fd ctx in
+    Ssl.connect sock;
+    let c = Imap.connection `Manual `Manual in
+    let i = Bytes.create io_buffer_size in
+    let o = Bytes.create io_buffer_size in
+    Imap.dst c o 0 (Bytes.length o);
+    match run sock i o c `Await with
+    | `Ok ->
+        let rec logout = function
+          | `Untagged _ -> logout (run sock i o c `Await)
+          | `Ok -> ()
+        in
+        let rec idle uidn = function
+          | `Untagged (`Exists _) -> idle_done uidn (run sock i o c (`Idle_done))
+          | `Untagged _ -> idle uidn (run sock i o c `Await) | `Ok -> idle_done uidn `Ok
+        and idle_done uidn = function
+          | `Untagged _ -> idle_done uidn (run sock i o c `Await)
+          | `Ok ->
+              search uidn Uint32.zero
+                (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, Uint32.max_int]))))
+        and search uidn n = function
+          | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
+          | `Untagged _ -> search uidn n (run sock i o c `Await)
+          | `Ok ->
+              (* n = 0 means that we couldn't find the message after all. *)
             if n = Uint32.zero then idle uidn (run sock i o c `Idle) else
             let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, n] [`Envelope] in
             fetch uidn n None (run sock i o c (`Cmd cmd))
