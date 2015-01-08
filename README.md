@@ -1,4 +1,4 @@
-# OCaml-IMAP: a client IMAP4rev1 library for OCaml
+# ocaml-imap -- a client IMAP4rev1 library for OCaml
 
 `ocaml-imap` is a non-blocking IMAP codec to decode and encode the IMAP4rev1
 email protocol.
@@ -36,7 +36,7 @@ and accessed at `api.docdir/index.html`.
 Sample programs are located in the `test` directory of the
 distribution. They can be built with:
 
-    ocamlbuild test/tests.otarget
+    make test
 
 The resulting binaries are in the root directory:
 

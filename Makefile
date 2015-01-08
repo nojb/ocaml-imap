@@ -10,9 +10,6 @@ doc: setup.data build
 	$(SETUP) -doc $(DOCFLAGS)
 	cp doc/style.css api.docdir/
 
-test: setup.data build
-	$(SETUP) -test $(TESTFLAGS)
-
 all:
 	$(SETUP) -all $(ALLFLAGS)
 
@@ -51,3 +48,6 @@ gh-pages: doc
 	git -C .gh-pages commit -m "Update Pages"
 	git -C .gh-pages push origin gh-pages -f
 	rm -rf .gh-pages
+
+test: build
+	ocamlbuild test/tests.otarget

@@ -1,3 +1,8 @@
+1.0 (2015-01-10)
+
+  * Complete rewrite (again!)
+  * Remove high-level api
+
 0.20.0 (2014-09-26)
 
   * Complete rewrite
