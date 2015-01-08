@@ -560,7 +560,6 @@ module D = struct
     | `Unexpected_char of char
     | `Unexpected_string of string
     | `Illegal_char of char
-    | `Illegal_range
     | `Unexpected_eoi ]
 
   let pp_error ppf = function
@@ -569,7 +568,6 @@ module D = struct
     | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
     | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
     | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
-    | `Illegal_range       -> pp ppf "@[Illegal@ range@]" (* FIXME *)
     | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
 
   type decode = [ `Ok of response | `Await | `Error of error ]
@@ -604,7 +602,6 @@ module D = struct
   let err_unexpected_s a _ = err (`Unexpected_string a)
   let err_unexpected c _ = err (`Unexpected_char c)
   let err_quoted c _ = err (`Illegal_char c)
-  let err_illegal_range _ = err `Illegal_range
   let err_unexpected_eoi = err `Unexpected_eoi
 
   let ret x _ = `Ok x
@@ -959,7 +956,7 @@ module D = struct
   let p_set k d =
     let rg k d =
       let nxt n d = if cur d = ':' then readc $ p_uint32 (fun m -> k (n, m)) $ d else k $ (n, n) $ d in
-      if cur d = '*' then err_illegal_range d else
+      (* if cur d = '*' then err_illegal_range d else *)
       p_uint32 nxt d
     in
     let rec loop acc d =

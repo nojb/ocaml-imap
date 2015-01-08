@@ -936,7 +936,6 @@ type error =
       | `Unexpected_char of char
       | `Unexpected_string of string
       | `Illegal_char of char
-      | `Illegal_range
       | `Unexpected_eoi ]
   | `Unexpected_cont
   | `Bad_greeting
