@@ -975,6 +975,16 @@ val authenticate : authenticator -> command
     See {!authenticator} for details on the interface with particular [SASL]
     mechanisms. *)
 
+val idle : unit -> command * unit Lazy.t
+(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
+    command is executing the client will receive a stream of incoming untagged
+    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
+    of can be stopped by the client by forcing [stop].  If [stop] is forced
+    after [IDLE] ended, then it is a no-op.
+
+    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
+    {{!ex}examples} for more details. *)
+
 (** {1 Running commands and receiving responses} *)
 
 type error =
@@ -1078,25 +1088,17 @@ val dst_rem : connection -> int
     See the {{!ex}examples.} *)
 
 val run : connection ->
-  [ `Cmd of command
-  | `Await
-  | `Idle
-  | `Idle_done ] -> [ `Untagged of untagged
-                    | `Ok of code * string
-                    | `Error of error
-                    | `Await_src
-                    | `Await_dst ]
+  [ `Cmd of command | `Await ] -> [ `Untagged of untagged
+                                  | `Ok of code * string
+                                  | `Error of error
+                                  | `Await_src
+                                  | `Await_dst ]
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul
     {- [`Cmd c]: execute the {!command} [c].}
     {- [`Await]: perform periodic IO processing to complete the execution of currently
-       executing command.}
-    {- [`Idle]: start IDLE command.  When this command is executing the client will receive
-       a stream of incoming untagged {{!untagged}responses} until IDLE ends.  IDLE can end by server
-       decision of by passing [v = `Idle_run].  See the relevent
-       {{:https://tools.ietf.org/html/rfc2177}RFC} and the {{!ex}examples} for more details.}
-    {- [`Idle_done]: stop IDLE command.}}
+       executing command.}}
 
     The value of [run c v] is:
     {ul

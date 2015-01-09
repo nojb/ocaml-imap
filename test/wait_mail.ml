@@ -50,11 +50,9 @@ let wait_mail host port user pass mbox =
         | `Untagged _ -> logout (run sock i o c `Await)
         | `Ok -> ()
       in
-      let rec idle uidn = function
-        | `Untagged (`Exists _) -> idle_done uidn (run sock i o c (`Idle_done))
-        | `Untagged _ -> idle uidn (run sock i o c `Await) | `Ok -> idle_done uidn `Ok
-      and idle_done uidn = function
-        | `Untagged _ -> idle_done uidn (run sock i o c `Await)
+      let rec idle stop uidn = function
+        | `Untagged (`Exists _) -> Lazy.force stop; idle stop uidn (run sock i o c `Await)
+        | `Untagged _ -> idle stop uidn (run sock i o c `Await)
         | `Ok ->
             search uidn Uint32.zero
               (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, None]))))
@@ -62,7 +60,10 @@ let wait_mail host port user pass mbox =
         | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
         | `Untagged _ -> search uidn n (run sock i o c `Await)
         | `Ok ->
-            if n = Uint32.zero then idle uidn (run sock i o c `Idle) else
+            if n = Uint32.zero then
+              let cmd, stop = Imap.idle () in
+              idle stop uidn (run sock i o c (`Cmd cmd))
+            else
             let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, Some n] [`Envelope] in
             fetch uidn n None (run sock i o c (`Cmd cmd))
       and fetch uidn n name = function
@@ -89,7 +90,9 @@ let wait_mail host port user pass mbox =
       let rec select uidn = function
         | `Untagged (`Ok (`Uid_next uidn, _)) -> select uidn (run sock i o c `Await)
         | `Untagged _ -> select uidn (run sock i o c `Await)
-        | `Ok -> idle uidn (run sock i o c `Idle)
+        | `Ok ->
+            let cmd, stop = Imap.idle () in
+            idle stop uidn (run sock i o c (`Cmd cmd))
       in
       let rec login = function
         | `Untagged _ -> login (run sock i o c `Await)

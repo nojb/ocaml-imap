@@ -365,7 +365,7 @@ let authenticate =
     `P "The $(b,authenticate) command authenticates the user with the IMAP server."
   ] in
   let authenticate user pass =
-    run g (`Authenticate (Imap.plain user pass)) >>= handle_unit
+    run g (`Cmd (Imap.authenticate (Imap.plain user pass))) >>= handle_unit
   in
   Term.(pure authenticate $ user $ password), Term.info "authenticate" ~doc ~man
 
@@ -600,8 +600,9 @@ let idle_doc = "IDLE"
 let idle =
   let doc = idle_doc in
   let idle forever =
-    let h _ = if not forever then run g `Idle_done >>= handle_unit else Lwt.return_unit in
-    run g `Idle >>= handle h
+    let h stop _ = if not forever then Lazy.force stop; Lwt.return_unit in
+    let cmd, stop = Imap.idle () in
+    run g (`Cmd cmd) >>= handle (h stop)
   in
   Term.(pure idle $ forever), Term.info "idle" ~doc
 
