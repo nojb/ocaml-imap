@@ -738,6 +738,38 @@ type status_query =
   | `Highest_modseq
   (** TODO *) ]
 
+(** {1 Authenticators}
+
+    These are used to implement SASL authentication. SASL authentication is
+    initiated by the {!authenticate} command and typically would occur right
+    after receiving the server greeting.
+
+    The authentication protocol exchange consists of a series of server
+    challenges and client responses that are specific to the authentication
+    mechanism.  If [a] is the authenticator being used, [a.step] will be called
+    with each of the server's challenges.  The return value of [a.step] can
+    signal an error or give the corresponding response.
+
+    [step] functions do {e not} have to perform base64-encoding and decoding, as
+    this is handled automatically by the library.
+
+    The implementation of particular SASL authenticaton methods is outside the
+    scope of this library and should be provided independently. Only [PLAIN] and
+    [XOAUTH2] are provided as way of example. *)
+
+type authenticator =
+  { name : string;
+    step : string -> [ `Ok of string | `Error of string ] }
+
+val plain : string -> string -> authenticator
+(** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
+    and password [pass]. *)
+
+val xoauth2 : string -> string -> authenticator
+(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
+    [user] and access token [token].  The access token should be obtained
+    independently. *)
+
 (** {1:commands Commands}
 
     These are the available commands that can be sent to an IMAP server.  Not
@@ -936,37 +968,12 @@ val store_remove_labels : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset
 
 val enable : capability list -> command
 
-(** {1 Authenticators}
-
-    These are used to implement SASL authentication. SASL authentication is
-    initiated by passing [`Authenticate] to {!run} and typically would occur
-    right after receiving the server greeting.
-
-    The authentication protocol exchange consists of a series of server
-    challenges and client responses that are specific to the authentication
-    mechanism.  If [a] is the authenticator being used, [a.step] will be called
-    with each of the server's challenges.  The return value of [a.step] can
-    signal an error or give the corresponding response.
-
-    [step] functions do {e not} have to perform base64-encoding and decoding, as
-    this is handled automatically by the library.
-
-    The implementation of particular SASL authenticaton methods is outside the
-    scope of this library and should be provided independently. Only [PLAIN] and
-    [XOAUTH2] are provided as way of example. *)
-
-type authenticator =
-  { name : string;
-    step : string -> [ `Ok of string | `Error of string ] }
-
-val plain : string -> string -> authenticator
-(** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
-    and password [pass]. *)
-
-val xoauth2 : string -> string -> authenticator
-(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
-    [user] and access token [token].  The access token should be obtained
-    independently. *)
+val authenticate : authenticator -> command
+(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
+    If the server supports the requested authentication mechanism, it performs
+    an authentication protocol exchange to authenticate and identify the client.
+    See {!authenticator} for details on the interface with particular [SASL]
+    mechanisms. *)
 
 (** {1 Running commands and receiving responses} *)
 
@@ -998,11 +1005,10 @@ type error =
 
   | `Auth_error of string
   (** An client-side SASL authentication error ocurred.  This error can only
-      appear when using the SASL-based [`Authenticate] {{!run}command.}  The
-      error is communicated to the server and the server responds with a [BAD]
-      response.  Thus, after receiving this error the client should pass
-      [`Await] to {!run} until [`Error `Bad] is received, and then take
-      appropiate action. *)
+      appear when using the SASL-based {!authenticate} command.  The error is
+      communicated to the server and the server responds with a [BAD] response.
+      Thus, after receiving this error the client should pass [`Await] to {!run}
+      until [`Error `Bad] is received, and then take appropiate action. *)
 
   | `Bad of code * string
   (** The server could not parse the request. *)
@@ -1054,23 +1060,20 @@ val dst_rem : connection -> int
     can be in three states: {e awaiting the server greeting}, {e executing a
     command}, or {e awaiting commands}.
 
-    After {{!val:connection}creation}, [c] is {e awaiting the server
-    greeting.}  {!run} must be passed [`Await] until getting back [`Ok] which
-    signals that the greeting has been received and [c] is now {e awaiting
-    commands.}  A command can then be initiated by passing [`Cmd], [`Idle] or
-    [`Authenticate].  After a command is initiated, [c] will be {e executing a
-    command} and {!run} will return a sequence of [`Await_src] and/or
-    [`Await_dst] values interspaced with [`Untagged] values, and finally ending
-    with [`Ok].  The client should call {!run} with [`Await] to step through
-    this process (possibly after providing more input and output storage using
-    {!src} and {!dst}).
+    After {{!val:connection}creation}, [c] is {e awaiting the server greeting.}
+    {!run} must be passed [`Await] until getting back [`Ok] which signals that
+    the greeting has been received and [c] is now {e awaiting commands.}  A
+    command can then be initiated by passing [`Cmd].  After a command is
+    initiated, [c] will be {e executing a command} and {!run} will return a
+    sequence of [`Await_src] and/or [`Await_dst] values interspaced with
+    [`Untagged] values, and finally ending with [`Ok].  The client should call
+    {!run} with [`Await] to step through this process (possibly after providing
+    more input and output storage using {!src} and {!dst}).
 
     After returning [`Ok], [c] is again {e awaiting commands} and the process can be
     reinitiated.
 
-    It is an error to execute a command if [c] is not {e awaiting commands.}  The
-    only exception to this is that [`Idle_done] can be executed while [`Idle] is
-    in progress.
+    It is an error to execute a command if [c] is not {e awaiting commands.}
 
     See the {{!ex}examples.} *)
 
@@ -1078,12 +1081,11 @@ val run : connection ->
   [ `Cmd of command
   | `Await
   | `Idle
-  | `Idle_done
-  | `Authenticate of authenticator ] -> [ `Untagged of untagged
-                                        | `Ok of code * string
-                                        | `Error of error
-                                        | `Await_src
-                                        | `Await_dst ]
+  | `Idle_done ] -> [ `Untagged of untagged
+                    | `Ok of code * string
+                    | `Error of error
+                    | `Await_src
+                    | `Await_dst ]
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul
@@ -1094,8 +1096,7 @@ val run : connection ->
        a stream of incoming untagged {{!untagged}responses} until IDLE ends.  IDLE can end by server
        decision of by passing [v = `Idle_run].  See the relevent
        {{:https://tools.ietf.org/html/rfc2177}RFC} and the {{!ex}examples} for more details.}
-    {- [`Idle_done]: stop IDLE command.}
-    {- [`Authenticate a]: perform SASL authentication using the {!authenticator} [a].}}
+    {- [`Idle_done]: stop IDLE command.}}
 
     The value of [run c v] is:
     {ul

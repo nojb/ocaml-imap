@@ -1798,7 +1798,26 @@ type status_query =
   | `Unseen
   | `Highest_modseq ]
 
-type command =
+(* Authenticator *)
+
+type authenticator =
+  { name : string;
+    step : string -> [ `Ok of string | `Error of string ] }
+
+let plain user pass =
+  let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
+  { name = "PLAIN"; step }
+
+let xoauth2 user token =
+  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
+  let stage = ref `Begin in
+  let step _ = match !stage with
+    | `Begin -> stage := `Error; `Ok s
+    | `Error -> `Ok "" (* CHECK *)
+  in
+  { name = "XOAUTH2"; step }
+
+type command_ordinary =
   [ `Login of string * string
   | `Capability
   | `Create of string
@@ -1826,8 +1845,15 @@ type command =
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
   | `Enable of capability list
 
-  | `Idle
+  | `Idle ]
+
+type command_lexeme =
+  [ command_ordinary
   | `Authenticate of string ]
+
+type command =
+  [ command_ordinary
+  | `Authenticate of authenticator ]
 
 let login u p = `Login (u, p)
 let capability = `Capability
@@ -1891,6 +1917,8 @@ let store_remove_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
 
 let enable caps = `Enable caps
 
+let authenticate a = `Authenticate a
+
 module E = struct
 
   (* Encoder *)
@@ -1899,9 +1927,9 @@ module E = struct
     [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type encode =
-    [ `Cmd of string * command | `Idle_done | `Auth_step of string | `Auth_error | `Await ]
+    [ `Cmd of string * command_lexeme | `Idle_done | `Auth_step of string | `Auth_error | `Await ]
 
-  let pp_encode : _ -> encode -> _ = fun ppf e -> match e with
+  let pp_encode : _ -> [< encode] -> _ = fun ppf e -> match e with
     | `Cmd _ -> pp ppf "`Cmd" (* FIXME *)
     | `Await -> pp ppf "`Await"
     | `Idle_done -> pp ppf "`Idle_done"
@@ -2115,7 +2143,7 @@ module E = struct
     | `Keyword s -> w s
     | `Extension s -> w ("\\" ^ s)
 
-  let w_tagged : [< command] -> _ = function
+  let w_tagged : [< command_lexeme] -> _ = function
     | `Capability -> w "CAPABILITY"
     | `Login (u, p) -> w "LOGIN" & w_string u & w_string p
     | `Logout -> w "LOGOUT"
@@ -2204,25 +2232,6 @@ module E = struct
   let encode e v = e.k e v
 end
 
-(* Authenticator *)
-
-type authenticator =
-  { name : string;
-    step : string -> [ `Ok of string | `Error of string ] }
-
-let plain user pass =
-  let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
-  { name = "PLAIN"; step }
-
-let xoauth2 user token =
-  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-  let stage = ref `Begin in
-  let step _ = match !stage with
-    | `Begin -> stage := `Error; `Ok s
-    | `Error -> `Ok "" (* CHECK *)
-  in
-  { name = "XOAUTH2"; step }
-
 (* Running commands *)
 
 type error =
@@ -2255,7 +2264,7 @@ type connection =
     d : D.decoder;
     mutable tag : int;
     mutable k : connection ->
-      [ `Cmd of command | `Await | `Idle | `Idle_done | `Authenticate of authenticator ] -> result }
+      [ `Cmd of command | `Await | `Idle | `Idle_done ] -> result }
 
 let src c = D.src c.d
 let dst c = E.dst c.e
@@ -2271,7 +2280,7 @@ let rec decode_to_cont k c = (* FIXME signal error ? *)
 and encode x k c =
   let rec partial c = function
     | `Await -> loop (E.encode c.e `Await)
-    | `Idle | `Idle_done | `Cmd _ | `Authenticate _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done | `Cmd _ -> invalid_arg "command in progress"
   and loop = function
     | `Partial -> ret `Await_dst partial c
     | `Wait_for_cont -> decode_to_cont (fun c -> loop (E.encode c.e `Await)) c
@@ -2283,7 +2292,7 @@ and decode idling k c =
   let rec partial c = function
     | `Await -> loop (D.decode c.d)
     | `Idle_done when idling -> encode `Idle_done (fun c -> loop (D.decode c.d)) c
-    | `Idle | `Idle_done | `Cmd _ | `Authenticate _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done | `Cmd _ -> invalid_arg "command in progress"
   and loop = function
     | `Ok x -> k x c
     | `Await -> ret `Await_src partial c
@@ -2304,8 +2313,7 @@ and h_response idling c =
   let rec partial c = function
     | `Await -> decode idling loop c
     | `Idle_done when idling -> encode `Idle_done (h_response false) c
-    | `Idle | `Idle_done | `Cmd _
-    | `Authenticate _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done | `Cmd _ -> invalid_arg "command in progress"
   and loop r c = match r with
     | #untagged as r      -> ret (`Untagged r) partial c
     | `Cont _ when idling -> decode true loop c
@@ -2317,8 +2325,7 @@ and h_response idling c =
 and h_authenticate auth c =
   let rec partial c = function
     | `Await -> decode false loop c
-    | `Idle | `Idle_done | `Cmd _
-    | `Authenticate _ -> invalid_arg "command in progress"
+    | `Idle | `Idle_done | `Cmd _ -> invalid_arg "command in progress"
   and loop r c = match r with
     | #untagged as r -> ret (`Untagged r) partial c
     | `Tagged (g, r) -> h_tagged g r c
@@ -2335,11 +2342,11 @@ and h_authenticate auth c =
   decode false loop c
 
 and h_response_loop c = function
-  | `Cmd cmd   -> encode (`Cmd (string_of_int c.tag, cmd)) (h_response false) c
+  | `Cmd (`Authenticate a) ->
+      encode (`Cmd (string_of_int c.tag, `Authenticate a.name)) (h_authenticate a) c
+  | `Cmd (#command_ordinary as cmd) -> encode (`Cmd (string_of_int c.tag, cmd)) (h_response false) c
   | `Idle      -> encode (`Cmd (string_of_int c.tag, `Idle)) (h_response true) c
   | `Idle_done -> invalid_arg "no idle in progress"
-  | `Authenticate auth ->
-      encode (`Cmd (string_of_int c.tag, `Authenticate auth.name)) (h_authenticate auth) c
   | `Await     -> `Ok (`None, "")
 
 let h_greetings c = function
