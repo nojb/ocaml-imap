@@ -1195,7 +1195,7 @@ let debug_flag = ref false
     let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
     let sock = Ssl.embed_socket fd ctx in
     Ssl.connect sock;
-    let c = Imap.connection `Manual `Manual in
+    let c = Imap.connection () in
     let i = Bytes.create io_buffer_size in
     let o = Bytes.create io_buffer_size in
     Imap.dst c o 0 (Bytes.length o);
@@ -1205,53 +1205,55 @@ let debug_flag = ref false
           | `Untagged _ -> logout (run sock i o c `Await)
           | `Ok -> ()
         in
-        let rec idle uidn = function
-          | `Untagged (`Exists _) -> idle_done uidn (run sock i o c (`Idle_done))
-          | `Untagged _ -> idle uidn (run sock i o c `Await) | `Ok -> idle_done uidn `Ok
-        and idle_done uidn = function
-          | `Untagged _ -> idle_done uidn (run sock i o c `Await)
+        let rec idle stop uidn = function
+          | `Untagged (`Exists _) -> Lazy.force stop; idle stop uidn (run sock i o c `Await)
+          | `Untagged _ -> idle stop uidn (run sock i o c `Await)
           | `Ok ->
               search uidn Uint32.zero
-                (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, Uint32.max_int]))))
+                (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, None]))))
         and search uidn n = function
           | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
           | `Untagged _ -> search uidn n (run sock i o c `Await)
           | `Ok ->
-              (* n = 0 means that we couldn't find the message after all. *)
-            if n = Uint32.zero then idle uidn (run sock i o c `Idle) else
-            let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, n] [`Envelope] in
-            fetch uidn n None (run sock i o c (`Cmd cmd))
-      and fetch uidn n name = function
-        | `Untagged (`Fetch (_, att)) ->
-            let name =
-              List.fold_left
-                (fun name att -> match att with
-                   | `Envelope e ->
-                       begin match e.Imap.env_from with
-                       | [] -> name
-                       | ad :: _ ->
-                           Some (Printf.sprintf "\"%s\" <%s@%s>"
-                                   ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host)
-                       end
-                   | _ -> name) name att
-            in
-            fetch uidn n name (run sock i o c `Await)
-        | `Untagged _ -> fetch uidn n name (run sock i o c `Await)
-        | `Ok ->
-            let name = match name with None -> "<unnamed>" | Some name -> name in
-            Format.printf "New mail from %s, better go and check it out!\n%!" name;
-            logout (run sock i o c (`Cmd Imap.logout))
-      in
-      let rec select uidn = function
-        | `Untagged (`Ok (`Uid_next uidn, _)) -> select uidn (run sock i o c `Await)
-        | `Untagged _ -> select uidn (run sock i o c `Await)
-        | `Ok -> idle uidn (run sock i o c `Idle)
-      in
-      let rec login = function
-        | `Untagged _ -> login (run sock i o c `Await)
-        | `Ok -> select Uint32.zero (run sock i o c (`Cmd (Imap.examine mbox)))
-      in
-      login (run sock i o c (`Cmd (Imap.login user pass)))
-  | `Untagged _ -> assert false
+              if n = Uint32.zero then
+                let cmd, stop = Imap.idle () in
+                idle stop uidn (run sock i o c (`Cmd cmd))
+              else
+              let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, Some n] [`Envelope] in
+              fetch uidn n None (run sock i o c (`Cmd cmd))
+        and fetch uidn n name = function
+          | `Untagged (`Fetch (_, att)) ->
+              let name =
+                List.fold_left
+                  (fun name att -> match att with
+                     | `Envelope e ->
+                         begin match e.Imap.env_from with
+                         | [] -> name
+                         | ad :: _ ->
+                             Some (Printf.sprintf "\"%s\" <%s@%s>"
+                                     ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host)
+                         end
+                     | _ -> name) name att
+              in
+              fetch uidn n name (run sock i o c `Await)
+          | `Untagged _ -> fetch uidn n name (run sock i o c `Await)
+          | `Ok ->
+              let name = match name with None -> "<unnamed>" | Some name -> name in
+              Format.printf "New mail from %s, better go and check it out!\n%!" name;
+              logout (run sock i o c (`Cmd Imap.logout))
+        in
+        let rec select uidn = function
+          | `Untagged (`Ok (`Uid_next uidn, _)) -> select uidn (run sock i o c `Await)
+          | `Untagged _ -> select uidn (run sock i o c `Await)
+          | `Ok ->
+              let cmd, stop = Imap.idle () in
+              idle stop uidn (run sock i o c (`Cmd cmd))
+        in
+        let rec login = function
+          | `Untagged _ -> login (run sock i o c `Await)
+          | `Ok -> select Uint32.zero (run sock i o c (`Cmd (Imap.examine mbox)))
+        in
+        login (run sock i o c (`Cmd (Imap.login user pass)))
+    | `Untagged _ -> assert false
 ]}
 *)

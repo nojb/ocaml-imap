@@ -1,4 +1,8 @@
-1.0 (2015-01-10)
+1.1.0 (trunk)
+
+  * Simplify API for [AUTHENTICATE] and [IDLE]
+
+1.0.0 (2015-01-10)
 
   * Complete rewrite (again!)
   * Remove high-level api
