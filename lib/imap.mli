@@ -803,8 +803,13 @@ val capability : command
 val create : string -> command
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
     if a new mailbox with that name has been created.  It is an error to attempt
-    to create "INBOX" or a mailbox with a name that refers to an extant mailbox.
+    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
     Any error in creation will return a tagged [`No] response. *)
+
+val delete : string -> command
+(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
+    if the mailbox with that name has been created.
+    Any error in deletion will return a tagged [`No] response. *)
 
 val rename : string -> string -> command
 (** [rename oldname newname] command changes the name of a mailbox from

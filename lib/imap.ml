@@ -1821,6 +1821,7 @@ type command_ordinary =
   [ `Login of string * string
   | `Capability
   | `Create of string
+  | `Delete of string
   | `Rename of string * string
   | `Logout
   | `Noop
@@ -1855,6 +1856,7 @@ type command =
 let login u p = `Login (u, p)
 let capability = `Capability
 let create m = `Create m
+let delete m = `Delete m
 let rename m1 m2 = `Rename (m1, m2)
 let logout = `Logout
 let noop = `Noop
@@ -2165,6 +2167,7 @@ module E = struct
         (* TODO internaldate *)
         w "APPEND" & w_mailbox m $ flags & w_literal data
     | `Create m -> w "CREATE" & w_mailbox m
+    | `Delete m -> w "DELETE" & w_mailbox m
     | `Rename (m1, m2) -> w "RENAME" & w_mailbox m1 & w_mailbox m2
     | `Status (m, att) -> w "STATUS" & w_mailbox m & w_list w_status_att att
     | `Close -> w "CLOSE"
