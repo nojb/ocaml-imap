@@ -331,7 +331,7 @@ let login =
     `P "The $(b,login) command sends login credentials to the IMAP server."
   ] in
   let login user pass = run g (`Cmd (Imap.login user pass)) >>= handle_unit in
-  Term.(pure login $ user $ password), Term.info "login" ~doc
+  Term.(pure login $ user $ password), Term.info "login" ~doc ~man
 
 (* LOGOUT *)
 let logout_doc = "Logout from an IMAP server."
@@ -342,7 +342,7 @@ let logout =
     `P "The $(b,logout) command logs out from an IMAP server."
   ] in
   let logout () = run g (`Cmd Imap.logout) >>= handle_unit in
-  Term.(pure logout $ pure ()), Term.info "logout" ~doc
+  Term.(pure logout $ pure ()), Term.info "logout" ~doc ~man
 
 (* NOOP *)
 let noop_doc = "Sends a NOOP command to the IMAP server."
