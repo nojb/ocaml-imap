@@ -9,7 +9,7 @@ let () = Ssl.init ()
 type connection =
   { i : string;
     o : string;
-    mutable c : Imap.connection;
+    c : Imap.connection;
     mutable sock : Lwt_ssl.socket option }
 
 let run c v =
