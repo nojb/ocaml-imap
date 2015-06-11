@@ -1961,7 +1961,7 @@ module E = struct
         invalid_arg "cannot encode now, use `Await first"
 
   let flush k e = match e.dst with
-    | `Manual -> if e.o_pos > 0 then (e.k <- partial k; `Partial) else k e
+    | `Manual -> if e.o_pos > 0 || e.o_max = 0 then (e.k <- partial k; `Partial) else k e
     | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
     | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
 
