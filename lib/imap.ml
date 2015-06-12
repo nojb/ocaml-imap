@@ -2177,9 +2177,9 @@ module E = struct
         let changed_since = match changed_since with
           | `All -> w ""
           | `Changed_since m ->
-              w "(" $ w "CHANGEDSINCE" & w_uint64 m $ w ")"
+              w " (" $ w "CHANGEDSINCE" & w_uint64 m $ w ")"
           | `Changed_since_vanished m ->
-              w "(" $ w "CHANGEDSINCE" & w_uint64 m & w "VANISHED" $ w ")"
+              w " (" $ w "CHANGEDSINCE" & w_uint64 m & w "VANISHED" $ w ")"
         in
         let cmd = match uid with `Seq -> "FETCH" | `Uid -> "UID FETCH" in
         let att = match att with
@@ -2189,7 +2189,7 @@ module E = struct
           | `List [x] -> w_fetch_att x
           | `List l -> w_list w_fetch_att l
         in
-        w cmd & w_eset set & att & changed_since
+        w cmd & w_eset set & att $ changed_since
     | `Store (uid, set, silent, unchanged_since, mode, att) ->
         let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
         let silent = match silent with `Silent -> ".SILENT" | `Loud -> "" in
