@@ -4,4 +4,3 @@ setup.log
 *.docdir
 *.native
 *.byte
-*.install

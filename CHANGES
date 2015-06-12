@@ -1,6 +1,10 @@
-1.1.0 (trunk)
+1.1.0 (2015-06-12)
 
-  * Simplify API for [AUTHENTICATE] and [IDLE]
+  * Simplify API for AUTHENTICATE and IDLE
+  * Correctly handle the case of an empty output buffer (#10)
+  * Supress trailing space after FETCH command args (#12)
+  * Switch from OASIS to ocamlbuild+opam-installer
+  * Remove all the code in old/
 
 1.0.0 (2015-01-10)
 

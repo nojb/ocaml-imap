@@ -1,42 +1,32 @@
-# OASIS_START
-# DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
+OCAMLBUILD = ocamlbuild -use-ocamlfind -classic-display
 
-SETUP = ocaml setup.ml
+lib:
+	$(OCAMLBUILD) lib/imap.cma
+	-$(OCAMLBUILD) lib/imap.cmxa
+	-$(OCAMLBUILD) lib/imap.cmxs
 
-build: setup.data
-	$(SETUP) -build $(BUILDFLAGS)
+imap_shell:
+	$(OCAMLBUILD) test/imap_shell.byte
 
-doc: setup.data build
-	$(SETUP) -doc $(DOCFLAGS)
-	cp doc/style.css api.docdir/
+wait_mail:
+	$(OCAMLBUILD) test/wait_mail.byte
 
-all:
-	$(SETUP) -all $(ALLFLAGS)
-
-install: setup.data
-	$(SETUP) -install $(INSTALLFLAGS)
-
-uninstall: setup.data
-	$(SETUP) -uninstall $(UNINSTALLFLAGS)
-
-reinstall: setup.data
-	$(SETUP) -reinstall $(REINSTALLFLAGS)
+all: lib imap_shell wait_mail
 
 clean:
-	$(SETUP) -clean $(CLEANFLAGS)
+	$(OCAMLBUILD) -clean
 
-distclean:
-	$(SETUP) -distclean $(DISTCLEANFLAGS)
+doc:
+	$(OCAMLBUILD) -docflags -colorize-code,-css-style,style.css doc/api.docdir/index.html
+	cp doc/style.css api.docdir/
 
-setup.data:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
+install: lib
+	opam-installer --prefix=`opam config var prefix` imap.install
 
-configure:
-	$(SETUP) -configure $(CONFIGUREFLAGS)
+uninstall:
+	opam-installer --prefix=`opam config var prefix` -u imap.install
 
-.PHONY: build doc test all install uninstall reinstall clean distclean configure
-
-# OASIS_STOP
+reinstall: uninstall install
 
 gh-pages: doc
 	git clone `git config --get remote.origin.url` .gh-pages --reference .
@@ -49,5 +39,19 @@ gh-pages: doc
 	git -C .gh-pages push origin gh-pages -f
 	rm -rf .gh-pages
 
-test: build
-	ocamlbuild test/tests.otarget
+prepare: lib doc
+ifdef VERSION
+	git diff --quiet && git diff --cached --quiet # make sure there are no uncommited changes
+	git tag -f "v$(VERSION)"
+	git push origin master
+	git push --force origin "v$(VERSION)"
+	opam-publish prepare "imap.$(VERSION)" \
+		"https://github.com/nojb/ocaml-imap/archive/v$(VERSION).tar.gz"
+else
+	$(error VERSION is undefined)
+endif
+
+publish: prepare gh-pages
+	opam-publish submit "./imap.$(VERSION)"
+
+.PHONY: lib clean doc imap_shell wait_mail install uninstall
