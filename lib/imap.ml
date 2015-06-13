@@ -562,13 +562,24 @@ module D = struct
     | `Illegal_char of char
     | `Unexpected_eoi ]
 
-  let pp_error ppf (e, _, _) = match e with
-    | `Expected_char c -> pp ppf "@[Expected@ character@ %C@]" c
-    | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
-    | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
-    | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
-    | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
-    | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
+  let err_context i i_pos n =
+    let start = max 0 (i_pos - n) in
+    let finish = min (i_pos + n) (String.length i) in
+    String.sub i start (finish - start)
+
+  let pp_error ppf (e, i, i_pos) = match e with
+    | `Expected_char c ->
+        pp ppf "@[Expected@ character@ %C@ at@ %d@ in@ %S@]" c i_pos (err_context i i_pos 5)
+    | `Expected_string s ->
+        pp ppf "@[Expected@ string@ %S@]" s
+    | `Unexpected_char c ->
+        pp ppf "@[Unexpected@ character@ %C at@ %d@ in %S@]" c i_pos (err_context i i_pos 5)
+    | `Unexpected_string s ->
+        pp ppf "@[Unexpected@ string@ %S@]" s
+    | `Illegal_char c ->
+        pp ppf "@[Illegal@ character@ %C@ at@ %d@ in@ %S@]" c i_pos (err_context i i_pos 5)
+    | `Unexpected_eoi ->
+        pp ppf "@[Unexpected end of input@]"
 
   let pp_decode ppf = function
     | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
