@@ -759,14 +759,14 @@ module D = struct
 *)
 
   let p_literal n k d = (* reads n bytes *)
-    if d.i_max - d.i_pos >= n then begin
+    if d.i_max - d.i_pos > n then begin
       let s = String.sub d.i d.i_pos n in
       d.i_pos <- d.i_pos + n;
       k s d
     end else
     let rec loop rem d =
       let have = d.i_max - d.i_pos in
-      if have >= rem then begin
+      if have > rem then begin
         Buffer.add_substring d.buf d.i d.i_pos rem;
         d.i_pos <- d.i_pos + rem;
         k $ buf d $ d
