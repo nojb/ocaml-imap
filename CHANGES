@@ -3,6 +3,7 @@
   * Simplify API for AUTHENTICATE and IDLE
   * Correctly handle the case of an empty output buffer (#10)
   * Supress trailing space after FETCH command args (#12)
+  * Fix serious bug when reading literals, reported by @rgrinberg (#14)
   * Switch from OASIS to ocamlbuild+opam-installer
   * Remove all the code in old/
 
