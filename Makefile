@@ -51,7 +51,7 @@ else
 	$(error VERSION is undefined)
 endif
 
-publish: prepare gh-pages
+publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
 
 .PHONY: lib clean doc imap_shell wait_mail install uninstall
