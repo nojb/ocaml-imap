@@ -2203,10 +2203,10 @@ module E = struct
         in
         let unchanged_since = match unchanged_since with
           | `All -> w ""
-          | `Unchanged_since m -> w "(" $ w "UNCHANGEDSINCE" & w_uint64 m $ w ")"
+          | `Unchanged_since m -> w " (" $ w "UNCHANGEDSINCE" & w_uint64 m $ w ")"
         in
         let cmd = match uid with `Seq -> "STORE" | `Uid -> "UID STORE" in
-        w cmd & w_eset set & unchanged_since & w base & att
+        w cmd & w_eset set $ unchanged_since & w base & att
     | `Copy (uid, set, m) ->
         let cmd = match uid with `Seq -> "COPY" | `Uid -> "UID COPY" in
         w cmd & w_eset set & w_mailbox m
