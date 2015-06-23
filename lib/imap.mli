@@ -105,6 +105,8 @@ type capability =
     For example, the IMAP sequence set [1,2:3] is represented by [[(1, 1); (2, 3)]]. *)
 type set = (uint32 * uint32) list
 
+val pp_set : Format.formatter -> set -> unit
+
 (** {3 Envelope information}
 
     It is returned when fetching the [`Envelope] message
@@ -122,6 +124,8 @@ type address =
     ad_mailbox : string;
     ad_host : string }
 
+val pp_address : Format.formatter -> address -> unit
+
 type envelope =
   { env_date : string;
     env_subject : string;
@@ -133,6 +137,8 @@ type envelope =
     env_bcc : address list;
     env_in_reply_to : string;
     env_message_id : string }
+
+val pp_envelope : Format.formatter -> envelope -> unit
 
 (** {3 MIME message structure}
 
@@ -152,11 +158,15 @@ type fields =
     fld_enc : string;
     fld_octets : int }
 
+val pp_fields : Format.formatter -> fields -> unit
+
 type mime =
   [ `Text of string * fields * int
   | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
   | `Multiple of mime list * string ]
+
+val pp_mime : Format.formatter -> mime -> unit
 
 type section =
   [ `Header
@@ -166,6 +176,8 @@ type section =
   | `Mime
   | `Part of int * section
   | `All ]
+
+val pp_section : Format.formatter -> section -> unit
 
 (** {3 Fetch responses}
 
@@ -221,6 +233,8 @@ type fetch_response =
 
   | `Gm_labels of string list
   (** Gmail labels. *) ]
+
+val pp_fetch_response : Format.formatter -> fetch_response -> unit
 
 (** {3 Response codes}
 
@@ -347,6 +361,8 @@ type code =
   | `None
   (** No response code was sent. *) ]
 
+val pp_code : Format.formatter -> code -> unit
+
 (** {3 Mailbox flags}
 
     Returned by the {!list} or {!lsub} commands and also in some
@@ -401,6 +417,8 @@ type status_response =
 
 type state =
   [ `Ok of code * string | `No of code * string | `Bad of code * string ]
+
+val pp_state : Format.formatter -> state -> unit
 
 (** {3 Server responses}
 

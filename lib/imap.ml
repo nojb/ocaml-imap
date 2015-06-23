@@ -438,6 +438,8 @@ let pp_msg_att : _ -> [< fetch_response] -> _ = fun ppf att ->
   | `Gm_thrid m       -> pp ppf "(gm-thrid %a)" Uint64.printer m
   | `Gm_labels l      -> pp ppf "@[<2>(gm-labels@ %a)@]" (pp_list pp_qstr) l
 
+let pp_fetch_response = pp_msg_att
+
 let pp_set ppf s =
   let rg ppf (x, y) = pp ppf "%a-%a" Uint32.printer x Uint32.printer y in
   pp_list rg ppf s
@@ -468,6 +470,8 @@ let pp_cap ppf = function
   | `Xoauth2          -> pp ppf "xoauth2"
   | `Gmail            -> pp ppf "gmail"
   | `Other s          -> pp ppf "(other %S)" s
+
+let pp_capability = pp_cap
 
 let pp_code : _ -> [< code] -> _ = fun ppf c ->
   match c with
