@@ -151,31 +151,68 @@ val pp_envelope : Format.formatter -> envelope -> unit
     {- {{:http://tools.ietf.org/html/rfc2046}RFC 2046: Media Types}}}
     and related RFCs for details. *)
 
+(** Basic fields of a MIME body part.  See
+    {{:https://tools.ietf.org/html/rfc2045}RFC 2045} for more details. *)
 type fields =
-  { fld_params : (string * string) list;
-    fld_id : string option;
-    fld_desc : string option;
-    fld_enc : string;
-    fld_octets : int }
+  { fld_params : (string * string) list;      (* Part parameters *)
+    fld_id : string option;                   (* Optional part ID *)
+    fld_desc : string option;                 (* Optional content description *)
+    fld_enc : string;                         (* Content transfer encoding *)
+    fld_octets : int }                        (* Size in bytes *)
 
 val pp_fields : Format.formatter -> fields -> unit
 
+(** MIME content types
+
+    The message MIME content type can be retrieved using {!fetch} with
+    [`Body_structure].  Similarly, individual MIME parts can be retrieved using
+    {!fetch} with an appropriate [`Body_section] message attribute.
+
+    In IMAP, MIME media types are described as follows:
+
+    - [`Text (s, f, n)] corresponds to the MIME type ["TEXT/" ^ s].  Common
+      examples of the subtype [s] are ["HTML"] and ["PLAIN"].  [f] contains
+      general part information (see {!fields}), and [n] is the number of text
+      lines of the part.
+
+    - [`Message (f, e, m, n)] corresponds to the MIME type ["MESSAGE/RFC822"],
+      used to enclose a complete message within a message. [f] contains general
+      part information (see {!fields}), [e] is the envelope information of the
+      encapsulated message, [m] is the MIME structure of the encapsulated
+      message, and [n] is the number of lines in the encapsulated message.
+
+    - [`Basic (t, s, f)] corresponds to a (non-multipart) MIME type [t ^ "/" ^
+      s].  Common examples of the type [t] are ["APPLICATION"], ["AUDIO"],
+      ["IMAGE"], ["MESSAGE"], ["VIDEO"].  [f] contains general part information
+      (see {!fields}).
+
+    - [`Multipart (p, s)] corresponds to the MIME type ["MULTIPART/" ^ s].  [p]
+      is the lists of MIME subparts. *)
 type mime =
   [ `Text of string * fields * int
   | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
-  | `Multiple of mime list * string ]
+  | `Multipart of mime list * string ]
 
 val pp_mime : Format.formatter -> mime -> unit
 
+(** The [section] type is used to specify which part(s) of a message should be
+    retrieved when using {!fetch} with [`Body_section].  See
+    {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
+    more details.
+
+    For more on RFC 2822 headers, see
+    {{:https://tools.ietf.org/html/rfc2822#section-2.2}RFC 2822, 2.2}.  For more
+    on MIME headers, see {{:https://tools.ietf.org/html/rfc2045#section-3}RFC
+    2045, 3}. *)
 type section =
-  [ `Header
-  | `Header_fields of string list
-  | `Header_fields_not of string list
-  | `Text
-  | `Mime
-  | `Part of int * section
-  | `All ]
+  [ `Header                             (* Full RFC 2822 message headers *)
+  | `Header_fields of string list       (* Header fields matching one of the given field names *)
+  | `Header_fields_not of string list   (* Header fields not matching any of the given field names *)
+  | `Text                               (* The text body of this part, omitting RFC2822 headers *)
+  | `Mime                               (* The MIME headers of this part *)
+  | `Part of int * section              (* Subpart *)
+  | `All ]                              (* The whole message *)
 
 val pp_section : Format.formatter -> section -> unit
 
