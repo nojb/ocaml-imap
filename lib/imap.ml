@@ -223,7 +223,7 @@ type mime =
   [ `Text of string * fields * int
   | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
-  | `Multiple of mime list * string ]
+  | `Multipart of mime list * string ]
 
 type flag =
   [ `Answered
@@ -403,8 +403,8 @@ let rec pp_mime ppf = function
       pp ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]" pp_fields f pp_envelope e pp_mime b i
   | `Basic (m, t, f) ->
       pp ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
-  | `Multiple (b, m) ->
-      pp ppf "@[<2>(multiple@ %a@ %S)@]" (pp_list pp_mime) b m
+  | `Multipart (b, m) ->
+      pp ppf "@[<2>(multipart@ %a@ %S)@]" (pp_list pp_mime) b m
 
 let rec pp_section ppf : [< section] -> _ = function
   | `Header -> pp ppf "header"
@@ -1422,8 +1422,8 @@ module D = struct
       if cur d = '(' then p_body (fun x -> loop (x :: acc)) d else
       if cur d = ' ' then
         readc $ p_string (fun m d ->
-            if cur d = ' ' then readc $ r_mbody_ext (fun _ _ -> k $ `Multiple (List.rev acc, m)) $ d else
-            k $ `Multiple (List.rev acc, m) $ d) $ d else
+            if cur d = ' ' then readc $ r_mbody_ext (fun _ _ -> k $ `Multipart (List.rev acc, m)) $ d else
+            k $ `Multipart (List.rev acc, m) $ d) $ d else
       err_unexpected $ cur d $ d
     in
     loop [] d

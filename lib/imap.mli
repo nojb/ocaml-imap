@@ -151,20 +151,48 @@ val pp_envelope : Format.formatter -> envelope -> unit
     {- {{:http://tools.ietf.org/html/rfc2046}RFC 2046: Media Types}}}
     and related RFCs for details. *)
 
+(** Basic fields of a MIME body part.  See
+    {{:https://tools.ietf.org/html/rfc2045}RFC 2045} for more details. *)
 type fields =
-  { fld_params : (string * string) list;
-    fld_id : string option;
-    fld_desc : string option;
-    fld_enc : string;
-    fld_octets : int }
+  { fld_params : (string * string) list;      (* Part parameters *)
+    fld_id : string option;                   (* Optional part ID *)
+    fld_desc : string option;                 (* Optional content description *)
+    fld_enc : string;                         (* Content transfer encoding *)
+    fld_octets : int }                        (* Size in bytes *)
 
 val pp_fields : Format.formatter -> fields -> unit
 
+(** MIME content types
+
+    The message MIME content type can be retrieved using {!fetch} with
+    [`Body_structure].  Similarly, individual MIME parts can be retrieved using
+    {!fetch} with an appropriate [`Body_section] message attribute.
+
+    In IMAP, MIME media types are described as follows:
+
+    - [`Text (s, f, n)] corresponds to the MIME type ["TEXT/" ^ s].  Common
+      examples of the subtype [s] are ["HTML"] and ["PLAIN"].  [f] contains
+      general part information (see {!fields}), and [n] is the number of text
+      lines of the part.
+
+    - [`Message (f, e, m, n)] corresponds to the MIME type ["MESSAGE/RFC822"],
+      used to enclose a complete message within a message. [f] contains general
+      part information (see {!fields}), [e] is the envelope information of the
+      encapsulated message, [m] is the MIME structure of the encapsulated
+      message, and [n] is the number of lines in the encapsulated message.
+
+    - [`Basic (t, s, f)] corresponds to a (non-multipart) MIME type [t ^ "/" ^
+      s].  Common examples of the type [t] are ["APPLICATION"], ["AUDIO"],
+      ["IMAGE"], ["MESSAGE"], ["VIDEO"].  [f] contains general part information
+      (see {!fields}).
+
+    - [`Multipart (p, s)] corresponds to the MIME type ["MULTIPART/" ^ s].  [p]
+      is the lists of MIME subparts. *)
 type mime =
   [ `Text of string * fields * int
   | `Message of fields * envelope * mime * int
   | `Basic of string * string * fields
-  | `Multiple of mime list * string ]
+  | `Multipart of mime list * string ]
 
 val pp_mime : Format.formatter -> mime -> unit
 
