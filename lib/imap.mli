@@ -196,14 +196,23 @@ type mime =
 
 val pp_mime : Format.formatter -> mime -> unit
 
+(** The [section] type is used to specify which part(s) of a message should be
+    retrieved when using {!fetch} with [`Body_section].  See
+    {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
+    more details.
+
+    For more on RFC 2822 headers, see
+    {{:https://tools.ietf.org/html/rfc2822#section-2.2}RFC 2822, 2.2}.  For more
+    on MIME headers, see {{:https://tools.ietf.org/html/rfc2045#section-3}RFC
+    2045, 3}. *)
 type section =
-  [ `Header
-  | `Header_fields of string list
-  | `Header_fields_not of string list
-  | `Text
-  | `Mime
-  | `Part of int * section
-  | `All ]
+  [ `Header                             (* Full RFC 2822 message headers *)
+  | `Header_fields of string list       (* Header fields matching one of the given field names *)
+  | `Header_fields_not of string list   (* Header fields not matching any of the given field names *)
+  | `Text                               (* The text body of this part, omitting RFC2822 headers *)
+  | `Mime                               (* The MIME headers of this part *)
+  | `Part of int * section              (* Subpart *)
+  | `All ]                              (* The whole message *)
 
 val pp_section : Format.formatter -> section -> unit
 
