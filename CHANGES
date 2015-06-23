@@ -1,3 +1,7 @@
+trunk
+
+  * Expose formatters for more types (#17)
+
 1.1.0 (2015-06-12)
 
   * Simplify API for AUTHENTICATE and IDLE
