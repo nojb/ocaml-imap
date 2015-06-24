@@ -2,6 +2,7 @@ trunk
 
   * Expose formatters for more types (#17)
   * Document Imap.mime and Imap.section types (#18)
+  * Fix bug in parsing "BODY[...]" fetch attributes (#19)
 
 1.1.0 (2015-06-12)
 
