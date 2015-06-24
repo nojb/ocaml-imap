@@ -3,7 +3,7 @@ lib: [
   "_build/lib/imap.mli" {"imap.mli"}
   "_build/lib/imap.cmi" {"imap.cmi"}
   "_build/lib/imap.cmti" {"imap.cmti"}
-  "?_build/lib/imap.cma" {"imap.cma"}
+  "_build/lib/imap.cma" {"imap.cma"}
   "?_build/lib/imap.cmxa" {"imap.cmxa"}
   "?_build/lib/imap.a" {"imap.a"}
   "?_build/lib/imap.cmxs" {"imap.cmxs"}
