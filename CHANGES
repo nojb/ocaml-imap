@@ -1,8 +1,9 @@
-trunk
+1.1.1 (2015-06-24)
 
   * Expose formatters for more types (#17)
   * Document Imap.mime and Imap.section types (#18)
   * Fix bug in parsing "BODY[...]" fetch attributes (#19)
+  * Rename `Mutiple to `Multipart in Imap.mime
 
 1.1.0 (2015-06-12)
 
