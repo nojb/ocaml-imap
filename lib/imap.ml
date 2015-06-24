@@ -1572,7 +1572,7 @@ module D = struct
 *)
 
   let p_msg_att k d =
-    p_atom begin fun a d ->
+    p_while1 (fun ch -> is_atom_char ch && ch <> '[') begin fun a d ->
       if a -- "FLAGS" then p_sp $ p_list p_flag_fetch (fun xs -> k $ `Flags xs) $ d else
       if a -- "ENVELOPE" then p_sp $ p_envelope (fun x -> k $ `Envelope x) $ d else
       if a -- "INTERNALDATE" then p_sp $ p_date_time (fun d t -> k $ `Internal_date (d, t)) $ d else
