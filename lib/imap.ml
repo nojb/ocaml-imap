@@ -697,14 +697,20 @@ module D = struct
     in
     p_ch '(' $ p (fun x -> loop [x]) $ d
 
-  let p_list p k d =
+  let p_list_generic ~delim:del p k d =
     let rec loop acc d =
-      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
       if cur d = ')' then readc $ k (List.rev acc) $ d else
-      err_unexpected $ cur d $ d
+      let nxt = p (fun x -> loop (x :: acc)) in
+      match del with
+      | None ->  nxt $ d
+      | Some c ->
+        if cur d = c then readc $ nxt $ d else
+        err_unexpected $ cur d $ d
     in
     if is_atom_char $ cur d then p_atomf "NIL" $ k [] $ d else
     p_ch '(' (fun d -> if cur d = ')' then readc $ k [] $ d else p (fun x -> loop [x]) d) d
+
+  let p_list p k d = p_list_generic ~delim:(Some ' ') p k d
 
 (*
    CR             =  %x0D
@@ -1275,15 +1281,16 @@ module D = struct
 *)
 
   let p_envelope k d =
+    let p_address_list = p_list_generic ~delim:None p_address in
     p_ch '(' begin
              p_nstring'       @@ fun env_date ->
       p_sp $ p_nstring'       @@ fun env_subject ->
-      p_sp $ p_list p_address @@ fun env_from ->
-      p_sp $ p_list p_address @@ fun env_sender ->
-      p_sp $ p_list p_address @@ fun env_reply_to ->
-      p_sp $ p_list p_address @@ fun env_to ->
-      p_sp $ p_list p_address @@ fun env_cc ->
-      p_sp $ p_list p_address @@ fun env_bcc ->
+      p_sp $ p_address_list   @@ fun env_from ->
+      p_sp $ p_address_list   @@ fun env_sender ->
+      p_sp $ p_address_list   @@ fun env_reply_to ->
+      p_sp $ p_address_list   @@ fun env_to ->
+      p_sp $ p_address_list   @@ fun env_cc ->
+      p_sp $ p_address_list   @@ fun env_bcc ->
       p_sp $ p_nstring'       @@ fun env_in_reply_to ->
       p_sp $ p_nstring'       @@ fun env_message_id ->
       p_ch ')' $
