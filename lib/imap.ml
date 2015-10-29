@@ -1948,9 +1948,8 @@ module D = struct
 
   let decoder () =
     let d = {i = ""; i_pos = 0; i_max = 0; k = (fun () -> assert false)} in
-    let k () =
-      let k () = p_response (fun x -> `Ok x) d in
-      d.k <- k;
+    let rec k () =
+      d.k <- (fun () -> p_response (fun x -> d.k <- k; `Ok x) d);
       `Await_line
     in
     d.k <- k;
