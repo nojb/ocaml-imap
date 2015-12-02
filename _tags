@@ -17,3 +17,5 @@ true: package(base64)
 # wait_mail
 
 <test/wait_mail.*>: package(ssl), package(cmdliner)
+
+true: debug

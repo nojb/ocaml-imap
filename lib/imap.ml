@@ -574,15 +574,20 @@ module D = struct
 
   let pp_decode ppf = function
     | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
-    | `Await -> pp ppf "`Await"
+    | `Await_line -> pp ppf "`Await_line"
+    | `Await_exactly n -> pp ppf "`Await_exactly %d" n
     | `Error e -> pp ppf "@[`Error %a@]" pp_error e
 
   type decoder =
-    { mutable i : string;
+    {
+      mutable i : string;
       mutable i_pos : int;
       mutable i_max : int;
-      buf : Buffer.t;
-      mutable k : decoder -> [ `Ok of response | `Await | `Error of error * string * int ] }
+      mutable k : decoder -> [ `Ok of response
+                             | `Await_line
+                             | `Await_exactly of int
+                             | `Error of error * string * int ]
+    }
 
   external ($) : ('a -> 'b) -> 'a -> 'b = "%apply"
 
@@ -595,6 +600,8 @@ module D = struct
     in
     loop 0
 
+  exception Error of [ `Error of error * string * int ]
+
   let err e d = `Error (e, d.i, d.i_pos)
   let err_expected c d = err (`Expected_char c) d
   let err_expected_s s d = err (`Expected_string s) d
@@ -604,34 +611,57 @@ module D = struct
   let err_unexpected_eoi d = err `Unexpected_eoi d
 
   let ret x _ = `Ok x
-  let cur d = d.i.[d.i_pos]
-  let badd d = Buffer.add_char d.buf $ cur d
-  let buf d = let s = Buffer.contents d.buf in (Buffer.clear d.buf; s)
-  let decode d = d.k d
+  let decode d = try d.k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
   let rec eoi d = d.k <- err_unexpected_eoi
 
   let src d s j l =                                     (* set [d.i] with [s]. *)
-    if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds" else
-    if l = 0 then eoi d else
+    if j < 0 || l < 0 || j + l > String.length s then
+      invalid_arg "bounds"
+    else
+    (* if l = 0 then eoi d else *)
     (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
-  let refill k d = d.k <- k; `Await
+  let readexact n k d = d.k <- k; `Await_exactly n
+  let readline k d = d.k <- k; `Await_line
 
-  let readc k d =
-    if d.i_pos + 1 < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else (* CHECK + 1 *)
-    refill k d
-
-  let p_ch c k d =
-    if cur d = c then readc k d else err_expected c d
-
-  let p_sp k d = p_ch ' ' k d
-
-  let p_while1 f k d = (* TODO do not use d.buf if not necessary *)
-    if f $ cur d then
-      let rec nxt d = if f $ cur d then (badd d; readc nxt d) else k $ buf d $ d in
-      (badd d; readc nxt d)
+  let peekc d =
+    if d.i_pos < d.i_max then
+      Some d.i.[d.i_pos]
     else
-    err_unexpected $ cur d $ d
+    None
+
+  let cur d =
+    if d.i_pos < d.i_max then
+      d.i.[d.i_pos]
+    else
+    raise (Error (err_unexpected_eoi d))
+
+  let junkc d =
+    if d.i_pos < d.i_max then
+      d.i_pos <- d.i_pos + 1
+    else
+    raise (Error (err_unexpected_eoi d))
+
+  let p_ch c d =
+    match peekc d with
+    | Some c' when c = c ->
+        junkc d
+    | Some _ ->
+        raise (Error (err_expected c d))
+    | None ->
+        raise (Error (err_unexpected_eoi d))
+
+  let p_sp d = p_ch ' ' d
+
+  let p_while1 f d =
+    let i0 = d.i_pos in
+    while d.i_pos < d.i_max && f d.i.[d.i_pos] do
+      d.i_pos <- d.i_pos + 1
+    done;
+    if i0 < d.i_pos then
+      String.sub d.i i0 (d.i_pos - i0)
+    else
+    raise (Error (err_unexpected (cur d) d))
 
 (*
    CHAR           =  %x01-7F
@@ -662,45 +692,80 @@ module D = struct
     | '\x01' .. '\x7F' -> true
     | _ -> false
 
-  let p_atom k d =
-    p_while1 is_atom_char k d
+  let p_atom d =
+    p_while1 is_atom_char d
 
-  let p_atomf s k d =
-    p_atom (fun a d -> if a -- s then k d else err_expected_s s d) d
+  let p_atomf s d =
+    let a = p_atom d in
+    if not (a -- s) then
+      raise (Error (err_expected_s s d))
 
   let p_t3 p1 p2 p3 k d =
-    p1 (fun x -> p_sp $ p2 (fun y -> p_sp $ p3 (k x y))) d
+    p1 (fun x d -> p_sp d; p2 (fun y d -> p_sp d; p3 (k x y) d) d) d
 
-  let p_t2 p1 p2 k d =
-    p1 (fun x -> p_sp $ p2 (k x)) d
+  let p_sep p d =
+    let rec loop acc =
+      match peekc d with
+      | Some ' ' ->
+          junkc d;
+          loop (p d :: acc)
+      | _ ->
+          List.rev acc
+    in
+    loop []
 
-  let p_sep p k d =
+  let p_sep_k p k d =
     let rec loop acc d =
-      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
-      k $ List.rev acc $ d
+      match peekc d with
+      | Some ' ' ->
+          junkc d;
+          p (fun x -> loop (x :: acc)) d
+      | _ ->
+          k (List.rev acc) d
     in
     loop [] d
 
   let p_list1 p k d =
     let rec loop acc d =
-      if cur d = ' ' then readc $ p (fun x -> loop (x :: acc)) $ d else
-      if cur d = ')' then readc $ k (List.rev acc) $ d else
-      err_unexpected $ cur d $ d
+      match cur d with
+      | ' ' ->
+          junkc d;
+          p (fun x -> loop (x :: acc)) d
+      | ')' ->
+          junkc d;
+          k (List.rev acc) d
+      | _ ->
+          err_unexpected (cur d) d
     in
-    p_ch '(' $ p (fun x -> loop [x]) $ d
+    p_ch '(' d;
+    p (fun x -> loop [x]) d
 
-  let p_list_generic ~delim:del p k d =
+  let p_list_generic ~delim p k d =
     let rec loop acc d =
-      if cur d = ')' then readc $ k (List.rev acc) $ d else
-      let nxt = p (fun x -> loop (x :: acc)) in
-      match del with
-      | None ->  nxt $ d
-      | Some c ->
-        if cur d = c then readc $ nxt $ d else
-        err_unexpected $ cur d $ d
+      match cur d with
+      | ')' ->
+          junkc d;
+          k (List.rev acc) d
+      | c ->
+          begin match delim with
+          | None -> ()
+          | Some c' when c = c' -> junkc d
+          | Some c -> raise (Error (err_unexpected c d))
+          end;
+          p (fun x -> loop (x :: acc)) d
     in
-    if is_atom_char $ cur d then p_atomf "NIL" $ k [] $ d else
-    p_ch '(' (fun d -> if cur d = ')' then readc $ k [] $ d else p (fun x -> loop [x]) d) d
+    if is_atom_char (cur d) then begin
+      p_atomf "NIL" d;
+      k [] d
+    end else begin
+      p_ch '(' d;
+      match cur d with
+      | ')' ->
+          junkc d;
+          k [] d
+      | _ ->
+          p (fun x -> loop [x]) d
+    end
 
   let p_list p k d = p_list_generic ~delim:(Some ' ') p k d
 
@@ -715,8 +780,11 @@ module D = struct
                           ; Internet standard newline
 *)
 
-  let p_crlf k d = (* does not advance the i_pos pointer beyond the '\n' character because we might be at eoi *)
-    p_ch '\r' (fun d -> if cur d = '\n' then k d else err_expected '\n' d) d
+  let p_crlf k d =
+    if d.i_pos < d.i_max then
+      err_unexpected (cur d) d
+    else
+    k d
 
 (*
    number          = 1*DIGIT
@@ -729,9 +797,9 @@ module D = struct
 *)
 
   let is_digit = function '0' .. '9' -> true | _ -> false
-  let p_uint k d = p_while1 is_digit (fun s -> k $ int_of_string s) d
-  let p_uint32 k d = p_while1 is_digit (fun s -> k $ Uint32.of_string s) d
-  let p_uint64 k d = p_while1 is_digit (fun s -> k $ Uint64.of_string s) d
+  let p_uint d = int_of_string (p_while1 is_digit d)
+  let p_uint32 d = Uint32.of_string (p_while1 is_digit d)
+  let p_uint64 d = Uint64.of_string (p_while1 is_digit d)
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -740,18 +808,33 @@ module D = struct
                      '\\' quoted-specials
 *)
 
-  let rec p_quoted k d = (* "" was eaten *)
-    match cur d with
-    | '\r' | '\n' -> err_quoted $ cur d $ d
-    | '"' -> readc $ k (buf d) $ d
-    | '\\' ->
-        let nxt d =
-          if cur d = '"' || cur d = '\\' then (badd d; readc (p_quoted k) d) else
-          err_unexpected $ cur d $ d
-        in
-        readc nxt d
-    | '\x01' .. '\x7F' -> badd d; readc (p_quoted k) d
-    | _ -> err_unexpected $ cur d $ d
+  let rec p_quoted d = (* "" was eaten *)
+    let buf = Buffer.create 0 in
+    let rec loop () =
+      match cur d with
+      | '\r' | '\n' ->
+          raise (Error (err_quoted $ cur d $ d))
+      | '"' ->
+          junkc d;
+          Buffer.contents buf
+      | '\\' ->
+          junkc d;
+          begin match cur d with
+          | '"' | '\\' as c ->
+              Buffer.add_char buf c;
+              junkc d;
+              loop ()
+          | _ ->
+              raise (Error (err_unexpected $ cur d $ d))
+          end
+      | '\x01' .. '\x7F' as c ->
+          Buffer.add_char buf c;
+          junkc d;
+          loop ()
+      | _ ->
+          raise (Error (err_unexpected $ cur d $ d))
+    in
+    loop ()
 
 (*
    literal         = "{" number "}" CRLF *CHAR8
@@ -761,29 +844,22 @@ module D = struct
 *)
 
   let p_literal n k d = (* reads n bytes *)
-    if d.i_max - d.i_pos > n then begin
-      let s = String.sub d.i d.i_pos n in
-      d.i_pos <- d.i_pos + n;
-      k s d
-    end else
-    let rec loop rem d =
-      let have = d.i_max - d.i_pos in
-      if have > rem then begin
-        Buffer.add_substring d.buf d.i d.i_pos rem;
-        d.i_pos <- d.i_pos + rem;
-        k $ buf d $ d
-      end else begin
-        Buffer.add_substring d.buf d.i d.i_pos have;
-        d.i_pos <- d.i_max;
-        readc $ loop (rem - have) $ d
-      end
-    in
-    loop n d
+    assert (n = d.i_max - d.i_pos);
+    let data = String.sub d.i d.i_pos n in
+    readline (k data) d
 
   let p_string k d =
-    if cur d = '"' then readc $ p_quoted k $ d else
-    if cur d = '{' then readc $ p_uint (fun n -> p_ch '}' $ p_crlf (readc (p_literal n k))) $ d else
-    err_unexpected $ cur d $ d
+    match cur d with
+    | '"' ->
+        junkc d;
+        k (p_quoted d) d
+    | '{' ->
+        junkc d;
+        let n = p_uint d in
+        p_ch '}' d;
+        p_crlf (readexact n (p_literal n k)) d
+    | _ ->
+        err_unexpected $ cur d $ d
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -795,7 +871,9 @@ module D = struct
     is_atom_char c || c = ']'
 
   let p_astring k d =
-    if is_astring_char $ cur d then p_while1 is_astring_char k d else
+    if is_astring_char $ cur d then
+      k (p_while1 is_astring_char d) d
+    else
     p_string k d
 
 (*
@@ -809,9 +887,11 @@ module D = struct
     | '\x01' .. '\x7F' -> true
     | _ -> false
 
-  let p_text k d =
-    if is_text_char $ cur d then p_while1 is_text_char k d else
-    k "" d (* allow empty texts for greater tolerance *)
+  let p_text d =
+    if is_text_char $ cur d then
+      p_while1 is_text_char d
+    else
+    "" (* allow empty texts for greater tolerance *)
 
 (*
    nil             = "NIL"
@@ -820,8 +900,11 @@ module D = struct
 *)
 
   let p_nstring k d =
-    if is_atom_char $ cur d then p_atomf "NIL" $ k None $ d else
-    p_string (fun s -> k $ Some s) d
+    if is_atom_char $ cur d then begin
+      p_atomf "NIL" d;
+      k None d
+    end else
+    p_string (fun s -> k (Some s)) d
 
   let p_nstring' k d =
     p_nstring (function Some s -> k s | None -> k "") d
@@ -854,56 +937,68 @@ module D = struct
                        ; Does not include "\Recent"
 *)
 
-  let p_flag k d =
-    if cur d = '\\' then
-      readc $ p_atom begin fun a d ->
-        if a -- "Answered" then k `Answered d else
-        if a -- "Flagged" then k `Flagged d else
-        if a -- "Deleted" then k `Deleted d else
-        if a -- "Seen" then k `Seen d else
-        if a -- "Draft" then k `Draft d else
-        k $ `Extension a $ d
-      end $ d
-    else
-    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+  let p_flag d =
+    match cur d with
+    | '\\' ->
+        junkc d;
+        let a = p_atom d in
+        begin match String.capitalize a with
+        | "Answered" -> `Answered
+        | "Flagged" -> `Flagged
+        | "Deleted" -> `Deleted
+        | "Seen" -> `Seen
+        | "Draft" -> `Draft
+        | _ -> `Extension a
+        end
+    | _ ->
+        `Keyword (p_atom d)
 
 (*
    flag-fetch      = flag / "\Recent"
 *)
 
-  let p_flag_fetch k d =
-    if cur d = '\\' then
-      readc $ p_atom begin fun a d ->
-        if a -- "Answered" then k `Answered d else
-        if a -- "Flagged" then k `Flagged d else
-        if a -- "Deleted" then k `Deleted d else
-        if a -- "Seen" then k `Seen d else
-        if a -- "Draft" then k `Draft d else
-        if a -- "Recent" then k `Recent d else
-        k $ `Extension a $ d
-      end $ d
-    else
-    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+  let p_flag_fetch d =
+    match cur d with
+    | '\\' ->
+        junkc d;
+        let a = p_atom d in
+        begin match String.capitalize a with
+        | "Answered" -> `Answered
+        | "Flagged" -> `Flagged
+        | "Deleted" -> `Deleted
+        | "Seen" -> `Seen
+        | "Draft" -> `Draft
+        | "Recent" -> `Recent
+        | _ -> `Extension a
+        end
+    | _ ->
+        `Keyword (p_atom d)
 
 (*
    flag-perm       = flag / "\*"
 *)
 
-  let p_flag_perm k d =
-    if cur d = '\\' then
-      readc begin fun d ->
-        if cur d = '*' then readc $ k `All $ d else
-        p_atom begin fun a d ->
-          if a -- "Answered" then k `Answered d else
-          if a -- "Flagged" then k `Flagged d else
-          if a -- "Deleted" then k `Deleted d else
-          if a -- "Seen" then k `Seen d else
-          if a -- "Draft" then k `Draft d else
-          k $ `Extension a $ d
-        end d
-      end d
-    else
-    p_atom $ (fun a d -> k $ `Keyword a $ d) $ d
+  let p_flag_perm d =
+    match cur d with
+    | '\\' ->
+        junkc d;
+        begin match cur d with
+        | '*' ->
+            junkc d;
+            `All
+        | _ ->
+            let a = p_atom d in
+            begin match String.capitalize a with
+            | "Answered" -> `Answered
+            | "Flagged" -> `Flagged
+            | "Deleted" -> `Deleted
+            | "Seen" -> `Seen
+            | "Draft" -> `Draft
+            | _ -> `Extension a
+            end
+        end
+    | _ ->
+        `Keyword (p_atom d)
 
 (*
    seq-number      = nz-number / "*"
@@ -953,17 +1048,27 @@ module D = struct
 *)
 
   (* We never parse '*' since it does not seem to show up in responses *)
-  let p_set k d =
-    let rg k d =
-      let nxt n d = if cur d = ':' then readc $ p_uint32 (fun m -> k (n, m)) $ d else k $ (n, n) $ d in
+  let p_set d =
+    let rg () =
       (* if cur d = '*' then err_illegal_range d else *)
-      p_uint32 nxt d
+      let n = p_uint32 d in
+      match peekc d with
+      | Some ':' ->
+          junkc d;
+          let m = p_uint32 d in
+          (n, m)
+      | _ ->
+          (n, n)
     in
-    let rec loop acc d =
-      if cur d = ',' then readc $ rg (fun r -> loop (r :: acc)) $ d else
-      k (List.rev acc) d
+    let rec loop acc =
+      match peekc d with
+      | Some ',' ->
+          junkc d;
+          loop (rg () :: acc)
+      | _ ->
+          List.rev acc
     in
-    rg (fun r -> loop [r]) d
+    loop [rg ()]
 
 
 (*
@@ -1020,68 +1125,104 @@ module D = struct
   let is_text_other_char c =
     is_text_char c && (c <> ']')
 
-  let p_text_1 k d =
-    if is_text_other_char $ cur d then p_while1 is_text_other_char k d else
-    k "" d (* We allow empty text_1 *)
+  let p_text_1 d =
+    if is_text_other_char $ cur d then
+      p_while1 is_text_other_char d
+    else
+    "" (* We allow empty text_1 *)
 
-  let p_cap k d =
-    p_atom begin fun a d ->
-      if a -- "COMPRESS=DEFLATE" then k `Compress_deflate d else
-      if a -- "CONDSTORE" then k `Condstore d else
-      if a -- "ENABLE" then k `Enable d else
-      if a -- "IDLE" then k `Idle d else
-      if a -- "LITERAL+" then k `Literal_plus d else
-      if a -- "NAMESPACE" then k `Namespace d else
-      if a -- "ID" then k `Id d else
-      if a -- "QRESYNC" then k `Qresync d else
-      if a -- "UIDPLUS" then k `Uid_plus d else
-      if a -- "UNSELECT" then k `Unselect d else
-      if a -- "XLIST" then k `Xlist d else
-      if a -- "AUTH=PLAIN" then k $ `Auth `Plain $ d else
-      if a -- "AUTH=LOGIN" then k $ `Auth `Login $ d else
-      if a -- "XOAUTH2" then k `Xoauth2 d else
-      if a -- "X-GM-EXT-1" then k `Gmail d else
-      k $ `Other a $ d
-    end d
+  let p_cap d =
+    let a = p_atom d in
+    match String.uppercase a with
+    | "COMPRESS=DEFLATE" -> `Compress_deflate
+    | "CONDSTORE" -> `Condstore
+    | "ENABLE" -> `Enable
+    | "IDLE" -> `Idle
+    | "LITERAL+" -> `Literal_plus
+    | "NAMESPACE" -> `Namespace
+    | "ID" -> `Id
+    | "QRESYNC" -> `Qresync
+    | "UIDPLUS" -> `Uid_plus
+    | "UNSELECT" -> `Unselect
+    | "XLIST" -> `Xlist
+    | "AUTH=PLAIN" -> `Auth `Plain
+    | "AUTH=LOGIN" -> `Auth `Login
+    | "XOAUTH2" -> `Xoauth2
+    | "X-GM-EXT-1" -> `Gmail
+    | _ -> `Other a
 
   let p_code k d = (* '[' was eaten *)
-    p_atom begin fun a d ->
-      if a -- "ALERT" then k `Alert d else
-      if a -- "BADCHARSET" then
-        if cur d = ' ' then readc $ p_list1 p_astring (fun xs -> k $ `Bad_charset xs) $ d else
-        k $ `Bad_charset [] $ d else
-      if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
-      if a -- "PARSE" then k `Parse d else
-      if a -- "PERMANENTFLAGS" then p_sp $ p_list p_flag_perm (fun xs -> k $ `Permanent_flags xs) $ d else
-      if a -- "READ-ONLY" then k `Read_only d else
-      if a -- "READ-WRITE" then k `Read_write d else
-      if a -- "TRYCREATE" then k `Try_create d else
-      if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
-      if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
-      if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
-      if a -- "CLOSED" then k `Closed d else
-      if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
-      if a -- "NOMODSEQ" then k `No_modseq d else
-      if a -- "MODIFIED" then p_sp $ p_set (fun s -> k $ `Modified s) $ d else
-      if a -- "APPENDUID" then p_sp $ p_t2 p_uint32 p_uint32 (fun n m -> k $ `Append_uid (n, m)) $ d else
-      if a -- "COPYUID" then p_sp $ p_t3 p_uint32 p_set p_set (fun n s1 s2 -> k $ `Copy_uid (n, s1, s2)) $ d else
-      if a -- "UIDNOTSTICKY" then k `Uid_not_sticky d else
-      if a -- "COMPRESSIONACTIVE" then k `Compression_active d else
-      if a -- "USEATTR" then k `Use_attr d else
-      if cur d = ' ' then readc $ p_text_1 (fun x -> k $ `Other (a, Some x)) $ d else
-      k $ `Other (a, None) $ d
-    end d
+    let a = p_atom d in
+    match String.uppercase a with
+    | "ALERT" -> k `Alert d
+    | "BADCHARSET" ->
+        begin match peekc d with
+        | Some ' ' ->
+            junkc d;
+            p_list1 p_astring (fun xs -> k (`Bad_charset xs)) d
+        | _ ->
+            k (`Bad_charset []) d
+        end
+    | "CAPABILITY" -> let xs = p_sep p_cap d in k (`Capability xs) d
+    | "PARSE" -> k `Parse d
+    | "PERMANENTFLAGS" ->
+        p_sp d;
+        p_list (fun k d -> k (p_flag_perm d) d) (fun xs -> k (`Permanent_flags xs)) d
+    | "READ-ONLY" -> k `Read_only d
+    | "READ-WRITE" -> k `Read_write d
+    | "TRYCREATE" -> k `Try_create d
+    | "UIDNEXT" -> p_sp d; let n = p_uint32 d in k (`Uid_next n) d
+    | "UIDVALIDITY" -> p_sp d; let n = p_uint32 d in k (`Uid_validity n) d
+    | "UNSEEN" -> p_sp d; let n = p_uint32 d in k (`Unseen n) d
+    | "CLOSED" -> k `Closed d
+    | "HIGHESTMODSEQ" -> p_sp d; let n = p_uint64 d in k (`Highest_modseq n) d
+    | "NOMODSEQ" -> k `No_modseq d
+    | "MODIFIED" -> p_sp d; let s = p_set d in k (`Modified s) d
+    | "APPENDUID" ->
+        p_sp d;
+        let n = p_uint32 d in
+        p_sp d;
+        let m = p_uint32 d in
+        k (`Append_uid (n, m)) d
+    | "COPYUID" ->
+        p_sp d;
+        let n = p_uint32 d in
+        let s1 = p_set d in
+        let s2 = p_set d in
+        k (`Copy_uid (n, s1, s2)) d
+    | "UIDNOTSTICKY" -> k `Uid_not_sticky d
+    | "COMPRESSIONACTIVE" -> k `Compression_active d
+    | "USEATTR" -> k `Use_attr d
+    | _ ->
+        begin match peekc d with
+        | Some ' ' ->
+            junkc d;
+            let x = p_text_1 d in
+            k (`Other (a, Some x)) d
+        | _ ->
+            k (`Other (a, None)) d
+        end
 
 (*
    resp-text       = ["[" resp-text-code "]" SP] text
 *)
 
   let p_resp_text k d =
-    if cur d = '[' then
-      let nxt x d = p_ch ']' (fun d -> if cur d = ' ' then readc $ p_text (k x) $ d else k x "" d) d in
-      readc $ p_code nxt $ d
-    else
-    p_text $ k `None $ d
+    match peekc d with
+    | Some '[' ->
+        junkc d;
+        let nxt x d =
+          p_ch ']' d;
+          match peekc d with
+          | Some ' ' ->
+              junkc d;
+              k x (p_text d) d
+          | _ ->
+              k x "" d
+        in
+        p_code nxt d
+    | _ ->
+        k `None (p_text d) d
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
@@ -1089,12 +1230,16 @@ module D = struct
 *)
 
   let p_resp_cond_state k d =
-    p_atom begin fun a d ->
-      if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
-      if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
-      if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
-      err_unexpected_s a d
-    end d
+    let a = p_atom d in
+    match String.uppercase a with
+    | "OK" ->
+        p_sp d; p_resp_text (fun c t -> k (`Ok (c, t))) d
+    | "NO" ->
+        p_sp d; p_resp_text (fun c t -> k (`No (c, t))) d
+    | "BAD" ->
+        p_sp d; p_resp_text (fun c t -> k (`Bad (c, t))) d
+    | _ ->
+        err_unexpected_s a d
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -1126,23 +1271,24 @@ module D = struct
                        ; extensions to this specification.
 *)
 
-  let p_mbx_flag k d =
-    p_ch '\\' $ p_atom begin fun a d ->
-      if a -- "Noselect" then k `Noselect d else
-      if a -- "Marked" then k `Marked d else
-      if a -- "Unmarked" then k `Unmarked d else
-      if a -- "Noinferiors" then k `Noinferiors d else
-      if a -- "HasChildren" then k `HasChildren d else
-      if a -- "HasNoChildren" then k `HasNoChildren d else
-      if a -- "All" then k `All d else
-      if a -- "Archive" then k `Archive d else
-      if a -- "Drafts" then k `Drafts d else
-      if a -- "Flagged" then k `Flagged d else
-      if a -- "Junk" then k `Junk d else
-      if a -- "Sent" then k `Sent d else
-      if a -- "Trash" then k `Trash d else
-      k $ `Extension a $ d
-    end $ d
+  let p_mbx_flag d =
+    p_ch '\\' d;
+    let a = p_atom d in
+    match String.capitalize a with
+    | "Noselect" -> `Noselect
+    | "Marked" -> `Marked
+    | "Unmarked" -> `Unmarked
+    | "Noinferiors" -> `Noinferiors
+    | "HasChildren" -> `HasChildren
+    | "HasNoChildren" -> `HasNoChildren
+    | "All" -> `All
+    | "Archive" -> `Archive
+    | "Drafts" -> `Drafts
+    | "Flagged" -> `Flagged
+    | "Junk" -> `Junk
+    | "Sent" -> `Sent
+    | "Trash" -> `Trash
+    | _ -> `Extension a
 
 (*
    mailbox         = "INBOX" / astring
@@ -1167,24 +1313,50 @@ module D = struct
                       (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
 *)
 
-  let p_quoted_char k d =
-    let is_qchar = function '\r' | '\n' | '\\' | '"' -> false | '\x01' .. '\x7F' -> true | _ -> false in
-    if cur d = '\\' then
-      let nxt d =
-        if cur d = '\\' || cur d = '"' then let c = cur d in readc $ k c $ d else
-        err_unexpected $ cur d $ d
-      in
-      readc nxt d
-    else
-    if is_qchar $ cur d then let c = cur d in readc $ k c $ d else
-    err_unexpected $ cur d $ d
+  let p_quoted_char d =
+    let is_qchar = function
+      | '\r' | '\n' | '\\' | '"' -> false
+      | '\x01' .. '\x7F' -> true
+      | _ -> false
+    in
+    match cur d with
+    | '\\' ->
+        junkc d;
+        begin match cur d with
+        | '\\' | '"' as c ->
+            junkc d; c
+        | _ ->
+            raise (Error (err_unexpected $ cur d $ d))
+        end
+    | c when is_qchar c ->
+        junkc d;
+        c
+    | _ ->
+        raise (Error (err_unexpected $ cur d $ d))
 
-  let p_delim k d =
-    if cur d = '"' then readc $ p_quoted_char (fun c -> p_ch '"' $ k (Some c)) $ d else
-    p_atomf "NIL" $ k None $ d
+  let p_delim d =
+    match cur d with
+    | '"' ->
+        junkc d;
+        let c = p_quoted_char d in
+        p_ch '"' d;
+        Some c
+    | _ ->
+        p_atomf "NIL" d;
+        None
+
+  let lift p k d =
+    k (p d) d
 
   let p_mailbox_list k d =
-    p_t3 $ p_list p_mbx_flag $ p_delim $ p_mailbox $ k $ d
+    p_list (lift p_mbx_flag) (fun x d ->
+        p_sp d;
+        let y = p_delim d in
+        p_sp d;
+        p_mailbox (fun z d ->
+            k x y z d
+          ) d
+      ) d
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1202,16 +1374,35 @@ module D = struct
                           ;; as described in Section 3.1.2
 *)
 
-  let p_status_att k d =
-    p_atom begin fun a d ->
-      if a -- "MESSAGES" then p_sp $ p_uint (fun n -> k $ `Messages n) $ d else
-      if a -- "RECENT" then p_sp $ p_uint (fun n -> k $ `Recent n) $ d else
-      if a -- "UIDNEXT" then p_sp $ p_uint32 (fun n -> k $ `Uid_next n) $ d else
-      if a -- "UIDVALIDITY" then p_sp $ p_uint32 (fun n -> k $ `Uid_validity n) $ d else
-      if a -- "UNSEEN" then p_sp $ p_uint32 (fun n -> k $ `Unseen n) $ d else
-      if a -- "HIGHESTMODSEQ" then p_sp $ p_uint64 (fun n -> k $ `Highest_modseq n) $ d else
-      err_unexpected_s a d
-    end d
+  let p_status_att d =
+    let a = p_atom d in
+    match String.uppercase a with
+    | "MESSAGES" ->
+        p_sp d;
+        let n = p_uint d in
+        `Messages n
+    | "RECENT" ->
+        p_sp d;
+        let n = p_uint d in
+        `Recent n
+    | "UIDNEXT" ->
+        p_sp d;
+        let n = p_uint32 d in
+        `Uid_next n
+    | "UIDVALIDITY" ->
+        p_sp d;
+        let n = p_uint32 d in
+        `Uid_validity n
+    | "UNSEEN" ->
+        p_sp d;
+        let n = p_uint32 d in
+        `Unseen n
+    | "HIGHESTMODSEQ" ->
+        p_sp d;
+        let n = p_uint64 d in
+        `Highest_modseq n
+    | _ ->
+        raise (Error (err_unexpected_s a d))
 
 (*
    address         = "(" addr-name SP addr-adl SP addr-mailbox SP
@@ -1238,13 +1429,17 @@ module D = struct
 *)
 
   let p_address k d =
-    p_ch '(' begin
-      p_nstring' @@ fun ad_name ->
-      p_sp $ p_nstring' @@ fun ad_adl ->
-      p_sp $ p_nstring' @@ fun ad_mailbox ->
-      p_sp $ p_nstring' @@ fun ad_host ->
-      p_ch ')' $ k {ad_name; ad_adl; ad_mailbox; ad_host}
-    end d
+    p_ch '(' d;
+    p_nstring' (fun ad_name d ->
+    p_sp d; p_nstring' (fun ad_adl d ->
+    p_sp d; p_nstring' (fun ad_mailbox d ->
+    p_sp d; p_nstring' (fun ad_host d ->
+    p_ch ')' d;
+    k {ad_name; ad_adl; ad_mailbox; ad_host} d
+                  ) d
+              ) d
+          ) d
+      ) d
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -1274,22 +1469,50 @@ module D = struct
 
   let p_envelope k d =
     let p_address_list = p_list_generic ~delim:None p_address in
-    p_ch '(' begin
-             p_nstring'       @@ fun env_date ->
-      p_sp $ p_nstring'       @@ fun env_subject ->
-      p_sp $ p_address_list   @@ fun env_from ->
-      p_sp $ p_address_list   @@ fun env_sender ->
-      p_sp $ p_address_list   @@ fun env_reply_to ->
-      p_sp $ p_address_list   @@ fun env_to ->
-      p_sp $ p_address_list   @@ fun env_cc ->
-      p_sp $ p_address_list   @@ fun env_bcc ->
-      p_sp $ p_nstring'       @@ fun env_in_reply_to ->
-      p_sp $ p_nstring'       @@ fun env_message_id ->
-      p_ch ')' $
-      k {env_date; env_subject; env_from; env_sender;
-         env_reply_to; env_to; env_cc; env_bcc; env_in_reply_to;
-         env_message_id}
-    end d
+    p_ch '(' d;
+    p_nstring' (fun env_date d ->
+        p_sp d;
+        p_nstring' (fun env_subject d ->
+            p_sp d;
+            p_address_list (fun env_from d ->
+                p_sp d;
+                p_address_list (fun env_sender d ->
+                    p_sp d;
+                    p_address_list (fun env_reply_to d ->
+                        p_sp d;
+                        p_address_list (fun env_to d ->
+                            p_sp d;
+                            p_address_list (fun env_cc d ->
+                                p_sp d;
+                                p_address_list (fun env_bcc d ->
+                                    p_sp d;
+                                    p_nstring' (fun env_in_reply_to d ->
+                                        p_sp d;
+                                        p_nstring' (fun env_message_id d ->
+                                            p_ch ')' d;
+                                            k
+                                              {
+                                                env_date;
+                                                env_subject;
+                                                env_from;
+                                                env_sender;
+                                                env_reply_to;
+                                                env_to;
+                                                env_cc;
+                                                env_bcc;
+                                                env_in_reply_to;
+                                                env_message_id
+                                              } d
+                                          ) d
+                                      ) d
+                                  ) d
+                              ) d
+                          ) d
+                      ) d
+                  ) d
+              ) d
+          ) d
+      ) d
 
 (*
    body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
@@ -1308,15 +1531,15 @@ module D = struct
 *)
 
   let p_fld_param k d =
-    let param k d = p_string (fun v -> p_sp $ p_string (fun v' -> k (v, v'))) d in
+    let param k d = p_string (fun v -> p_sp d; p_string (fun v' -> k (v, v'))) d in
     p_list param k d
 
   let p_body_fields k d =
     p_fld_param begin fun params ->
-      p_sp $ p_nstring @@ fun id ->
-      p_sp $ p_nstring @@ fun desc ->
-      p_sp $ p_string  @@ fun enc ->
-      p_sp $ p_uint    @@ fun octets ->
+      p_sp d; p_nstring @@ fun id ->
+      p_sp d; p_nstring @@ fun desc ->
+      p_sp d; p_string  @@ fun enc ->
+      p_sp d; let octets = p_uint d in
       k {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
     end d
 
@@ -1332,8 +1555,12 @@ module D = struct
 *)
 
   let rec p_body_ext k d =
-    if is_digit $ cur d then p_uint32 (fun n -> k $ `Number n) d else
-    if cur d = '(' then p_list1 p_body_ext (fun xs -> k $ `List xs) d else
+    if is_digit (cur d) then
+      let n = p_uint32 d in
+      k (`Number n) d
+    else if cur d = '(' then
+      p_list1 p_body_ext (fun xs -> k $ `List xs) d
+    else
     p_nstring (function Some x -> k $ `String x | None -> k $ `None) d
 
 (*
@@ -1357,23 +1584,41 @@ module D = struct
 *)
 
   let p_fld_dsp k d =
-    if cur d = '(' then
-      readc $ p_string (fun s -> p_sp $ p_fld_param (fun p -> p_ch ')' $ k (Some (s, p)))) $ d
-    else
-    p_atomf "NIL" (k None) d
+    if cur d = '(' then begin
+      junkc d;
+      p_string (fun s -> p_sp d; p_fld_param (fun p -> p_ch ')' d; k (Some (s, p)))) d
+    end else begin
+      p_atomf "NIL" d;
+      k None d
+    end
 
   let p_fld_lang k d =
     if cur d = '(' then p_list1 p_string k d else
     p_nstring (function Some x -> k [x] | None -> k []) d
 
   let r_body_ext k d =
-    if cur d = ' ' then readc $ p_fld_dsp (fun dsp d ->
-        if cur d = ' ' then readc $ p_fld_lang (fun lang d ->
-            if cur d = ' ' then readc $ p_nstring (fun loc ->
-                p_sep p_body_ext (fun ext ->
-                    k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})) $ d else
-            k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d) $ d else
-        k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d) $ d else
+    if cur d = ' ' then begin
+      junkc d;
+      p_fld_dsp (fun dsp d ->
+          if cur d = ' ' then begin
+            junkc d;
+            p_fld_lang (fun lang d ->
+                if cur d = ' ' then begin
+                  junkc d;
+                  p_nstring (fun loc ->
+                      p_sep_k p_body_ext (fun ext ->
+                          k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})
+                    ) d
+                end
+                else
+                k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
+              ) d
+          end
+          else
+          k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
+        ) d
+    end
+    else
     k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
 
   let r_sbody_ext k d =
@@ -1419,27 +1664,46 @@ module D = struct
   let rec p_mbody k d = (* TODO Return the extension data *)
     let rec loop acc d =
       if cur d = '(' then p_body (fun x -> loop (x :: acc)) d else
-      if cur d = ' ' then
-        readc $ p_string (fun m d ->
-            if cur d = ' ' then readc $ r_mbody_ext (fun _ _ -> k $ `Multipart (List.rev acc, m)) $ d else
-            k $ `Multipart (List.rev acc, m) $ d) $ d else
+      if cur d = ' ' then begin
+        junkc d;
+        p_string (fun m d ->
+            if cur d = ' ' then begin
+              junkc d;
+              r_mbody_ext (fun _ _ -> k $ `Multipart (List.rev acc, m)) $ d
+            end else
+            k $ `Multipart (List.rev acc, m) $ d) $ d
+      end else
       err_unexpected $ cur d $ d
     in
     loop [] d
 
   and p_sbody k d = (* TODO Return the extension data *)
-    let ext k d = if cur d = ' ' then readc $ r_sbody_ext (fun _ _ -> k) $ d else k d in
-    let msg f k d = p_t3 p_envelope p_body p_uint (fun e b n -> ext $ k (`Message (f, e, b, n))) d in
+    let ext k d =
+      match peekc d with
+      | Some ' ' ->
+          junkc d;
+          r_sbody_ext (fun _ _ -> k) d
+      | _ ->
+          k d
+    in
     let nxt m t f d =
-      if m -- "MESSAGE" && t -- "RFC822" then p_sp $ msg f k $ d else
-      if m -- "TEXT" then p_sp $ p_uint (fun n -> ext $ k (`Text (t, f, n))) $ d else
-      ext $ k (`Basic (m, t, f)) $ d
+      match String.uppercase m, String.uppercase t with
+      | "MESSAGE", "RFC822" ->
+          p_sp d;
+          p_t3 p_envelope p_body (lift p_uint) (fun e b n -> ext (k (`Message (f, e, b, n)))) d
+      | "TEXT", _ ->
+          p_sp d;
+          let n = p_uint d in
+          ext $ k (`Text (t, f, n)) $ d
+      | _ ->
+          ext (k (`Basic (m, t, f))) d
     in
     p_t3 p_string p_string p_body_fields nxt d
 
   and p_body k d =
+    p_ch '(' d;
     let nxt k d = if cur d = '(' then p_mbody k d else p_sbody k d in
-    p_ch '(' $ nxt (fun x d -> p_ch ')' $ k x $ d) $ d
+    nxt (fun x d -> p_ch ')' d; k x d) $ d
 
 (*
    date-day-fixed  = (SP DIGIT) / 2DIGIT
@@ -1465,8 +1729,11 @@ module D = struct
                      SP time SP zone DQUOTE
 *)
 
-  let p_date_time k d =
-    let p s d =
+  let p_date_time d =
+    p_ch '"' d;
+    if d.i_max - d.i_pos >= 26 then
+      let s = String.sub d.i d.i_pos 26 in
+      d.i_pos <- d.i_pos + 26;
       try
         Scanf.sscanf s "%2d-%3s-%4d %2d:%2d:%2d %5d" begin fun day m year hr mn sc z ->
           let month =
@@ -1484,12 +1751,13 @@ module D = struct
             if m -- "Dec" then 11 else
             assert false
           in
-          p_ch '"' $ k { day; month; year } { hours = hr; minutes = mn; seconds = sc; zone = z } $ d
+          p_ch '"' d;
+          { day; month; year }, { hours = hr; minutes = mn; seconds = sc; zone = z }
         end
       with _ ->
-        err_unexpected_s s d
-    in
-    p_ch '"' $ p_literal 26 p $ d
+        raise (Error (err_unexpected_s s d))
+    else
+    raise (Error (err_unexpected_eoi d))
 
 (*
    header-fld-name = astring
@@ -1512,25 +1780,38 @@ module D = struct
 *)
 
   let p_msgtext k d =
-    p_atom begin fun a d ->
-      if a -- "HEADER" then k `Header d else
-      if a -- "HEADER.FIELDS" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields xs) $ d else
-      if a -- "HEADER.FIELDS.NOT" then p_sp $ p_list1 p_astring (fun xs -> k $ `Header_fields_not xs) $ d else
-      if a -- "TEXT" then k `Text d else
-      if a -- "MIME" then k `Mime d else
-      err_unexpected_s a d
-    end d
+    let a = p_atom d in
+    match String.uppercase a with
+    | "HEADER" -> k `Header d
+    | "HEADER.FIELDS" ->
+        p_sp d;
+        p_list1 p_astring (fun xs -> k $ `Header_fields xs) d
+    | "HEADER.FIELDS.NOT" ->
+        p_sp d;
+        p_list1 p_astring (fun xs -> k $ `Header_fields_not xs) d
+    | "TEXT" ->
+        k `Text d
+    |  "MIME" ->
+        k `Mime d
+    | _ ->
+        err_unexpected_s a d
 
   let rec p_part k d =
-    if is_digit $ cur d then p_uint (fun n -> p_ch '.' $ p_part (fun s -> k $ `Part (n, s))) d else
+    if is_digit $ cur d then begin
+      let n = p_uint d in
+      p_ch '.' d;
+      p_part (fun s -> k $ `Part (n, s)) d
+    end else
     p_msgtext k d
 
   let p_section k d =
-    let nxt d =
-      if cur d = ']' then readc $ k `All $ d else
-      p_part (fun s -> p_ch ']' $ k s) d
-    in
-    p_ch '[' nxt d
+    p_ch '[' d;
+    match cur d with
+    | ']' ->
+        junkc d;
+        k `All d
+    | _ ->
+        p_part (fun s d -> p_ch ']' d; k s d) d
 
 (*
    uniqueid        = nz-number
@@ -1571,30 +1852,35 @@ module D = struct
 *)
 
   let p_msg_att k d =
-    p_while1 (fun ch -> is_atom_char ch && ch <> '[') begin fun a d ->
-      if a -- "FLAGS" then p_sp $ p_list p_flag_fetch (fun xs -> k $ `Flags xs) $ d else
-      if a -- "ENVELOPE" then p_sp $ p_envelope (fun x -> k $ `Envelope x) $ d else
-      if a -- "INTERNALDATE" then p_sp $ p_date_time (fun d t -> k $ `Internal_date (d, t)) $ d else
-      if a -- "RFC822.HEADER" then p_sp $ p_nstring (fun x -> k $ `Rfc822_header x) $ d else
-      if a -- "RFC822.TEXT" then p_sp $ p_nstring (fun x -> k $ `Rfc822_text x) $ d else
-      if a -- "RFC822.SIZE" then p_sp $ p_uint (fun x -> k $ `Rfc822_size x) $ d else
-      if a -- "RFC822" then p_sp $ p_nstring (fun x -> k $ `Rfc822 x) $ d else
-      if a -- "BODYSTRUCTURE" then p_sp $ p_body (fun x -> k $ `Body_structure x) $ d else
-      if a -- "BODY" then
+    let a = p_while1 (fun ch -> is_atom_char ch && ch <> '[') d in
+    match String.uppercase a with
+    | "FLAGS" -> p_sp d; p_list (lift p_flag_fetch) (fun xs -> k $ `Flags xs) d
+    | "ENVELOPE" -> p_sp d; p_envelope (fun x -> k $ `Envelope x) d
+    | "INTERNALDATE" -> p_sp d; let t1, t2 = p_date_time d in k (`Internal_date (t1, t2)) d
+    | "RFC822.HEADER" -> p_sp d; p_nstring (fun x -> k $ `Rfc822_header x) d
+    | "RFC822.TEXT" -> p_sp d; p_nstring (fun x -> k $ `Rfc822_text x) d
+    | "RFC822.SIZE" -> p_sp d; let x = p_uint d in k (`Rfc822_size x) d
+    | "RFC822" -> p_sp d; p_nstring (fun x -> k $ `Rfc822 x) d
+    | "BODYSTRUCTURE" -> p_sp d; p_body (fun x -> k $ `Body_structure x) d
+    | "BODY" ->
         let orig k d =
-          if cur d = '<' then readc $ p_uint (fun n -> p_ch '>' $ k (Some n)) $ d else
+          if cur d = '<' then begin
+            junkc d;
+            let n = p_uint d in
+            p_ch '>' d;
+            k (Some n) d
+          end else
           k None d
         in
-        if cur d = ' ' then readc $ p_body (fun x -> k $ `Body x) $ d else
-        p_section (fun s -> orig (fun n -> p_sp $ p_nstring (fun x -> k $ `Body_section (s, n, x)))) d
-      else
-      if a -- "UID" then p_sp $ p_uint32 (fun x -> k $ `Uid x) $ d else
-      if a -- "MODSEQ" then p_sp $ p_ch '(' (p_uint64 (fun n -> p_ch ')' $ k (`Modseq n))) $ d else
-      if a -- "X-GM-MSGID" then p_sp $ p_uint64 (fun n -> k $ `Gm_msgid n) $ d else
-      if a -- "X-GM-THRID" then p_sp $ p_uint64 (fun n -> k $ `Gm_thrid n) $ d else
-      if a -- "X-GM-LABELS" then p_sp $ p_list p_astring (fun xs -> k $ `Gm_labels xs) $ d else
-      err_unexpected_s a d
-    end d
+        if cur d = ' ' then (junkc d; p_body (fun x -> k $ `Body x) $ d)
+        else
+        p_section (fun s -> orig (fun n -> p_sp d; p_nstring (fun x -> k $ `Body_section (s, n, x)))) d
+    | "UID" -> p_sp d; let x = p_uint32 d in k (`Uid x) d
+    | "MODSEQ" -> p_sp d; p_ch '(' d; let n = p_uint64 d in p_ch ')' d; k (`Modseq n) d
+    | "X-GM-MSGID" -> p_sp d; let n = p_uint64 d in k (`Gm_msgid n) d
+    | "X-GM-THRID" -> p_sp d; let n = p_uint64 d in k (`Gm_thrid n) d
+    | "X-GM-LABELS" -> p_sp d; p_list p_astring (fun xs -> k $ `Gm_labels xs) d
+    | _ -> err_unexpected_s a d
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -1625,58 +1911,71 @@ module D = struct
 *)
 
   let p_response_data_t k d =
-    p_atom begin fun a d ->
-      if a -- "OK" then p_sp $ p_resp_text (fun c t -> k $ `Ok (c, t)) $ d else
-      if a -- "NO" then p_sp $ p_resp_text (fun c t -> k $ `No (c, t)) $ d else
-      if a -- "BAD" then p_sp $ p_resp_text (fun c t -> k $ `Bad (c, t)) $ d else
-      if a -- "BYE" then p_sp $ p_resp_text (fun c t -> k $ `Bye (c, t)) $ d else
-      if a -- "FLAGS" then p_sp $ p_list p_flag (fun xs -> k $ `Flags xs) $ d else
-      if a -- "LIST" then p_sp $ p_mailbox_list (fun xs c m -> k $ `List (xs, c, m)) $ d else
-      if a -- "LSUB" then p_sp $ p_mailbox_list (fun xs c m -> k $ `Lsub (xs, c, m)) $ d else
-      if a -- "SEARCH" then
+    let a = p_atom d in
+    match String.uppercase a with
+    | "OK" -> p_sp d; p_resp_text (fun c t -> k $ `Ok (c, t)) $ d
+    | "NO" -> p_sp d; p_resp_text (fun c t -> k $ `No (c, t)) $ d
+    | "BAD" -> p_sp d; p_resp_text (fun c t -> k $ `Bad (c, t)) $ d
+    | "BYE" -> p_sp d; p_resp_text (fun c t -> k $ `Bye (c, t)) $ d
+    | "FLAGS" -> p_sp d; p_list (lift p_flag) (fun xs -> k $ `Flags xs) $ d
+    | "LIST" -> p_sp d; p_mailbox_list (fun xs c m -> k $ `List (xs, c, m)) $ d
+    | "LSUB" -> p_sp d; p_mailbox_list (fun xs c m -> k $ `Lsub (xs, c, m)) $ d
+    | "SEARCH" ->
         let rec nxt acc d =
           let nxt d =
-            if cur d = '(' then
-              readc $ p_atomf "MODSEQ"
-                (p_sp (p_uint64 (fun n -> p_ch ')' $ k (`Search (List.rev acc, Some n))))) $ d
-            else
-            p_uint32 (fun n -> nxt (n :: acc)) d
+            if cur d = '(' then begin
+              junkc d;
+              p_atomf "MODSEQ" d;
+              p_sp d;
+              let n = p_uint64 d in
+              p_ch ')' d;
+              k (`Search (List.rev acc, Some n)) d
+            end else
+            let n = p_uint32 d in
+            nxt (n :: acc) d
           in
-          if cur d = ' ' then readc nxt d else
+          if cur d = ' ' then
+            (junkc d; nxt d)
+          else
           k $ `Search (List.rev acc, None) $ d
         in
-        nxt [] d else
-      if a -- "STATUS" then
-        let nxt m d = p_sp $ p_list p_status_att (fun a -> k $ `Status (m, a)) $ d in
-        p_sp $ p_mailbox nxt $ d else
-      if a -- "CAPABILITY" then p_sep p_cap (fun xs -> k $ `Capability xs) d else
-      if a -- "PREAUTH" then p_sp $ p_resp_text (fun c t -> k $ `Preauth (c, t)) $ d else
-      if a -- "VANISHED" then
-        let nxt d =
-          if cur d = '(' then
-            readc $ p_atomf "EARLIER" (p_ch ')' $ p_sp (p_set (fun s -> k $ `Vanished_earlier s))) $ d
-          else
-          p_set (fun s -> k $ `Vanished s) d
-        in
-        p_sp nxt d
-      else
-      if a -- "ENABLED" then p_sep p_cap (fun xs -> k $ `Enabled xs) d else
-      err_unexpected_s a d
-    end d
+        nxt [] d
+    | "STATUS" ->
+        let nxt m d = p_sp d; p_list (lift p_status_att) (fun a -> k $ `Status (m, a)) $ d in
+        p_sp d; p_mailbox nxt d
+    | "CAPABILITY" -> let xs = p_sep p_cap d in k (`Capability xs) d
+    | "PREAUTH" -> p_sp d; p_resp_text (fun c t -> k $ `Preauth (c, t)) $ d
+    | "VANISHED" ->
+        p_sp d;
+        if cur d = '(' then begin
+          junkc d;
+          p_atomf "EARLIER" d;
+          p_ch ')' d;
+          p_sp d;
+          let s = p_set d in
+          k (`Vanished_earlier s) d
+        end else
+        let s = p_set d in k (`Vanished s) d
+    | "ENABLED" -> let xs = p_sep p_cap d in k (`Enabled xs) d
+    | _ -> err_unexpected_s a d
 
   let p_response_data_n k d =
-    let nxt n a d =
-      if a -- "EXPUNGE" then k $ `Expunge n $ d else
-      if a -- "FETCH" then p_sp $ p_list1 p_msg_att (fun a -> k $ `Fetch (n, a)) $ d else
-      if a -- "EXISTS" then k $ `Exists (Uint32.to_int n) $ d else
-      if a -- "RECENT" then k $ `Recent (Uint32.to_int n) $ d else
-      err_unexpected_s a d
-    in
-    p_t2 p_uint32 p_atom nxt d (* FIXME uint vs uint32 *)
+    let n = p_uint32 d in (* FIXME uint vs uint32 *)
+    p_sp d;
+    let a = p_atom d in
+    match String.uppercase a with
+    | "EXPUNGE" -> k $ `Expunge n $ d
+    | "FETCH" -> p_sp d; p_list1 p_msg_att (fun a -> k $ `Fetch (n, a)) $ d
+    | "EXISTS" -> k $ `Exists (Uint32.to_int n) $ d
+    | "RECENT" -> k $ `Recent (Uint32.to_int n) $ d
+    | _ -> err_unexpected_s a d
 
   let p_untagged k d = (* '*' was eaten *)
-    let nxt d = if is_digit $ cur d then p_response_data_n k d else p_response_data_t k d in
-    p_sp nxt d
+    p_sp d;
+    if is_digit $ cur d then
+      p_response_data_n k d
+    else
+    p_response_data_t k d
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -1701,29 +2000,40 @@ module D = struct
   let is_tag_char c =
     is_astring_char c && c != '+'
 
-  let p_tag k d =
-    p_while1 is_tag_char k d
+  let p_tag d =
+    p_while1 is_tag_char d
 
   let p_tagged k d =
-    p_t2 p_tag p_resp_cond_state k d
+    let tag = p_tag d in
+    p_sp d;
+    p_resp_cond_state (k tag) d
 
-  let p_continue_req k d = (* '+' was eaten *)
-    if cur d = ' ' then readc $ p_text k $ d else
-    p_text k d
+  let p_continue_req d = (* '+' was eaten *)
+    if cur d = ' ' then begin
+      junkc d;
+      p_text d
+    end else
+    p_text d
 
   let rec p_response k d =
     let k x d = p_crlf $ k x $ d in
-    if cur d = '+' then readc $ p_continue_req (fun s -> k $ `Cont s) $ d else
-    if cur d = '*' then readc $ p_untagged k $ d else
-    p_tagged (fun t s -> k $ `Tagged (t, s)) d
+    match cur d with
+    | '+' ->
+        junkc d;
+        k (`Cont (p_continue_req d)) d
+    | '*' ->
+        junkc d;
+        p_untagged k d
+    | _ ->
+        p_tagged (fun t s -> k $ `Tagged (t, s)) d
 
   let rec p_response_ d =
     let ret x d = d.k <- p_response_; ret x d in
-    readc (p_response ret) d
+    readline (p_response ret) d
 
   let decoder () =
     { i = ""; i_pos = 0; i_max = 0;
-      buf = Buffer.create 4096; k = p_response_ }
+      k = p_response_ }
 
 end
 
@@ -2261,7 +2571,8 @@ type result =
   [ `Untagged of untagged
   | `Ok of code * string
   | `Error of error
-  | `Await_src
+  | `Await_line_src
+  | `Await_exactly_src of int
   | `Await_dst ]
 
 type connection =
@@ -2291,11 +2602,13 @@ let rec await k c = function
 (* let rec decode_to_cont k c = (\* FIXME signal error ? *\) *)
   (* decode false (function `Cont _ -> k | _ -> decode_to_cont k) c *)
 
-and cont_req k r c = match r with
+and cont_req k r c =
+  match r with
   | `Cont _ -> k c
   | _ -> decode (cont_req k) c
 
-and encode x k c = match E.encode c.e x with
+and encode x k c =
+  match E.encode c.e x with
   | `Partial ->
       ret `Await_dst (await (encode `Await k)) c
   | `Wait_for_cont ->
@@ -2303,9 +2616,11 @@ and encode x k c = match E.encode c.e x with
       (* decode_to_cont (encode `Await k) c *)
   | `Ok -> k c
 
-and decode (k : _ -> connection -> _) c = match D.decode c.d with
+and decode (k : _ -> connection -> _) c =
+  match D.decode c.d with
   | `Ok x -> k x c
-  | `Await -> ret `Await_src (await (decode k)) c
+  | `Await_line -> ret `Await_line_src (await (decode k)) c
+  | `Await_exactly n -> ret (`Await_exactly_src n) (await (decode k)) c
   | `Error e -> err (`Decode_error e) fatal c (* FIXME resume on the next line of input *)
 
 let rec h_tagged tag r c =

@@ -1151,7 +1151,8 @@ val run : connection ->
   [ `Cmd of command | `Await ] -> [ `Untagged of untagged
                                   | `Ok of code * string
                                   | `Error of error
-                                  | `Await_src
+                                  | `Await_line_src
+                                  | `Await_exactly_src of int
                                   | `Await_dst ]
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
