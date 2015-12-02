@@ -556,8 +556,6 @@ module D = struct
 
   (* Decoder *)
 
-  type src = [ `String of string | `Channel of in_channel | `Manual ]
-
   type error =
     [ `Expected_char of char
     | `Expected_string of string
@@ -580,8 +578,7 @@ module D = struct
     | `Error e -> pp ppf "@[`Error %a@]" pp_error e
 
   type decoder =
-    { src : src;
-      mutable i : string;
+    { mutable i : string;
       mutable i_pos : int;
       mutable i_max : int;
       buf : Buffer.t;
@@ -618,12 +615,7 @@ module D = struct
     if l = 0 then eoi d else
     (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
-  let refill k d = match d.src with
-    | `Manual     -> d.k <- k; `Await
-    | `String _   -> eoi d; k d
-    | `Channel ic ->
-        let rc = input ic d.i 0 (String.length d.i) in
-        (src d d.i 0 rc; k d)
+  let refill k d = d.k <- k; `Await
 
   let readc k d =
     if d.i_pos + 1 < d.i_max then (d.i_pos <- d.i_pos + 1; k d) else (* CHECK + 1 *)
@@ -1729,13 +1721,8 @@ module D = struct
     let ret x d = d.k <- p_response_; ret x d in
     readc (p_response ret) d
 
-  let decoder src =
-    let i, i_pos, i_max = match src with
-      | `String s -> s, 0, String.length s
-      | `Manual -> "", 0, 0
-      | `Channel _ -> Bytes.create io_buffer_size, 0, 0
-    in
-    { src = (src :> src); i; i_pos; i_max;
+  let decoder () =
+    { i = ""; i_pos = 0; i_max = 0;
       buf = Buffer.create 4096; k = p_response_ }
 
 end
@@ -2368,5 +2355,5 @@ let h_greetings r c = match r with
   | _ -> err `Bad_greeting fatal c (* FIXME continue until [`Ok] ? *)
 
 let connection () =
-  { e = E.encoder `Manual; d = D.decoder `Manual; idling = false;
+  { e = E.encoder `Manual; d = D.decoder (); idling = false;
     idle_stop = ref false; tag = 0; k = await (decode h_greetings) }
