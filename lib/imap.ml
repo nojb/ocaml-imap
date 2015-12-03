@@ -1926,22 +1926,23 @@ module D = struct
     | "LSUB" -> p_sp d; p_mailbox_list (fun xs c m -> k (`Lsub (xs, c, m))) d
     | "SEARCH" ->
         let rec nxt acc d =
-          let nxt d =
-            if cur d = '(' then begin
+          match peekc d with
+          | Some ' ' ->
               junkc d;
-              p_atomf "MODSEQ" d;
-              p_sp d;
-              let n = p_uint64 d in
-              p_ch ')' d;
-              k (`Search (List.rev acc, Some n)) d
-            end else
-              let n = p_uint32 d in
-              nxt (n :: acc) d
-          in
-          if cur d = ' ' then
-            (junkc d; nxt d)
-          else
-            k (`Search (List.rev acc, None)) d
+              begin match peekc d with
+              | Some '(' ->
+                  junkc d;
+                  p_atomf "MODSEQ" d;
+                  p_sp d;
+                  let n = p_uint64 d in
+                  p_ch ')' d;
+                  k (`Search (List.rev acc, Some n)) d
+              | _ ->
+                  let n = p_uint32 d in
+                  nxt (n :: acc) d
+              end
+          | _ ->
+              k (`Search (List.rev acc, None)) d
         in
         nxt [] d
     | "STATUS" ->
@@ -1951,15 +1952,17 @@ module D = struct
     | "PREAUTH" -> p_sp d; p_resp_text (fun c t -> k (`Preauth (c, t))) d
     | "VANISHED" ->
         p_sp d;
-        if cur d = '(' then begin
-          junkc d;
-          p_atomf "EARLIER" d;
-          p_ch ')' d;
-          p_sp d;
-          let s = p_set d in
-          k (`Vanished_earlier s) d
-        end else
-          let s = p_set d in k (`Vanished s) d
+        begin match cur d with
+        | '(' ->
+            junkc d;
+            p_atomf "EARLIER" d;
+            p_ch ')' d;
+            p_sp d;
+            let s = p_set d in
+            k (`Vanished_earlier s) d
+        | _ ->
+            let s = p_set d in k (`Vanished s) d
+        end
     | "ENABLED" -> let xs = p_sep p_cap d in k (`Enabled xs) d
     | _ -> err_unexpected_s a d
 
