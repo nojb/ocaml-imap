@@ -1573,42 +1573,45 @@ module D = struct
 *)
 
   let p_fld_dsp k d =
-    if cur d = '(' then begin
-      junkc d;
-      p_string (fun s -> p_sp d; p_fld_param (fun p -> p_ch ')' d; k (Some (s, p)))) d
-    end else begin
-      p_atomf "NIL" d;
-      k None d
-    end
+    match cur d with
+    | '(' ->
+        junkc d;
+        p_string (fun s -> p_sp d; p_fld_param (fun p -> p_ch ')' d; k (Some (s, p)))) d
+    | _ ->
+        p_atomf "NIL" d;
+        k None d
 
   let p_fld_lang k d =
-    if cur d = '(' then p_list1 p_string k d else
-      p_nstring (function Some x -> k [x] | None -> k []) d
+    match cur d with
+    | '(' ->
+        p_list1 p_string k d
+    | _ ->
+        p_nstring (function Some x -> k [x] | None -> k []) d
 
   let r_body_ext k d =
-    if cur d = ' ' then begin
-      junkc d;
-      p_fld_dsp (fun dsp d ->
-          if cur d = ' ' then begin
-            junkc d;
-            p_fld_lang (fun lang d ->
-                if cur d = ' ' then begin
-                  junkc d;
-                  p_nstring (fun loc ->
-                      p_sep_k p_body_ext (fun ext ->
-                          k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})
-                    ) d
-                end
-                else
-                  k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
-              ) d
-          end
-          else
-            k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
-        ) d
-    end
-    else
-      k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
+    match cur d with
+    | ' ' ->
+        junkc d;
+        p_fld_dsp (fun dsp d ->
+            match cur d with
+            | ' ' ->
+                junkc d;
+                p_fld_lang (fun lang d ->
+                    match cur d with
+                    | ' ' ->
+                        junkc d;
+                        p_nstring (fun loc ->
+                            p_sep_k p_body_ext (fun ext ->
+                                k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})
+                          ) d
+                    | _ ->
+                        k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
+                  ) d
+            | _ ->
+                k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
+          ) d
+    | _ ->
+        k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
 
   let r_sbody_ext k d =
     p_nstring (fun md5 -> r_body_ext (k md5)) d
@@ -2016,11 +2019,12 @@ module D = struct
     p_resp_cond_state (k tag) d
 
   let p_continue_req d = (* '+' was eaten *)
-    if cur d = ' ' then begin
-      junkc d;
-      p_text d
-    end else
-      p_text d
+    match cur d with
+    | ' ' ->
+        junkc d;
+        p_text d
+    | _ ->
+        p_text d
 
   let rec p_response k d =
     let k x d = p_crlf (k x) d in
