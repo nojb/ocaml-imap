@@ -6,9 +6,17 @@ let (>>=) = Lwt.(>>=)
 
 let () = Ssl.init ()
 
-let () =
-  if (try Sys.getenv "IMAP_DEBUG" <> "0" with Not_found -> false) then
-    Lwt_log.Section.set_level Lwt_log.Section.main Lwt_log.Debug
+let debug =
+  try
+    Sys.getenv "IMAP_DEBUG" <> "0"
+  with Not_found ->
+    false
+
+let debug fmt =
+  if debug then
+    Printf.kfprintf (fun _ -> Lwt.return_unit) stderr fmt
+  else
+    Printf.ikfprintf (fun _ -> Lwt.return_unit) stderr fmt
 
 type connection =
   {
@@ -20,12 +28,12 @@ let rec process c : Imap.result -> _ = function
   | `Read (s, i, l, k) ->
       (* LTerm.eprintl "Read" >>= fun () -> *)
       Lwt_ssl.read c.sock s i l >>= fun n ->
-      Lwt_log.debug_f ">>> %d\n%s>>>%!" n (String.sub s i n) >>= fun () ->
+      debug ">>> %d\n%s>>>\n%!" n (String.sub s i n) >>= fun () ->
       process c (k n)
   | `Write (o, pos, len, k) ->
       (* LTerm.eprintl "Write" >>= fun () -> *)
       Lwt_ssl.write c.sock o pos len >>= fun n ->
-      Lwt_log.debug_f "<<< %d\n%s<<<%!" n (String.sub o pos n) >>= fun () ->
+      debug "<<< %d\n%s<<<\n%!" n (String.sub o pos n) >>= fun () ->
       process c (k n)
   | `Untagged _ as r ->
       (* LTerm.eprintl "Untagged" >>= fun () -> *)
@@ -198,11 +206,13 @@ let unchanged_since =
 
 let flags =
   let flags =
-    [ "answered", `Answered;
+    [
+      "answered", `Answered;
       "flagged", `Flagged;
       "deleted", `Deleted;
       "seen", `Seen;
-      "draft", `Draft ]
+      "draft", `Draft;
+    ]
   in
   let rec loop = function
     | (n, a) :: rem ->
@@ -305,7 +315,9 @@ let connect =
     ]
   in
   let connect host port =
-    do_connect host port >>= fun _ -> Lwt.return_unit
+    do_connect host port >>= fun c ->
+    run c Imap.logout >>=
+    handle_unit c
   in
   Term.(pure connect $ host $ port), Term.info "connect" ~doc ~man
 
@@ -323,6 +335,8 @@ let capability =
   let capability host port user password =
     do_connect host port >>= fun c ->
     run c Imap.capability >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure capability $ host $ port $ user $ password), Term.info "capability" ~doc ~man
@@ -340,6 +354,8 @@ let login =
   let login host port user pass =
     do_connect host port >>= fun c ->
     run c (Imap.login user pass) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure login $ host $ port $ user $ password), Term.info "login" ~doc ~man
@@ -375,6 +391,8 @@ let noop =
   let noop host port =
     do_connect host port >>= fun c ->
     run c Imap.noop >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure noop $ host $ port), Term.info "noop" ~doc ~man
@@ -392,6 +410,8 @@ let authenticate =
   let authenticate host port user pass =
     do_connect host port >>= fun c ->
     run c (Imap.authenticate (Imap.plain user pass)) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure authenticate $ host $ port $ user $ password), Term.info "authenticate" ~doc ~man
@@ -411,6 +431,8 @@ let subscribe =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.subscribe m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure subscribe $ host $ port $ user $ password $ mailbox), Term.info "subscribe" ~doc ~man
@@ -430,6 +452,8 @@ let unsubscribe =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.unsubscribe m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure unsubscribe $ host $ port $ user $ password $ mailbox),
@@ -450,6 +474,8 @@ let list =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.list m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure list $ host $ port $ user $ password $ list_wildcard),
@@ -470,6 +496,8 @@ let lsub =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.list m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure lsub $ host $ port $ user $ password $ list_wildcard),
@@ -491,6 +519,8 @@ let select =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.select ~condstore m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure select $ host $ port $ user $ password $ condstore $ mailbox), Term.info "select" ~doc ~man
@@ -511,6 +541,8 @@ let examine =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.examine ~condstore m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure examine $ host $ port $ user $ password $ condstore $ mailbox),
@@ -529,6 +561,8 @@ let create =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.create m) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure create $ host $ port $ user $ password $ mailbox),
@@ -549,6 +583,8 @@ let rename =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.rename oldm newm) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure rename $ host $ port $ user $ password $ pos_mailbox 0 $ pos_mailbox 1), Term.info "rename" ~doc ~man
@@ -569,6 +605,8 @@ let status =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.status m atts) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure status $ host $ port $ user $ password $ mailbox $ status_att),
@@ -591,6 +629,8 @@ let close =
     run c (Imap.examine m) >>=
     handle_unit c >>= fun () ->
     run c Imap.close >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure close $ host $ port $ user $ password $ mailbox),
@@ -613,6 +653,8 @@ let fetch =
     run c (Imap.examine mailbox) >>=
     handle_unit c >>= fun () ->
     run c (Imap.fetch ~uid ?changed ~vanished set att) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure fetch $ host $ port $ user $ password $ mailbox $ set $ uid $ fetch_att $ changed_since $ vanished), Term.info "fetch" ~doc ~man
@@ -650,7 +692,9 @@ let store =
         run c (f_lb ~uid ~silent ?unchanged set labels) >>= handle_unit c
       else
         Lwt.return_unit
-    end
+    end >>= fun () ->
+    run c Imap.logout >>=
+    handle_unit c
   in
   Term.(pure store $ host $ port $ user $ password $ mailbox $ store_mode $ set $ uid $ silent $ unchanged_since $ flags $ labels),
   Term.info "store" ~doc ~man
@@ -666,6 +710,8 @@ let search =
     run c (Imap.examine mailbox) >>=
     handle_unit c >>= fun () ->
     run c (Imap.search ~uid key) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure search $ host $ port $ user $ password $ mailbox $ uid $ search_key),
@@ -680,6 +726,8 @@ let enable =
     run c (Imap.login user password) >>=
     handle_unit c >>= fun () ->
     run c (Imap.enable caps) >>=
+    handle_unit c >>= fun () ->
+    run c Imap.logout >>=
     handle_unit c
   in
   Term.(pure enable $ host $ port $ user $ password $ capabilities),
