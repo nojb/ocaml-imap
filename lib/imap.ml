@@ -589,15 +589,6 @@ module D = struct
                              | `Error of error * string * int ]
     }
 
-  let (--) a b =
-    if String.length a <> String.length b then false else
-    let rec loop i =
-      if i >= String.length a then true else
-      if Char.uppercase a.[i] = Char.uppercase b.[i] then loop (i + 1) else
-      false
-    in
-    loop 0
-
   exception Error of [ `Error of error * string * int ]
 
   let err e d = `Error (e, d.i, d.i_pos)
@@ -695,7 +686,7 @@ module D = struct
 
   let p_atomf s d =
     let a = p_atom d in
-    if not (a -- s) then
+    if String.uppercase a <> String.uppercase s then
       raise (Error (err_expected_s s d))
 
   let p_t3 p1 p2 p3 k d =
@@ -1730,19 +1721,20 @@ module D = struct
       try
         Scanf.sscanf s "%2d-%3s-%4d %2d:%2d:%2d %5d" begin fun day m year hr mn sc z ->
           let month =
-            if m -- "Jan" then 0 else
-            if m -- "Feb" then 1 else
-            if m -- "Mar" then 2 else
-            if m -- "Apr" then 3 else
-            if m -- "May" then 4 else
-            if m -- "Jun" then 5 else
-            if m -- "Jul" then 6 else
-            if m -- "Aug" then 7 else
-            if m -- "Sep" then 8 else
-            if m -- "Oct" then 9 else
-            if m -- "Nov" then 10 else
-            if m -- "Dec" then 11 else
-            assert false
+            match String.capitalize m with
+            | "Jan" -> 0
+            | "Feb" -> 1
+            | "Mar" -> 2
+            | "Apr" -> 3
+            | "May" -> 4
+            | "Jun" -> 5
+            | "Jul" -> 6
+            | "Aug" -> 7
+            | "Sep" -> 8
+            | "Oct" -> 9
+            | "Nov" -> 10
+            | "Dec" -> 11
+            | _ -> assert false
           in
           p_ch '"' d;
           { day; month; year }, { hours = hr; minutes = mn; seconds = sc; zone = z }
