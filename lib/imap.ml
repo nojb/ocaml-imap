@@ -586,19 +586,17 @@ module D = struct
 
   let pp_decode ppf = function
     | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
-    | `Await_line -> pp ppf "`Await_line"
-    | `Await_exactly n -> pp ppf "`Await_exactly %d" n
+    | `Read _ -> pp ppf "`Read"
     | `Error e -> pp ppf "@[`Error %a@]" pp_error e
 
   type result =
     [ `Ok of response
-    | `Await_line of (string -> int -> int -> result)
-    | `Await_exactly of int * (string -> int -> int -> result)
+    | `Read of bytes * int * int * (int -> result)
     | `Error of error * string * int ]
 
   type decoder =
     {
-      mutable i : string;
+      mutable i : bytes;
       mutable i_pos : int;
       mutable i_max : int;
     }
@@ -616,19 +614,62 @@ module D = struct
   let ret x _ = `Ok x
   let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
 
-  let src d s j l =                                     (* set [d.i] with [s]. *)
-    if j < 0 || l < 0 || j + l > String.length s then
-      invalid_arg "bounds"
-    else
-      (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
+  (* let src d s j l =                                     (\* set [d.i] with [s]. *\) *)
+  (*   if j < 0 || l < 0 || j + l > String.length s then *)
+  (*     invalid_arg "bounds" *)
+  (*   else *)
+  (*     (d.i <- s; d.i_pos <- j; d.i_max <- j + l) *)
 
   let readexact n k d =
-    let k s j l = src d s j l; safe k d in
-    `Await_exactly (n, k)
+    let b = Bytes.create n in
+    let have = min n (d.i_max - d.i_pos) in
+    Bytes.blit d.i d.i_pos b 0 have;
+    d.i_pos <- d.i_pos + have;
+    let rec loop rem  =
+      if rem = 0 then
+        safe (k b) d
+      else
+        `Read (b, n-rem, rem, fun m -> loop (rem - m))
+    in
+    loop (n-have)
+
+  let has_line s pos max =
+    let rec loop cr_read j =
+      if j >= max then false
+      else
+        match s.[j] with
+        | '\n' ->
+            if cr_read then true else loop false (j+1)
+        | '\r' ->
+            loop true (j+1)
+        | c ->
+            loop false (j+1)
+    in
+    loop false pos
 
   let readline k d =
-    let k s j l = src d s j l; safe k d in
-    `Await_line k
+    if has_line d.i d.i_pos d.i_max then
+      k d
+    else begin
+      if d.i_pos > 0 then begin
+        Bytes.blit d.i d.i_pos d.i 0 (d.i_max - d.i_pos);
+        d.i_max <- d.i_max - d.i_pos;
+        d.i_pos <- 0
+      end;
+      let rec loop off =
+        if has_line d.i d.i_pos off then begin
+          d.i_max <- off;
+          safe k d
+        end else begin
+          if off >= Bytes.length d.i then begin
+            let new_i = Bytes.create (2 * Bytes.length d.i + 1) in
+            Bytes.blit d.i 0 new_i 0 (Bytes.length d.i)
+          end;
+          `Read (d.i, off, Bytes.length d.i - off, fun n -> loop (off + n))
+        end
+      in
+      loop d.i_max
+    end
 
   let peekc d =
     if d.i_pos < d.i_max then
@@ -787,10 +828,13 @@ module D = struct
 *)
 
   let p_crlf k d =
-    if d.i_pos < d.i_max then
-      err_unexpected (cur d) d
-    else
-      k d
+    p_ch '\r' d;
+    p_ch '\n' d;
+    k d
+    (* if d.i_pos < d.i_max then *)
+    (*   err_unexpected (cur d) d *)
+    (* else *)
+    (*   k d *)
 
 (*
    number          = 1*DIGIT
@@ -849,9 +893,7 @@ module D = struct
    string          = quoted / literal
 *)
 
-  let p_literal n k d = (* reads n bytes *)
-    assert (n = d.i_max - d.i_pos);
-    let data = String.sub d.i d.i_pos n in
+  let p_literal k data d = (* reads n bytes *)
     readline (k data) d
 
   let p_string k d =
@@ -863,7 +905,7 @@ module D = struct
         junkc d;
         let n = p_uint d in
         p_ch '}' d;
-        p_crlf (readexact n (p_literal n k)) d
+        p_crlf (readexact n (p_literal k)) d
     | c ->
         err_unexpected c d
 
@@ -2048,7 +2090,7 @@ module D = struct
 
   let decoder () =
     {
-      i = "";
+      i = Bytes.create 4096;
       i_pos = 0;
       i_max = 0;
     }
@@ -2266,19 +2308,17 @@ module E = struct
     {
       mutable o : string;
       mutable o_pos : int;
-      mutable o_max : int;
     }
 
-  let dst_rem e = e.o_max - e.o_pos
-
-  let dst e s j l =
-    if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
-    e.o <- s; e.o_pos <- j; e.o_max <- j + l
-
   let flush k e =
-    if e.o_pos > 0 || e.o_max = 0 then
-      let k s j l = dst e s j l; k e in
-      `Partial (e.o, 0, e.o_pos, k)
+    if e.o_pos > 0 then
+      let rec k1 n =
+        if n < e.o_pos then
+          `Partial (e.o, n, e.o_pos - n, fun m -> k1 (n + m))
+        else
+          (e.o_pos <- 0; k e)
+      in
+      k1 0
     else
       k e
 
@@ -2286,8 +2326,9 @@ module E = struct
     `Wait_for_cont k
 
   let rec writes s k e =
+    let o_len = String.length e.o in
     let rec loop j l e =
-      let rem = dst_rem e in
+      let rem = o_len - e.o_pos in
       let len = if l > rem then rem else l in
       String.unsafe_blit s j e.o e.o_pos len;
       e.o_pos <- e.o_pos + len;
@@ -2544,11 +2585,10 @@ module E = struct
     | `Auth_step data -> w data (w_crlf (flush ret)) e
     | `Auth_error -> w "*" (w_crlf (flush ret)) e
 
-  let encoder dst =
+  let encoder () =
     {
-      o = "";
+      o = Bytes.create 4096;
       o_pos = 0;
-      o_max = 0;
     }
 end
 
@@ -2576,9 +2616,8 @@ type result =
   [ `Untagged of untagged * (unit -> result)
   | `Ok of code * string
   | `Error of error
-  | `Await_line_src of (string -> int -> int -> result)
-  | `Await_exactly_src of int * (string -> int -> int -> result)
-  | `Await_dst of string * int * int * (string -> int -> int -> result) ]
+  | `Read of string * int * int * (int -> result)
+  | `Write of string * int * int * (int -> result) ]
 
 type connection =
   {
@@ -2597,7 +2636,7 @@ let rec cont_req k r c =
 and encode x k c =
   let rec loop = function
     | `Partial (s, i, l, k) ->
-        `Await_dst (s, i, l, (fun s i l -> loop (k s i l)))
+        `Write (s, i, l, (fun n -> loop (k n)))
     | `Wait_for_cont k ->
         decode (cont_req (fun c -> loop (k c.e))) c
     | `Ok ->
@@ -2609,10 +2648,8 @@ and decode (k : _ -> connection -> _) c =
   let rec loop = function
     | `Ok x ->
         k x c
-    | `Await_line k ->
-        `Await_line_src (fun s i l -> loop (k s i l))
-    | `Await_exactly (n, k) ->
-        `Await_exactly_src (n, (fun s i l -> loop (k s i l)))
+    | `Read (s, i, l, k) ->
+        `Read (s, i, l, fun n -> loop (k n))
     | `Error e ->
         `Error (`Decode_error e) (* FIXME resume on the next line of input *)
   in
@@ -2685,7 +2722,7 @@ let run c cmd =
 let connection () =
   let c =
     {
-      e = E.encoder `Manual;
+      e = E.encoder ();
       d = D.decoder ();
       idling = false;
       idle_stop = ref false;

@@ -8,31 +8,23 @@ let () = Ssl.init ()
 
 type connection =
   {
-    o : string;
     c : Imap.connection;
-    mutable input : Lwt_io.input_channel;
-    mutable output : Lwt_io.output_channel;
+    sock : Lwt_ssl.socket;
   }
 
 let rec run c : Imap.result -> _ = function
-  | `Await_line_src k ->
-      (* LTerm.eprintl "Await_line_src" >>= fun () -> *)
-      Lwt_io.read_line c.input >>= fun l ->
-      LTerm.eprintlf ">>> %d\n%s\n>>>%!" (String.length l) l >>= fun () ->
-      run c (k l 0 (String.length l))
-  | `Await_exactly_src (n, k) ->
-      (* LTerm.eprintlf "Await_exactly_src %d" n >>= fun () -> *)
-      let buf = Bytes.create n in
-      Lwt_io.read_into_exactly c.input buf 0 n >>= fun () ->
-      LTerm.eprintlf ">>> %d\n%s>>>%!" n buf >>= fun () ->
-      run c (k buf 0 n)
-  | `Await_dst (o, pos, len, k) ->
-      (* LTerm.eprintl "Await_dst" >>= fun () -> *)
-      Lwt_io.write_from_string_exactly c.output o pos len >>= fun () ->
-      LTerm.eprintlf "<<< %d\n%s<<<%!" len (String.sub o pos len) >>= fun () ->
-      run c (k c.o 0 (String.length c.o))
+  | `Read (s, i, l, k) ->
+      LTerm.eprintl "Read" >>= fun () ->
+      Lwt_ssl.read c.sock s i l >>= fun n ->
+      LTerm.eprintlf ">>> %d\n%s>>>%!" n (String.sub s i n) >>= fun () ->
+      run c (k n)
+  | `Write (o, pos, len, k) ->
+      LTerm.eprintl "Write" >>= fun () ->
+      Lwt_ssl.write c.sock o pos len >>= fun n ->
+      LTerm.eprintlf "<<< %d\n%s<<<%!" n (String.sub o pos n) >>= fun () ->
+      run c (k n)
   | `Untagged _ as r ->
-      (* LTerm.eprintl "Untagged" >>= fun () -> *)
+      LTerm.eprintl "Untagged" >>= fun () ->
       Lwt.return r
   | `Ok _ ->
       Lwt.return `Ok
@@ -50,18 +42,13 @@ let connect host port =
   Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
-  let input = Lwt_ssl.in_channel_of_descr sock in
-  let output = Lwt_ssl.out_channel_of_descr sock in
   let c, v = Imap.connection () in
   let c =
     {
-      o = Bytes.create io_buffer_size;
       c;
-      input;
-      output;
+      sock;
     }
   in
-  (* Imap.dst c.c c.o 0 (Bytes.length c.o); *)
   Lwt.return (c, v)
 
 open Cmdliner

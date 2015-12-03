@@ -1100,9 +1100,8 @@ type result =
   [ `Untagged of untagged * (unit -> result)
   | `Ok of code * string
   | `Error of error
-  | `Await_line_src of (string -> int -> int -> result)
-  | `Await_exactly_src of int * (string -> int -> int -> result)
-  | `Await_dst of string * int * int * (string -> int -> int -> result) ]
+  | `Read of string * int * int * (int -> result)
+  | `Write of string * int * int * (int -> result) ]
 
 val connection : unit -> connection * result
 (** [connection ()] creates a new connection object.  The connection should be
