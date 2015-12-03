@@ -103,7 +103,7 @@ let mailbox =
   Arg.(value & opt string "INBOX" & doc)
 
 let pos_mailbox i =
-  let doc = Arg.info ~docs ~docv:"MAILBOX" ~doc:"Mailbox name (UTF-8 encoded)." ["mailbox"] in
+  let doc = Arg.info ~docs ~docv:"MAILBOX" ~doc:"Mailbox name (UTF-8 encoded)." [] in
   Arg.(required & pos i (some string) None & doc)
 
 let docs = "IMAP OPTIONS"
