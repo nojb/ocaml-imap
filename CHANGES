@@ -1,9 +1,10 @@
 trunk
 
-  * Fix bug in parsing address lists, by @phi-gamma (#24)
+  * Easier API: the continuation is returned directly to the user.
   * Redesigned parser into hybrid direct/cps style (*changes* API)
     (the new style is simpler and should be faster and use less memory than
     the existing pure cps design)
+  * Fix bug in parsing address lists, by @phi-gamma (#24)
 
 1.1.1 (2015-06-24)
 
