@@ -1096,7 +1096,15 @@ val pp_error : Format.formatter -> error -> unit
 type connection
 (** The type for connections. *)
 
-val connection : unit -> connection
+type result =
+  [ `Untagged of untagged * (unit -> result)
+  | `Ok of code * string
+  | `Error of error
+  | `Await_line_src of (string -> int -> int -> result)
+  | `Await_exactly_src of int * (string -> int -> int -> result)
+  | `Await_dst of string * int * int * (string -> int -> int -> result) ]
+
+val connection : unit -> connection * result
 (** [connection ()] creates a new connection object.  The connection should be
     supplied with input and output buffers as necessary using {!src} and {!dst}.
     Other that that, it is completely independent of any particular connection
@@ -1111,18 +1119,6 @@ val connection : unit -> connection
 
     The following functions are used to provide input and/or output buffers to
     {!run} when it returns [`Await_src] and/or [`Await_dst]. *)
-
-val src : connection -> string -> int -> int -> unit
-(** [src c s i l] provides [c] with input taken from [l] bytes from [s] starting
-    at [i]. *)
-
-val dst : connection -> string -> int -> int -> unit
-(** [dst c s i l] provides [c] with [l] bytes of output storage in [s] starting
-    at [i]. *)
-
-val dst_rem : connection -> int
-(** [dst_rem c] is the number of bytes still available for output in the
-    current output buffer of [c]. *)
 
 (** {3 Executing commands}
 
@@ -1147,13 +1143,7 @@ val dst_rem : connection -> int
 
     See the {{!ex}examples.} *)
 
-val run : connection ->
-  [ `Cmd of command | `Await ] -> [ `Untagged of untagged
-                                  | `Ok of code * string
-                                  | `Error of error
-                                  | `Await_line_src
-                                  | `Await_exactly_src of int
-                                  | `Await_dst ]
+val run : connection -> command -> result
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul

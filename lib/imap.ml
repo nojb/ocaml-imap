@@ -590,15 +590,17 @@ module D = struct
     | `Await_exactly n -> pp ppf "`Await_exactly %d" n
     | `Error e -> pp ppf "@[`Error %a@]" pp_error e
 
+  type result =
+    [ `Ok of response
+    | `Await_line of (string -> int -> int -> result)
+    | `Await_exactly of int * (string -> int -> int -> result)
+    | `Error of error * string * int ]
+
   type decoder =
     {
       mutable i : string;
       mutable i_pos : int;
       mutable i_max : int;
-      mutable k : decoder -> [ `Ok of response
-                             | `Await_line
-                             | `Await_exactly of int
-                             | `Error of error * string * int ]
     }
 
   exception Error of [ `Error of error * string * int ]
@@ -612,18 +614,21 @@ module D = struct
   let err_unexpected_eoi d = err `Unexpected_eoi d
 
   let ret x _ = `Ok x
-  let decode d = try d.k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
-  let rec eoi d = d.k <- err_unexpected_eoi
+  let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
 
   let src d s j l =                                     (* set [d.i] with [s]. *)
     if j < 0 || l < 0 || j + l > String.length s then
       invalid_arg "bounds"
     else
-      (* if l = 0 then eoi d else *)
       (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
-  let readexact n k d = d.k <- k; `Await_exactly n
-  let readline k d = d.k <- k; `Await_line
+  let readexact n k d =
+    let k s j l = src d s j l; safe k d in
+    `Await_exactly (n, k)
+
+  let readline k d =
+    let k s j l = src d s j l; safe k d in
+    `Await_line k
 
   let peekc d =
     if d.i_pos < d.i_max then
@@ -2038,8 +2043,7 @@ module D = struct
     | _ ->
         p_tagged (fun t s -> k (`Tagged (t, s))) d
 
-  let rec p_response_ d =
-    let ret x d = d.k <- p_response_; ret x d in
+  let decode d =
     readline (p_response ret) d
 
   let decoder () =
@@ -2047,7 +2051,6 @@ module D = struct
       i = "";
       i_pos = 0;
       i_max = 0;
-      k = p_response_
     }
 
 end
@@ -2171,9 +2174,7 @@ type command_ordinary =
 
 type command =
   [ command_ordinary
-
   | `Idle of bool ref
-
   | `Authenticate of authenticator ]
 
 let login u p = `Login (u, p)
@@ -2252,25 +2253,21 @@ module E = struct
     | `Idle
     | `Authenticate of string ]
 
-  type dst =
-    [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
-
   type encode =
-    [ `Cmd of string * command_lexeme | `Idle_done | `Auth_step of string | `Auth_error | `Await ]
+    [ `Cmd of string * command_lexeme | `Idle_done | `Auth_step of string | `Auth_error ]
 
   let pp_encode : _ -> [< encode] -> _ = fun ppf e -> match e with
     | `Cmd _ -> pp ppf "`Cmd" (* FIXME *)
-    | `Await -> pp ppf "`Await"
     | `Idle_done -> pp ppf "`Idle_done"
     | `Auth_step _ -> pp ppf "`Auth_step"
     | `Auth_error -> pp ppf "`Auth_error"
 
   type encoder =
-    { dst : dst;
+    {
       mutable o : string;
       mutable o_pos : int;
       mutable o_max : int;
-      mutable k : encoder -> encode -> [ `Ok | `Partial | `Wait_for_cont ] }
+    }
 
   let dst_rem e = e.o_max - e.o_pos
 
@@ -2278,18 +2275,15 @@ module E = struct
     if j < 0 || l < 0 || j + l > String.length s then invalid_arg "bounds";
     e.o <- s; e.o_pos <- j; e.o_max <- j + l
 
-  let partial k e = function
-    | `Await -> k e
-    | `Cmd _ | `Idle_done | `Auth_step _ | `Auth_error ->
-        invalid_arg "cannot encode now, use `Await first"
-
-  let flush k e = match e.dst with
-    | `Manual -> if e.o_pos > 0 || e.o_max = 0 then (e.k <- partial k; `Partial) else k e
-    | `Buffer b -> Buffer.add_substring b e.o 0 e.o_pos; e.o_pos <- 0; k e
-    | `Channel oc -> output oc e.o 0 e.o_pos; e.o_pos <- 0; k e
+  let flush k e =
+    if e.o_pos > 0 || e.o_max = 0 then
+      let k s j l = dst e s j l; k e in
+      `Partial (e.o, 0, e.o_pos, k)
+    else
+      k e
 
   let wait_for_cont k e =
-    (e.k <- partial k; `Wait_for_cont)
+    `Wait_for_cont k
 
   let rec writes s k e =
     let rec loop j l e =
@@ -2542,24 +2536,20 @@ module E = struct
     | `Authenticate name ->
         w "AUTHENTICATE" & w name
 
-  let rec encode_ e = function
-    | `Await -> `Ok
-    | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf (flush encode_loop)))) e
-    | `Idle_done -> w "DONE" (w_crlf (flush encode_loop)) e
-    | `Auth_step data -> w data (w_crlf (flush encode_loop)) e
-    | `Auth_error -> w "*" (w_crlf (flush encode_loop)) e
+  let ret _ = `Ok
 
-  and encode_loop e = e.k <- encode_; `Ok
+  let rec encode e = function
+    | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf (flush ret)))) e
+    | `Idle_done -> w "DONE" (w_crlf (flush ret)) e
+    | `Auth_step data -> w data (w_crlf (flush ret)) e
+    | `Auth_error -> w "*" (w_crlf (flush ret)) e
 
   let encoder dst =
-    let o, o_pos, o_max = match dst with
-      | `Manual -> "", 0, 0
-      | `Buffer _
-      | `Channel _ -> Bytes.create io_buffer_size, 0, io_buffer_size
-    in
-    { dst = (dst :> dst); o; o_pos; o_max; k = encode_ }
-
-  let encode e v = e.k e v
+    {
+      o = "";
+      o_pos = 0;
+      o_max = 0;
+    }
 end
 
 (* Running commands *)
@@ -2583,109 +2573,123 @@ let pp_error ppf : error -> _ = function
   | `No (c, t) -> pp ppf "@[NO:@ %a@ %S@]" pp_code c t
 
 type result =
-  [ `Untagged of untagged
+  [ `Untagged of untagged * (unit -> result)
   | `Ok of code * string
   | `Error of error
-  | `Await_line_src
-  | `Await_exactly_src of int
-  | `Await_dst ]
+  | `Await_line_src of (string -> int -> int -> result)
+  | `Await_exactly_src of int * (string -> int -> int -> result)
+  | `Await_dst of string * int * int * (string -> int -> int -> result) ]
 
 type connection =
-  { e : E.encoder;
+  {
+    e : E.encoder;
     d : D.decoder;
     mutable idle_stop : bool ref; (* whether the user has signaled to send DONE *)
     mutable idling : bool; (* whether we are idling *)
-    mutable tag : int;
-    mutable k : connection -> [ `Cmd of command | `Await ] -> result }
+    mutable tag : int
+  }
 
-let src c = D.src c.d
-let dst c = E.dst c.e
-let dst_rem c = E.dst_rem c.e
-
-let ret v k c = c.k <- k; v
-let err e k c = ret (`Error e) k c
-let run c = c.k c
-let fatal _ = invalid_arg "connection should not be used"
-
-let rec await k c = function
-  | `Await when c.idling && !(c.idle_stop) ->
-      c.idle_stop := false;
-      encode `Idle_done k c
-  | `Await -> k c
-  | `Cmd _ -> invalid_arg "can't send command now, try `Await"
-
-(* let rec decode_to_cont k c = (\* FIXME signal error ? *\) *)
-(* decode false (function `Cont _ -> k | _ -> decode_to_cont k) c *)
-
-and cont_req k r c =
+let rec cont_req k r c =
   match r with
   | `Cont _ -> k c
   | _ -> decode (cont_req k) c
 
 and encode x k c =
-  match E.encode c.e x with
-  | `Partial ->
-      ret `Await_dst (await (encode `Await k)) c
-  | `Wait_for_cont ->
-      decode (cont_req (encode `Await k)) c
-  (* decode_to_cont (encode `Await k) c *)
-  | `Ok -> k c
+  let rec loop = function
+    | `Partial (s, i, l, k) ->
+        `Await_dst (s, i, l, (fun s i l -> loop (k s i l)))
+    | `Wait_for_cont k ->
+        decode (cont_req (fun c -> loop (k c.e))) c
+    | `Ok ->
+        k c
+  in
+  loop (E.encode c.e x)
 
 and decode (k : _ -> connection -> _) c =
-  match D.decode c.d with
-  | `Ok x -> k x c
-  | `Await_line -> ret `Await_line_src (await (decode k)) c
-  | `Await_exactly n -> ret (`Await_exactly_src n) (await (decode k)) c
-  | `Error e -> err (`Decode_error e) fatal c (* FIXME resume on the next line of input *)
+  let rec loop = function
+    | `Ok x ->
+        k x c
+    | `Await_line k ->
+        `Await_line_src (fun s i l -> loop (k s i l))
+    | `Await_exactly (n, k) ->
+        `Await_exactly_src (n, (fun s i l -> loop (k s i l)))
+    | `Error e ->
+        `Error (`Decode_error e) (* FIXME resume on the next line of input *)
+  in
+  loop (D.decode c.d)
 
 let rec h_tagged tag r c =
   let cur = string_of_int c.tag in
   c.tag <- c.tag + 1;
   if tag <> cur then
-    err (`Incorrect_tag (cur, tag)) fatal c
+    `Error (`Incorrect_tag (cur, tag))
   else (* FIXME alert the user and continue ? *)
     match r with
-    | `Ok _ as ok -> ret ok h_response_loop c
-    | (`Bad _ | `No _) as e -> err e h_response_loop c
+    | `Ok _ as ok -> ok
+    | (`Bad _ | `No _) as e -> `Error e
 
-and h_response r c = match r with
-  | #untagged as r -> ret (`Untagged r) (await (decode h_response)) c
-  | `Cont _ -> err `Unexpected_cont fatal c (* FIXME ignore and continue ? *)
-  | `Tagged (g, r) -> h_tagged g r c
+and h_response r c =
+  match r with
+  | #untagged as r ->
+      `Untagged (r, fun () -> decode h_response c)
+  | `Cont _ ->
+      `Error `Unexpected_cont (* FIXME ignore and continue ? *)
+  | `Tagged (g, r) ->
+      h_tagged g r c
 
-and h_idle_response r c = match r with
-  | #untagged as r -> ret (`Untagged r) (await (decode h_idle_response)) c
-  | `Cont _ when not c.idling -> c.idling <- true; decode h_idle_response c
-  | `Cont _ -> err `Unexpected_cont fatal c
-  | `Tagged (g, r) -> c.idling <- false; h_tagged g r c
+and h_idle_response r c =
+  match r with
+  | #untagged as r ->
+      `Untagged (r, fun () -> decode h_idle_response c)
+  | `Cont _ when not c.idling ->
+      c.idling <- true; decode h_idle_response c
+  | `Cont _ ->
+      `Error `Unexpected_cont
+  | `Tagged (g, r) ->
+      c.idling <- false;
+      h_tagged g r c
 
-and h_authenticate auth r c = match r with
-  | #untagged as r -> ret (`Untagged r) (await (decode (h_authenticate auth))) c
-  | `Tagged (g, r) -> h_tagged g r c
+and h_authenticate auth r c =
+  match r with
+  | #untagged as r ->
+      `Untagged (r, fun () -> decode (h_authenticate auth) c)
+  | `Tagged (g, r) ->
+      h_tagged g r c
   | `Cont data ->
       begin match auth.step (B64.decode data) with
       | `Ok data ->
           let data = B64.encode ~pad:true data in
           encode (`Auth_step data) (decode (h_authenticate auth)) c
       | `Error s ->
-          encode `Auth_error (err (`Auth_error s) (await (decode (h_authenticate auth)))) c
+          encode `Auth_error (fun _ -> `Error (`Auth_error s)) c (* (await (decode (h_authenticate auth)))) c *)
       end
 
-and h_response_loop c = function
-  | `Cmd (`Authenticate a) ->
+let h_greetings r c =
+  match r with
+  | `Ok _ as ok -> ok
+  | _ -> `Error `Bad_greeting (* FIXME continue until [`Ok] ? *)
+
+let run c cmd =
+  match cmd with
+  | `Authenticate a ->
       encode (`Cmd (string_of_int c.tag, `Authenticate a.name))
         (decode (h_authenticate a)) c
-  | `Cmd (`Idle stop) ->
+  | `Idle stop ->
       c.idle_stop <- stop;
-      encode (`Cmd (string_of_int c.tag, `Idle)) (decode h_idle_response) c
-  | `Cmd (#command_ordinary as cmd) ->
-      encode (`Cmd (string_of_int c.tag, cmd)) (decode h_response) c
-  | `Await -> `Ok (`None, "")
-
-let h_greetings r c = match r with
-  | `Ok _ as ok -> ret ok h_response_loop c
-  | _ -> err `Bad_greeting fatal c (* FIXME continue until [`Ok] ? *)
+      encode (`Cmd (string_of_int c.tag, `Idle))
+        (decode h_idle_response) c
+  | #command_ordinary as cmd ->
+      encode (`Cmd (string_of_int c.tag, cmd))
+        (decode h_response) c
 
 let connection () =
-  { e = E.encoder `Manual; d = D.decoder (); idling = false;
-    idle_stop = ref false; tag = 0; k = await (decode h_greetings) }
+  let c =
+    {
+      e = E.encoder `Manual;
+      d = D.decoder ();
+      idling = false;
+      idle_stop = ref false;
+      tag = 0;
+    }
+  in
+  c, decode h_greetings c

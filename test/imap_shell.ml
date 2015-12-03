@@ -14,42 +14,35 @@ type connection =
     mutable output : Lwt_io.output_channel;
   }
 
-let run c v =
-  let rec loop = function
-    | `Await_line_src ->
-        (* LTerm.eprintl "Await_line_src" >>= fun () -> *)
-        Lwt_io.read_line c.input >>= fun l ->
-        LTerm.eprintlf ">>> %d\n%s\n>>>%!" (String.length l) l >>= fun () ->
-        Imap.src c.c l 0 (String.length l);
-        loop (Imap.run c.c `Await)
-    | `Await_exactly_src n ->
-        (* LTerm.eprintlf "Await_exactly_src %d" n >>= fun () -> *)
-        let buf = Bytes.create n in
-        Lwt_io.read_into_exactly c.input buf 0 n >>= fun () ->
-        LTerm.eprintlf ">>> %d\n%s>>>%!" n buf >>= fun () ->
-        Imap.src c.c buf 0 n;
-        loop (Imap.run c.c `Await)
-    | `Await_dst ->
-        (* LTerm.eprintl "Await_dst" >>= fun () -> *)
-        let rc = Bytes.length c.o - Imap.dst_rem c.c in
-        Lwt_io.write_from_string_exactly c.output c.o 0 rc >>= fun () ->
-        LTerm.eprintlf "<<< %d\n%s<<<%!" rc (String.sub c.o 0 rc) >>= fun () ->
-        Imap.dst c.c c.o 0 (Bytes.length c.o);
-        loop (Imap.run c.c `Await)
-    | `Untagged _ as r ->
-        (* LTerm.eprintl "Untagged" >>= fun () -> *)
-        Lwt.return r
-    | `Ok _ ->
-        Lwt.return `Ok
-    | `Error (`Decode_error (_, i, n)) as e ->
-        LTerm.eprintlf "Error: %s\n%s^\n" i (String.make (7 + n) ' ') >>= fun () ->
-        Lwt.return e
-    | `Error err as e ->
-        Imap.pp_error Format.str_formatter err;
-        LTerm.eprintlf "Error: %s" (Format.flush_str_formatter ()) >>= fun () ->
-        Lwt.return e
-  in
-  loop (Imap.run c.c v)
+let rec run c : Imap.result -> _ = function
+  | `Await_line_src k ->
+      (* LTerm.eprintl "Await_line_src" >>= fun () -> *)
+      Lwt_io.read_line c.input >>= fun l ->
+      LTerm.eprintlf ">>> %d\n%s\n>>>%!" (String.length l) l >>= fun () ->
+      run c (k l 0 (String.length l))
+  | `Await_exactly_src (n, k) ->
+      (* LTerm.eprintlf "Await_exactly_src %d" n >>= fun () -> *)
+      let buf = Bytes.create n in
+      Lwt_io.read_into_exactly c.input buf 0 n >>= fun () ->
+      LTerm.eprintlf ">>> %d\n%s>>>%!" n buf >>= fun () ->
+      run c (k buf 0 n)
+  | `Await_dst (o, pos, len, k) ->
+      (* LTerm.eprintl "Await_dst" >>= fun () -> *)
+      Lwt_io.write_from_string_exactly c.output o pos len >>= fun () ->
+      LTerm.eprintlf "<<< %d\n%s<<<%!" len (String.sub o pos len) >>= fun () ->
+      run c (k c.o 0 (String.length c.o))
+  | `Untagged _ as r ->
+      (* LTerm.eprintl "Untagged" >>= fun () -> *)
+      Lwt.return r
+  | `Ok _ ->
+      Lwt.return `Ok
+  | `Error (`Decode_error (_, i, n)) as e ->
+      LTerm.eprintlf "Error: %s\n%s^\n" i (String.make (7 + n) ' ') >>= fun () ->
+      Lwt.return e
+  | `Error err as e ->
+      Imap.pp_error Format.str_formatter err;
+      LTerm.eprintlf "Error: %s" (Format.flush_str_formatter ()) >>= fun () ->
+      Lwt.return e
 
 let connect host port =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
@@ -59,16 +52,17 @@ let connect host port =
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
   let input = Lwt_ssl.in_channel_of_descr sock in
   let output = Lwt_ssl.out_channel_of_descr sock in
+  let c, v = Imap.connection () in
   let c =
     {
       o = Bytes.create io_buffer_size;
-      c = Imap.connection ();
+      c;
       input;
       output;
     }
   in
-  Imap.dst c.c c.o 0 (Bytes.length c.o);
-  Lwt.return c
+  (* Imap.dst c.c c.o 0 (Bytes.length c.o); *)
+  Lwt.return (c, v)
 
 open Cmdliner
 
@@ -296,17 +290,17 @@ let connect =
     `P "The $(b,connect) command tries to establish a connction to an IMAP server over TLS."
   ] in
   let connect host port =
-    connect host port >>= fun c ->
-    run c `Await >>= function
+    connect host port >>= fun (c, v) ->
+    run c v >>= function
     | `Ok -> g_ref := Some c; LTerm.printl "OK"
     | _ -> LTerm.printl "ERROR"
   in
   Term.(pure connect $ host $ port), Term.info "connect" ~doc ~man
 
 let rec handle h = function
-  | `Untagged u ->
+  | `Untagged (u, k) ->
       h u >>= fun () ->
-      run (g ()) `Await >>= handle h
+      run (g ()) (k ()) >>= handle h
   | `Ok -> LTerm.printl "OK"
   | `Error e ->
       Imap.pp_error Format.str_formatter e;
@@ -330,7 +324,7 @@ let capability =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd Imap.capability) >>= handle h
+    run (g ()) (Imap.run (g ()).c Imap.capability) >>= handle h
   in
   Term.(pure capability $ pure ()), Term.info "capability" ~doc ~man
 
@@ -342,7 +336,7 @@ let login =
     `S "DESCRIPTION";
     `P "The $(b,login) command sends login credentials to the IMAP server."
   ] in
-  let login user pass = run (g ()) (`Cmd (Imap.login user pass)) >>= handle_unit in
+  let login user pass = run (g ()) (Imap.run (g ()).c (Imap.login user pass)) >>= handle_unit in
   Term.(pure login $ user $ password), Term.info "login" ~doc ~man
 
 (* LOGOUT *)
@@ -353,7 +347,7 @@ let logout =
     `S "DESCRIPTION";
     `P "The $(b,logout) command logs out from an IMAP server."
   ] in
-  let logout () = run (g ()) (`Cmd Imap.logout) >>= handle_unit in
+  let logout () = run (g ()) (Imap.run (g ()).c Imap.logout) >>= handle_unit in
   Term.(pure logout $ pure ()), Term.info "logout" ~doc ~man
 
 (* NOOP *)
@@ -365,7 +359,7 @@ let noop =
     `P "The $(b,noop) command pings the IMAP server.  \
         It is useful to keep a connection from closing due to inactivity."
   ] in
-  let noop () = run (g ()) (`Cmd Imap.noop) >>= handle_unit in
+  let noop () = run (g ()) (Imap.run (g ()).c Imap.noop) >>= handle_unit in
   Term.(pure noop $ pure ()), Term.info "noop" ~doc ~man
 
 (* AUTHENTICATE *)
@@ -377,7 +371,7 @@ let authenticate =
     `P "The $(b,authenticate) command authenticates the user with the IMAP server."
   ] in
   let authenticate user pass =
-    run (g ()) (`Cmd (Imap.authenticate (Imap.plain user pass))) >>= handle_unit
+    run (g ()) (Imap.run (g ()).c (Imap.authenticate (Imap.plain user pass))) >>= handle_unit
   in
   Term.(pure authenticate $ user $ password), Term.info "authenticate" ~doc ~man
 
@@ -389,7 +383,7 @@ let subscribe =
     `S "DESCRIPTION";
     `P "The $(b,subscribe) command subscribes the client to a mailbox."
   ] in
-  let subscribe m = run (g ()) (`Cmd (Imap.subscribe m)) >>= handle_unit in
+  let subscribe m = run (g ()) (Imap.run (g ()).c (Imap.subscribe m)) >>= handle_unit in
   Term.(pure subscribe $ mailbox), Term.info "subscribe" ~doc ~man
 
 (* UNSUBSCRIBE *)
@@ -400,7 +394,7 @@ let unsubscribe =
     `S "DESCRIPTION";
     `P "The $(b,unsubscribe) command unsubscribes the client to a mailbox."
   ] in
-  let unsubscribe m = run (g ()) (`Cmd (Imap.unsubscribe m)) >>= handle_unit in
+  let unsubscribe m = run (g ()) (Imap.run (g ()).c (Imap.unsubscribe m)) >>= handle_unit in
   Term.(pure unsubscribe $ mailbox), Term.info "unsubscribe" ~doc ~man
 
 (* LIST *)
@@ -418,7 +412,7 @@ let list =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.list m)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.list m)) >>= handle h
   in
   Term.(pure list $ list_wildcard), Term.info "list" ~doc ~man
 
@@ -437,7 +431,7 @@ let lsub =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.lsub m)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.lsub m)) >>= handle h
   in
   Term.(pure lsub $ list_wildcard), Term.info "lsub" ~doc ~man
 
@@ -451,7 +445,7 @@ let select =
         to inspect and change its contents."
   ] in
   let select condstore m =
-    run (g ()) (`Cmd (Imap.select ~condstore m)) >>= handle_unit
+    run (g ()) (Imap.run (g ()).c (Imap.select ~condstore m)) >>= handle_unit
   in
   Term.(pure select $ condstore $ mailbox), Term.info "select" ~doc ~man
 
@@ -465,7 +459,7 @@ let examine =
         to inspect its contents."
   ] in
   let examine condstore m =
-    run (g ()) (`Cmd (Imap.examine ~condstore m)) >>= handle_unit
+    run (g ()) (Imap.run (g ()).c (Imap.examine ~condstore m)) >>= handle_unit
   in
   Term.(pure examine $ condstore $ mailbox), Term.info "examine" ~doc ~man
 
@@ -478,7 +472,7 @@ let create =
     `P "The $(b,create) command creates a new mailbox."
   ] in
   let create m =
-    run (g ()) (`Cmd (Imap.create m)) >>= handle_unit
+    run (g ()) (Imap.run (g ()).c (Imap.create m)) >>= handle_unit
   in
   Term.(pure create $ mailbox), Term.info "create" ~doc ~man
 
@@ -490,7 +484,7 @@ let rename =
     `S "DESCRIPTION";
     `P "The $(b,rename) command renames an existing mailbox."
   ] in
-  let rename oldm newm = run (g ()) (`Cmd (Imap.rename oldm newm)) >>= handle_unit in
+  let rename oldm newm = run (g ()) (Imap.run (g ()).c (Imap.rename oldm newm)) >>= handle_unit in
   Term.(pure rename $ mailbox $ mailbox), Term.info "rename" ~doc ~man
 
 (* STATUS *)
@@ -509,7 +503,7 @@ let status =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.status m atts)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.status m atts)) >>= handle h
   in
   Term.(pure status $ mailbox $ status_att), Term.info "status" ~doc ~man
 
@@ -521,7 +515,7 @@ let close =
     `S "DESCRIPTION";
     `P "The $(b,close) command closes the currently selected mailbox."
   ] in
-  let close () = run (g ()) (`Cmd Imap.close) >>= handle_unit in
+  let close () = run (g ()) (Imap.run (g ()).c Imap.close) >>= handle_unit in
   Term.(pure close $ pure ()), Term.info "close" ~doc ~man
 
 (* FETCH *)
@@ -539,7 +533,7 @@ let fetch =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.fetch ~uid ?changed ~vanished set att)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.fetch ~uid ?changed ~vanished set att)) >>= handle h
   in
   Term.(pure fetch $ set $ uid $ fetch_att $ changed_since $ vanished), Term.info "fetch" ~doc ~man
 
@@ -560,12 +554,12 @@ let store =
     in
     begin
       if List.length flags > 0
-      then run (g ()) (`Cmd (f_fl ~uid ~silent ?unchanged set flags)) >>= handle_unit else
+      then run (g ()) (Imap.run (g ()).c (f_fl ~uid ~silent ?unchanged set flags)) >>= handle_unit else
       Lwt.return_unit
     end >>= fun () ->
     begin
       if List.length labels > 0
-      then run (g ()) (`Cmd (f_lb ~uid ~silent ?unchanged set labels)) >>= handle_unit else
+      then run (g ()) (Imap.run (g ()).c (f_lb ~uid ~silent ?unchanged set labels)) >>= handle_unit else
       Lwt.return_unit
     end
   in
@@ -584,7 +578,7 @@ let search =
       | _ ->
           Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.search ~uid key)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.search ~uid key)) >>= handle h
   in
   Term.(pure search $ uid $ search_key), Term.info "search" ~doc
 
@@ -599,7 +593,7 @@ let enable =
           LTerm.printl (Format.flush_str_formatter ())
       | _ -> Lwt.return_unit
     in
-    run (g ()) (`Cmd (Imap.enable caps)) >>= handle h
+    run (g ()) (Imap.run (g ()).c (Imap.enable caps)) >>= handle h
   in
   Term.(pure enable $ capabilities), Term.info "enable" ~doc
 
@@ -614,7 +608,7 @@ let idle =
   let idle forever =
     let h stop _ = if not forever then Lazy.force stop; Lwt.return_unit in
     let cmd, stop = Imap.idle () in
-    run (g ()) (`Cmd cmd) >>= handle (h stop)
+    run (g ()) (Imap.run (g ()).c cmd) >>= handle (h stop)
   in
   Term.(pure idle $ forever), Term.info "idle" ~doc
 
