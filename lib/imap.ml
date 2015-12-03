@@ -2284,7 +2284,10 @@ let enable caps = `Enable caps
 
 let authenticate a = `Authenticate a
 
-let idle () = let stop = ref false in `Idle stop, lazy (stop := true)
+let idle () =
+  let stop = ref false in
+  let stop_l = Lazy.from_fun (fun () -> stop := true) in
+  `Idle stop, (fun () -> Lazy.force stop_l)
 
 module E = struct
 

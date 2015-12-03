@@ -1035,7 +1035,7 @@ val authenticate : authenticator -> command
     See {!authenticator} for details on the interface with particular [SASL]
     mechanisms. *)
 
-val idle : unit -> command * unit Lazy.t
+val idle : unit -> command * (unit -> unit)
 (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
     command is executing the client will receive a stream of incoming untagged
     {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision

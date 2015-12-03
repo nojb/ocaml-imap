@@ -102,6 +102,10 @@ let mailbox =
   let doc = Arg.info ~docs ~docv:"MAILBOX" ~doc:"Mailbox name (UTF-8 encoded)." ["mailbox"] in
   Arg.(value & opt string "INBOX" & doc)
 
+let pos_mailbox i =
+  let doc = Arg.info ~docs ~docv:"MAILBOX" ~doc:"Mailbox name (UTF-8 encoded)." ["mailbox"] in
+  Arg.(required & pos i (some string) None & doc)
+
 let docs = "IMAP OPTIONS"
 
 let condstore =
@@ -451,24 +455,25 @@ let list =
   Term.(pure list $ host $ port $ user $ password $ list_wildcard),
   Term.info "list" ~doc ~man
 
-(* (\* LSUB *\) *)
-(* let lsub_doc = "List subscribed mailboxes." *)
-(* let lsub = *)
-(*   let doc = lsub_doc in *)
-(*   let man = [ *)
-(*     `S "DESCRIPTION"; *)
-(*     `P "The $(b,lsub) command shows a list of subscribed mailboxes matching a certain patter." *)
-(*   ] in *)
-(*   let lsub m = *)
-(*     let h = function *)
-(*       | `Lsub _ as u -> *)
-(*           Imap.pp_response Format.str_formatter u; *)
-(*           LTerm.printl (Format.flush_str_formatter ()) *)
-(*       | _ -> Lwt.return_unit *)
-(*     in *)
-(*     run (g ()) (Imap.run (g ()).c (Imap.lsub m)) >>= handle h *)
-(*   in *)
-(*   Term.(pure lsub $ list_wildcard), Term.info "lsub" ~doc ~man *)
+(* LSUB *)
+let lsub_doc = "List subscribed mailboxes."
+let lsub =
+  let doc = lsub_doc in
+  let man =
+    [
+      `S "DESCRIPTION";
+      `P "The $(b,lsub) command shows a list of subscribed mailboxes matching a certain patter."
+    ]
+  in
+  let lsub host port user password m =
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.list m) >>=
+    handle_unit c
+  in
+  Term.(pure lsub $ host $ port $ user $ password $ list_wildcard),
+  Term.info "lsub" ~doc ~man
 
 (* SELECT *)
 let select_doc = "Select a mailbox for further manipulation."
@@ -508,31 +513,45 @@ let examine =
     run c (Imap.examine ~condstore m) >>=
     handle_unit c
   in
-  Term.(pure examine $ host $ port $ user $ password $ condstore $ mailbox), Term.info "examine" ~doc ~man
+  Term.(pure examine $ host $ port $ user $ password $ condstore $ mailbox),
+  Term.info "examine" ~doc ~man
 
-(* (\* CREATE *\) *)
-(* let create_doc = "Create a new mailbox." *)
-(* let create = *)
-(*   let doc = create_doc in *)
-(*   let man = [ *)
-(*     `S "DESCRIPTION"; *)
-(*     `P "The $(b,create) command creates a new mailbox." *)
-(*   ] in *)
-(*   let create m = *)
-(*     run (g ()) (Imap.run (g ()).c (Imap.create m)) >>= handle_unit *)
-(*   in *)
-(*   Term.(pure create $ mailbox), Term.info "create" ~doc ~man *)
+(* CREATE *)
+let create_doc = "Create a new mailbox."
+let create =
+  let doc = create_doc in
+  let man = [
+    `S "DESCRIPTION";
+    `P "The $(b,create) command creates a new mailbox."
+  ] in
+  let create host port user password m =
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.create m) >>=
+    handle_unit c
+  in
+  Term.(pure create $ host $ port $ user $ password $ mailbox),
+  Term.info "create" ~doc ~man
 
-(* (\* RENAME *\) *)
-(* let rename_doc = "Rename an existing mailbox." *)
-(* let rename = *)
-(*   let doc = rename_doc in *)
-(*   let man = [ *)
-(*     `S "DESCRIPTION"; *)
-(*     `P "The $(b,rename) command renames an existing mailbox." *)
-(*   ] in *)
-(*   let rename oldm newm = run (g ()) (Imap.run (g ()).c (Imap.rename oldm newm)) >>= handle_unit in *)
-(*   Term.(pure rename $ mailbox $ mailbox), Term.info "rename" ~doc ~man *)
+(* RENAME *)
+let rename_doc = "Rename an existing mailbox."
+let rename =
+  let doc = rename_doc in
+  let man =
+    [
+      `S "DESCRIPTION";
+      `P "The $(b,rename) command renames an existing mailbox."
+    ]
+  in
+  let rename host port user password oldm newm =
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.rename oldm newm) >>=
+    handle_unit c
+  in
+  Term.(pure rename $ host $ port $ user $ password $ pos_mailbox 0 $ pos_mailbox 1), Term.info "rename" ~doc ~man
 
 (* STATUS *)
 let status_doc = "Query mailbox information."
@@ -552,7 +571,8 @@ let status =
     run c (Imap.status m atts) >>=
     handle_unit c
   in
-  Term.(pure status $ host $ port $ user $ password $ mailbox $ status_att), Term.info "status" ~doc ~man
+  Term.(pure status $ host $ port $ user $ password $ mailbox $ status_att),
+  Term.info "status" ~doc ~man
 
 (* CLOSE *)
 let close_doc = "Closes the currently selected mailbox."
@@ -576,53 +596,64 @@ let close =
   Term.(pure close $ host $ port $ user $ password $ mailbox),
   Term.info "close" ~doc ~man
 
-(* (\* FETCH *\) *)
-(* let fetch_doc = "Fetch message attributes." *)
-(* let fetch = *)
-(*   let doc = fetch_doc in *)
-(*   let man = [ *)
-(*     `S "DESCRIPTION"; *)
-(*     `P "The $(b,fetch) command retrieves message properties." *)
-(*   ] in *)
-(*   let fetch set uid att changed vanished = *)
-(*     let h = function *)
-(*       | `Fetch _ as u -> *)
-(*           Imap.pp_response Format.str_formatter u; *)
-(*           LTerm.printl (Format.flush_str_formatter ()) *)
-(*       | _ -> Lwt.return_unit *)
-(*     in *)
-(*     run (g ()) (Imap.run (g ()).c (Imap.fetch ~uid ?changed ~vanished set att)) >>= handle h *)
-(*   in *)
-(*   Term.(pure fetch $ set $ uid $ fetch_att $ changed_since $ vanished), Term.info "fetch" ~doc ~man *)
+(* FETCH *)
+let fetch_doc = "Fetch message attributes."
+let fetch =
+  let doc = fetch_doc in
+  let man =
+    [
+      `S "DESCRIPTION";
+      `P "The $(b,fetch) command retrieves message properties."
+    ]
+  in
+  let fetch host port user password mailbox set uid att changed vanished =
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.examine mailbox) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.fetch ~uid ?changed ~vanished set att) >>=
+    handle_unit c
+  in
+  Term.(pure fetch $ host $ port $ user $ password $ mailbox $ set $ uid $ fetch_att $ changed_since $ vanished), Term.info "fetch" ~doc ~man
 
-(* (\* STORE *\) *)
-(* let store_doc = "Modify message flags & labels." *)
-(* let store = *)
-(*   let doc = store_doc in *)
-(*   let man = [ *)
-(*     `S "DESCRIPTION"; *)
-(*     `P "The command $(b,store) modifies the flags and labels associated \ *)
-(*         with a given set of messages." *)
-(*   ] in *)
-(*   let store mode set uid silent unchanged flags labels = *)
-(*     let f_fl, f_lb = match mode with *)
-(*       | `Add -> Imap.store_add_flags, Imap.store_add_labels *)
-(*       | `Set -> Imap.store_set_flags, Imap.store_set_labels *)
-(*       | `Remove -> Imap.store_remove_flags, Imap.store_remove_labels *)
-(*     in *)
-(*     begin *)
-(*       if List.length flags > 0 *)
-(*       then run (g ()) (Imap.run (g ()).c (f_fl ~uid ~silent ?unchanged set flags)) >>= handle_unit else *)
-(*       Lwt.return_unit *)
-(*     end >>= fun () -> *)
-(*     begin *)
-(*       if List.length labels > 0 *)
-(*       then run (g ()) (Imap.run (g ()).c (f_lb ~uid ~silent ?unchanged set labels)) >>= handle_unit else *)
-(*       Lwt.return_unit *)
-(*     end *)
-(*   in *)
-(*   Term.(pure store $ store_mode $ set $ uid $ silent $ unchanged_since $ flags $ labels), *)
-(*   Term.info "store" ~doc ~man *)
+(* STORE *)
+let store_doc = "Modify message flags & labels."
+let store =
+  let doc = store_doc in
+  let man =
+    [
+      `S "DESCRIPTION";
+      `P "The command $(b,store) modifies the flags and labels associated \
+          with a given set of messages."
+    ]
+  in
+  let store host port user password mailbox mode set uid silent unchanged flags labels =
+    let f_fl, f_lb = match mode with
+      | `Add -> Imap.store_add_flags, Imap.store_add_labels
+      | `Set -> Imap.store_set_flags, Imap.store_set_labels
+      | `Remove -> Imap.store_remove_flags, Imap.store_remove_labels
+    in
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.select mailbox) >>=
+    handle_unit c >>= fun () ->
+    begin
+      if List.length flags > 0 then
+        run c (f_fl ~uid ~silent ?unchanged set flags) >>= handle_unit c
+      else
+        Lwt.return_unit
+    end >>= fun () ->
+    begin
+      if List.length labels > 0 then
+        run c (f_lb ~uid ~silent ?unchanged set labels) >>= handle_unit c
+      else
+        Lwt.return_unit
+    end
+  in
+  Term.(pure store $ host $ port $ user $ password $ mailbox $ store_mode $ set $ uid $ silent $ unchanged_since $ flags $ labels),
+  Term.info "store" ~doc ~man
 
 (* SEARCH *)
 let search_doc = "Search for message numbers of messages satisfying some criteria."
@@ -654,20 +685,26 @@ let enable =
   Term.(pure enable $ host $ port $ user $ password $ capabilities),
   Term.info "enable" ~doc
 
-(* let forever = *)
-(*   let doc = Arg.info ["forver"] in *)
-(*   Arg.(value & flag doc) *)
+let forever =
+  let doc = Arg.info ["forver"] in
+  Arg.(value & flag doc)
 
-(* (\* IDLE *\) *)
-(* let idle_doc = "IDLE" *)
-(* let idle = *)
-(*   let doc = idle_doc in *)
-(*   let idle forever = *)
-(*     let h stop _ = if not forever then Lazy.force stop; Lwt.return_unit in *)
-(*     let cmd, stop = Imap.idle () in *)
-(*     run (g ()) (Imap.run (g ()).c cmd) >>= handle (h stop) *)
-(*   in *)
-(*   Term.(pure idle $ forever), Term.info "idle" ~doc *)
+(* IDLE *)
+let idle_doc = "IDLE"
+let idle =
+  let doc = idle_doc in
+  let idle host port user password mailbox forever =
+    let h stop _ = if not forever then Lwt.wrap1 stop () else Lwt.return_unit in
+    do_connect host port >>= fun c ->
+    run c (Imap.login user password) >>=
+    handle_unit c >>= fun () ->
+    run c (Imap.examine mailbox) >>=
+    handle_unit c >>= fun () ->
+    let cmd, stop = Imap.idle () in
+    run c cmd >>=
+    handle c (h stop)
+  in
+  Term.(pure idle $ host $ port $ user $ password $ mailbox $ forever), Term.info "idle" ~doc
 
 let commands =
   [
@@ -680,18 +717,18 @@ let commands =
     subscribe;
     unsubscribe;
     list;
-    (* lsub; *)
+    lsub;
     select;
     examine;
-    (* create; *)
-    (* rename; *)
+    create;
+    rename;
     status;
     close;
-    (* fetch; *)
-    (* store; *)
+    fetch;
+    store;
     search;
     enable;
-    (* idle; *)
+    idle;
   ]
 
 let main_command =
