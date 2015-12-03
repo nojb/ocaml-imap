@@ -1863,19 +1863,21 @@ module D = struct
         begin match cur d with
         | ' ' ->
             junkc d;
-            p_body (fun x -> k @@ `Body x) d
+            p_body (fun x -> k (`Body x)) d
         | _ ->
-            let orig k d =
-              match cur d with
-              | '<' ->
-                  junkc d;
-                  let n = p_uint d in
-                  p_ch '>' d;
-                  k (Some n) d
-              | _ ->
-                  k None d
-            in
-            p_section (fun s -> orig (fun n -> p_sp d; p_nstring (fun x -> k (`Body_section (s, n, x))))) d
+            p_section (fun s ->
+                  let orig =
+                    match cur d with
+                    | '<' ->
+                        junkc d;
+                        let n = p_uint d in
+                        p_ch '>' d;
+                        Some n
+                    | _ ->
+                        None
+                  in
+                  p_sp d; p_nstring (fun x -> k (`Body_section (s, orig, x)))
+              ) d
         end
     | "UID" -> p_sp d; let x = p_uint32 d in k (`Uid x) d
     | "MODSEQ" -> p_sp d; p_ch '(' d; let n = p_uint64 d in p_ch ')' d; k (`Modseq n) d
