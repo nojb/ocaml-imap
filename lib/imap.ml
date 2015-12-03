@@ -60,11 +60,14 @@ module Mutf7 = struct
   let encode s =
     let b = Buffer.create 0 in
     let rec a i =
-      if i >= String.length s then () else
-      match s.[i] with
-      | '&'                   -> Buffer.add_string b "&-"; a (i + 1)
-      | '\x20' .. '\x7E' as c -> Buffer.add_char b c; a (i + 1)
-      | _                     -> Buffer.add_char b '&'; u i
+      if i >= String.length s then
+        ()
+      else begin
+        match s.[i] with
+        | '&'                   -> Buffer.add_string b "&-"; a (i + 1)
+        | '\x20' .. '\x7E' as c -> Buffer.add_char b c; a (i + 1)
+        | _                     -> Buffer.add_char b '&'; u i
+      end
     and u i =
       let upto j =
         let str = String.sub s i (j - i) and buf = Buffer.create 32 in
@@ -74,10 +77,13 @@ module Mutf7 = struct
         Buffer.add_string b str; Buffer.add_char b '-'
       in
       let rec loop i =
-        if i >= String.length s then upto i else
-        match s.[i] with
-        | '\x20' .. '\x7E' -> upto i; a i
-        | _                -> loop (i + 1)
+        if i >= String.length s then
+          upto i
+        else begin
+          match s.[i] with
+          | '\x20' .. '\x7E' -> upto i; a i
+          | _                -> loop (i + 1)
+        end
       in
       loop i
     in
@@ -87,27 +93,33 @@ module Mutf7 = struct
   let decode s =
     let b = Buffer.create 32 in
     let rec a i =
-      if i >= String.length s then () else
-      match s.[i] with
-      | '&' ->
-          if i+1 < String.length s && s.[i] = '-' then (Buffer.add_char b '&'; a (i + 2)) else u (i + 1)
-      | _ as c ->
-          Buffer.add_char b c; a (i + 1)
+      if i >= String.length s then
+        ()
+      else begin
+        match s.[i] with
+        | '&' ->
+            if i+1 < String.length s && s.[i] = '-' then (Buffer.add_char b '&'; a (i + 2)) else u (i + 1)
+        | _ as c ->
+            Buffer.add_char b c; a (i + 1)
+      end
     and u i =
       let start = i in
       let rec loop i =
-        if i >= String.length s then invalid_arg "unterminated base64 input" else
-        match s.[i] with
-        | '-' ->
-            let str = String.sub s start (i - start) in
-            replace str ',' '/';
-            let str = B64.decode str in (* FIXME do we need to pad it with "===" ? *)
-            recode ~encoding:`UTF_16BE `UTF_8 (`String str) (`Buffer b);
-            a (i + 1)
-        | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | ',' ->
-            loop (i+1)
-        | _ ->
-            invalid_arg "unexpected character"
+        if i >= String.length s then
+          invalid_arg "unterminated base64 input"
+        else begin
+          match s.[i] with
+          | '-' ->
+              let str = String.sub s start (i - start) in
+              replace str ',' '/';
+              let str = B64.decode str in (* FIXME do we need to pad it with "===" ? *)
+              recode ~encoding:`UTF_16BE `UTF_8 (`String str) (`Buffer b);
+              a (i + 1)
+          | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | ',' ->
+              loop (i+1)
+          | _ ->
+              invalid_arg "unexpected character"
+        end
       in
       loop i
     in
@@ -607,8 +619,8 @@ module D = struct
     if j < 0 || l < 0 || j + l > String.length s then
       invalid_arg "bounds"
     else
-    (* if l = 0 then eoi d else *)
-    (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
+      (* if l = 0 then eoi d else *)
+      (d.i <- s; d.i_pos <- j; d.i_max <- j + l)
 
   let readexact n k d = d.k <- k; `Await_exactly n
   let readline k d = d.k <- k; `Await_line
@@ -617,19 +629,19 @@ module D = struct
     if d.i_pos < d.i_max then
       Some d.i.[d.i_pos]
     else
-    None
+      None
 
   let cur d =
     if d.i_pos < d.i_max then
       d.i.[d.i_pos]
     else
-    raise (Error (err_unexpected_eoi d))
+      raise (Error (err_unexpected_eoi d))
 
   let junkc d =
     if d.i_pos < d.i_max then
       d.i_pos <- d.i_pos + 1
     else
-    raise (Error (err_unexpected_eoi d))
+      raise (Error (err_unexpected_eoi d))
 
   let p_ch c d =
     match peekc d with
@@ -650,7 +662,7 @@ module D = struct
     if i0 < d.i_pos then
       String.sub d.i i0 (d.i_pos - i0)
     else
-    raise (Error (err_unexpected (cur d) d))
+      raise (Error (err_unexpected (cur d) d))
 
 (*
    CHAR           =  %x01-7F
@@ -773,7 +785,7 @@ module D = struct
     if d.i_pos < d.i_max then
       err_unexpected (cur d) d
     else
-    k d
+      k d
 
 (*
    number          = 1*DIGIT
@@ -863,7 +875,7 @@ module D = struct
     if is_astring_char (cur d) then
       k (p_while1 is_astring_char d) d
     else
-    p_string k d
+      p_string k d
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -880,7 +892,7 @@ module D = struct
     if is_text_char (cur d) then
       p_while1 is_text_char d
     else
-    "" (* allow empty texts for greater tolerance *)
+      "" (* allow empty texts for greater tolerance *)
 
 (*
    nil             = "NIL"
@@ -893,7 +905,7 @@ module D = struct
       p_atomf "NIL" d;
       k None d
     end else
-    p_string (fun s -> k (Some s)) d
+      p_string (fun s -> k (Some s)) d
 
   let p_nstring' k d =
     p_nstring (function Some s -> k s | None -> k "") d
@@ -1106,7 +1118,7 @@ module D = struct
     if is_text_other_char (cur d) then
       p_while1 is_text_other_char d
     else
-    "" (* We allow empty text_1 *)
+      "" (* We allow empty text_1 *)
 
   let p_cap d =
     let a = p_atom d in
@@ -1408,11 +1420,11 @@ module D = struct
   let p_address k d =
     p_ch '(' d;
     p_nstring' (fun ad_name d ->
-    p_sp d; p_nstring' (fun ad_adl d ->
-    p_sp d; p_nstring' (fun ad_mailbox d ->
-    p_sp d; p_nstring' (fun ad_host d ->
-    p_ch ')' d;
-    k {ad_name; ad_adl; ad_mailbox; ad_host} d
+        p_sp d; p_nstring' (fun ad_adl d ->
+            p_sp d; p_nstring' (fun ad_mailbox d ->
+                p_sp d; p_nstring' (fun ad_host d ->
+                    p_ch ')' d;
+                    k {ad_name; ad_adl; ad_mailbox; ad_host} d
                   ) d
               ) d
           ) d
@@ -1538,7 +1550,7 @@ module D = struct
     else if cur d = '(' then
       p_list1 p_body_ext (fun xs -> k (`List xs)) d
     else
-    p_nstring (function Some x -> k (`String x) | None -> k `None) d
+      p_nstring (function Some x -> k (`String x) | None -> k `None) d
 
 (*
    body-fld-md5    = nstring
@@ -1571,7 +1583,7 @@ module D = struct
 
   let p_fld_lang k d =
     if cur d = '(' then p_list1 p_string k d else
-    p_nstring (function Some x -> k [x] | None -> k []) d
+      p_nstring (function Some x -> k [x] | None -> k []) d
 
   let r_body_ext k d =
     if cur d = ' ' then begin
@@ -1588,15 +1600,15 @@ module D = struct
                     ) d
                 end
                 else
-                k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
+                  k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
               ) d
           end
           else
-          k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
+            k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
         ) d
     end
     else
-    k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
+      k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
 
   let r_sbody_ext k d =
     p_nstring (fun md5 -> r_body_ext (k md5)) d
@@ -1644,15 +1656,15 @@ module D = struct
       | '(' ->
           p_body (fun x -> loop (x :: acc)) d
       | ' ' ->
-        junkc d;
-        p_string (fun m d ->
-            match cur d with
-            | ' ' ->
-                junkc d;
-                r_mbody_ext (fun _ _ -> k (`Multipart (List.rev acc, m))) d
-            | _ ->
-                k (`Multipart (List.rev acc, m)) d
-          ) d
+          junkc d;
+          p_string (fun m d ->
+              match cur d with
+              | ' ' ->
+                  junkc d;
+                  r_mbody_ext (fun _ _ -> k (`Multipart (List.rev acc, m))) d
+              | _ ->
+                  k (`Multipart (List.rev acc, m)) d
+            ) d
       | c ->
           err_unexpected c d
     in
@@ -1742,7 +1754,7 @@ module D = struct
       with _ ->
         raise (Error (err_unexpected_s s d))
     else
-    raise (Error (err_unexpected_eoi d))
+      raise (Error (err_unexpected_eoi d))
 
 (*
    header-fld-name = astring
@@ -1787,7 +1799,7 @@ module D = struct
       p_ch '.' d;
       p_part (fun s -> k (`Part (n, s))) d
     end else
-    p_msgtext k d
+      p_msgtext k d
 
   let p_section k d =
     p_ch '[' d;
@@ -1921,13 +1933,13 @@ module D = struct
               p_ch ')' d;
               k (`Search (List.rev acc, Some n)) d
             end else
-            let n = p_uint32 d in
-            nxt (n :: acc) d
+              let n = p_uint32 d in
+              nxt (n :: acc) d
           in
           if cur d = ' ' then
             (junkc d; nxt d)
           else
-          k (`Search (List.rev acc, None)) d
+            k (`Search (List.rev acc, None)) d
         in
         nxt [] d
     | "STATUS" ->
@@ -1945,7 +1957,7 @@ module D = struct
           let s = p_set d in
           k (`Vanished_earlier s) d
         end else
-        let s = p_set d in k (`Vanished s) d
+          let s = p_set d in k (`Vanished s) d
     | "ENABLED" -> let xs = p_sep p_cap d in k (`Enabled xs) d
     | _ -> err_unexpected_s a d
 
@@ -1965,7 +1977,7 @@ module D = struct
     if is_digit (cur d) then
       p_response_data_n k d
     else
-    p_response_data_t k d
+      p_response_data_t k d
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -2003,7 +2015,7 @@ module D = struct
       junkc d;
       p_text d
     end else
-    p_text d
+      p_text d
 
   let rec p_response k d =
     let k x d = p_crlf (k x) d in
@@ -2296,14 +2308,14 @@ module E = struct
       let rec loop i =
         if i >= String.length s then false else
         if f s.[i] then true else
-        loop (i+1)
+          loop (i+1)
       in
       loop 0
     in
     if str = "" then `Quoted else
     if needs literal str then `Literal else
     if needs quotes str then `Quoted else
-    `Raw
+      `Raw
 
   let w_literal x k e =
     w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e
@@ -2594,7 +2606,7 @@ let rec await k c = function
   | `Cmd _ -> invalid_arg "can't send command now, try `Await"
 
 (* let rec decode_to_cont k c = (\* FIXME signal error ? *\) *)
-  (* decode false (function `Cont _ -> k | _ -> decode_to_cont k) c *)
+(* decode false (function `Cont _ -> k | _ -> decode_to_cont k) c *)
 
 and cont_req k r c =
   match r with
@@ -2607,7 +2619,7 @@ and encode x k c =
       ret `Await_dst (await (encode `Await k)) c
   | `Wait_for_cont ->
       decode (cont_req (encode `Await k)) c
-      (* decode_to_cont (encode `Await k) c *)
+  (* decode_to_cont (encode `Await k) c *)
   | `Ok -> k c
 
 and decode (k : _ -> connection -> _) c =
@@ -2620,10 +2632,12 @@ and decode (k : _ -> connection -> _) c =
 let rec h_tagged tag r c =
   let cur = string_of_int c.tag in
   c.tag <- c.tag + 1;
-  if tag <> cur then err (`Incorrect_tag (cur, tag)) fatal c else (* FIXME alert the user and continue ? *)
-  match r with
-  | `Ok _ as ok -> ret ok h_response_loop c
-  | (`Bad _ | `No _) as e -> err e h_response_loop c
+  if tag <> cur then
+    err (`Incorrect_tag (cur, tag)) fatal c
+  else (* FIXME alert the user and continue ? *)
+    match r with
+    | `Ok _ as ok -> ret ok h_response_loop c
+    | (`Bad _ | `No _) as e -> err e h_response_loop c
 
 and h_response r c = match r with
   | #untagged as r -> ret (`Untagged r) (await (decode h_response)) c
