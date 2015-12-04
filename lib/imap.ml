@@ -663,7 +663,8 @@ module D = struct
         end else begin
           if off >= Bytes.length d.i then begin
             let new_i = Bytes.create (2 * Bytes.length d.i + 1) in
-            Bytes.blit d.i 0 new_i 0 (Bytes.length d.i)
+            Bytes.blit d.i 0 new_i 0 (Bytes.length d.i);
+            d.i <- new_i
           end;
           `Read (d.i, off, Bytes.length d.i - off, fun n -> loop (off + n))
         end
