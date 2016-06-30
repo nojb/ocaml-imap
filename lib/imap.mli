@@ -812,18 +812,78 @@ type status_query =
     scope of this library and should be provided independently. Only [PLAIN] and
     [XOAUTH2] are provided as way of example. *)
 
-type authenticator =
-  { name : string;
-    step : string -> [ `Ok of string | `Error of string ] }
+module Auth : sig
+  type t =
+    {
+      name: string;
+      step: string -> [ `Ok of string | `Error of string ];
+    }
 
-val plain : string -> string -> authenticator
-(** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
-    and password [pass]. *)
+  val plain: string -> string -> t
+  (** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
+      and password [pass]. *)
 
-val xoauth2 : string -> string -> authenticator
-(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
-    [user] and access token [token].  The access token should be obtained
-    independently. *)
+  val xoauth2: string -> string -> t
+  (** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
+      [user] and access token [token].  The access token should be obtained
+      independently. *)
+end
+
+(** {3 Connections}
+
+    {{!connection}Connections} manage the encoder and decoder states and keeps
+    track of message tags. *)
+
+(** {1 Running commands and receiving responses} *)
+
+type error =
+  | Incorrect_tag of string * string
+  (** The server response tag does not have a matching message tag.  The
+      connection should be closed. *)
+
+  | Decode_error of
+      [ `Expected_char of char
+      | `Expected_string of string
+      | `Unexpected_char of char
+      | `Unexpected_string of string
+      | `Illegal_char of char
+      | `Unexpected_eoi ] * string * int
+  (** Decoding error. It contains the reason, the curren tinput buffer and the
+      current position.  The connection should be closed after this.  In some
+      cases it might be possible to continue fater a decoding error, but this is
+      not yet implemented. *)
+
+  | Unexpected_cont
+  (** A continuation request '+' is received from the server at an unexpected
+      time.  The connection should be closed after seeing this error, as there is no
+      safe way to continue. *)
+
+  | Bad_greeting
+  (** The server did not send a valid greeting message.  The connection should
+      be closed. *)
+
+  | Auth_error of string
+  (** An client-side SASL authentication error ocurred.  This error can only
+      appear when using the SASL-based {!authenticate} command.  The error is
+      communicated to the server and the server responds with a [BAD] response.
+      Thus, after receiving this error the client should pass [`Await] to {!run}
+      until [`Error `Bad] is received, and then take appropiate action. *)
+
+  | Bad of code * string
+  (** The server could not parse the request. *)
+
+  | No of code * string
+  (** The server could not perform the requested action. *)
+
+val pp_error: Format.formatter -> error -> unit
+
+type connection
+(** The type for connections. *)
+
+type response =
+  | Untagged of untagged * response Lwt.t
+  | Ok of code * string
+  | Error of error
 
 (** {1:commands Commands}
 
@@ -838,60 +898,57 @@ val xoauth2 : string -> string -> authenticator
     the variant of the command that uses UIDs (instead of sequence numbers).
     See for example {!copy}, {!search}, {!fetch} and {!store_add_flags}. *)
 
-type command
-(** The type of client commands.  They are executed using {!run}. *)
-
-val login : string -> string -> command
+val login: connection -> string -> string -> response Lwt.t
 (** [login user pass] identifies the client to the server and carries the
     plaintext password authenticating this [user] with password [pass].  A
     server MAY include a [`Capability] response {{!code}code} in the tagged
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
 
-val capability : command
+val capability: connection -> response Lwt.t
 (** [capability] returns the list of capabilities supported by the server.  The
     server must send a single untagged [`Capability] {{!untagged}response}
     with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
     response.  See the type describing the possible
     {{!capability}capabilities}. *)
 
-val create : string -> command
+val create: connection -> string -> response Lwt.t
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
     if a new mailbox with that name has been created.  It is an error to attempt
     to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
     Any error in creation will return a tagged [`No] response. *)
 
-val delete : string -> command
+val delete: connection -> string -> response Lwt.t
 (** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
     if the mailbox with that name has been created.
     Any error in deletion will return a tagged [`No] response. *)
 
-val rename : string -> string -> command
+val rename: connection -> string -> string -> response Lwt.t
 (** [rename oldname newname] command changes the name of a mailbox from
     [oldname] to [newname].  A tagged [`Ok] response is returned only if the
     mailbox has been renamed.  It is an error to attempt to rename from a
     mailbox name that does not exist or to a mailbox name that already exists.
     Any error in renaming will return a tagged [`No] response. *)
 
-val logout : command
+val logout: connection -> response Lwt.t
 (** [logout] gracefully terminates a session.  The server MUST send an untagged
     [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
 
-val noop : command
+val noop: connection -> response Lwt.t
 (** [noop] does nothing.  Since any command can return a status update as
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity (this is
     the preferred method to do this). *)
 
-val subscribe : string -> command
+val subscribe: connection -> string -> response Lwt.t
 (** [subscribe m] adds the mailbox [m] to the server's set of "active" or
     "subscribed" mailboxes as returned by the {!lsub} command. *)
 
-val unsubscribe : string -> command
+val unsubscribe: connection -> string -> response Lwt.t
 (** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
     "subscribed" mailboxes as returned by the {!lsub} command. *)
 
-val list : ?ref:string -> string -> command
+val list: connection -> ?ref:string -> string -> response Lwt.t
 (** [list ref m] returns a subset of names from the complete set of all names
     available to the client.  Zero or more untagged [`List]
     {{!untagged}replies} are returned, containing the name attributes,
@@ -899,38 +956,38 @@ val list : ?ref:string -> string -> command
     or a level of mailbox hierarchy, and indicates the context in which the
     mailbox name is interpreted.*)
 
-val lsub : ?ref:string -> string -> command
+val lsub: connection -> ?ref:string -> string -> response Lwt.t
 (** [lsub ref m] is identical to {!list}, except that it returns a subset of
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status : string -> status_query list -> command
+val status: connection -> string -> status_query list -> response Lwt.t
 (** [status] requests {{!status_query}status information} of the indicated
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
 
-val copy : ?uid:bool -> eset -> string -> command
+val copy: connection -> ?uid:bool -> eset -> string -> response Lwt.t
 (** [copy uid set m] copies the messages in [set] to the end of the specified
     mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
     [true] (the default) or sequence numbers if [uid] is [false]. *)
 
-val check : command
+val check: connection -> response Lwt.t
 (** [check] requests a checkpoint of the currently selected mailbox.  A
     checkpoint refers to any implementation-dependent housekeeping associated
     with the mailbox. *)
 
-val close : command
+val close: connection -> response Lwt.t
 (** [close] permanently removes all messages that have the [`Deleted]
     {!flag} set from the currently selected mailbox, and returns to
     the authenticated state from the selected state. *)
 
-val expunge : command
+val expunge: connection -> response Lwt.t
 (** [expunge] permanently removes all messages that have the [`Deleted]
     {!flag} set from the currently selected mailbox.  Before
     returning an [`Ok] to the client, an untagged [`Expunge]
     {{!untagged}response} is sent for each message that is removed. *)
 
-val search : ?uid:bool -> search_key -> command
+val search: connection -> ?uid:bool -> search_key -> response Lwt.t
 (** [search uid sk] searches the mailbox for messages that match the given
     searching criteria.  If [uid] is [true] (the default), then the matching
     messages' unique identification numbers are returned.  Otherwise, their
@@ -938,17 +995,17 @@ val search : ?uid:bool -> search_key -> command
     from the server contains a listing of message numbers corresponding to those
     messages that match the searching criteria. *)
 
-val select : ?condstore:bool -> string -> command
+val select: connection -> ?condstore:bool -> string -> response Lwt.t
 (** [select condstore m] selects the mailbox [m] so that its messages can be
     accessed.  If [condstore] (default value [false]) is [true], then the server
     will return the [`Modseq] data item in all subsequent untagged [`Fetch]
     {{!untagged}responses}. *)
 
-val examine : ?condstore:bool -> string -> command
+val examine: connection -> ?condstore:bool -> string -> response Lwt.t
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
-val append : string -> ?flags:flag list -> string -> command
+val append: connection -> string -> ?flags:flag list -> string -> response Lwt.t
 (** [append m flags id data] appends [data] as a new message to the end of the
     mailbox [m].  This argument should be in the format of an [RFC-2822]
     message.
@@ -971,7 +1028,7 @@ val append : string -> ?flags:flag list -> string -> command
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch_query list -> command
+val fetch: connection -> ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch_query list -> response Lwt.t
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
@@ -981,21 +1038,21 @@ val fetch      : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch
     The [vanished] optional parameter specifies whether one wants to receive
     [`Vanished] responses as well. *)
 
-val fetch_all  : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+val fetch_all: connection -> ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> response Lwt.t
 (** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
     [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
 
-val fetch_fast : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+val fetch_fast: connection -> ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> response Lwt.t
 (** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
     [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
 
-val fetch_full : ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> command
+val fetch_full: connection -> ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> eset -> response Lwt.t
 (** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
     [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
 
 (** {2 Store commands} *)
 
-val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_add_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -1005,37 +1062,37 @@ val store_add_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset
     the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
     value is at least the passed value (requires the [CONDSTORE] extension). *)
 
-val store_set_flags     : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_set_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
 (** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
     instead of adding to it. *)
 
-val store_remove_flags  : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_remove_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
-val store_add_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+val store_add_labels: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
 (** [store_add_labels] is like {!store_add_flags} but adds
     {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
     instead of regular flags. *)
 
-val store_set_labels    : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+val store_set_labels: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> response Lwt.t
 (** [store_set_labels] is like {!store_add_labels} but replaces the set of
     labels instead of adding to it. *)
 
-val store_remove_labels : ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+val store_remove_labels: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> response Lwt.t
 (** [store_remove_labels] is like {!store_add_labels} but removes labels instead
     of adding them. *)
 
-val enable : capability list -> command
+val enable: connection -> capability list -> response Lwt.t
 
-val authenticate : authenticator -> command
+val authenticate: connection -> authenticator -> response Lwt.t
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
     If the server supports the requested authentication mechanism, it performs
     an authentication protocol exchange to authenticate and identify the client.
     See {!authenticator} for details on the interface with particular [SASL]
     mechanisms. *)
 
-val idle : unit -> command * (unit -> unit)
+val idle: connection -> command * (unit -> unit)
 (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
     command is executing the client will receive a stream of incoming untagged
     {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
@@ -1045,73 +1102,7 @@ val idle : unit -> command * (unit -> unit)
     See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
     {{!ex}examples} for more details. *)
 
-(** {1 Running commands and receiving responses} *)
-
-type error =
-  [ `Incorrect_tag of string * string
-  (** The server response tag does not have a matching message tag.  The
-      connection should be closed. *)
-
-  | `Decode_error of
-      [ `Expected_char of char
-      | `Expected_string of string
-      | `Unexpected_char of char
-      | `Unexpected_string of string
-      | `Illegal_char of char
-      | `Unexpected_eoi ] * string * int
-  (** Decoding error. It contains the reason, the curren tinput buffer and the
-      current position.  The connection should be closed after this.  In some
-      cases it might be possible to continue fater a decoding error, but this is
-      not yet implemented. *)
-
-  | `Unexpected_cont
-  (** A continuation request '+' is received from the server at an unexpected
-      time.  The connection should be closed after seeing this error, as there is no
-      safe way to continue. *)
-
-  | `Bad_greeting
-  (** The server did not send a valid greeting message.  The connection should
-      be closed. *)
-
-  | `Auth_error of string
-  (** An client-side SASL authentication error ocurred.  This error can only
-      appear when using the SASL-based {!authenticate} command.  The error is
-      communicated to the server and the server responds with a [BAD] response.
-      Thus, after receiving this error the client should pass [`Await] to {!run}
-      until [`Error `Bad] is received, and then take appropiate action. *)
-
-  | `Bad of code * string
-  (** The server could not parse the request. *)
-
-  | `No of code * string
-  (** The server could not perform the requested action. *) ]
-
-val pp_error : Format.formatter -> error -> unit
-
-(** {3 Connections}
-
-    {{!connection}Connections} manage the encoder and decoder states and keeps
-    track of message tags. *)
-
-type connection
-(** The type for connections. *)
-
-type result =
-  [ `Untagged of untagged * (unit -> result)
-  | `Ok of code * string
-  | `Error of error
-  | `Read of string * int * int * (int -> result)
-  | `Write of string * int * int * (int -> result) ]
-
-val connection : unit -> connection * result
-(** [connection ()] creates a new connection object.  The connection should be
-    supplied with input and output buffers as necessary using {!src} and {!dst}.
-    Other that that, it is completely independent of any particular connection
-    and/or IO mechanism.
-
-    After creation, the connection should be run with [`Await] until [`Ok] to
-    process the server greeting and start issuing commands.
-
+(**
     See the {{!ex}examples}. *)
 
 (** {3 I/O interface}
@@ -1142,27 +1133,27 @@ val connection : unit -> connection * result
 
     See the {{!ex}examples.} *)
 
-val run : connection -> command -> result
-(** [run c v] performs [v] on the connection [c].  The meaning of the different values
-    of [v] is:
-    {ul
-    {- [`Cmd c]: execute the {!command} [c].}
-    {- [`Await]: perform periodic IO processing to complete the execution of currently
-       executing command.}}
+(* val run: connection -> command -> result *)
+(* (\** [run c v] performs [v] on the connection [c].  The meaning of the different values *)
+(*     of [v] is: *)
+(*     {ul *)
+(*     {- [`Cmd c]: execute the {!command} [c].} *)
+(*     {- [`Await]: perform periodic IO processing to complete the execution of currently *)
+(*        executing command.}} *)
 
-    The value of [run c v] is:
-    {ul
-    {- [`Untagged u] if an untagged {{!untagged}response} has been received from the
-       server.}
-    {- [`Ok] if no command is in progress and the server is ready to receive a new
-       command from the client.}
-    {- [`Error e] if an error ocurred during the processing of the current command.
-       If the {!error} is not fatal, then the client can continue using this connection.
-       Otherwise, the connection should be discarded immediately.}
-    {- [`Await_src] if the connection is awaiting for more input.  The client must use
-       {!src} to provide a new buffer and then call {!run} with [`Await].}
-    {- [`Await_dst] if the connection needs more output storage.  The client must use
-       {!dst} to provide a new buffer and then call {!run} with [`Await].}} *)
+(*     The value of [run c v] is: *)
+(*     {ul *)
+(*     {- [`Untagged u] if an untagged {{!untagged}response} has been received from the *)
+(*        server.} *)
+(*     {- [`Ok] if no command is in progress and the server is ready to receive a new *)
+(*        command from the client.} *)
+(*     {- [`Error e] if an error ocurred during the processing of the current command. *)
+(*        If the {!error} is not fatal, then the client can continue using this connection. *)
+(*        Otherwise, the connection should be discarded immediately.} *)
+(*     {- [`Await_src] if the connection is awaiting for more input.  The client must use *)
+(*        {!src} to provide a new buffer and then call {!run} with [`Await].} *)
+(*     {- [`Await_dst] if the connection needs more output storage.  The client must use *)
+(*        {!dst} to provide a new buffer and then call {!run} with [`Await].}} *\) *)
 
 (** {1:limitations Supported extensions and limitations}
 
