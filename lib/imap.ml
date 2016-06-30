@@ -594,103 +594,43 @@ module D = struct
     | `Read of bytes * int * int * (int -> result)
     | `Error of error * string * int ]
 
-  type decoder =
-    {
-      mutable i : bytes;
-      mutable i_pos : int;
-      mutable i_max : int;
-    }
-
   exception Error of [ `Error of error * string * int ]
 
-  let err e d = `Error (e, d.i, d.i_pos)
-  let err_expected c d = err (`Expected_char c) d
-  let err_expected_s s d = err (`Expected_string s) d
-  let err_unexpected_s a d = err (`Unexpected_string a) d
-  let err_unexpected c d = err (`Unexpected_char c) d
-  let err_quoted c d = err (`Illegal_char c) d
-  let err_unexpected_eoi d = err `Unexpected_eoi d
-
-  let ret x _ = `Ok x
-  let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
-
-  (* let src d s j l =                                     (\* set [d.i] with [s]. *\) *)
-  (*   if j < 0 || l < 0 || j + l > String.length s then *)
-  (*     invalid_arg "bounds" *)
-  (*   else *)
-  (*     (d.i <- s; d.i_pos <- j; d.i_max <- j + l) *)
-
-  let readexact n k d =
-    let b = Bytes.create n in
-    let have = min n (d.i_max - d.i_pos) in
-    Bytes.blit d.i d.i_pos b 0 have;
-    d.i_pos <- d.i_pos + have;
-    let rec loop rem  =
-      if rem = 0 then
-        safe (k b) d
-      else
-        `Read (b, n-rem, rem, fun m -> loop (rem - m))
-    in
-    loop (n-have)
-
-  let has_line s pos max =
-    let rec loop cr_read j =
-      if j >= max then false
-      else
-        match s.[j] with
-        | '\n' ->
-            if cr_read then true else loop false (j+1)
-        | '\r' ->
-            loop true (j+1)
-        | c ->
-            loop false (j+1)
-    in
-    loop false pos
-
-  let readline k d =
-    if has_line d.i d.i_pos d.i_max then
-      k d
-    else begin
-      if d.i_pos > 0 then begin
-        Bytes.blit d.i d.i_pos d.i 0 (d.i_max - d.i_pos);
-        d.i_max <- d.i_max - d.i_pos;
-        d.i_pos <- 0
-      end;
-      let rec loop off =
-        if has_line d.i d.i_pos off then begin
-          d.i_max <- off;
-          safe k d
-        end else begin
-          if off >= Bytes.length d.i then begin
-            let new_i = Bytes.create (2 * Bytes.length d.i + 1) in
-            Bytes.blit d.i 0 new_i 0 (Bytes.length d.i);
-            d.i <- new_i
-          end;
-          `Read (d.i, off, Bytes.length d.i - off, fun n -> loop (off + n))
-        end
-      in
-      loop d.i_max
-    end
+  (* let err e d = `Error (e, d.i, d.i_pos) *)
+  (* let err_expected c d = err (`Expected_char c) d *)
+  (* let err_expected_s s d = err (`Expected_string s) d *)
+  (* let err_unexpected_s a d = err (`Unexpected_string a) d *)
+  (* let err_unexpected c d = err (`Unexpected_char c) d *)
+  (* let err_quoted c d = err (`Illegal_char c) d *)
+  (* let err_unexpected_eoi d = err `Unexpected_eoi d *)
 
   module Sub = Astring.String.Sub
 
-  (* let peekc d = *)
-  (*   if d.i_pos < d.i_max then *)
-  (*     Some d.i.[d.i_pos] *)
-  (*   else *)
-  (*     None *)
+  let re = Str.regexp "{\\([0-9]+\\)}$"
 
-  (* let cur d = *)
-  (*   if d.i_pos < d.i_max then *)
-  (*     d.i.[d.i_pos] *)
-  (*   else *)
-  (*     raise (Error (err_unexpected_eoi d)) *)
-
-  (* let junkc d = *)
-  (*   if d.i_pos < d.i_max then *)
-  (*     d.i_pos <- d.i_pos + 1 *)
-  (*   else *)
-  (*     raise (Error (err_unexpected_eoi d)) *)
+  let readline ic =
+    let buf = Buffer.create 50 in
+    let buf2 = Bytes.create 101 in
+    let rec loop () =
+      Lwt_io.read_line ic >>= fun line ->
+      Buffer.add_string buf line;
+      Buffer.add_string buf "\r\n";
+      if Str.string_match re line 0 then
+        let len = int_of_string (Str.matched_group 1 line) in
+        let rec aux rem =
+          if rem <= 0 then
+            loop ()
+          else begin
+            Lwt_io.read_into ic buf2 0 rem >>= fun n ->
+            Buffer.add_subbytes buf buf2 0 n;
+            aux (rem - n)
+          end
+        in
+        aux len
+      else
+        Lwt.return (Buffer.contents buf)
+    in
+    loop ()
 
   let ch c s =
     match Sub.head s with
@@ -825,17 +765,9 @@ module D = struct
 
   let crlf s =
     if Sub.is_prefix (Sub.v "\r\n") s then
-      Sub.reduce ~max:2 s
+      Sub.tail (Sub.tail s)
     else
       failwith "crlf"
-
-    (* p_ch '\r' d; *)
-    (* p_ch '\n' d; *)
-    (* k d *)
-    (* (\* if d.i_pos < d.i_max then *\) *)
-    (* (\*   err_unexpected (cur d) d *\) *)
-    (* (\* else *\) *)
-    (* (\*   k d *\) *)
 
 (*
    number          = 1*DIGIT
@@ -895,9 +827,6 @@ module D = struct
 
    string          = quoted / literal
 *)
-
-  let literal k data d = (* reads n bytes *)
-    readline (k data) d
 
   let string s =
     match Sub.head s with
@@ -1661,7 +1590,7 @@ module D = struct
         let res = match str with Some x -> [x] | None -> [] in
         res, s
 
-  let r_body_ext s =
+  let body_ext s =
     match Sub.head s with
     | Some ' ' ->
         let dsp, s = fld_dsp (Sub.tail s) in
@@ -2149,18 +2078,12 @@ module D = struct
           `Tagged (t, str), s
     in
     let s = crlf s in
-    res, s
+    assert (Sub.is_empty s);
+    res
 
-  (* let decode d = *)
-  (*   readline (p_response ret) d *)
-
-  let decoder () =
-    {
-      i = Bytes.create 4096;
-      i_pos = 0;
-      i_max = 0;
-    }
-
+  let readresp ic =
+    readline ic >|= fun line ->
+    Lwt.return (response (Sub.v line))
 end
 
 (* Commands *)
@@ -2420,7 +2343,7 @@ module E = struct
     Printf.ksprintf (Lwt_io.write oc) "{%d}\r\n" (String.length x) >>= fun () ->
     Lwt_io.flush oc >>= fun () ->
     let rec loop = function
-      | `Untagged x as r -> `Untagged (x, readresp ic >>= loop)
+      | `Untagged x as r -> `Untagged (x, D.readresp ic >>= loop)
       | `Cont -> Lwt_io.write oc x
     in
     readresp >>= loop
@@ -2790,4 +2713,5 @@ let connect ?(port = 993) host =
       tag = 0;
     }
   in
-  c, decode h_greetings c
+  decode h_greetings c >>= fun resp ->
+  Lwt.return (c, resp)
