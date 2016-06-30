@@ -20,7 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-let io_buffer_size = 65536                           (* IO_BUFFER_SIZE 4.0.0 *)
+open Lwt.Infix
 
 module Uint32 = struct
   include Uint32
@@ -672,9 +672,7 @@ module D = struct
       loop d.i_max
     end
 
-  open Astring
-
-  module Sub = String.Sub
+  module Sub = Astring.String.Sub
 
   (* let peekc d = *)
   (*   if d.i_pos < d.i_max then *)
@@ -694,26 +692,22 @@ module D = struct
   (*   else *)
   (*     raise (Error (err_unexpected_eoi d)) *)
 
-  let p_ch c d =
-    match peekc d with
-    | Some c' when c = c ->
-        junkc d
-    | Some _ ->
-        raise (Error (err_expected c d))
-    | None ->
-        raise (Error (err_unexpected_eoi d))
+  let ch c s =
+    match Sub.head s with
+    | Some c' when c = c' ->
+        Sub.tail s
+    | _ ->
+        failwith "ch"
 
-  (* let p_sp d = p_ch ' ' d *)
+  let sp s = ch ' ' s
 
-  (* let p_while1 f d = *)
-  (*   let i0 = d.i_pos in *)
-  (*   while d.i_pos < d.i_max && f d.i.[d.i_pos] do *)
-  (*     d.i_pos <- d.i_pos + 1 *)
-  (*   done; *)
-  (*   if i0 < d.i_pos then *)
-  (*     String.sub d.i i0 (d.i_pos - i0) *)
-  (*   else *)
-  (*     raise (Error (err_unexpected (cur d) d)) *)
+  let while1 f s =
+    let l, r = Sub.span ~min:1 ~sat:f s in
+    if Sub.is_empty l then
+      failwith "while1"
+    else
+      Sub.to_string l, r
+        (* raise (Error (err_unexpected (cur d) d)) *)
 
 (*
    CHAR           =  %x01-7F
@@ -745,12 +739,12 @@ module D = struct
   let atom s =
     let a, s = Sub.span ~min:1 ~sat:is_atom_char s in
     if Sub.is_empty a then failwith "atom";
-    a, s
+    Sub.to_string a, s
 
-  let atomf str =
+  let atomf str s =
     let a, s = atom s in
-    if String.uppercase a <> String.uppercase str then
-      raise (Error (err_expected_s s d))
+    if String.uppercase_ascii a <> String.uppercase_ascii str then
+      failwith "atomf" (* raise (Error (err_expected_s s d)) *)
     else
       s
 
@@ -780,39 +774,43 @@ module D = struct
       | Some ')' ->
           List.rev acc, Sub.tail s
       | _ ->
-          err_unexpected (cur d) d
+          failwith "list1" (* err_unexpected (cur d) d *)
     in
     let x, s = f (ch '(' s) in
     loop [x] s
 
   let list_gen delim f s =
-    let rec loop acc d =
-      match cur d with
-      | ')' ->
-          junkc d;
-          k (List.rev acc) d
-      | c ->
-          begin match delim with
-          | None -> ()
-          | Some c' when c = c' -> junkc d
-          | Some c -> raise (Error (err_unexpected c d))
-          end;
-          p (fun x -> loop (x :: acc)) d
+    let rec loop acc s =
+      match Sub.head s with
+      | Some ')' ->
+          List.rev acc, Sub.tail s
+      | Some c ->
+          let s =
+            match delim with
+            | None -> s
+            | Some c' when c = c' -> Sub.tail s
+            | Some c -> failwith "list_gen" (* raise (Error (err_unexpected c d)) *)
+          in
+          let x, s = f s in
+          loop (x :: acc) s
+      | None ->
+          failwith "eof"
     in
-    if is_atom_char (cur d) then begin
-      p_atomf "NIL" d;
-      k [] d
-    end else begin
-      p_ch '(' d;
-      match cur d with
-      | ')' ->
-          junkc d;
-          k [] d
-      | _ ->
-          p (fun x -> loop [x]) d
-    end
+    match Sub.head s with
+    | Some c when is_atom_char c ->
+        let s = atomf "NIL" s in
+        [], s
+    | _ ->
+        begin match Sub.head (ch '(' s) with
+        | Some ')' ->
+            [], Sub.tail s
+        | _ ->
+            let x, s = f s in
+            loop [x] s
+        end
 
-  let list f s = list_gen (Some ' ') f s
+  let list f s =
+    list_gen (Some ' ') f s
 
 (*
    CR             =  %x0D
@@ -850,9 +848,9 @@ module D = struct
 *)
 
   let is_digit = function '0' .. '9' -> true | _ -> false
-  let uint s = let n, s = span1 is_digit s in to_i n, s
-  let uint32 s = Uint32.of_string (while1 is_digit d)
-  let uint64 s = Uint64.of_string (while1 is_digit d)
+  let uint s = let n, s = while1 is_digit s in int_of_string n, s
+  let uint32 s = let n, s = while1 is_digit s in Uint32.of_string n, s
+  let uint64 s = let n, s = while1 is_digit s in Uint64.of_string n, s
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -866,7 +864,7 @@ module D = struct
     let rec loop s =
       match Sub.head s with
       | Some ('\r' | '\n' as c) ->
-          raise (Error (err_quoted c d))
+          failwith "quoted" (* raise (Error (err_quoted c d)) *)
       | Some '"' ->
           Buffer.contents buf, Sub.tail s
       | Some '\\' ->
@@ -877,13 +875,15 @@ module D = struct
           | None ->
               failwith "Eof"
           | Some _ ->
-              raise (Error (err_unexpected c d))
+              failwith "quoted"
+              (* raise (Error (err_unexpected c d)) *)
           end
       | Some ('\x01' .. '\x7F' as c) ->
           Buffer.add_char buf c;
           loop (Sub.tail s)
       | Some c ->
-          raise (Error (err_unexpected c d))
+          failwith "quoted"
+          (* raise (Error (err_unexpected c d)) *)
       | None ->
           failwith "eof"
     in
@@ -899,18 +899,18 @@ module D = struct
   let literal k data d = (* reads n bytes *)
     readline (k data) d
 
-  let p_string k d =
-    match cur d with
-    | '"' ->
-        junkc d;
-        k (p_quoted d) d
-    | '{' ->
-        junkc d;
-        let n = p_uint d in
-        p_ch '}' d;
-        p_crlf (readexact n (p_literal k)) d
-    | c ->
-        err_unexpected c d
+  let string s =
+    match Sub.head s with
+    | Some '"' ->
+        quoted (Sub.tail s)
+    | Some '{' ->
+        let n, s = uint (Sub.tail s) in
+        let s = crlf (ch '}' s) in
+        let l, r = Sub.span ~min:n ~max:n s in
+        Sub.to_string l, r
+    | _ ->
+        failwith "string"
+        (* err_unexpected c d *)
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -924,9 +924,10 @@ module D = struct
   let astring s =
     match Sub.head s with
     | Some c when is_astring_char c ->
-        Sub.span ~min:1 ~sat:is_astring_char s
+        let l, r = Sub.span ~min:1 ~sat:is_astring_char s in
+        Sub.to_string l, r
     | _ ->
-        p_string s
+        string s
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -958,7 +959,7 @@ module D = struct
         let s = atomf "NIL" s in
         None, s
     | _ ->
-        let str, s = p_string s in
+        let str, s = string s in
         Some str, s
 
   let nstring' s =
@@ -986,17 +987,20 @@ module D = struct
   let flag s =
     match Sub.head s with
     | Some '\\' ->
-        let a = atom (Sub.tail s) in
-        begin match String.capitalize a with
-        | "Answered" -> `Answered
-        | "Flagged" -> `Flagged
-        | "Deleted" -> `Deleted
-        | "Seen" -> `Seen
-        | "Draft" -> `Draft
-        | _ -> `Extension a
-        end
+        let a, s = atom (Sub.tail s) in
+        let x =
+          match String.capitalize_ascii a with
+          | "Answered" -> `Answered
+          | "Flagged" -> `Flagged
+          | "Deleted" -> `Deleted
+          | "Seen" -> `Seen
+          | "Draft" -> `Draft
+          | _ -> `Extension a
+        in
+        x, s
     | _ ->
-        `Keyword (atom s)
+        let a, s = atom s in
+        `Keyword a, s
 
 (*
    flag-fetch      = flag / "\Recent"
@@ -1005,9 +1009,9 @@ module D = struct
   let flag_fetch s =
     let fl =
       match Sub.head s with
-      | '\\' ->
-          let a = atom (Sub.tail s) in
-          begin match String.capitalize a with
+      | Some '\\' ->
+          let a, s = atom (Sub.tail s) in
+          begin match String.capitalize_ascii a with
           | "Answered" -> `Answered
           | "Flagged" -> `Flagged
           | "Deleted" -> `Deleted
@@ -1035,7 +1039,7 @@ module D = struct
         | _ ->
             let a, s = atom s in
             let res =
-              match String.capitalize a with
+              match String.capitalize_ascii a with
               | "Answered" -> `Answered
               | "Flagged" -> `Flagged
               | "Deleted" -> `Deleted
@@ -1117,7 +1121,7 @@ module D = struct
           List.rev acc, s
     in
     let x, s = rg s in
-    loop x s
+    loop [x] s
 
 
 (*
@@ -1177,14 +1181,15 @@ module D = struct
   let text_1 s =
     match Sub.head s with
     | Some c when is_text_other_char c ->
-        Sub.span ~min:1 ~sat:is_text_other_char s
+        let l, r = Sub.span ~min:1 ~sat:is_text_other_char s in
+        Sub.to_string l, r
     | _ ->
-        Sub.empty (* We allow empty text_1 *)
+        "", s (* We allow empty text_1 *)
 
   let capability s =
     let a, s = atom s in
     let cap =
-      match String.uppercase a with
+      match String.uppercase_ascii a with
       | "COMPRESS=DEFLATE" -> `Compress_deflate
       | "CONDSTORE" -> `Condstore
       | "ENABLE" -> `Enable
@@ -1206,24 +1211,24 @@ module D = struct
 
   let code s = (* '[' was eaten *)
     let a, s = atom s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "ALERT" ->
         `Alert, s
     | "BADCHARSET" ->
         begin match Sub.head s with
         | Some ' ' ->
-            let xs, s = p_list1 astring (Sub.tail s) in
+            let xs, s = list1 astring (Sub.tail s) in
             `Bad_charset xs, s
         | _ ->
             `Bad_charset [], s
         end
     | "CAPABILITY" ->
-        let xs = p_sep p_cap s in
+        let xs = sep capability s in
         `Capability xs, s
     | "PARSE" ->
         `Parse, s
     | "PERMANENTFLAGS" ->
-        let xs, s = p_list flag_perm (sp s) in
+        let xs, s = list flag_perm (sp s) in
         `Permanent_flags xs, s
     | "READ-ONLY" ->
         `Read_only, s
@@ -1252,10 +1257,9 @@ module D = struct
         `Modified set, s
     | "APPENDUID" ->
         let n, s = uint32 (sp s) in
-        let m, s = p_uint32 (sp s) in
+        let m, s = uint32 (sp s) in
         `Append_uid (n, m), s
     | "COPYUID" ->
-        p_sp d;
         let n, s = uint32 (sp s) in
         let set1, s = set s in
         let set2, s = set s in
@@ -1301,7 +1305,7 @@ module D = struct
 
   let resp_cond_state s =
     let a, s = atom s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "OK" ->
         let (c, t), s = resp_text (sp s) in
         `Ok (c, t), s
@@ -1312,7 +1316,7 @@ module D = struct
         let (c, t), s = resp_text (sp s) in
         `Bad (c, t), s
     | _ ->
-        err_unexpected_s a d
+        failwith "resp_cond" (* err_unexpected_s a d *)
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -1347,7 +1351,7 @@ module D = struct
   let mbx_flag s =
     let a, s = atom (ch '\\' s) in
     let flag =
-      match String.capitalize a with
+      match String.capitalize_ascii a with
       | "Noselect" -> `Noselect
       | "Marked" -> `Marked
       | "Unmarked" -> `Unmarked
@@ -1401,16 +1405,17 @@ module D = struct
         | Some ('\\' | '"' as c) ->
             c, Sub.tail s
         | Some c ->
-            raise (Error (err_unexpected c d))
+            failwith "quoted_char" (* raise (Error (err_unexpected c d)) *)
         | None ->
             failwith "eof"
         end
     | Some c when is_qchar c ->
         c, Sub.tail s
     | Some c ->
-        raise (Error (err_unexpected c d))
+        (* raise (Error (err_unexpected c d)) *)
+        failwith "quoted char"
     | None ->
-        eof
+        failwith "eof"
 
   let delim s =
     match Sub.head s with
@@ -1418,14 +1423,14 @@ module D = struct
         let c, s = quoted_char (Sub.tail s) in
         Some c, ch '"' s
     | _ ->
-        let s = p_atomf "NIL" s in
+        let s = atomf "NIL" s in
         None, s
 
   let mailbox_list s =
     let x, s = list mbx_flag s in
     let y, s = delim (sp s) in
     let z, s = mailbox (sp s) in
-    x, y, z, s
+    (x, y, z), s
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1445,7 +1450,7 @@ module D = struct
 
   let status_att s =
     let a, s = atom s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "MESSAGES" ->
         let n, s = uint (sp s) in
         `Messages n, s
@@ -1465,7 +1470,7 @@ module D = struct
         let n, s = uint64 (sp s) in
         `Highest_modseq n, s
     | _ ->
-        raise (Error (err_unexpected_s a d))
+        failwith "status_att" (* raise (Error (err_unexpected_s a d)) *)
 
 (*
    address         = "(" addr-name SP addr-adl SP addr-mailbox SP
@@ -1497,7 +1502,7 @@ module D = struct
     let ad_mailbox, s = nstring' (sp s) in
     let ad_host, s = nstring' (sp s) in
     let s = ch ')' s in
-    {ad_name; ad_adl; ad_mailbox; ad_host}
+    {ad_name; ad_adl; ad_mailbox; ad_host}, s
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -1526,8 +1531,8 @@ module D = struct
 *)
 
   let envelope s =
-    let address_list, s = p_list_generic ~delim:None p_address in
-    let env_date, s = nstring' (char '(' s) in
+    let address_list = list_gen None address in
+    let env_date, s = nstring' (ch '(' s) in
     let env_subject, s = nstring' (sp s) in
     let env_from, s = address_list (sp s) in
     let env_sender, s = address_list (sp s) in
@@ -1567,22 +1572,26 @@ module D = struct
                      body-fld-enc SP body-fld-octets
 *)
 
-  let p_fld_param k d =
-    let param k d = p_string (fun v -> p_sp d; p_string (fun v' -> k (v, v'))) d in
-    p_list param k d
+  let fld_param s =
+    let param s =
+      let v1, s = string s in
+      let v2, s = string (sp s) in
+      (v1, v2), s
+    in
+    list param s
 
   let body_fields s =
     let fld_params, s = fld_param s in
     let fld_id, s = nstring (sp s) in
     let fld_desc, s = nstring (sp s) in
-    let fld_enc, s = p_string (sp s) in
+    let fld_enc, s = string (sp s) in
     let fld_octets, s = uint (sp s) in
     {
-      fld_params = params;
-      fld_id = id;
-      fld_desc = desc;
-      fld_enc = enc;
-      fld_octets = octets
+      fld_params;
+      fld_id;
+      fld_desc;
+      fld_enc;
+      fld_octets;
     }, s
 
 (*
@@ -1602,7 +1611,7 @@ module D = struct
         let n, s = uint32 s in
         `Number n, s
     | Some '(' ->
-        let xs, s = p_list1 body_ext s in
+        let xs, s = list1 body_ext s in
         `List xs, s
     | _ ->
         let str, s = nstring s in
@@ -1635,52 +1644,52 @@ module D = struct
   let fld_dsp s =
     match Sub.head s with
     | Some '(' ->
-        let str, s = p_string (sp s) in
+        let str, s = string (sp s) in
         let p, s = fld_param (sp s) in
         let s = ch ')' s in
         Some (str, p), s
     | _ ->
-        let s = p_atomf "NIL" s in
+        let s = atomf "NIL" s in
         None, s
 
   let fld_lang s =
     match Sub.head s with
     | Some '(' ->
-        p_list1 p_string s
+        list1 string s
     | _ ->
-        let str, s = p_nstring s in
+        let str, s = nstring s in
         let res = match str with Some x -> [x] | None -> [] in
         res, s
 
   let r_body_ext s =
     match Sub.head s with
     | Some ' ' ->
-        let dsp, s = p_fld_dsp (Sub.tail s) in
+        let dsp, s = fld_dsp (Sub.tail s) in
         begin match Sub.head s with
         | Some ' ' ->
-            let lang, s = p_fld_lang (Sub.tail s) in
+            let lang, s = fld_lang (Sub.tail s) in
             begin match Sub.head s with
             | Some ' ' ->
-                let loc, s = p_nstring (Sub.tail s) in
-                let ext, s = sep_k p_body_ext s in
-                {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext}
+                let loc, s = nstring (Sub.tail s) in
+                let ext, s = sep body_ext s in
+                {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext}, s
             | _ ->
-                k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
+                {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []}, s
             end
         | _ ->
-            {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []}
+            {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []}, s
         end
     | _ ->
-        {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
+        {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}, s
 
-  let r_sbody_ext s =
+  let sbody_ext s =
     let md5, s = nstring s in
-    let x, s = r_body_ext s in
+    let x, s = body_ext s in
     (md5, x), s
 
-  let r_mbody_ext s =
+  let mbody_ext s =
     let params, s = fld_param s in
-    let x = r_body_ext s in
+    let x = body_ext s in
     (params, x), s
 
 (*
@@ -1724,41 +1733,41 @@ module D = struct
           let x, s = body s in
           loop (x :: acc) s
       | Some ' ' ->
-          let (m, d), s = p_string (Sub.tail s) in
+          let m, s = string (Sub.tail s) in
           begin match Sub.head s with
           | Some ' ' ->
-              let _, s = r_mbody_ext (Sub.tail s) in
+              let _, s = mbody_ext (Sub.tail s) in
               `Multipart (List.rev acc, m), s
           | _ ->
               `Multipart (List.rev acc, m), s
           end
       | _ ->
-          err_unexpected c d
+          failwith "mbody" (* err_unexpected c d *)
     in
     loop [] s
 
   and sbody s = (* TODO Return the extension data *)
-    let ext k d =
-      match peekc d with
+    let (m, t, f), s = triple string string body_fields s in
+    let ext s =
+      match Sub.head s with
       | Some ' ' ->
-          junkc d;
-          r_sbody_ext (fun _ _ -> k) d
+          let _, s = sbody_ext (Sub.tail s) in
+          s
       | _ ->
-          k d
+          s
     in
-    let nxt m t f d =
-      match String.uppercase m, String.uppercase t with
-      | "MESSAGE", "RFC822" ->
-          p_sp d;
-          p_t3 p_envelope p_body (lift p_uint) (fun e b n -> ext (k (`Message (f, e, b, n)))) d
-      | "TEXT", _ ->
-          p_sp d;
-          let n = p_uint d in
-          ext (k (`Text (t, f, n))) d
-      | _ ->
-          ext (k (`Basic (m, t, f))) d
-    in
-    p_t3 p_string p_string p_body_fields nxt d
+    match String.uppercase_ascii m, String.uppercase_ascii t with
+    | "MESSAGE", "RFC822" ->
+        let (e, b, n), s = triple envelope body uint (sp s) in
+        let s = ext s in
+        `Message (f, e, b, n), s
+    | "TEXT", _ ->
+        let n, s = uint (sp s) in
+        let s = ext s in
+        `Text (t, f, n), s
+    | _ ->
+        let s = ext s in
+        `Basic (m, t, f), s
 
   and body s =
     let res, s =
@@ -1811,12 +1820,12 @@ module D = struct
     | res ->
         res, !r
     | exception _ ->
-        raise (Error (err_unexpected_s s d))
+        failwith "scanf" (* raise (Error (err_unexpected_s s d)) *)
 
   let date_time s =
     scanf s "\"%2d-%3s-%4d %2d:%2d:%2d %5d\"" begin fun day m year hr mn sc z ->
       let month =
-        match String.capitalize m with
+        match String.capitalize_ascii m with
         | "Jan" -> 0
         | "Feb" -> 1
         | "Mar" -> 2
@@ -1856,20 +1865,21 @@ module D = struct
 
   let msgtext s =
     let a, s = atom s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "HEADER" -> `Header, s
     | "HEADER.FIELDS" ->
-        let xs, s = p_list1 p_astring (sp s) in
+        let xs, s = list1 astring (sp s) in
         `Header_fields xs, s
     | "HEADER.FIELDS.NOT" ->
-        let xs, s = p_list1 astring (sp s) in
+        let xs, s = list1 astring (sp s) in
         `Header_fields_not xs, s
     | "TEXT" ->
         `Text, s
     |  "MIME" ->
         `Mime, s
     | _ ->
-        err_unexpected_s a d
+        failwith "msgtext"
+        (* err_unexpected_s a d *)
 
   let rec part s =
     match Sub.head s with
@@ -1931,12 +1941,13 @@ module D = struct
 
   let msg_att s =
     let a, s = while1 (fun ch -> is_atom_char ch && ch <> '[') s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "FLAGS" ->
-        let xs, s = p_list flag_fetch (sp s) in
+        let xs, s = list flag_fetch (sp s) in
         `Flags xs, s
     | "ENVELOPE" ->
-        p_sp d; p_envelope (fun x -> k (`Envelope x)) d
+        let x, s = envelope (sp s) in
+        `Envelope x, s
     | "INTERNALDATE" ->
         let (t1, t2), s = date_time (sp s) in `Internal_date (t1, t2), s
     | "RFC822.HEADER" ->
@@ -1986,10 +1997,10 @@ module D = struct
         let n, s = uint64 (sp s) in
         `Gm_thrid n, s
     | "X-GM-LABELS" ->
-        let xs, s = p_list astring (sp s) in
+        let xs, s = list astring (sp s) in
         `Gm_labels xs, s
     | _ ->
-        err_unexpected_s a d
+        failwith "msg_att" (* err_unexpected_s a d *)
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -2021,12 +2032,12 @@ module D = struct
 
   let response_data_t s  =
     let a, s = atom s in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "OK" -> let (c, t), s = resp_text (sp s) in `Ok (c, t), s
     | "NO" -> let (c, t), s = resp_text (sp s) in `No (c, t), s
     | "BAD" -> let (c, t), s = resp_text (sp s) in `Bad (c, t), s
     | "BYE" -> let (c, t), s = resp_text (sp s) in `Bye (c, t), s
-    | "FLAGS" -> let xs, s = p_list flag (sp s) in `Flags xs, s
+    | "FLAGS" -> let xs, s = list flag (sp s) in `Flags xs, s
     | "LIST" -> let (xs, c, m), s = mailbox_list (sp s) in `List (xs, c, m), s
     | "LSUB" -> let (xs, c, m), s = mailbox_list (sp s) in `Lsub (xs, c, m), s
     | "SEARCH" ->
@@ -2048,10 +2059,10 @@ module D = struct
         in
         loop [] s
     | "STATUS" ->
-        let m, s = mailbox nxt (sp s) in
-        let a, s = p_list status_att (sp s) in
+        let m, s = mailbox (sp s) in
+        let a, s = list status_att (sp s) in
         `Status (m, a), s
-    | "CAPABILITY" -> let xs, s = p_sep capability s in `Capability xs, s
+    | "CAPABILITY" -> let xs, s = sep capability s in `Capability xs, s
     | "PREAUTH" -> let (c, t), s = resp_text (sp s) in `Preauth (c, t), s
     | "VANISHED" ->
         begin match Sub.head (sp s) with
@@ -2063,18 +2074,22 @@ module D = struct
             let set, s = set s in
             `Vanished set, s
         end
-    | "ENABLED" -> let xs, s = p_sep capability s in `Enabled xs, s
-    | _ -> err_unexpected_s a d
+    | "ENABLED" ->
+        let xs, s = sep capability s in `Enabled xs, s
+    | _ ->
+        failwith "response_data_t"
+  (* err_unexpected_s a d *)
 
   let response_data_n s =
     let n, s = uint32 s in (* FIXME uint vs uint32 *)
     let a, s = atom (sp s) in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "EXPUNGE" -> `Expunge n, s
-    | "FETCH" -> let a, s = p_list1 p_msg_att (sp s) in `Fetch (n, a), s
+    | "FETCH" -> let a, s = list1 msg_att (sp s) in `Fetch (n, a), s
     | "EXISTS" -> `Exists (Uint32.to_int n), s
     | "RECENT" -> `Recent (Uint32.to_int n), s
-    | _ -> err_unexpected_s a d
+    | _ ->
+        failwith "response_data_n" (* err_unexpected_s a d *)
 
   let untagged s = (* '*' was eaten *)
     match Sub.head (sp s) with
@@ -2106,7 +2121,7 @@ module D = struct
   let is_tag_char c =
     is_astring_char c && c != '+'
 
-  let tag  =
+  let tag s =
     while1 is_tag_char s
 
   let tagged s =
@@ -2136,8 +2151,8 @@ module D = struct
     let s = crlf s in
     res, s
 
-  let decode d =
-    readline (p_response ret) d
+  (* let decode d = *)
+  (*   readline (p_response ret) d *)
 
   let decoder () =
     {
@@ -2376,21 +2391,7 @@ module E = struct
     else
       k e
 
-  let wait_for_cont k e =
-    `Wait_for_cont k
-
-  let rec writes s k e =
-    let o_len = String.length e.o in
-    let rec loop j l e =
-      let rem = o_len - e.o_pos in
-      let len = if l > rem then rem else l in
-      String.unsafe_blit s j e.o e.o_pos len;
-      e.o_pos <- e.o_pos + len;
-      if len < l then flush (loop (j + len) (l - len)) e else k e
-    in
-    loop 0 (String.length s) e
-
-  let w s k e = writes s k e
+  let w s (_, oc) = Lwt_io.write s oc
 
   let classify_string str =
     let literal = function
@@ -2415,29 +2416,37 @@ module E = struct
     if needs quotes str then `Quoted else
       `Raw
 
-  let w_literal x k e =
-    w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e
-
-  let w_string x k e = match classify_string x with
-    | `Raw     -> w x k e
-    | `Quoted  -> w "\"" (w x (w "\"" k)) e
-    | `Literal -> w_literal x k e
-
-  let w_sep ?(sep = ' ') f l k e =
-    let rec loop xs e = match xs with
-      | [] -> k e
-      | x :: [] -> f x k e
-      | x :: xs -> f x (w (String.make 1 sep) (loop xs)) e
+  let literal x ic oc =
+    Printf.ksprintf (Lwt_io.write oc) "{%d}\r\n" (String.length x) >>= fun () ->
+    Lwt_io.flush oc >>= fun () ->
+    let rec loop = function
+      | `Untagged x as r -> `Untagged (x, readresp ic >>= loop)
+      | `Cont -> Lwt_io.write oc x
     in
-    loop l e
+    readresp >>= loop
+
+  let w_string x ic oc =
+    match classify_string x with
+    | `Raw     -> Lwt_io.write oc x
+    | `Quoted  -> Lwt_io.fprint oc "\"%s\"" x
+    | `Literalal -> literal x ic oc
+
+  let sep ?(sep = ' ') f l ic oc =
+    let rec loop = function
+      | [] -> Lwt.return_unit
+      | x :: [] -> f x ic oc
+      | x :: xs ->
+          f x >>= fun () -> Lwt_io.write_char oc sep >>= fun () -> loop xs
+    in
+    loop l
 
   let (&) x y k e = x (w " " (y k)) e
   let ($) x y k e = x (y k) e
 
-  let w_crlf k e =
-    w "\r\n" k e
+  let crlf ic oc =
+    Lwt_io.write oc "\r\n"
 
-  let w_status_att = function
+  let status_att = function
     | `Messages -> w "MESSAGES"
     | `Recent -> w "RECENT"
     | `Uid_next -> w "UIDNEXT"
@@ -2445,20 +2454,25 @@ module E = struct
     | `Unseen -> w "UNSEEN"
     | `Highest_modseq -> w "HIGHESTMODSEQ"
 
-  let w_int n = w (string_of_int n)
-  let w_uint32 m = w (Uint32.to_string m)
-  let w_uint64 m = w (Uint64.to_string m)
+  let int n = w (string_of_int n)
+  let uint32 m = w (Uint32.to_string m)
+  let uint64 m = w (Uint64.to_string m)
 
-  let w_label l =
+  let label l =
     w_string (Mutf7.encode l)
 
-  let w_list f l k e =
+  let list f l ic oc =
     let rec loop xs e = match xs with
-      | [] -> w ")" k e
-      | [x] -> f x (w ")" k) e
-      | x :: xs -> f x (w " " (loop xs)) e
+      | [] -> w ")" ic oc
+      | [x] ->
+          f x ic oc >>= fun () ->
+          Lwt_io.write_char oc ')'
+      | x :: xs ->
+          f x ic oc >>= fun () ->
+          Lwt_io.write_char oc ' ' >>= fun () ->
+          loop xs
     in
-    w "(" (loop l) e
+    Lwt_io.write_char oc '(' >>= fun () -> loop l
 
   let w_eset s k e =
     let f = function
@@ -2468,7 +2482,7 @@ module E = struct
     in
     w_sep ~sep:',' f s k e
 
-  let w_mailbox s =
+  let mailbox s =
     w_string (Mutf7.encode s)
 
   let months =
@@ -2533,7 +2547,7 @@ module E = struct
     | `Part (n, s) -> w_int n $ w "." $ w_section s
     | `All -> w ""
 
-  let w_fetch_att : [< fetch_query] -> _ = function
+  let fetch_att : [< fetch_query] -> _ = function
     | `Envelope -> w "ENVELOPE"
     | `Internal_date -> w "INTERNALDATE"
     | `Rfc822_header -> w "RFC822.HEADER"
@@ -2552,7 +2566,7 @@ module E = struct
     | `Uid -> w "UID"
     | `Flags -> w "FLAGS"
 
-  let w_flag = function
+  let flag = function
     | `Answered -> w "\\Answered"
     | `Flagged -> w "\\Flagged"
     | `Deleted -> w "\\Deleted"
@@ -2675,39 +2689,24 @@ type result =
 
 type connection =
   {
-    e : E.encoder;
-    d : D.decoder;
+    ic: Lwt_io.input_channel;
+    oc: Lwt_io.output_channel;
+    mutex: Lwt_mutex.t;
     mutable idle_stop : bool ref; (* whether the user has signaled to send DONE *)
     mutable idling : bool; (* whether we are idling *)
     mutable tag : int
   }
 
-let rec cont_req k r c =
-  match r with
-  | `Cont _ -> k c
-  | _ -> decode (cont_req k) c
-
-and encode x k c =
-  let rec loop = function
-    | `Partial (s, i, l, k) ->
-        `Write (s, i, l, (fun n -> loop (k n)))
-    | `Wait_for_cont k ->
-        decode (cont_req (fun c -> loop (k c.e))) c
-    | `Ok ->
-        k c
-  in
-  loop (E.encode c.e x)
-
-and decode (k : _ -> connection -> _) c =
-  let rec loop = function
-    | `Ok x ->
-        k x c
-    | `Read (s, i, l, k) ->
-        `Read (s, i, l, fun n -> loop (k n))
-    | `Error e ->
-        `Error (`Decode_error e) (* FIXME resume on the next line of input *)
-  in
-  loop (D.decode c.d)
+(* and decode (k : _ -> connection -> _) c = *)
+(*   let rec loop = function *)
+(*     | `Ok x -> *)
+(*         k x c *)
+(*     | `Read (s, i, l, k) -> *)
+(*         `Read (s, i, l, fun n -> loop (k n)) *)
+(*     | `Error e -> *)
+(*         `Error (`Decode_error e) (\* FIXME resume on the next line of input *\) *)
+(*   in *)
+(*   loop (D.decode c.d) *)
 
 let rec h_tagged tag r c =
   let cur = string_of_int c.tag in
@@ -2773,11 +2772,19 @@ let run c cmd =
       encode (`Cmd (string_of_int c.tag, cmd))
         (decode h_response) c
 
-let connection () =
+let connect ?(port = 993) host =
+  let sock = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Lwt_unix.connect sock (Unix.ADDR_INET (addr, port)) >>= fun () ->
+  let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
+  Lwt_ssl.ssl_connect sock ctx >>= fun ssl_sock ->
+  let ic = Lwt_ssl.in_channel_of_descr ssl_sock in
+  let oc = Lwt_ssl.out_channel_of_descr ssl_sock in
   let c =
     {
-      e = E.encoder ();
-      d = D.decoder ();
+      ic;
+      oc;
+      sock = ssl_sock;
+      mutex = Lwt_mutex.create ();
       idling = false;
       idle_stop = ref false;
       tag = 0;

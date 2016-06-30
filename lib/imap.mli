@@ -546,23 +546,6 @@ type untagged =
   | `Enabled of capability list
   (** List of capabilities enabled after issuing {!enable} command. *) ]
 
-type response =
-  [ untagged
-  (** Untagged data response. *)
-
-  | `Cont of string
-  (** Continuation request: the server is waiting for client data.  The client
-      must wait for this message before sending literal data. *)
-
-  | `Tagged of string * state
-  (** Tagged response: tag, result status. *) ]
-
-(** {3 Pretty printing responses}
-
-    Will print the given response in s-expression format. *)
-
-val pp_response : Format.formatter -> [< response] -> unit
-
 (** {1 Types for queries}
 
     These types are used to describe queries to the server using the different
@@ -885,6 +868,24 @@ type response =
   | Ok of code * string
   | Error of error
 
+
+(* type response = *)
+(*   [ untagged *)
+(*   (\** Untagged data response. *\) *)
+
+(*   | `Cont of string *)
+(*   (\** Continuation request: the server is waiting for client data.  The client *)
+(*       must wait for this message before sending literal data. *\) *)
+
+(*   | `Tagged of string * state *)
+(*   (\** Tagged response: tag, result status. *\) ] *)
+
+(** {3 Pretty printing responses}
+
+    Will print the given response in s-expression format. *)
+
+val pp_response : Format.formatter -> response -> unit
+
 (** {1:commands Commands}
 
     These are the available commands that can be sent to an IMAP server.  Not
@@ -1052,7 +1053,7 @@ val fetch_full: connection -> ?uid:bool -> ?changed:uint64 -> ?vanished:bool -> 
 
 (** {2 Store commands} *)
 
-val store_add_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_add_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> response Lwt.t
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -1062,15 +1063,15 @@ val store_add_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> f
     the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
     value is at least the passed value (requires the [CONDSTORE] extension). *)
 
-val store_set_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_set_flags: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> response Lwt.t
 (** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
     instead of adding to it. *)
 
-val store_remove_flags: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> command
+val store_remove_flags: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> response Lwt.t
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
-val store_add_labels: ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> command
+val store_add_labels: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> response Lwt.t
 (** [store_add_labels] is like {!store_add_flags} but adds
     {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
     instead of regular flags. *)
@@ -1085,14 +1086,14 @@ val store_remove_labels: connection -> ?uid:bool -> ?silent:bool -> ?unchanged:u
 
 val enable: connection -> capability list -> response Lwt.t
 
-val authenticate: connection -> authenticator -> response Lwt.t
+val authenticate: connection -> Auth.t -> response Lwt.t
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
     If the server supports the requested authentication mechanism, it performs
     an authentication protocol exchange to authenticate and identify the client.
     See {!authenticator} for details on the interface with particular [SASL]
     mechanisms. *)
 
-val idle: connection -> command * (unit -> unit)
+(* val idle: connection -> command * (unit -> unit) *)
 (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
     command is executing the client will receive a stream of incoming untagged
     {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
