@@ -747,52 +747,45 @@ module D = struct
     if Sub.is_empty a then failwith "atom";
     a, s
 
-  let p_atomf s d =
-    let a = p_atom d in
-    if String.uppercase a <> String.uppercase s then
+  let atomf str =
+    let a, s = atom s in
+    if String.uppercase a <> String.uppercase str then
       raise (Error (err_expected_s s d))
+    else
+      s
 
-  let p_t3 p1 p2 p3 k d =
-    p1 (fun x d -> p_sp d; p2 (fun y d -> p_sp d; p3 (k x y) d) d) d
+  let triple f1 f2 f3 s =
+    let x1, s = f1 s in
+    let x2, s = f2 (sp s) in
+    let x3, s = f3 (sp s) in
+    (x1, x2, x3), s
 
-  let p_sep p d =
-    let rec loop acc =
-      match peekc d with
+  let sep f s =
+    let rec loop acc s =
+      match Sub.head s with
       | Some ' ' ->
-          junkc d;
-          loop (p d :: acc)
+          let x, s = f (Sub.tail s) in
+          loop (x :: acc) s
       | _ ->
-          List.rev acc
+          List.rev acc, s
     in
-    loop []
+    loop [] s
 
-  let p_sep_k p k d =
-    let rec loop acc d =
-      match peekc d with
+  let list1 f s =
+    let rec loop acc s =
+      match Sub.head s with
       | Some ' ' ->
-          junkc d;
-          p (fun x -> loop (x :: acc)) d
-      | _ ->
-          k (List.rev acc) d
-    in
-    loop [] d
-
-  let p_list1 p k d =
-    let rec loop acc d =
-      match cur d with
-      | ' ' ->
-          junkc d;
-          p (fun x -> loop (x :: acc)) d
-      | ')' ->
-          junkc d;
-          k (List.rev acc) d
+          let x, s = f (Sub.tail s) in
+          loop (x :: acc) s
+      | Some ')' ->
+          List.rev acc, Sub.tail s
       | _ ->
           err_unexpected (cur d) d
     in
-    p_ch '(' d;
-    p (fun x -> loop [x]) d
+    let x, s = f (ch '(' s) in
+    loop [x] s
 
-  let p_list_generic ~delim p k d =
+  let list_gen delim f s =
     let rec loop acc d =
       match cur d with
       | ')' ->
@@ -819,7 +812,7 @@ module D = struct
           p (fun x -> loop [x]) d
     end
 
-  let p_list p k d = p_list_generic ~delim:(Some ' ') p k d
+  let list f s = list_gen (Some ' ') f s
 
 (*
    CR             =  %x0D
@@ -858,8 +851,8 @@ module D = struct
 
   let is_digit = function '0' .. '9' -> true | _ -> false
   let uint s = let n, s = span1 is_digit s in to_i n, s
-  let uint32 s = Uint32.of_string (p_while1 is_digit d)
-  let uint64 s = Uint64.of_string (p_while1 is_digit d)
+  let uint32 s = Uint32.of_string (while1 is_digit d)
+  let uint64 s = Uint64.of_string (while1 is_digit d)
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
