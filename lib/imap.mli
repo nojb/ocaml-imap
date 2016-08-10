@@ -863,7 +863,7 @@ val create : string -> command
 
 val delete : string -> command
 (** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-    if the mailbox with that name has been created.
+    if the mailbox with that name has been deleted.
     Any error in deletion will return a tagged [`No] response. *)
 
 val rename : string -> string -> command
