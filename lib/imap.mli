@@ -921,7 +921,7 @@ val create: connection -> string -> response Lwt.t
 
 val delete: connection -> string -> response Lwt.t
 (** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-    if the mailbox with that name has been created.
+    if the mailbox with that name has been deleted.
     Any error in deletion will return a tagged [`No] response. *)
 
 val rename: connection -> string -> string -> response Lwt.t
