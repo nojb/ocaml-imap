@@ -614,12 +614,6 @@ module D = struct
   let ret x _ = `Ok x
   let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
 
-  (* let src d s j l =                                     (\* set [d.i] with [s]. *\) *)
-  (*   if j < 0 || l < 0 || j + l > String.length s then *)
-  (*     invalid_arg "bounds" *)
-  (*   else *)
-  (*     (d.i <- s; d.i_pos <- j; d.i_max <- j + l) *)
-
   let readexact n k d =
     let b = Bytes.create n in
     let have = min n (d.i_max - d.i_pos) in
@@ -745,7 +739,7 @@ module D = struct
 
   let p_atomf s d =
     let a = p_atom d in
-    if String.uppercase a <> String.uppercase s then
+    if String.uppercase_ascii a <> String.uppercase_ascii s then
       raise (Error (err_expected_s s d))
 
   let p_t3 p1 p2 p3 k d =
@@ -1170,7 +1164,7 @@ module D = struct
 
   let p_cap d =
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "COMPRESS=DEFLATE" -> `Compress_deflate
     | "CONDSTORE" -> `Condstore
     | "ENABLE" -> `Enable
@@ -1190,7 +1184,7 @@ module D = struct
 
   let p_code k d = (* '[' was eaten *)
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "ALERT" -> k `Alert d
     | "BADCHARSET" ->
         begin match peekc d with
@@ -1268,7 +1262,7 @@ module D = struct
 
   let p_resp_cond_state k d =
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "OK" ->
         p_sp d; p_resp_text (fun c t -> k (`Ok (c, t))) d
     | "NO" ->
@@ -1413,7 +1407,7 @@ module D = struct
 
   let p_status_att d =
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "MESSAGES" ->
         p_sp d;
         let n = p_uint d in
@@ -1731,7 +1725,7 @@ module D = struct
           k d
     in
     let nxt m t f d =
-      match String.uppercase m, String.uppercase t with
+      match String.uppercase_ascii m, String.uppercase_ascii t with
       | "MESSAGE", "RFC822" ->
           p_sp d;
           p_t3 p_envelope p_body (lift p_uint) (fun e b n -> ext (k (`Message (f, e, b, n)))) d
@@ -1829,7 +1823,7 @@ module D = struct
 
   let p_msgtext k d =
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "HEADER" -> k `Header d
     | "HEADER.FIELDS" ->
         p_sp d;
@@ -1901,7 +1895,7 @@ module D = struct
 
   let p_msg_att k d =
     let a = p_while1 (fun ch -> is_atom_char ch && ch <> '[') d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "FLAGS" -> p_sp d; p_list (lift p_flag_fetch) (fun xs -> k (`Flags xs)) d
     | "ENVELOPE" -> p_sp d; p_envelope (fun x -> k (`Envelope x)) d
     | "INTERNALDATE" -> p_sp d; let t1, t2 = p_date_time d in k (`Internal_date (t1, t2)) d
@@ -1967,7 +1961,7 @@ module D = struct
 
   let p_response_data_t k d =
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "OK" -> p_sp d; p_resp_text (fun c t -> k (`Ok (c, t))) d
     | "NO" -> p_sp d; p_resp_text (fun c t -> k (`No (c, t))) d
     | "BAD" -> p_sp d; p_resp_text (fun c t -> k (`Bad (c, t))) d
@@ -2021,7 +2015,7 @@ module D = struct
     let n = p_uint32 d in (* FIXME uint vs uint32 *)
     p_sp d;
     let a = p_atom d in
-    match String.uppercase a with
+    match String.uppercase_ascii a with
     | "EXPUNGE" -> k (`Expunge n) d
     | "FETCH" -> p_sp d; p_list1 p_msg_att (fun a -> k (`Fetch (n, a))) d
     | "EXISTS" -> k (`Exists (Uint32.to_int n)) d
