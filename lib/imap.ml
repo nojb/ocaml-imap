@@ -1565,58 +1565,60 @@ flag-perm       = flag / "\\*"
 
 (*
    body-fld-lines  = number
-
-   media-subtype   = string
-                       ; Defined in [MIME-IMT]
-
-   media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
-                     "MESSAGE" / "VIDEO") DQUOTE) / string) SP
-                     media-subtype
-                       ; Defined in [MIME-IMT]
-
-   media-message   = DQUOTE "MESSAGE" DQUOTE SP DQUOTE "RFC822" DQUOTE
-                       ; Defined in [MIME-IMT]
-
-   media-text      = DQUOTE "TEXT" DQUOTE SP media-subtype
-                       ; Defined in [MIME-IMT]
-
-   body-type-basic = media-basic SP body-fields
-                       ; MESSAGE subtype MUST NOT be "RFC822"
-
-   body-type-msg   = media-message SP body-fields SP envelope
-                     SP body SP body-fld-lines
-
-   body-type-text  = media-text SP body-fields SP body-fld-lines
-
-   body-type-1part = (body-type-basic / body-type-msg / body-type-text)
-                     [SP body-ext-1part]
-
-   body-type-mpart = 1*body SP media-subtype
-                     [SP body-ext-mpart]
-
-   body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 
   let body_fld_lines st =
     Uint32.to_int (number st)
 
+(*
+   media-subtype   = string
+                       ; Defined in [MIME-IMT]
+*)
+
   let media_subtype =
     imap_string
+
+(*
+   media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
+                     "MESSAGE" / "VIDEO") DQUOTE) / string) SP
+                     media-subtype
+                       ; Defined in [MIME-IMT]
+*)
 
   let media_basic =
     tuple2 ~sep:space imap_string media_subtype (* TODO *)
 
+(*
+   media-message   = DQUOTE "MESSAGE" DQUOTE SP DQUOTE "RFC822" DQUOTE
+                       ; Defined in [MIME-IMT]
+*)
+
   let media_message =
     tuple2 ~sep:space imap_string imap_string (* TODO *)
 
+(*
+   media-text      = DQUOTE "TEXT" DQUOTE SP media-subtype
+                       ; Defined in [MIME-IMT]
+*)
+
   let media_text =
     tuple2 ~sep:space imap_string media_subtype (* TODO *)
+
+(*
+   body-type-basic = media-basic SP body-fields
+                       ; MESSAGE subtype MUST NOT be "RFC822"
+*)
 
   let body_type_basic st =
     let media_basic = media_basic st in
     let fields = sp body_fields st in
     let extensions = option (sp body_ext_1part) st in
     Basic {media_basic; fields; extensions}
+
+(*
+   body-type-msg   = media-message SP body-fields SP envelope
+                     SP body SP body-fld-lines
+*)
 
   let rec body_type_msg st =
     let media_message = media_message st in
@@ -1627,6 +1629,10 @@ flag-perm       = flag / "\\*"
     let extensions = option (sp body_ext_1part) st in
     Message {media_message; fields; envelope; body; fld_lines; extensions}
 
+(*
+   body-type-text  = media-text SP body-fields SP body-fld-lines
+*)
+
   and body_type_text st =
     let media_text = media_text st in
     let fields = sp body_fields st in
@@ -1634,8 +1640,18 @@ flag-perm       = flag / "\\*"
     let extensions = option (sp body_ext_1part) st in
     Text {media_text; fields; fld_lines; extensions}
 
+(*
+   body-type-1part = (body-type-basic / body-type-msg / body-type-text)
+                     [SP body-ext-1part]
+*)
+
   and body_type_1part st =
     (body_type_basic ||| body_type_msg ||| body_type_text) st
+
+(*
+   body-type-mpart = 1*body SP media-subtype
+                     [SP body-ext-mpart]
+*)
 
   and body_type_mpart st =
     let bodies = list1 body st in
@@ -1643,36 +1659,34 @@ flag-perm       = flag / "\\*"
     let extensions = option (sp body_ext_mpart) st in
     Multipart {bodies; media_subtype; extensions}
 
+(*
+   body            = "(" (body-type-1part / body-type-mpart) ")"
+*)
+
   and body st =
     delimited '(' (body_type_1part ||| body_type_mpart) ')' st
 
 (*
    header-fld-name = astring
-
-   header-list     = "(" header-fld-name *(SP header-fld-name) ")"
-
-   section-msgtext = "HEADER" / "HEADER.FIELDS" [".NOT"] SP header-list /
-                     "TEXT"
-                       ; top-level or MESSAGE/RFC822 part
-
-   section-part    = nz-number *("." nz-number)
-                       ; body part nesting
-
-   section-spec    = section-msgtext / (section-part ["." section-text])
-
-   section-text    = section-msgtext / "MIME"
-                       ; text other than actual body part (headers, etc.)
-
-   section         = "[" [section-spec] "]"
 *)
 
   let header_fld_name = astring
+
+(*
+   header-list     = "(" header-fld-name *(SP header-fld-name) ")"
+*)
 
   let header_list =
     delimited '(' (list1 ~sep:space header_fld_name) ')'
 
   let header_list st =
     header_list (context "header-list" st)
+
+(*
+   section-msgtext = "HEADER" / "HEADER.FIELDS" [".NOT"] SP header-list /
+                     "TEXT"
+                       ; top-level or MESSAGE/RFC822 part
+*)
 
   let section_msgtext =
     let header_fields_not st = HEADER_FIELDS_NOT (sp header_list st) in
@@ -1688,17 +1702,31 @@ flag-perm       = flag / "\\*"
   let section_msgtext st =
     section_msgtext (context "section-msgtext" st)
 
+(*
+   section-part    = nz-number *("." nz-number)
+                       ; body part nesting
+*)
+
   let section_part =
     list1 ~sep:(char '.') nz_number
 
   let section_part st =
     section_part (context "section-part" st)
 
+(*
+   section-text    = section-msgtext / "MIME"
+                       ; text other than actual body part (headers, etc.)
+*)
+
   let section_text =
     section_msgtext ||| switch [ "MIME", const MIME ]
 
   let section_text st =
     section_text (context "section-text" st)
+
+(*
+   section-spec    = section-msgtext / (section-part ["." section-text])
+*)
 
   let section_spec =
     let part st =
@@ -1711,6 +1739,10 @@ flag-perm       = flag / "\\*"
 
   let section_spec st =
     section_spec (context "section-spec" st)
+
+(*
+   section         = "[" [section-spec] "]"
+*)
 
   let section st =
     match delimited '[' (option section_spec) ']' st with
@@ -1889,11 +1921,11 @@ flag-perm       = flag / "\\*"
    response-done   = response-tagged / response-fatal
 
 
-   response        = *(continue-req / response-data) response-done
-
    response-data   = "*" SP (resp-cond-state / resp-cond-bye /
                      mailbox-data / message-data / capability-data) CRLF
 
+
+   response        = *(continue-req / response-data) response-done
 
    enable-data   = "ENABLED" *(SP capability)
 
