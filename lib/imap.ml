@@ -401,11 +401,13 @@ module Buf : sig
   val add_subbytes: t -> bytes -> int -> int -> unit
   val get: t -> int -> char
   val blit: t -> int -> t -> int -> int -> unit
+  val length: t -> int
+  val bytes: t -> bytes
 end = struct
   type t =
     {
       mutable buf: bytes;
-      mutable max: int;
+      mutable len: int;
     }
 
   let initial_size = 512
@@ -413,33 +415,106 @@ end = struct
   let create () =
     {
       buf = Bytes.create initial_size;
-      max = 0;
+      len = 0;
     }
 
   let ensure t sz =
     assert (sz >= 0);
     let len = Bytes.length t.buf in
-    if t.max + sz > len then begin
+    if t.len + sz > len then begin
       let new_buf = Bytes.create (max sz (2 * len + 1)) in
-      Bytes.blit t.buf 0 new_buf 0 t.max;
+      Bytes.unsafe_blit t.buf 0 new_buf 0 t.len;
       t.buf <- new_buf
-    end
+    end;
+    assert (t.len + sz <= Bytes.length t.buf)
 
   let add_subbytes t b off len =
     if off < 0 || len < 0 || off + len > Bytes.length b then invalid_arg "Buf.add_subbytes";
     ensure t len;
-    Bytes.blit b off t.buf t.max len
+    Bytes.unsafe_blit b off t.buf t.len len
 
   let get t off =
-    if off < 0 || off >= t.max then invalid_arg "Buf.get";
-    Bytes.get t.buf off
+    if off < 0 || off >= t.len then invalid_arg "Buf.get";
+    Bytes.unsafe_get t.buf off
 
   let blit t1 off1 t2 off2 len =
-    if off1 < 0 || off2 < 0 || len < 0 || len + off1 > t1.max || len + off2 > t2.max then invalid_arg "Buf.blit";
-    Bytes.blit t1.buf off1 t2.buf off2 len
+    if off1 < 0 || off2 < 0 || len < 0 || len + off1 > t1.len || len + off2 > t2.len then invalid_arg "Buf.blit";
+    Bytes.unsafe_blit t1.buf off1 t2.buf off2 len
+
+  let length t =
+    t.len
+
+  let bytes t =
+    t.buf
 end
 
-module Untagged = struct
+module Reader : sig
+  val read_line: Lwt_io.input_channel -> Buf.t -> unit Lwt.t
+end = struct
+  let read_int buf off len =
+    let rec loop acc off len =
+      if len <= 0 then
+        acc
+      else
+        let acc = (Char.code (Buf.get buf off) - Char.code '0') + 10 * acc in
+        loop acc (off + 1) (len - 1)
+    in
+    loop 0 off len
+
+  let rec check_literal buf i =
+    let lf = i+2 in
+    if i < 0 then false
+    else begin
+      match Buf.get buf i with
+      | '}' ->
+          let finish = i - 1 in
+          let rec loop i =
+            if i < 0 then false
+            else begin
+              match Buf.get buf i with
+              | '0'..'9' ->
+                  loop (i - 1)
+              | '{' ->
+                  let n = read_int buf (i+1) (finish-i) in
+                  check_eol buf (lf+n+1)
+              | _ ->
+                  false
+            end
+          in
+          loop finish
+      | _ ->
+          true
+    end
+
+  and check_eol buf i =
+    let rec loop seen_cr i =
+      if i >= Buf.length buf then false
+      else match Buf.get buf i with
+        | '\n' when seen_cr ->
+            check_literal buf (i-2)
+        | '\r' ->
+            loop true (i+1)
+        | _ ->
+            loop false (i+1)
+    in
+    loop false i
+
+  let small_buf = Bytes.create 1024
+
+  let read_line ic buf =
+    let open Lwt.Infix in
+    let rec loop () =
+      if check_eol buf 0 then Lwt.return_unit
+      else begin
+        Lwt_io.read_into ic small_buf 0 (Bytes.length small_buf) >>= fun n ->
+        Buf.add_subbytes buf small_buf 0 n;
+        loop ()
+      end
+    in
+    loop ()
+end
+
+module Decoder = struct
   open Parser
 
   type capability =
