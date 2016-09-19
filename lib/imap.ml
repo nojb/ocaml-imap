@@ -395,6 +395,50 @@ end = struct
     Some (p st)
 end
 
+module Buf : sig
+  type t
+  val create: unit -> t
+  val add_subbytes: t -> bytes -> int -> int -> unit
+  val get: t -> int -> char
+  val blit: t -> int -> t -> int -> int -> unit
+end = struct
+  type t =
+    {
+      mutable buf: bytes;
+      mutable max: int;
+    }
+
+  let initial_size = 512
+
+  let create () =
+    {
+      buf = Bytes.create initial_size;
+      max = 0;
+    }
+
+  let ensure t sz =
+    assert (sz >= 0);
+    let len = Bytes.length t.buf in
+    if t.max + sz > len then begin
+      let new_buf = Bytes.create (max sz (2 * len + 1)) in
+      Bytes.blit t.buf 0 new_buf 0 t.max;
+      t.buf <- new_buf
+    end
+
+  let add_subbytes t b off len =
+    if off < 0 || len < 0 || off + len > Bytes.length b then invalid_arg "Buf.add_subbytes";
+    ensure t len;
+    Bytes.blit b off t.buf t.max len
+
+  let get t off =
+    if off < 0 || off >= t.max then invalid_arg "Buf.get";
+    Bytes.get t.buf off
+
+  let blit t1 off1 t2 off2 len =
+    if off1 < 0 || off2 < 0 || len < 0 || len + off1 > t1.max || len + off2 > t2.max then invalid_arg "Buf.blit";
+    Bytes.blit t1.buf off1 t2.buf off2 len
+end
+
 module Untagged = struct
   open Parser
 
@@ -2764,7 +2808,7 @@ module D = struct
     | '\\' ->
         junkc d;
         let a = p_atom d in
-        begin match String.capitalize a with
+        begin match String.capitalize_ascii a with
         | "Answered" -> `Answered
         | "Flagged" -> `Flagged
         | "Deleted" -> `Deleted
@@ -2784,7 +2828,7 @@ module D = struct
     | '\\' ->
         junkc d;
         let a = p_atom d in
-        begin match String.capitalize a with
+        begin match String.capitalize_ascii a with
         | "Answered" -> `Answered
         | "Flagged" -> `Flagged
         | "Deleted" -> `Deleted
@@ -2810,7 +2854,7 @@ module D = struct
             `All
         | _ ->
             let a = p_atom d in
-            begin match String.capitalize a with
+            begin match String.capitalize_ascii a with
             | "Answered" -> `Answered
             | "Flagged" -> `Flagged
             | "Deleted" -> `Deleted
@@ -3096,7 +3140,7 @@ module D = struct
   let p_mbx_flag d =
     p_ch '\\' d;
     let a = p_atom d in
-    match String.capitalize a with
+    match String.capitalize_ascii a with
     | "Noselect" -> `Noselect
     | "Marked" -> `Marked
     | "Unmarked" -> `Unmarked
@@ -3569,7 +3613,7 @@ module D = struct
       try
         Scanf.sscanf s "%2d-%3s-%4d %2d:%2d:%2d %5d" begin fun day m year hr mn sc z ->
           let month =
-            match String.capitalize m with
+            match String.capitalize_ascii m with
             | "Jan" -> 0
             | "Feb" -> 1
             | "Mar" -> 2
