@@ -2279,81 +2279,6 @@ type command_ordinary =
               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ]
   | `Enable of capability list ]
 
-type command =
-  [ command_ordinary
-  | `Idle of bool ref
-  | `Authenticate of authenticator ]
-
-let login u p = `Login (u, p)
-let capability = `Capability
-let create m = `Create m
-let delete m = `Delete m
-let rename m1 m2 = `Rename (m1, m2)
-let logout = `Logout
-let noop = `Noop
-let subscribe m = `Subscribe m
-let unsubscribe m = `Unsubscribe m
-let list ?(ref = "") s = `List (ref, s)
-let lsub ?(ref = "") s = `Lsub (ref, s)
-let status m att = `Status (m, att)
-let copy ?(uid = true) s m = let uid = if uid then `Uid else `Seq in `Copy (uid, s, m)
-let check = `Check
-let close = `Close
-let expunge = `Expunge
-let search ?(uid = true) sk = let uid = if uid then `Uid else `Seq in `Search (uid, sk)
-let select ?(condstore = false) m =
-  let condstore = if condstore then `Condstore else `Plain in `Select (condstore, m)
-let examine ?(condstore = false) m =
-  let condstore = if condstore then `Condstore else `Plain in `Examine (condstore, m)
-
-let append m ?flags data =
-  `Append (m, flags, None, data)
-
-let fetch_aux ~uid ~changed ~vanished set att =
-  let uid = if uid then `Uid else `Seq in
-  let changed = match changed, vanished with
-    | None, true -> invalid_arg "VANISHED requires CHANGEDSINCE"
-    | None, false -> `All
-    | Some m, true -> `Changed_since_vanished m
-    | Some m, false -> `Changed_since m
-  in
-  `Fetch (uid, set, att, changed)
-let fetch ?(uid = true) ?changed ?(vanished = false) set att =
-  fetch_aux ~uid ~changed ~vanished set (`List att)
-let fetch_fast ?(uid = true) ?changed ?(vanished = false) set =
-  fetch_aux ~uid ~changed ~vanished set `Fast
-let fetch_full ?(uid = true) ?changed ?(vanished = false) set =
-  fetch_aux ~uid ~changed ~vanished set `Full
-let fetch_all ?(uid = true) ?changed ?(vanished = false) set =
-  fetch_aux ~uid ~changed ~vanished set `All
-
-let store_aux ~uid ~silent ~unchanged mode set att =
-  let uid = if uid then `Uid else `Seq in
-  let unchanged = match unchanged with None -> `All | Some m -> `Unchanged_since m in
-  let silent = if silent then `Silent else `Loud in
-  `Store (uid, set, silent, unchanged, mode, att)
-let store_add_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
-  store_aux ~uid ~silent ~unchanged `Add set (`Flags flags)
-let store_set_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
-  store_aux ~uid ~silent ~unchanged `Set set (`Flags flags)
-let store_remove_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
-  store_aux ~uid ~silent ~unchanged `Remove set (`Flags flags)
-let store_add_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
-  store_aux ~uid ~silent ~unchanged `Add set (`Labels labels)
-let store_set_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
-  store_aux ~uid ~silent ~unchanged `Set set (`Labels labels)
-let store_remove_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
-  store_aux ~uid ~silent ~unchanged `Remove set (`Labels labels)
-
-let enable caps = `Enable caps
-
-let authenticate a = `Authenticate a
-
-let idle () =
-  let stop = ref false in
-  let stop_l = Lazy.from_fun (fun () -> stop := true) in
-  `Idle stop, (fun () -> Lazy.force stop_l)
-
 module E = struct
 
   (* Encoder *)
@@ -2658,7 +2583,303 @@ module E = struct
       o = Bytes.create 4096;
       o_pos = 0;
     }
+
+  type rope =
+    | Cat of rope * rope
+    | Flush
+    | Raw of string
+
+  let rec is_empty = function
+    | Cat (f, g) -> is_empty f && is_empty g
+    | Flush -> false
+    | Raw "" -> true
+    | Raw _ -> false
+
+  let empty = Raw ""
+
+  let (++) f g =
+    if is_empty f then g
+    else if is_empty g then f
+    else Cat (f, Cat (Raw " ", g))
+
+  let literal s =
+    Cat (Raw (Printf.sprintf "{%d}\r\n" (String.length s)), Cat (Flush, Raw s))
+
+  let raw s =
+    Raw s
+
+  let str s =
+    let literal_chars = function
+      | '\x80' .. '\xFF' | '\r' | '\n' -> true
+      | _ -> false
+    in
+    let quoted_chars = function
+      | '(' | ')' | '{' | ' ' | '\x00' .. '\x1F' | '\x7F'
+      | '%' | '*' | '\"' | '\\' -> true
+      | _ -> false
+    in
+    let needs f s =
+      let rec loop i = i < String.length s && (f s.[i] || loop (i+1)) in
+      loop 0
+    in
+    if s = "" then
+      raw "\"\""
+    else if needs literal_chars s then
+      literal s
+    else if needs quoted_chars s then
+      raw (Printf.sprintf "\"%s\"" s)
+    else
+      raw s
+
+  let p f =
+    Cat (Raw "(", Cat (f, Raw ")"))
+
+  let mailbox s =
+    str (Mutf7.encode s)
+
+  let int n =
+    raw (string_of_int n)
+
+  let uint32 m =
+    raw (Uint32.to_string m)
+
+  let uint64 m =
+    raw (Uint64.to_string m)
+
+  let label l =
+    raw (Mutf7.encode l)
+
+  let list ?(sep = ' ') f l =
+    let rec loop = function
+      | [] -> empty
+      | [x] -> f x
+      | x :: xs -> Cat (f x, Cat (Raw (String.make 1 sep), loop xs))
+    in
+    loop l
+
+  let eset s =
+    let f = function
+      | (lo, Some hi) when lo = hi -> uint32 lo
+      | (lo, Some hi) -> str (Printf.sprintf "%s:%s" (Uint32.to_string lo) (Uint32.to_string hi))
+      | (lo, None) -> str (Printf.sprintf "%s:*" (Uint32.to_string lo))
+    in
+    list ~sep:',' f s
+
+  let status_att = function
+    | `Messages -> raw "MESSAGES"
+    | `Recent -> raw "RECENT"
+    | `Uid_next -> raw "UIDNEXT"
+    | `Uid_validity -> raw "UIDVALIDITY"
+    | `Unseen -> raw "UNSEEN"
+    | `Highest_modseq -> raw "HIGHESTMODSEQ"
+
+  let search_key _ =
+    assert false
+
+  let flag = function
+    | `Answered -> raw "\\Answered"
+    | `Flagged -> raw "\\Flagged"
+    | `Deleted -> raw "\\Deleted"
+    | `Seen -> raw "\\Seen"
+    | `Draft -> raw "\\Draft"
+    | `Keyword s -> raw s
+    | `Extension s -> raw ("\\" ^ s)
+
+  let fetch_att : [< fetch_query] -> _ = function
+    | `Envelope -> raw "ENVELOPE"
+    | `Internal_date -> raw "INTERNALDATE"
+    | `Rfc822_header -> raw "RFC822.HEADER"
+    | `Rfc822_text -> raw "RFC822.TEXT"
+    | `Rfc822_size -> raw "RFC822.SIZE"
+    | `Rfc822 -> raw "RFC822"
+    | `Body -> raw "BODY"
+    | `Body_section (peek, s, partial) ->
+        assert false
+        (* let cmd = match peek with `Peek -> str "BODY.PEEK" | `Look -> str "BODY" in *)
+        (* let partial = *)
+        (*   match partial with *)
+        (*   | None -> w "" *)
+        (*   | Some (n, l) -> w "<" $ w_int n $ w "." $ w_int l $ w ">" *)
+        (* in *)
+        (* cmd $ w "[" $ w_section s $ w "]" $ partial *)
+    | `Body_structure -> raw "BODYSTRUCTURE"
+    | `Uid -> raw "UID"
+    | `Flags -> raw "FLAGS"
+
+  let capability _ =
+    assert false
+
+  let rec out b k = function
+    | Cat (f, g) ->
+        out b (Cat (g, k)) f
+    | Flush ->
+        Buffer.contents b, k
+    | Raw s ->
+        Buffer.add_string b s;
+        out b empty k
+
+  let out k =
+    let k = Cat (k, Cat (Raw "\r\n", Flush)) in
+    out (Buffer.create 32) empty k
 end
+
+type command = E.rope
+
+let login username password =
+  E.(str "LOGIN" ++ str username ++ str password)
+
+let capability =
+  E.(str "CAPABILITY")
+
+let create m =
+  E.(str "CREATE" ++ mailbox m)
+
+let delete m =
+  E.(str "DELETE" ++ mailbox m)
+
+let rename m1 m2 =
+  E.(str "RENAME" ++ mailbox m1 ++ mailbox m2)
+
+let logout =
+  E.(str "LOGOUT")
+
+let noop =
+  E.(str "NOOP")
+
+let subscribe m =
+  E.(str "SUBSCRIBE" ++ mailbox m)
+
+let unsubscribe m =
+  E.(str "UNSUBSCRIBE" ++ mailbox m)
+
+let list ?(ref = "") s =
+  E.(str "LIST" ++ mailbox ref ++ str s)
+
+let lsub ?(ref = "") s =
+  E.(str "LSUB" ++ mailbox ref ++ str s)
+
+let status m att =
+  E.(str "STATUS" ++ mailbox m ++ p (list status_att att))
+
+let copy ?(uid = true) s m =
+  let open E in
+  let cmd = str "COPY" in
+  let cmd = if uid then str "UID" ++ cmd else cmd in
+  cmd ++ eset s ++ mailbox m
+
+let check =
+  E.(str "CHECK")
+
+let close =
+  E.(str "CLOSE")
+
+let expunge =
+  E.(str "EXPUNGE")
+
+let search ?(uid = true) sk =
+  let open E in
+  let cmd = str "SEARCH" in
+  let cmd = if uid then str "UID" ++ cmd else cmd in
+  cmd ++ search_key sk
+
+let select ?(condstore = false) m =
+  let open E in
+  let condstore = if condstore then p (str "CONDSTORE") else str "" in
+  str "SELECT" ++ mailbox m ++ condstore
+
+let examine ?(condstore = false) m =
+  let open E in
+  let condstore = if condstore then p (str "CONDSTORE") else str "" in
+  str "EXAMINE" ++ mailbox m ++ condstore
+
+let append m ?(flags = []) data =
+  E.(str "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data)
+
+let fetch_gen ~uid ~changed ~vanished set att =
+  let open E in
+  let cmd = str "FETCH" in
+  let cmd = if uid then str "UID" ++ cmd else cmd in
+  let att =
+    match att with
+    | `Fast -> str "FAST"
+    | `Full -> str "FULL"
+    | `All -> str "ALL"
+    | `List [x] -> fetch_att x
+    | `List xs -> p (list fetch_att xs)
+  in
+  let changed_since =
+    match changed, vanished with
+    | None, true -> invalid_arg "fetch_gen"
+    | None, false -> str ""
+    | Some m, false -> p (str "CHANGEDSINCE" ++ uint64 m)
+    | Some m, true -> p (str "CHANGEDSINCE" ++ uint64 m ++ str "VANISHED")
+  in
+  cmd ++ eset set ++ att ++ changed_since
+
+let fetch ?(uid = true) ?changed ?(vanished = false) set att =
+  fetch_gen ~uid ~changed ~vanished set (`List att)
+
+let fetch_fast ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_gen ~uid ~changed ~vanished set `Fast
+
+let fetch_full ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_gen ~uid ~changed ~vanished set `Full
+
+let fetch_all ?(uid = true) ?changed ?(vanished = false) set =
+  fetch_gen ~uid ~changed ~vanished set `All
+
+let store_gen ~uid ~silent ~unchanged mode set att =
+  let open E in
+  let cmd = str "STORE" in
+  let cmd = if uid then str "UID" ++ cmd else cmd in
+  let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
+  let silent = if silent then ".SILENT" else "" in
+  let base =
+    match att with
+    | `Flags _ -> str (Printf.sprintf "%sFLAGS%s" mode silent)
+    | `Labels _ -> str (Printf.sprintf "%sX-GM-LABELS%s" mode silent)
+  in
+  let att =
+    match att with
+    | `Flags flags -> list flag flags
+    | `Labels labels -> list label labels
+  in
+  let unchanged_since =
+    match unchanged with
+    | None -> str ""
+    | Some m -> p (str "UNCHANGEDSINCE" ++ uint64 m)
+  in
+  cmd ++ eset set ++ unchanged_since ++ base ++ p att
+
+let store_add_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_gen ~uid ~silent ~unchanged `Add set (`Flags flags)
+
+let store_set_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_gen ~uid ~silent ~unchanged `Set set (`Flags flags)
+
+let store_remove_flags ?(uid = true) ?(silent = false) ?unchanged set flags =
+  store_gen ~uid ~silent ~unchanged `Remove set (`Flags flags)
+
+let store_add_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_gen ~uid ~silent ~unchanged `Add set (`Labels labels)
+
+let store_set_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_gen ~uid ~silent ~unchanged `Set set (`Labels labels)
+
+let store_remove_labels ?(uid = true) ?(silent = false) ?unchanged set labels =
+  store_gen ~uid ~silent ~unchanged `Remove set (`Labels labels)
+
+let enable caps =
+  E.(str "ENABLE" ++ list capability caps)
+
+let authenticate {name; _} =
+  E.(str "AUTHENTICATE" ++ raw name)
+
+let idle () =
+  assert false
+  (* let stop = ref false in *)
+  (* let stop_l = Lazy.from_fun (fun () -> stop := true) in *)
+  (* `Idle stop, (fun () -> Lazy.force stop_l) *)
 
 (* Running commands *)
 
@@ -2776,17 +2997,18 @@ let h_greetings r c =
   | _ -> `Error `Bad_greeting (* FIXME continue until [`Ok] ? *)
 
 let run c cmd =
-  match cmd with
-  | `Authenticate a ->
-      encode (`Cmd (string_of_int c.tag, `Authenticate a.name))
-        (decode (h_authenticate a)) c
-  | `Idle stop ->
-      c.idle_stop <- stop;
-      encode (`Cmd (string_of_int c.tag, `Idle))
-        (decode h_idle_response) c
-  | #command_ordinary as cmd ->
-      encode (`Cmd (string_of_int c.tag, cmd))
-        (decode h_response) c
+  assert false
+  (* match cmd with *)
+  (* | `Authenticate a -> *)
+  (*     encode (`Cmd (string_of_int c.tag, `Authenticate a.name)) *)
+  (*       (decode (h_authenticate a)) c *)
+  (* | `Idle stop -> *)
+  (*     c.idle_stop <- stop; *)
+  (*     encode (`Cmd (string_of_int c.tag, `Idle)) *)
+  (*       (decode h_idle_response) c *)
+  (* | #command_ordinary as cmd -> *)
+  (*     encode (`Cmd (string_of_int c.tag, cmd)) *)
+  (*       (decode h_response) c *)
 
 let connection () =
   let c =
