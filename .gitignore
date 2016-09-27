@@ -4,3 +4,7 @@ setup.log
 *.docdir
 *.native
 *.byte
+*.cm*
+*.a
+*.o
+*.lib

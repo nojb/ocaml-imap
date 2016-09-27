@@ -1,9 +1,16 @@
-OCAMLBUILD = ocamlbuild -use-ocamlfind -classic-display
+OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
+OCAMLFLAGS := -bin-annot -g
+OCAMLC := ocamlc $(OCAMLFLAGS)
+OCAMLOPT := ocamlopt $(OCAMLFLAGS)
+UINT_DIR := $(shell ocamlfind -query uint)
+UUTF_DIR := $(shell ocamlfind -query uutf)
+BASE64_DIR := $(shell ocamlfind -query base64)
 
-lib:
-	$(OCAMLBUILD) lib/imap.cma
-	-$(OCAMLBUILD) lib/imap.cmxa
-	-$(OCAMLBUILD) lib/imap.cmxs
+lib/imap.cmxa: lib/imap.mli lib/imap.ml
+	$(OCAMLOPT) -a -o lib/imap.cmxa -I $(UINT_DIR) -I $(UUTF_DIR) -I $(BASE64_DIR) -I lib lib/imap.mli lib/imap.ml
+
+lib/imap.cma: lib/imap.mli lib/imap.ml
+	$(OCAMLC) -a -o lib/imap.cma -I $(UINT_DIR) -I $(UUTF_DIR) -I $(BASE64_DIR) -I lib lib/imap.mli lib/imap.ml
 
 imap_shell:
 	$(OCAMLBUILD) test/imap_shell.byte
@@ -18,6 +25,7 @@ all: lib imap_shell wait_mail
 
 clean:
 	$(OCAMLBUILD) -clean
+	rm -rf lib/*.cm* lib/*.o lib/*.a lib/*.lib
 
 doc:
 	$(OCAMLBUILD) -docflags -colorize-code,-css-style,style.css doc/api.docdir/index.html
