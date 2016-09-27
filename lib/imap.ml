@@ -717,10 +717,10 @@ module D = struct
   let ret x _ = `Ok x
   let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
 
-  let readexact n k d =
+  let read_exact n d =
     let data = Bytes.sub d.i d.i_pos n in
     d.i_pos <- d.i_pos + n;
-    k data d
+    data
 
   let peekc d =
     if d.i_pos < d.i_max then
@@ -878,14 +878,9 @@ module D = struct
                           ; Internet standard newline
 *)
 
-  let p_crlf k d =
+  let p_crlf d =
     p_ch '\r' d;
-    p_ch '\n' d;
-    k d
-    (* if d.i_pos < d.i_max then *)
-    (*   err_unexpected (cur d) d *)
-    (* else *)
-    (*   k d *)
+    p_ch '\n' d
 
 (*
    number          = 1*DIGIT
@@ -944,18 +939,19 @@ module D = struct
    string          = quoted / literal
 *)
 
-  let p_string k d =
+  let p_string d =
     match cur d with
     | '"' ->
         junkc d;
-        k (p_quoted d) d
+        p_quoted d
     | '{' ->
         junkc d;
         let n = p_uint d in
         p_ch '}' d;
-        p_crlf (readexact n k) d
+        p_crlf d;
+        read_exact n d
     | c ->
-        err_unexpected c d
+        assert false (* err_unexpected c d *)
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -970,7 +966,7 @@ module D = struct
     if is_astring_char (cur d) then
       k (p_while1 is_astring_char d) d
     else
-      p_string k d
+      k (p_string d) d
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -1000,7 +996,7 @@ module D = struct
       p_atomf "NIL" d;
       k None d
     end else
-      p_string (fun s -> k (Some s)) d
+      k (Some (p_string d)) d
 
   let p_nstring' k d =
     p_nstring (function Some s -> k s | None -> k "") d
@@ -1615,14 +1611,14 @@ module D = struct
 *)
 
   let p_fld_param k d =
-    let param k d = p_string (fun v -> p_sp d; p_string (fun v' -> k (v, v'))) d in
+    let param k d = let v = p_string d in p_sp d; let v' = p_string d in k (v, v') d in
     p_list param k d
 
   let p_body_fields k d =
     p_fld_param begin fun params ->
       p_sp d; p_nstring @@ fun id ->
       p_sp d; p_nstring @@ fun desc ->
-      p_sp d; p_string  @@ fun enc ->
+      p_sp d; let enc = p_string d in
       p_sp d; let octets = p_uint d in
       k {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
     end d
@@ -1671,7 +1667,9 @@ module D = struct
     match cur d with
     | '(' ->
         junkc d;
-        p_string (fun s -> p_sp d; p_fld_param (fun p -> p_ch ')' d; k (Some (s, p)))) d
+        let s = p_string d in
+        p_sp d;
+        p_fld_param (fun p -> p_ch ')' d; k (Some (s, p))) d
     | _ ->
         p_atomf "NIL" d;
         k None d
@@ -1679,7 +1677,7 @@ module D = struct
   let p_fld_lang k d =
     match cur d with
     | '(' ->
-        p_list1 p_string k d
+        p_list1 (fun k d -> k (p_string d) d) k d
     | _ ->
         p_nstring (function Some x -> k [x] | None -> k []) d
 
@@ -1755,14 +1753,14 @@ module D = struct
           p_body (fun x -> loop (x :: acc)) d
       | ' ' ->
           junkc d;
-          p_string (fun m d ->
-              match cur d with
-              | ' ' ->
-                  junkc d;
-                  r_mbody_ext (fun _ _ -> k (`Multipart (List.rev acc, m))) d
-              | _ ->
-                  k (`Multipart (List.rev acc, m)) d
-            ) d
+          let m = p_string d in
+          begin match cur d with
+          | ' ' ->
+              junkc d;
+              r_mbody_ext (fun _ _ -> k (`Multipart (List.rev acc, m))) d
+          | _ ->
+              k (`Multipart (List.rev acc, m)) d
+          end
       | c ->
           err_unexpected c d
     in
@@ -1789,7 +1787,7 @@ module D = struct
       | _ ->
           ext (k (`Basic (m, t, f))) d
     in
-    p_t3 p_string p_string p_body_fields nxt d
+    p_t3 (fun k d -> k (p_string d) d) (fun k d -> k (p_string d) d) p_body_fields nxt d
 
   and p_body k d =
     p_ch '(' d;
@@ -2122,7 +2120,7 @@ module D = struct
         p_text d
 
   let rec p_response k d =
-    let k x d = p_crlf (k x) d in
+    let k x d = p_crlf d; k x d in
     match cur d with
     | '+' ->
         junkc d;
