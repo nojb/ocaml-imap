@@ -672,6 +672,109 @@ module D = struct
       loop d.i_max
     end
 
+  module Readline = struct
+    type step =
+      | Reading
+      | LF
+      | Lit of int
+
+    type state =
+      {
+        src: string;
+        off: int;
+        len: int;
+        step: step;
+        eof: bool;
+        buf: string;
+      }
+
+    type 'a res =
+      | Refill of state
+      | Next of state * 'a
+      | Eof
+      | Error
+
+    let string_of_step = function
+      | Reading -> "Reading"
+      | LF -> "LF"
+      | Lit n -> Printf.sprintf "Lit %d" n
+
+    let print_state {src; off; len; step; eof; buf} =
+      Printf.eprintf "src=%S off=%d len=%d step=%s eof=%B buf=%S\n%!" src off len (string_of_step step) eof buf
+
+    let empty =
+      {
+        src = "";
+        off = 0;
+        len = 0;
+        step = Reading;
+        eof = false;
+        buf = "";
+      }
+
+    let next state =
+      if false then print_state state;
+      let {src; off; len; step; eof; buf} = state in
+      let rec go step i off len buf =
+        if i >= off + len then
+          let buf = buf ^ String.sub src off len in
+          if eof then
+            if String.length buf > 0 then Error else Eof
+          else
+            let state = {state with step; buf; src = ""; off = 0; len = 0} in
+            Refill state
+        else begin
+          match step, src.[i] with
+          | Reading, '\r'
+          | LF, '\r' ->
+              go LF (i+1) off len buf
+          | Lit n, _ ->
+              let m = min n len in
+              go (if m < n then Lit (n-m) else Reading) (i+m) off len buf
+          | LF, '\n' ->
+              let buf = buf ^ String.sub src off (i-off+1) in
+              let off = i+1 and len = len-i+off-1 in
+              let ai = String.length buf + i - off in
+              let complete () =
+                let state = {state with off; len; buf = ""; step = Reading} in
+                Next (state, buf)
+              in
+              let module S = struct type t = Start | Acc end in
+              let open S in
+              let rec scan step acc i =
+                if i < 0 then
+                  complete ()
+                else begin
+                  match step, buf.[i] with
+                  | Start, '}' ->
+                      scan Acc false (i - 1)
+                  | Acc, '0' .. '9' ->
+                      scan Acc true (i - 1)
+                  | Acc, '{' when acc ->
+                      let n =
+                        let acc = ref 0 in
+                        for j = i+1 to ai-3 do
+                          acc := 10 * !acc + (Char.code buf.[j] - Char.code '0')
+                        done;
+                        !acc
+                      in
+                      go (Lit n) (ai+1) off len buf
+                  | Start, _ | Acc, _ ->
+                      complete ()
+                end
+              in
+              scan Start false (ai-2)
+          | Reading, _ | LF, _ ->
+              go Reading (i+1) off len buf
+        end
+      in
+      go step off off len buf
+
+    let feed state src off len =
+      if false then Printf.eprintf "feed: src=%S off=%d len=%d\n%!" src off len;
+      next {state with src; off; len; eof = len = 0}
+  end
+
   let peekc d =
     if d.i_pos < d.i_max then
       Some d.i.[d.i_pos]
