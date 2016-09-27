@@ -2019,7 +2019,7 @@ module Decoder = struct
       [
         "ENVELOPE", (fun d -> ENVELOPE (sp envelope d));
         "INTERNALDATE",
-        (fun d -> let t1, t2 = sp p_date_time d in INTERNALDATE (t1, t2));
+        (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
         "RFC822.HEADER", (fun d -> RFC822_HEADER (sp nstring d));
         "RFC822.TEXT", (fun d -> RFC822_TEXT (sp nstring d));
         "RFC822.SIZE", (fun d -> RFC822_SIZE (Uint32.to_int (sp number d)));
@@ -2054,7 +2054,7 @@ module Decoder = struct
     push "msg-att-static" (switch cases stop)
 
   let msg_att =
-    push "msg-att" (delimited '(' list1 (msg_att_static ||| msg_att_dynamic) ')')
+    push "msg-att" (delimited '(' (list1 (msg_att_static ||| msg_att_dynamic)) ')')
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -2084,17 +2084,16 @@ module Decoder = struct
    response-data =/ "*" SP enable-data CRLF
 *)
 
-  let p_response_data_t d =
-    let a = p_atom d in
-    match String.uppercase a with
-    | "OK" -> p_sp d; let c, t = p_resp_text d in State (Ok (c, t))
-    | "NO" -> p_sp d; let c, t = p_resp_text d in State (No (c, t))
-    | "BAD" -> p_sp d; let c, t = p_resp_text d in State (Bad (c, t))
-    | "BYE" -> p_sp d; let c, t = p_resp_text d in Bye (c, t)
-    | "FLAGS" -> p_sp d; Flags (p_list p_flag d)
-    | "LIST" -> p_sp d; let xs, c, m = p_mailbox_list d in List (xs, c, m)
-    | "LSUB" -> p_sp d; let xs, c, m = p_mailbox_list d in Lsub (xs, c, m)
-    | "SEARCH" ->
+  let flag_list =
+    push "flag-list" (delimited '(' (list flag) ')')
+
+  let mailbox_data =
+    let cases =
+      [
+        "FLAGS", FLAGS (sp flag_list d);
+        "LIST" -> p_sp d; let xs, c, m = p_mailbox_list d in List (xs, c, m);
+        "LSUB" -> p_sp d; let xs, c, m = p_mailbox_list d in Lsub (xs, c, m);
+        "SEARCH" ->
         let rec nxt acc d =
           match peekc d with
           | Some ' ' ->
@@ -2114,14 +2113,61 @@ module Decoder = struct
           | _ ->
               Search (List.rev acc, None)
         in
-        nxt [] d
-    | "STATUS" ->
+        nxt [] d;
+        "STATUS" ->
         p_sp d;
         let m = p_mailbox d in
         p_sp d;
         Status (m, p_list p_status_att d)
-    | "CAPABILITY" -> let xs = p_sep p_cap d in Capability xs
-    | "PREAUTH" -> p_sp d; let c, t = p_resp_text d in Preauth (c, t)
+      ]
+    in
+    let otherwise d =
+      | "EXISTS" -> Exists (Uint32.to_int n)
+      | "RECENT" -> Recent (Uint32.to_int n)
+    in
+    push "mailbox-data" (switch cases otherwise)
+
+  let capability_data =
+    let cases =
+      [
+        "CAPABILITY", (fun d -> CAPABILITY (sp (list1 capability d)));
+      ]
+    in
+    push "capability-data" (switch cases stop)
+
+  let enable_data =
+    let cases =
+      [
+        "ENABLED" -> let xs = p_sep p_cap d in Enabled xs;
+      ]
+    in
+    push "enable-data" (switch cases stop)
+
+  let resp_cond_state =
+    let cases =
+      [
+        "OK" -> p_sp d; let c, t = p_resp_text d in State (Ok (c, t));
+        "NO" -> p_sp d; let c, t = p_resp_text d in State (No (c, t));
+        "BAD" -> p_sp d; let c, t = p_resp_text d in State (Bad (c, t));
+      ]
+    in
+    push "resp-cond-state" (switch cases stop)
+
+  let resp_cond_bye =
+    let cases =
+      [
+        "BYE", (fun d -> let c, t = sp resp_text d in BYE (c, t));
+      ]
+    in
+    push "resp-cond-bye" (switch cases stop)
+
+  let message_data d =
+    let n = p_uint32 d in (* FIXME uint vs uint32 *)
+    p_sp d;
+    let a = p_atom d in
+    match String.uppercase a with
+    | "EXPUNGE" -> Expunge n
+    | "FETCH" -> p_sp d; Fetch (n, p_list1 p_msg_att d)
     | "VANISHED" ->
         p_sp d;
         begin match cur d with
@@ -2135,18 +2181,12 @@ module Decoder = struct
         | _ ->
             let s = p_set d in Vanished s
         end
-    | "ENABLED" -> let xs = p_sep p_cap d in Enabled xs
     | _ -> failwith "unexpected" (* err_unexpected_s a d *)
 
-  let p_response_data_n d =
-    let n = p_uint32 d in (* FIXME uint vs uint32 *)
-    p_sp d;
-    let a = p_atom d in
-    match String.uppercase a with
-    | "EXPUNGE" -> Expunge n
-    | "FETCH" -> p_sp d; Fetch (n, p_list1 p_msg_att d)
-    | "EXISTS" -> Exists (Uint32.to_int n)
-    | "RECENT" -> Recent (Uint32.to_int n)
+  let response_data =
+    resp_cond_state ||| resp_cond_bye ||| mailbox_data ||| message_data ||| capability_data ||| enable_data
+
+    | "PREAUTH" -> p_sp d; let c, t = p_resp_text d in Preauth (c, t)
     | _ -> failwith "unexpected" (* err_unexpected_s a d *)
 
   let p_untagged d = (* '*' was eaten *)
