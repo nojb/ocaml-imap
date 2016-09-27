@@ -2601,11 +2601,13 @@ module E = struct
   type rope =
     | Cat of rope * rope
     | Flush
+    | Wait
     | Raw of string
 
   let rec is_empty = function
     | Cat (f, g) -> is_empty f && is_empty g
     | Flush -> false
+    | Wait -> false
     | Raw "" -> true
     | Raw _ -> false
 
@@ -2617,7 +2619,7 @@ module E = struct
     else Cat (f, Cat (Raw " ", g))
 
   let literal s =
-    Cat (Raw (Printf.sprintf "{%d}\r\n" (String.length s)), Cat (Flush, Raw s))
+    Cat (Raw (Printf.sprintf "{%d}\r\n" (String.length s)), Cat (Wait, Raw s))
 
   let raw s =
     Raw s
@@ -2723,11 +2725,17 @@ module E = struct
   let capability _ =
     assert false
 
+  type result =
+    | WaitForCont of string * rope
+    | Done of string
+
   let rec out b k = function
     | Cat (f, g) ->
         out b (Cat (g, k)) f
     | Flush ->
-        Buffer.contents b, k
+        Done (Buffer.contents b)
+    | Wait ->
+        WaitForCont (Buffer.contents b, k)
     | Raw s ->
         Buffer.add_string b s;
         out b empty k
@@ -2919,11 +2927,6 @@ let pp_error ppf : error -> _ = function
 
 type state =
   {
-    (* e : E.encoder; *)
-    (* d : D.decoder; *)
-    (* mutable idle_stop : bool ref; (\* whether the user has signaled to send DONE *\) *)
-    (* mutable idling : bool; (\* whether we are idling *\) *)
-    (* mutable tag : int *)
     tag: int;
   }
 
@@ -2934,6 +2937,7 @@ let client =
 
 type progress_state =
   | Sending of E.rope
+  | WaitingForCont of Readline.state * E.rope
   | Receiving of Readline.state
 
 type 'a progress =
@@ -3031,16 +3035,19 @@ let continue progress =
   let {state; progress_state} = progress in
   match progress_state with
   | Sending rope ->
-      let s, rope = E.out rope in
-      if E.is_empty rope then
-        Send (s, {state; progress_state = Receiving Readline.empty})
-      else
-        Send (s, {state; progress_state = Sending rope})
-  | Receiving buf ->
+      begin match E.out rope with
+      | E.Done s ->
+          Send (s, {state; progress_state = Receiving Readline.empty})
+      | E.WaitForCont (s, rope) ->
+          Send (s, {state; progress_state = WaitingForCont (Readline.empty, rope)})
+      end
+  | WaitingForCont _
+  | Receiving _ ->
       Refill progress
 
 let feed {state; progress_state} s off len =
   match progress_state with
+  | WaitingForCont (buf, _)
   | Receiving buf ->
       begin match Readline.feed buf s off len with
       | Readline.Refill buf ->
