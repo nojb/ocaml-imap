@@ -685,9 +685,8 @@ module Readline = struct
     next {state with src; off; len; eof = len = 0}
 end
 
-module D = struct
+module Decoder = struct
   open Response
-  (* Decoder *)
 
   type error =
     [ `Expected_char of char
@@ -717,10 +716,9 @@ module D = struct
 
   type decoder =
     {
-      mutable i : bytes;
-      mutable i_pos : int;
-      mutable i_max : int;
-      mutable state: Readline.state;
+      i: string;
+      i_max: int;
+      mutable i_pos: int;
     }
 
   exception Error of [ `Error of error * string * int ]
@@ -2150,31 +2148,8 @@ module D = struct
     p_crlf d;
     x
 
-  let decode d =
-    let open Readline in
-    let b = Bytes.create 512 in
-    let rec loop = function
-      | Refill state ->
-          `Read (b, 0, Bytes.length b, fun n -> loop (feed state b 0 n))
-      | Next (state, s) ->
-          d.i <- s;
-          d.i_pos <- 0;
-          d.i_max <- String.length s;
-          d.state <- state;
-          ret (p_response d) d
-      | Error ->
-          `Error (`Unexpected_eoi, "", -1)
-    in
-    loop (next d.state)
-
-  let decoder () =
-    {
-      i = Bytes.create 4096;
-      i_pos = 0;
-      i_max = 0;
-      state = Readline.empty;
-    }
-
+  let decode i =
+    p_response {i; i_pos = 0; i_max = String.length i}
 end
 
 (* Commands *)
@@ -2752,7 +2727,7 @@ open Response
 
 type error =
   [ `Incorrect_tag of string * string
-  | `Decode_error of D.error * string * int
+  | `Decode_error of Decoder.error * string * int
   | `Unexpected_cont
   | `Bad_greeting
   | `Auth_error of string
@@ -2761,7 +2736,7 @@ type error =
 
 let pp_error ppf : error -> _ = function
   | `Incorrect_tag (exp, tag) -> pp ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
-  | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" D.pp_error e
+  | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" Decoder.pp_error e
   | `Unexpected_cont -> pp ppf "@[Unexpected continuation request@]"
   | `Bad_greeting -> pp ppf "@[Bad greeting@]"
   | `Auth_error s -> pp ppf "@[Authentication error: %s@]" s
@@ -2778,15 +2753,22 @@ let client =
     tag = 1;
   }
 
-type progress_state =
-  | Sending of E.rope
+type 'a command =
+  {
+    format: E.rope;
+    default: 'a;
+    process: untagged -> 'a -> 'a;
+  }
+
+type 'a progress_state =
+  | Sending of 'a command
   | WaitingForCont of Readline.state * E.rope
-  | Receiving of Readline.state
+  | Receiving of Readline.state * 'a * (untagged -> 'a -> 'a)
 
 type 'a progress =
   {
     state: state;
-    progress_state: progress_state;
+    progress_state: 'a progress_state;
   }
 
 type 'a result =
@@ -2794,13 +2776,6 @@ type 'a result =
   | Error of error
   | Send of string * 'a progress
   | Refill of 'a progress
-
-type 'a command =
-  {
-    format: E.rope;
-    default: 'a;
-    process: untagged -> 'a -> 'a;
-  }
 
 let login username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
@@ -3144,29 +3119,38 @@ let idle () =
 let continue progress =
   let {state; progress_state} = progress in
   match progress_state with
-  | Sending rope ->
-      begin match E.out rope with
+  | Sending {format; default; process} ->
+      begin match E.out format with
       | E.Done s ->
-          Send (s, {state; progress_state = Receiving Readline.empty})
-      | E.WaitForCont (s, rope) ->
-          Send (s, {state; progress_state = WaitingForCont (Readline.empty, rope)})
+          let progress_state = Receiving (Readline.empty, default, process) in
+          Send (s, {state; progress_state})
+      | E.WaitForCont (s, format) ->
+          Send (s, {state; progress_state = WaitingForCont (Readline.empty, format)})
       end
   | WaitingForCont _
   | Receiving _ ->
       Refill progress
 
-let feed {state; progress_state} s off len =
+let feed progress s off len =
+  let {state; progress_state} = progress in
   match progress_state with
-  | WaitingForCont (buf, _)
-  | Receiving buf ->
-      begin match Readline.feed buf s off len with
-      | Readline.Refill buf ->
-          Refill {state; progress_state = Receiving buf}
-      | Readline.Next (buf, x) ->
-          assert false (* handle line of response *)
-      | Readline.Error ->
-          Error `Bad_greeting (* FIXME *)
-      end
+  | WaitingForCont (buf, _) ->
+      assert false
+  | Receiving (buf, acc, process) ->
+      let rec loop acc = function
+        | Readline.Refill buf ->
+            Refill {state; progress_state = Receiving (buf, acc, process)}
+        | Readline.Next (buf, x) ->
+            begin match Decoder.decode x with
+            | Untagged u ->
+                loop (process u acc) (Readline.next buf)
+            | _ ->
+                assert false
+            end
+        | Readline.Error ->
+            Error `Bad_greeting (* FIXME *)
+      in
+      loop acc (Readline.feed buf s off len)
   | Sending _ ->
       invalid_arg "feed"
 
