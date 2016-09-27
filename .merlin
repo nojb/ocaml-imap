@@ -10,3 +10,4 @@ B _build/examples
 S lib
 S examples
 EXT lwt
+FLG -w -3
