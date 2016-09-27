@@ -816,60 +816,49 @@ module D = struct
     in
     loop []
 
-  let p_sep_k p k d =
-    let rec loop acc d =
-      match peekc d with
-      | Some ' ' ->
-          junkc d;
-          p (fun x -> loop (x :: acc)) d
-      | _ ->
-          k (List.rev acc) d
-    in
-    loop [] d
-
-  let p_list1 p k d =
-    let rec loop acc d =
+  let p_list1 p d =
+    let rec loop acc =
       match cur d with
       | ' ' ->
           junkc d;
-          p (fun x -> loop (x :: acc)) d
+          loop (p d :: acc)
       | ')' ->
           junkc d;
-          k (List.rev acc) d
+          List.rev acc
       | _ ->
-          err_unexpected (cur d) d
+          failwith "unexpected" (* err_unexpected (cur d) d *)
     in
     p_ch '(' d;
-    p (fun x -> loop [x]) d
+    loop [p d]
 
-  let p_list_generic ~delim p k d =
-    let rec loop acc d =
+  let p_list_generic ~delim p d =
+    let rec loop acc =
       match cur d with
       | ')' ->
           junkc d;
-          k (List.rev acc) d
+          List.rev acc
       | c ->
           begin match delim with
           | None -> ()
           | Some c' when c = c' -> junkc d
           | Some c -> raise (Error (err_unexpected c d))
           end;
-          p (fun x -> loop (x :: acc)) d
+          loop (p d :: acc)
     in
     if is_atom_char (cur d) then begin
       p_atomf "NIL" d;
-      k [] d
+      []
     end else begin
       p_ch '(' d;
       match cur d with
       | ')' ->
           junkc d;
-          k [] d
+          []
       | _ ->
-          p (fun x -> loop [x]) d
+          loop [p d]
     end
 
-  let p_list p k d = p_list_generic ~delim:(Some ' ') p k d
+  let p_list p d = p_list_generic ~delim:(Some ' ') p d
 
 (*
    CR             =  %x0D
@@ -966,11 +955,11 @@ module D = struct
   let is_astring_char c =
     is_atom_char c || c = ']'
 
-  let p_astring k d =
+  let p_astring d =
     if is_astring_char (cur d) then
-      k (p_while1 is_astring_char d) d
+      p_while1 is_astring_char d
     else
-      k (p_string d) d
+      p_string d
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -995,15 +984,17 @@ module D = struct
    nstring         = string / nil
 *)
 
-  let p_nstring k d =
+  let p_nstring d =
     if is_atom_char (cur d) then begin
       p_atomf "NIL" d;
-      k None d
+      None
     end else
-      k (Some (p_string d)) d
+      Some (p_string d)
 
-  let p_nstring' k d =
-    p_nstring (function Some s -> k s | None -> k "") d
+  let p_nstring' d =
+    match p_nstring d with
+    | Some s -> s
+    | None -> ""
 
 (*
    flag-extension  = "\\" atom
@@ -1235,95 +1226,94 @@ module D = struct
     | "X-GM-EXT-1" -> `Gmail
     | _ -> `Other a
 
-  let p_code k d = (* '[' was eaten *)
+  let p_code d = (* '[' was eaten *)
     let a = p_atom d in
     match String.uppercase a with
-    | "ALERT" -> k `Alert d
+    | "ALERT" -> `Alert
     | "BADCHARSET" ->
         begin match peekc d with
         | Some ' ' ->
             junkc d;
-            p_list1 p_astring (fun xs -> k (`Bad_charset xs)) d
+            `Bad_charset (p_list1 p_astring d)
         | _ ->
-            k (`Bad_charset []) d
+            `Bad_charset []
         end
-    | "CAPABILITY" -> let xs = p_sep p_cap d in k (`Capability xs) d
-    | "PARSE" -> k `Parse d
+    | "CAPABILITY" -> let xs = p_sep p_cap d in `Capability xs
+    | "PARSE" -> `Parse
     | "PERMANENTFLAGS" ->
         p_sp d;
-        p_list (fun k d -> k (p_flag_perm d) d) (fun xs -> k (`Permanent_flags xs)) d
-    | "READ-ONLY" -> k `Read_only d
-    | "READ-WRITE" -> k `Read_write d
-    | "TRYCREATE" -> k `Try_create d
-    | "UIDNEXT" -> p_sp d; let n = p_uint32 d in k (`Uid_next n) d
-    | "UIDVALIDITY" -> p_sp d; let n = p_uint32 d in k (`Uid_validity n) d
-    | "UNSEEN" -> p_sp d; let n = p_uint32 d in k (`Unseen n) d
-    | "CLOSED" -> k `Closed d
-    | "HIGHESTMODSEQ" -> p_sp d; let n = p_uint64 d in k (`Highest_modseq n) d
-    | "NOMODSEQ" -> k `No_modseq d
-    | "MODIFIED" -> p_sp d; let s = p_set d in k (`Modified s) d
+        `Permanent_flags (p_list p_flag_perm d)
+    | "READ-ONLY" -> `Read_only
+    | "READ-WRITE" -> `Read_write
+    | "TRYCREATE" -> `Try_create
+    | "UIDNEXT" -> p_sp d; let n = p_uint32 d in `Uid_next n
+    | "UIDVALIDITY" -> p_sp d; let n = p_uint32 d in `Uid_validity n
+    | "UNSEEN" -> p_sp d; let n = p_uint32 d in `Unseen n
+    | "CLOSED" -> `Closed
+    | "HIGHESTMODSEQ" -> p_sp d; let n = p_uint64 d in `Highest_modseq n
+    | "NOMODSEQ" -> `No_modseq
+    | "MODIFIED" -> p_sp d; let s = p_set d in `Modified s
     | "APPENDUID" ->
         p_sp d;
         let n = p_uint32 d in
         p_sp d;
         let m = p_uint32 d in
-        k (`Append_uid (n, m)) d
+        `Append_uid (n, m)
     | "COPYUID" ->
         p_sp d;
         let n = p_uint32 d in
         let s1 = p_set d in
         let s2 = p_set d in
-        k (`Copy_uid (n, s1, s2)) d
-    | "UIDNOTSTICKY" -> k `Uid_not_sticky d
-    | "COMPRESSIONACTIVE" -> k `Compression_active d
-    | "USEATTR" -> k `Use_attr d
+        `Copy_uid (n, s1, s2)
+    | "UIDNOTSTICKY" -> `Uid_not_sticky
+    | "COMPRESSIONACTIVE" -> `Compression_active
+    | "USEATTR" -> `Use_attr
     | _ ->
         begin match peekc d with
         | Some ' ' ->
             junkc d;
             let x = p_text_1 d in
-            k (`Other (a, Some x)) d
+            `Other (a, Some x)
         | _ ->
-            k (`Other (a, None)) d
+            `Other (a, None)
         end
 
 (*
    resp-text       = ["[" resp-text-code "]" SP] text
 *)
 
-  let p_resp_text k d =
+  let p_resp_text d =
     match peekc d with
     | Some '[' ->
         junkc d;
-        let nxt x d =
-          p_ch ']' d;
-          match peekc d with
-          | Some ' ' ->
-              junkc d;
-              k x (p_text d) d
-          | _ ->
-              k x "" d
-        in
-        p_code nxt d
+        let x = p_code d in
+        p_ch ']' d;
+        begin match peekc d with
+        | Some ' ' ->
+            junkc d;
+            x, p_text d
+        | _ ->
+            x, ""
+        end
     | _ ->
-        k `None (p_text d) d
+        `None, p_text d
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
                        ; Status condition
 *)
 
-  let p_resp_cond_state k d =
+  let p_resp_cond_state d =
     let a = p_atom d in
     match String.uppercase a with
     | "OK" ->
-        p_sp d; p_resp_text (fun c t -> k (Ok (c, t))) d
+        p_sp d; let c, t = p_resp_text d in Ok (c, t)
     | "NO" ->
-        p_sp d; p_resp_text (fun c t -> k (No (c, t))) d
+        p_sp d; let c, t = p_resp_text d in No (c, t)
     | "BAD" ->
-        p_sp d; p_resp_text (fun c t -> k (Bad (c, t))) d
+        p_sp d; let c, t = p_resp_text d in Bad (c, t)
     | _ ->
-        err_unexpected_s a d
+        failwith "unexpected" (* err_unexpected_s a d *)
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -1385,9 +1375,10 @@ module D = struct
                        ; semantic details of mailbox names.
 *)
 
-  let p_mailbox k d =
+  let p_mailbox d =
     let decode_mailbox_name s = try Mutf7.decode s with _ -> s in (* FIXME handle error *)
-    p_astring (fun s -> k (decode_mailbox_name s)) d
+    let s = p_astring d in
+    decode_mailbox_name s
 
 (*
    QUOTED-CHAR     = <any TEXT-CHAR except quoted-specials> /
@@ -1429,18 +1420,13 @@ module D = struct
         p_atomf "NIL" d;
         None
 
-  let lift p k d =
-    k (p d) d
-
-  let p_mailbox_list k d =
-    p_list (lift p_mbx_flag) (fun x d ->
-        p_sp d;
-        let y = p_delim d in
-        p_sp d;
-        p_mailbox (fun z d ->
-            k x y z d
-          ) d
-      ) d
+  let p_mailbox_list d =
+    let x = p_list p_mbx_flag d in
+    p_sp d;
+    let y = p_delim d in
+    p_sp d;
+    let m = p_mailbox d in
+    x, y, m
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1512,18 +1498,17 @@ module D = struct
                        ; mailbox after removing [RFC-2822] quoting
 *)
 
-  let p_address k d =
+  let p_address d =
     p_ch '(' d;
-    p_nstring' (fun ad_name d ->
-        p_sp d; p_nstring' (fun ad_adl d ->
-            p_sp d; p_nstring' (fun ad_mailbox d ->
-                p_sp d; p_nstring' (fun ad_host d ->
-                    p_ch ')' d;
-                    k {ad_name; ad_adl; ad_mailbox; ad_host} d
-                  ) d
-              ) d
-          ) d
-      ) d
+    let ad_name = p_nstring' d in
+    p_sp d;
+    let ad_adl = p_nstring' d in
+    p_sp d;
+    let ad_mailbox = p_nstring' d in
+    p_sp d;
+    let ad_host = p_nstring' d in
+    p_ch ')' d;
+    {ad_name; ad_adl; ad_mailbox; ad_host}
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -1551,52 +1536,41 @@ module D = struct
    env-to          = "(" 1*address ")" / nil
 *)
 
-  let p_envelope k d =
+  let p_envelope d =
     let p_address_list = p_list_generic ~delim:None p_address in
     p_ch '(' d;
-    p_nstring' (fun env_date d ->
-        p_sp d;
-        p_nstring' (fun env_subject d ->
-            p_sp d;
-            p_address_list (fun env_from d ->
-                p_sp d;
-                p_address_list (fun env_sender d ->
-                    p_sp d;
-                    p_address_list (fun env_reply_to d ->
-                        p_sp d;
-                        p_address_list (fun env_to d ->
-                            p_sp d;
-                            p_address_list (fun env_cc d ->
-                                p_sp d;
-                                p_address_list (fun env_bcc d ->
-                                    p_sp d;
-                                    p_nstring' (fun env_in_reply_to d ->
-                                        p_sp d;
-                                        p_nstring' (fun env_message_id d ->
-                                            p_ch ')' d;
-                                            k
-                                              {
-                                                env_date;
-                                                env_subject;
-                                                env_from;
-                                                env_sender;
-                                                env_reply_to;
-                                                env_to;
-                                                env_cc;
-                                                env_bcc;
-                                                env_in_reply_to;
-                                                env_message_id
-                                              } d
-                                          ) d
-                                      ) d
-                                  ) d
-                              ) d
-                          ) d
-                      ) d
-                  ) d
-              ) d
-          ) d
-      ) d
+    let env_date = p_nstring' d in
+    p_sp d;
+    let env_subject = p_nstring' d in
+    p_sp d;
+    let env_from = p_address_list d in
+    p_sp d;
+    let env_sender = p_address_list d in
+    p_sp d;
+    let env_reply_to = p_address_list d in
+    p_sp d;
+    let env_to = p_address_list d in
+    p_sp d;
+    let env_cc = p_address_list d in
+    p_sp d;
+    let env_bcc = p_address_list d in
+    p_sp d;
+    let env_in_reply_to = p_nstring' d in
+    p_sp d;
+    let env_message_id = p_nstring' d in
+    p_ch ')' d;
+    {
+      env_date;
+      env_subject;
+      env_from;
+      env_sender;
+      env_reply_to;
+      env_to;
+      env_cc;
+      env_bcc;
+      env_in_reply_to;
+      env_message_id
+    }
 
 (*
    body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
@@ -1614,18 +1588,21 @@ module D = struct
                      body-fld-enc SP body-fld-octets
 *)
 
-  let p_fld_param k d =
-    let param k d = let v = p_string d in p_sp d; let v' = p_string d in k (v, v') d in
-    p_list param k d
+  let p_fld_param d =
+    let param d = let v = p_string d in p_sp d; let v' = p_string d in (v, v') in
+    p_list param d
 
-  let p_body_fields k d =
-    p_fld_param begin fun params ->
-      p_sp d; p_nstring @@ fun id ->
-      p_sp d; p_nstring @@ fun desc ->
-      p_sp d; let enc = p_string d in
-      p_sp d; let octets = p_uint d in
-      k {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
-    end d
+  let p_body_fields d =
+    let params = p_fld_param d in
+    p_sp d;
+    let id = p_nstring d in
+    p_sp d;
+    let desc = p_nstring d in
+    p_sp d;
+    let enc = p_string d in
+    p_sp d;
+    let octets = p_uint d in
+    {fld_params = params; fld_id = id; fld_desc = desc; fld_enc = enc; fld_octets = octets}
 
 (*
    body-extension  = nstring / number /
@@ -1638,14 +1615,16 @@ module D = struct
                        ; revisions of this specification.
 *)
 
-  let rec p_body_ext k d =
+  let rec p_body_ext d =
     if is_digit (cur d) then
       let n = p_uint32 d in
-      k (`Number n) d
+      `Number n
     else if cur d = '(' then
-      p_list1 p_body_ext (fun xs -> k (`List xs)) d
+      `List (p_list1 p_body_ext d)
     else
-      p_nstring (function Some x -> k (`String x) | None -> k `None) d
+      match p_nstring d with
+      | Some x -> `String x
+      | None -> `None
 
 (*
    body-fld-md5    = nstring
@@ -1667,54 +1646,57 @@ module D = struct
                        ; "BODY" fetch
 *)
 
-  let p_fld_dsp k d =
+  let p_fld_dsp d =
     match cur d with
     | '(' ->
         junkc d;
         let s = p_string d in
         p_sp d;
-        p_fld_param (fun p -> p_ch ')' d; k (Some (s, p))) d
+        let p = p_fld_param d in
+        p_ch ')' d;
+        Some (s, p)
     | _ ->
         p_atomf "NIL" d;
-        k None d
+        None
 
-  let p_fld_lang k d =
+  let p_fld_lang d =
     match cur d with
     | '(' ->
-        p_list1 (fun k d -> k (p_string d) d) k d
+        p_list1 p_string d
     | _ ->
-        p_nstring (function Some x -> k [x] | None -> k []) d
+        begin match p_nstring d with Some x -> [x] | None -> [] end
 
-  let r_body_ext k d =
+  let r_body_ext d =
     match cur d with
     | ' ' ->
         junkc d;
-        p_fld_dsp (fun dsp d ->
-            match cur d with
+        let dsp = p_fld_dsp d in
+        begin match cur d with
+        | ' ' ->
+            junkc d;
+            let lang = p_fld_lang d in
+            begin match cur d with
             | ' ' ->
                 junkc d;
-                p_fld_lang (fun lang d ->
-                    match cur d with
-                    | ' ' ->
-                        junkc d;
-                        p_nstring (fun loc ->
-                            p_sep_k p_body_ext (fun ext ->
-                                k {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext})
-                          ) d
-                    | _ ->
-                        k {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []} d
-                  ) d
+                let loc = p_nstring d in
+                let ext = p_sep p_body_ext d in
+                {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext}
             | _ ->
-                k {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []} d
-          ) d
+                {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []}
+            end
+        | _ ->
+            {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []}
+        end
     | _ ->
-        k {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []} d
+        {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
 
-  let r_sbody_ext k d =
-    p_nstring (fun md5 -> r_body_ext (k md5)) d
+  let r_sbody_ext d =
+    let md5 = p_nstring d in
+    md5, r_body_ext d
 
-  let r_mbody_ext k d =
-    p_fld_param (fun params -> r_body_ext (k params)) d
+  let r_mbody_ext d =
+    let params = p_fld_param d in
+    params, r_body_ext d
 
 (*
    body-fld-lines  = number
@@ -1750,53 +1732,60 @@ module D = struct
    body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 
-  let rec p_mbody k d = (* TODO Return the extension data *)
-    let rec loop acc d =
+  let rec p_mbody d = (* TODO Return the extension data *)
+    let rec loop acc =
       match cur d with
       | '(' ->
-          p_body (fun x -> loop (x :: acc)) d
+          let x = p_body d in
+          loop (x :: acc)
       | ' ' ->
           junkc d;
           let m = p_string d in
           begin match cur d with
           | ' ' ->
               junkc d;
-              r_mbody_ext (fun _ _ -> k (`Multipart (List.rev acc, m))) d
+              let _ = r_mbody_ext d in
+              `Multipart (List.rev acc, m)
           | _ ->
-              k (`Multipart (List.rev acc, m)) d
+              `Multipart (List.rev acc, m)
           end
       | c ->
-          err_unexpected c d
+          failwith "unexpected" (* err_unexpected c d *)
     in
-    loop [] d
+    loop []
 
-  and p_sbody k d = (* TODO Return the extension data *)
-    let ext k d =
+  and p_sbody d = (* TODO Return the extension data *)
+    let ext x d =
       match peekc d with
       | Some ' ' ->
           junkc d;
-          r_sbody_ext (fun _ _ -> k) d
+          let _ = r_sbody_ext d in
+          x
       | _ ->
-          k d
+          x
     in
-    let nxt m t f d =
-      match String.uppercase m, String.uppercase t with
-      | "MESSAGE", "RFC822" ->
-          p_sp d;
-          p_t3 p_envelope p_body (lift p_uint) (fun e b n -> ext (k (`Message (f, e, b, n)))) d
-      | "TEXT", _ ->
-          p_sp d;
-          let n = p_uint d in
-          ext (k (`Text (t, f, n))) d
-      | _ ->
-          ext (k (`Basic (m, t, f))) d
-    in
-    p_t3 (fun k d -> k (p_string d) d) (fun k d -> k (p_string d) d) p_body_fields nxt d
+    let m = p_string d in
+    let t = p_string d in
+    let f = p_body_fields d in
+    match String.uppercase m, String.uppercase t with
+    | "MESSAGE", "RFC822" ->
+        p_sp d;
+        let e = p_envelope d in
+        let b = p_body d in
+        let n = p_uint d in
+        ext (`Message (f, e, b, n)) d
+    | "TEXT", _ ->
+        p_sp d;
+        let n = p_uint d in
+        ext (`Text (t, f, n)) d
+    | _ ->
+        ext (`Basic (m, t, f)) d
 
-  and p_body k d =
+  and p_body d =
     p_ch '(' d;
-    let k x d = p_ch ')' d; k x d in
-    if cur d = '(' then p_mbody k d else p_sbody k d
+    let x = if cur d = '(' then p_mbody d else p_sbody d in
+    p_ch ')';
+    x
 
 (*
    DIGIT           =  %x30-39
@@ -1876,39 +1865,42 @@ module D = struct
    section         = "[" [section-spec] "]"
 *)
 
-  let p_msgtext k d =
+  let p_msgtext d =
     let a = p_atom d in
     match String.uppercase a with
-    | "HEADER" -> k `Header d
+    | "HEADER" -> `Header
     | "HEADER.FIELDS" ->
         p_sp d;
-        p_list1 p_astring (fun xs -> k (`Header_fields xs)) d
+        `Header_fields (p_list1 p_astring d)
     | "HEADER.FIELDS.NOT" ->
         p_sp d;
-        p_list1 p_astring (fun xs -> k (`Header_fields_not xs)) d
+        `Header_fields_not (p_list1 p_astring d)
     | "TEXT" ->
-        k `Text d
+        `Text
     |  "MIME" ->
-        k `Mime d
+        `Mime
     | _ ->
-        err_unexpected_s a d
+        failwith "unexpected" (* err_unexpected_s a d *)
 
-  let rec p_part k d =
+  let rec p_part d =
     if is_digit (cur d) then begin
       let n = p_uint d in
       p_ch '.' d;
-      p_part (fun s -> k (`Part (n, s))) d
+      let s = p_part d in
+      `Part (n, s)
     end else
-      p_msgtext k d
+      p_msgtext d
 
-  let p_section k d =
+  let p_section d =
     p_ch '[' d;
     match cur d with
     | ']' ->
         junkc d;
-        k `All d
+        `All
     | _ ->
-        p_part (fun s d -> p_ch ']' d; k s d) d
+        let s = p_part d in
+        p_ch ']' d;
+        s
 
 (*
    uniqueid        = nz-number
@@ -1948,43 +1940,44 @@ module D = struct
                           ; https://developers.google.com/gmail/imap_extensions
 *)
 
-  let p_msg_att k d =
+  let p_msg_att d =
     let a = p_while1 (fun ch -> is_atom_char ch && ch <> '[') d in
     match String.uppercase a with
-    | "FLAGS" -> p_sp d; p_list (lift p_flag_fetch) (fun xs -> k (`Flags xs)) d
-    | "ENVELOPE" -> p_sp d; p_envelope (fun x -> k (`Envelope x)) d
-    | "INTERNALDATE" -> p_sp d; let t1, t2 = p_date_time d in k (`Internal_date (t1, t2)) d
-    | "RFC822.HEADER" -> p_sp d; p_nstring (fun x -> k (`Rfc822_header x)) d
-    | "RFC822.TEXT" -> p_sp d; p_nstring (fun x -> k (`Rfc822_text x)) d
-    | "RFC822.SIZE" -> p_sp d; let x = p_uint d in k (`Rfc822_size x) d
-    | "RFC822" -> p_sp d; p_nstring (fun x -> k (`Rfc822 x)) d
-    | "BODYSTRUCTURE" -> p_sp d; p_body (fun x -> k (`Body_structure x)) d
+    | "FLAGS" -> p_sp d; `Flags (p_list p_flag_fetch d)
+    | "ENVELOPE" -> p_sp d; let x = p_envelope d in `Envelope x
+    | "INTERNALDATE" -> p_sp d; let t1, t2 = p_date_time d in `Internal_date (t1, t2)
+    | "RFC822.HEADER" -> p_sp d; let x = p_nstring d in `Rfc822_header x
+    | "RFC822.TEXT" -> p_sp d; let x = p_nstring d in `Rfc822_text x
+    | "RFC822.SIZE" -> p_sp d; let x = p_uint d in `Rfc822_size x
+    | "RFC822" -> p_sp d; let x = p_nstring d in `Rfc822 x
+    | "BODYSTRUCTURE" -> p_sp d; let x = p_body d in `Body_structure x
     | "BODY" ->
         begin match cur d with
         | ' ' ->
             junkc d;
-            p_body (fun x -> k (`Body x)) d
+            `Body (p_body d)
         | _ ->
-            p_section (fun s ->
-                  let orig =
-                    match cur d with
-                    | '<' ->
-                        junkc d;
-                        let n = p_uint d in
-                        p_ch '>' d;
-                        Some n
-                    | _ ->
-                        None
-                  in
-                  p_sp d; p_nstring (fun x -> k (`Body_section (s, orig, x)))
-              ) d
+            let s = p_section d in
+            let orig =
+              match cur d with
+              | '<' ->
+                  junkc d;
+                  let n = p_uint d in
+                  p_ch '>' d;
+                  Some n
+              | _ ->
+                  None
+            in
+            p_sp d;
+            let x = p_nstring d in
+            `Body_section (s, orig, x)
         end
-    | "UID" -> p_sp d; let x = p_uint32 d in k (`Uid x) d
-    | "MODSEQ" -> p_sp d; p_ch '(' d; let n = p_uint64 d in p_ch ')' d; k (`Modseq n) d
-    | "X-GM-MSGID" -> p_sp d; let n = p_uint64 d in k (`Gm_msgid n) d
-    | "X-GM-THRID" -> p_sp d; let n = p_uint64 d in k (`Gm_thrid n) d
-    | "X-GM-LABELS" -> p_sp d; p_list p_astring (fun xs -> k (`Gm_labels xs)) d
-    | _ -> err_unexpected_s a d
+    | "UID" -> p_sp d; let x = p_uint32 d in `Uid x
+    | "MODSEQ" -> p_sp d; p_ch '(' d; let n = p_uint64 d in p_ch ')' d; `Modseq n
+    | "X-GM-MSGID" -> p_sp d; let n = p_uint64 d in `Gm_msgid n
+    | "X-GM-THRID" -> p_sp d; let n = p_uint64 d in `Gm_thrid n
+    | "X-GM-LABELS" -> p_sp d; `Gm_labels (p_list p_astring d)
+    | _ -> failwith "unexpected" (* err_unexpected_s a d *)
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -2014,16 +2007,16 @@ module D = struct
    response-data =/ "*" SP enable-data CRLF
 *)
 
-  let p_response_data_t k d =
+  let p_response_data_t d =
     let a = p_atom d in
     match String.uppercase a with
-    | "OK" -> p_sp d; p_resp_text (fun c t -> k (State (Ok (c, t)))) d
-    | "NO" -> p_sp d; p_resp_text (fun c t -> k (State (No (c, t)))) d
-    | "BAD" -> p_sp d; p_resp_text (fun c t -> k (State (Bad (c, t)))) d
-    | "BYE" -> p_sp d; p_resp_text (fun c t -> k (Bye (c, t))) d
-    | "FLAGS" -> p_sp d; p_list (lift p_flag) (fun xs -> k (Flags xs)) d
-    | "LIST" -> p_sp d; p_mailbox_list (fun xs c m -> k (List (xs, c, m))) d
-    | "LSUB" -> p_sp d; p_mailbox_list (fun xs c m -> k (Lsub (xs, c, m))) d
+    | "OK" -> p_sp d; let c, t = p_resp_text d in State (Ok (c, t))
+    | "NO" -> p_sp d; let c, t = p_resp_text d in State (No (c, t))
+    | "BAD" -> p_sp d; let c, t = p_resp_text d in State (Bad (c, t))
+    | "BYE" -> p_sp d; let c, t = p_resp_text d in Bye (c, t)
+    | "FLAGS" -> p_sp d; Flags (p_list p_flag d)
+    | "LIST" -> p_sp d; let xs, c, m = p_mailbox_list d in List (xs, c, m)
+    | "LSUB" -> p_sp d; let xs, c, m = p_mailbox_list d in Lsub (xs, c, m)
     | "SEARCH" ->
         let rec nxt acc d =
           match peekc d with
@@ -2036,20 +2029,22 @@ module D = struct
                   p_sp d;
                   let n = p_uint64 d in
                   p_ch ')' d;
-                  k (Search (List.rev acc, Some n)) d
+                  Search (List.rev acc, Some n)
               | _ ->
                   let n = p_uint32 d in
                   nxt (n :: acc) d
               end
           | _ ->
-              k (Search (List.rev acc, None)) d
+              Search (List.rev acc, None)
         in
         nxt [] d
     | "STATUS" ->
-        let nxt m d = p_sp d; p_list (lift p_status_att) (fun a -> k (Status (m, a))) d in
-        p_sp d; p_mailbox nxt d
-    | "CAPABILITY" -> let xs = p_sep p_cap d in k (Capability xs) d
-    | "PREAUTH" -> p_sp d; p_resp_text (fun c t -> k (Preauth (c, t))) d
+        p_sp d;
+        let m = p_mailbox d in
+        p_sp d;
+        Status (m, p_list p_status_att d)
+    | "CAPABILITY" -> let xs = p_sep p_cap d in Capability xs
+    | "PREAUTH" -> p_sp d; let c, t = p_resp_text d in Preauth (c, t)
     | "VANISHED" ->
         p_sp d;
         begin match cur d with
@@ -2059,30 +2054,30 @@ module D = struct
             p_ch ')' d;
             p_sp d;
             let s = p_set d in
-            k (Vanished_earlier s) d
+            Vanished_earlier s
         | _ ->
-            let s = p_set d in k (Vanished s) d
+            let s = p_set d in Vanished s
         end
-    | "ENABLED" -> let xs = p_sep p_cap d in k (Enabled xs) d
-    | _ -> err_unexpected_s a d
+    | "ENABLED" -> let xs = p_sep p_cap d in Enabled xs
+    | _ -> failwith "unexpected" (* err_unexpected_s a d *)
 
-  let p_response_data_n k d =
+  let p_response_data_n d =
     let n = p_uint32 d in (* FIXME uint vs uint32 *)
     p_sp d;
     let a = p_atom d in
     match String.uppercase a with
-    | "EXPUNGE" -> k (Expunge n) d
-    | "FETCH" -> p_sp d; p_list1 p_msg_att (fun a -> k (Fetch (n, a))) d
-    | "EXISTS" -> k (Exists (Uint32.to_int n)) d
-    | "RECENT" -> k (Recent (Uint32.to_int n)) d
-    | _ -> err_unexpected_s a d
+    | "EXPUNGE" -> Expunge n
+    | "FETCH" -> p_sp d; Fetch (n, p_list1 p_msg_att d)
+    | "EXISTS" -> Exists (Uint32.to_int n)
+    | "RECENT" -> Recent (Uint32.to_int n)
+    | _ -> failwith "unexpected" (* err_unexpected_s a d *)
 
-  let p_untagged k d = (* '*' was eaten *)
+  let p_untagged d = (* '*' was eaten *)
     p_sp d;
     if is_digit (cur d) then
-      p_response_data_n k d
+      p_response_data_n d
     else
-      p_response_data_t k d
+      p_response_data_t d
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -2110,10 +2105,11 @@ module D = struct
   let p_tag d =
     p_while1 is_tag_char d
 
-  let p_tagged k d =
+  let p_tagged d =
     let tag = p_tag d in
     p_sp d;
-    p_resp_cond_state (k tag) d
+    let x = p_resp_cond_state d in
+    tag, x
 
   let p_continue_req d = (* '+' was eaten *)
     match cur d with
@@ -2123,17 +2119,21 @@ module D = struct
     | _ ->
         p_text d
 
-  let rec p_response k d =
-    let k x d = p_crlf d; k x d in
-    match cur d with
-    | '+' ->
-        junkc d;
-        k (Cont (p_continue_req d)) d
-    | '*' ->
-        junkc d;
-        p_untagged (fun u -> k (Untagged u)) d
-    | _ ->
-        p_tagged (fun t s -> k (Tagged (t, s))) d
+  let rec p_response d =
+    let x =
+      match cur d with
+      | '+' ->
+          junkc d;
+          Cont (p_continue_req d)
+      | '*' ->
+          junkc d;
+          Untagged (p_untagged d)
+      | _ ->
+          let c, x = p_tagged d in
+          Tagged (c, x)
+    in
+    p_crlf d;
+    x
 
   let decode d =
     let open Readline in
@@ -2146,7 +2146,7 @@ module D = struct
           d.i_pos <- 0;
           d.i_max <- String.length s;
           d.state <- state;
-          p_response ret d
+          ret (p_response d) d
       | Error ->
           `Error (`Unexpected_eoi, "", -1)
     in
