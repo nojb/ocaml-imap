@@ -68,32 +68,36 @@ type flag =
   | `Keyword of string
   | `Extension of string ]
 
-(** List of standard capabilites.  These are returned by the {!capability}
-    command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
-type capability =
-  [ `Acl
-  | `Binary
-  | `Catenate
-  | `Children
-  | `Compress_deflate
-  | `Condstore
-  | `Enable
-  | `Idle
-  | `Id
-  | `Literal_plus
-  | `Multi_append
-  | `Namespace
-  | `Qresync
-  | `Quote
-  | `Sort
-  | `Start_tls
-  | `Uid_plus
-  | `Unselect
-  | `Xlist
-  | `Auth of [ `Anonymous | `Login | `Plain ]
-  | `Xoauth2
-  | `Gmail
-  | `Other of string ]
+module Capability : sig
+  (** List of standard capabilites.  These are returned by the {!capability}
+      command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
+  type capability =
+    | ACL
+    | BINARY
+    | CATENATE
+    | CHILDREN
+    | COMPRESS_DEFLATE
+    | CONDSTORE
+    | ENABLE
+    | IDLE
+    | ID
+    | LITERALPLUS
+    | MULTIAPPEND
+    | NAMESPACE
+    | QRESYNC
+    | QUOTE
+    | SORT
+    | STARTTLS
+    | UIDPLUS
+    | UNSELECT
+    | XLIST
+    | AUTH_ANONYMOUS
+    | AUTH_LOGIN
+    | AUTH_PLAIN
+    | XOAUTH2
+    | X_GM_EXT_1
+    | OTHER of string
+end
 
 module Response : sig
   (** {1 Types for responses}
@@ -335,121 +339,99 @@ module Response : sig
       [`No], [`Bad], and are defined when there is a specific action that a client
       can take based upon the additional information. *)
 
-  type code =
-    [ `Alert
-    (** A special alert that MUST be presented to the user in a fashion that calls
-        the user's attention to the message. *)
+  module Code : sig
+    type code =
+      | ALERT
+      (** A special alert that MUST be presented to the user in a fashion that calls
+          the user's attention to the message. *)
+      | BADCHARSET of string list
+      (** A {!search} command failed because the given charset is not supported by
+          this implementation.  Contains the list the charsets that are supported by
+          the server. *)
+      | CAPABILITY of Capability.capability list
+      (** The list of capabilities supported by the server.  This can appear in the
+          initial [`Ok] or [`Preauth] response to transmit an initial capabilities
+          list.  This makes it unnecessary for a client to send a separate
+          {!capability} command if it recognizes this response. *)
+      | PARSE
+      (** An error occurred in parsing the headers of a message in the mailbox. *)
+      | PERMANENTFLAGS of [ flag | `All ] list
+      (** The list of flags the client can change permanently.  Any flags that are
+          in the untagged [`Flags] {{!untagged}response}, but not in the
+          [`Permanent_flags] list, can not be set permanently.  If the client
+          attempts to {!store} a flag that is not in the [`Permanent_flags] list,
+          the server will either ignore the change or store the state change for the
+          remainder of the current session only.  The [`Permanent_flags] list can
+          also include the special flag [`All], which indicates that it is possible
+          to create new keywords by attempting to store those flags in the
+          mailbox. *)
+      | READ_ONLY
+      (** The mailbox is selected read-only, or its access while selected has
+          changed from read-write to read-only. *)
+      | READ_WRITE
+      (** The mailbox is selected read-write, or its access while selected has
+          changed from read-only to read-write. *)
+      | TRYCREATE
+      (** An {!append} or {!copy} command is failing because the target mailbox does
+          not exist (as opposed to some other reason).  This is a hint to the client
+          that the operation can succeed if the mailbox is first created by the
+          {!create} command. *)
+      | UIDNEXT of uint32
+      (** The next unique identifier value.  Refer to {{:fdfads}???} for more
+          information. *)
+      | UIDVALIDITY of uint32
+      (** The unique identifier validity value.  Refer to {{::fdfdsa}???} for more
+          information. *)
+      | UNSEEN of uint32
+      (** The number of the first message without the [`Seen] flag set. *)
+      | OTHER of string * string option
+      (** Another response code. *)
+      | CLOSED
+      (** Signals that the current mailbox has been closed.  It is sent when closing
+          a mailbox implictly as a consequence of selecting a different mailbox.
+          Requires [QRESYNC]. *)
+      | HIGHESTMODSEQ of uint64
+      (** The highest mod-sequence value of all messages in the mailbox.  Returned
+          in an untagged [`Ok] {{!untagged}response} to the {!select} and
+          {!examine} commands. *)
+      | NOMODSEQ
+      (** A server that doesn't support the persistent storage of mod-sequences for
+          the mailbox MUST send this code in an untagged [`Ok]
+          {{!untagged}response} to every successful {!select} or {!examine}
+          command. *)
+      | MODIFIED of (uint32 * uint32) list
+      (** The [`Modified] response code includes the message set or set of UIDs of
+          the most recent {!sotre} command of all messages that failed the
+          [UNCHANGESINCE] test. *)
+      | APPENDUID of uint32 * uint32
+      (** Contains the [`Uid_validity] of the destination mailbox and the
+          [`Uid] assigned to the appended message in the destination mailbox.
 
-    | `Bad_charset of string list
-    (** A {!search} command failed because the given charset is not supported by
-        this implementation.  Contains the list the charsets that are supported by
-        the server. *)
+          This response code is returned in a tagged [`Ok] response to the {!append}
+          command. *)
+      | COPYUID of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
+      (** Sent in response to a [COPY] command, contains the [UIDVALIDITY] of the
+          destination mailbox, followed by the set of UIDs of the source messages,
+          and the set of UIDs of the destination messages (in the same order).
+          Requires [UIDPLUS].
 
-    | `Capability of capability list
-    (** The list of capabilities supported by the server.  This can appear in the
-        initial [`Ok] or [`Preauth] response to transmit an initial capabilities
-        list.  This makes it unnecessary for a client to send a separate
-        {!capability} command if it recognizes this response. *)
+          This response code is returned in a tagged [`Ok] response to the {!copy}
+          command. *)
+      | UIDNOTSTICKY
+      (** The selected mailbox is supported by a mail store that does not support
+          persistent UIDs; that is, [`Uid_validity] will be different each time the
+          mailbox is selected.  Consequently, {!append} or {!copy} to this mailbox
+          will not return an [`Append_uid] or [`Copy_uid] response code.
 
-    | `Parse
-    (** An error occurred in parsing the headers of a message in the mailbox. *)
+          This response code is returned in an untagged [`No] response to the
+          {!select} command. *)
+      | COMPRESSIONACTIVE
+      (** Compression has been activated.  Requires the [COMPRESS=DEFLATE]
+          capability. *)
+      | USEATTR
+      (** A {!create} command failed due to the special-use attribute requested. *)
 
-    | `Permanent_flags of [ flag | `All ] list
-    (** The list of flags the client can change permanently.  Any flags that are
-        in the untagged [`Flags] {{!untagged}response}, but not in the
-        [`Permanent_flags] list, can not be set permanently.  If the client
-        attempts to {!store} a flag that is not in the [`Permanent_flags] list,
-        the server will either ignore the change or store the state change for the
-        remainder of the current session only.  The [`Permanent_flags] list can
-        also include the special flag [`All], which indicates that it is possible
-        to create new keywords by attempting to store those flags in the
-        mailbox. *)
-
-    | `Read_only
-    (** The mailbox is selected read-only, or its access while selected has
-        changed from read-write to read-only. *)
-
-    | `Read_write
-    (** The mailbox is selected read-write, or its access while selected has
-        changed from read-only to read-write. *)
-
-    | `Try_create
-    (** An {!append} or {!copy} command is failing because the target mailbox does
-        not exist (as opposed to some other reason).  This is a hint to the client
-        that the operation can succeed if the mailbox is first created by the
-        {!create} command. *)
-
-    | `Uid_next of uint32
-    (** The next unique identifier value.  Refer to {{:fdfads}???} for more
-        information. *)
-
-    | `Uid_validity of uint32
-    (** The unique identifier validity value.  Refer to {{::fdfdsa}???} for more
-        information. *)
-
-    | `Unseen of uint32
-    (** The number of the first message without the [`Seen] flag set. *)
-
-    | `Other of string * string option
-    (** Another response code. *)
-
-    | `Closed
-    (** Signals that the current mailbox has been closed.  It is sent when closing
-        a mailbox implictly as a consequence of selecting a different mailbox.
-        Requires [QRESYNC]. *)
-
-    | `Highest_modseq of uint64
-    (** The highest mod-sequence value of all messages in the mailbox.  Returned
-        in an untagged [`Ok] {{!untagged}response} to the {!select} and
-        {!examine} commands. *)
-
-    | `No_modseq
-    (** A server that doesn't support the persistent storage of mod-sequences for
-        the mailbox MUST send this code in an untagged [`Ok]
-        {{!untagged}response} to every successful {!select} or {!examine}
-        command. *)
-
-    | `Modified of (uint32 * uint32) list
-    (** The [`Modified] response code includes the message set or set of UIDs of
-        the most recent {!sotre} command of all messages that failed the
-        [UNCHANGESINCE] test. *)
-
-    | `Append_uid of uint32 * uint32
-    (** Contains the [`Uid_validity] of the destination mailbox and the
-        [`Uid] assigned to the appended message in the destination mailbox.
-
-        This response code is returned in a tagged [`Ok] response to the {!append}
-        command. *)
-
-    | `Copy_uid of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
-    (** Sent in response to a [COPY] command, contains the [UIDVALIDITY] of the
-        destination mailbox, followed by the set of UIDs of the source messages,
-        and the set of UIDs of the destination messages (in the same order).
-        Requires [UIDPLUS].
-
-        This response code is returned in a tagged [`Ok] response to the {!copy}
-        command. *)
-
-    | `Uid_not_sticky
-    (** The selected mailbox is supported by a mail store that does not support
-        persistent UIDs; that is, [`Uid_validity] will be different each time the
-        mailbox is selected.  Consequently, {!append} or {!copy} to this mailbox
-        will not return an [`Append_uid] or [`Copy_uid] response code.
-
-        This response code is returned in an untagged [`No] response to the
-        {!select} command. *)
-
-    | `Compression_active
-    (** Compression has been activated.  Requires the [COMPRESS=DEFLATE]
-        capability. *)
-
-    | `Use_attr
-    (** A {!create} command failed due to the special-use attribute requested. *)
-
-    | `None
-      (** No response code was sent. *) ]
-
-  val pp_code : Format.formatter -> code -> unit
+  val pp: Format.formatter -> code -> unit
 end
 
 (** {1 Types for queries}
