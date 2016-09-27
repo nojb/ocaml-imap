@@ -1798,7 +1798,7 @@ module D = struct
   and p_body d =
     p_ch '(' d;
     let x = if cur d = '(' then p_mbody d else p_sbody d in
-    p_ch ')';
+    p_ch ')' d;
     x
 
 (*

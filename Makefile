@@ -1,5 +1,5 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
-OCAMLFLAGS := -bin-annot -g
+OCAMLFLAGS := -bin-annot -g -w -3
 OCAMLC := ocamlc $(OCAMLFLAGS)
 OCAMLOPT := ocamlopt $(OCAMLFLAGS)
 UINT_DIR := $(shell ocamlfind -query uint)
