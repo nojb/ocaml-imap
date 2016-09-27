@@ -594,84 +594,6 @@ module D = struct
     | `Read of bytes * int * int * (int -> result)
     | `Error of error * string * int ]
 
-  type decoder =
-    {
-      mutable i : bytes;
-      mutable i_pos : int;
-      mutable i_max : int;
-    }
-
-  exception Error of [ `Error of error * string * int ]
-
-  let err e d = `Error (e, d.i, d.i_pos)
-  let err_expected c d = err (`Expected_char c) d
-  let err_expected_s s d = err (`Expected_string s) d
-  let err_unexpected_s a d = err (`Unexpected_string a) d
-  let err_unexpected c d = err (`Unexpected_char c) d
-  let err_quoted c d = err (`Illegal_char c) d
-  let err_unexpected_eoi d = err `Unexpected_eoi d
-
-  let ret x _ = `Ok x
-  let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
-
-  (* let src d s j l =                                     (\* set [d.i] with [s]. *\) *)
-  (*   if j < 0 || l < 0 || j + l > String.length s then *)
-  (*     invalid_arg "bounds" *)
-  (*   else *)
-  (*     (d.i <- s; d.i_pos <- j; d.i_max <- j + l) *)
-
-  let readexact n k d =
-    let b = Bytes.create n in
-    let have = min n (d.i_max - d.i_pos) in
-    Bytes.blit d.i d.i_pos b 0 have;
-    d.i_pos <- d.i_pos + have;
-    let rec loop rem  =
-      if rem = 0 then
-        safe (k b) d
-      else
-        `Read (b, n-rem, rem, fun m -> loop (rem - m))
-    in
-    loop (n-have)
-
-  let has_line s pos max =
-    let rec loop cr_read j =
-      if j >= max then false
-      else
-        match s.[j] with
-        | '\n' ->
-            if cr_read then true else loop false (j+1)
-        | '\r' ->
-            loop true (j+1)
-        | c ->
-            loop false (j+1)
-    in
-    loop false pos
-
-  let readline k d =
-    if has_line d.i d.i_pos d.i_max then
-      k d
-    else begin
-      if d.i_pos > 0 then begin
-        Bytes.blit d.i d.i_pos d.i 0 (d.i_max - d.i_pos);
-        d.i_max <- d.i_max - d.i_pos;
-        d.i_pos <- 0
-      end;
-      let rec loop off =
-        if has_line d.i d.i_pos off then begin
-          d.i_max <- off;
-          safe k d
-        end else begin
-          if off >= Bytes.length d.i then begin
-            let new_i = Bytes.create (2 * Bytes.length d.i + 1) in
-            Bytes.blit d.i 0 new_i 0 (Bytes.length d.i);
-            d.i <- new_i
-          end;
-          `Read (d.i, off, Bytes.length d.i - off, fun n -> loop (off + n))
-        end
-      in
-      loop d.i_max
-    end
-
   module Readline = struct
     type step =
       | Reading
@@ -691,7 +613,6 @@ module D = struct
     type 'a res =
       | Refill of state
       | Next of state * 'a
-      | Eof
       | Error
 
     let string_of_step = function
@@ -719,7 +640,7 @@ module D = struct
         if i >= off + len then
           let buf = buf ^ String.sub src off len in
           if eof then
-            if String.length buf > 0 then Error else Eof
+            Error
           else
             let state = {state with step; buf; src = ""; off = 0; len = 0} in
             Refill state
@@ -774,6 +695,32 @@ module D = struct
       if false then Printf.eprintf "feed: src=%S off=%d len=%d\n%!" src off len;
       next {state with src; off; len; eof = len = 0}
   end
+
+  type decoder =
+    {
+      mutable i : bytes;
+      mutable i_pos : int;
+      mutable i_max : int;
+      mutable state: Readline.state;
+    }
+
+  exception Error of [ `Error of error * string * int ]
+
+  let err e d = `Error (e, d.i, d.i_pos)
+  let err_expected c d = err (`Expected_char c) d
+  let err_expected_s s d = err (`Expected_string s) d
+  let err_unexpected_s a d = err (`Unexpected_string a) d
+  let err_unexpected c d = err (`Unexpected_char c) d
+  let err_quoted c d = err (`Illegal_char c) d
+  let err_unexpected_eoi d = err `Unexpected_eoi d
+
+  let ret x _ = `Ok x
+  let safe k d = try k d with Error (`Error (err, s, i)) -> `Error (err, s, i)
+
+  let readexact n k d =
+    let data = Bytes.sub d.i d.i_pos n in
+    d.i_pos <- d.i_pos + n;
+    k data d
 
   let peekc d =
     if d.i_pos < d.i_max then
@@ -997,9 +944,6 @@ module D = struct
    string          = quoted / literal
 *)
 
-  let p_literal k data d = (* reads n bytes *)
-    readline (k data) d
-
   let p_string k d =
     match cur d with
     | '"' ->
@@ -1009,7 +953,7 @@ module D = struct
         junkc d;
         let n = p_uint d in
         p_ch '}' d;
-        p_crlf (readexact n (p_literal k)) d
+        p_crlf (readexact n k) d
     | c ->
         err_unexpected c d
 
@@ -2190,13 +2134,28 @@ module D = struct
         p_tagged (fun t s -> k (`Tagged (t, s))) d
 
   let decode d =
-    readline (p_response ret) d
+    let open Readline in
+    let b = Bytes.create 512 in
+    let rec loop = function
+      | Refill state ->
+          `Read (b, 0, Bytes.length b, fun n -> loop (feed state b 0 n))
+      | Next (state, s) ->
+          d.i <- s;
+          d.i_pos <- 0;
+          d.i_max <- String.length s;
+          d.state <- state;
+          p_response ret d
+      | Error ->
+          `Error (`Unexpected_eoi, "", -1)
+    in
+    loop (next d.state)
 
   let decoder () =
     {
       i = Bytes.create 4096;
       i_pos = 0;
       i_max = 0;
+      state = Readline.empty;
     }
 
 end
