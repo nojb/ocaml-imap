@@ -321,30 +321,32 @@ type status_response =
   | `Highest_modseq of uint64 ]
 
 type state =
-  [ `Ok of code * string | `No of code * string | `Bad of code * string ]
+  | Ok of code * string
+  | No of code * string
+  | Bad of code * string
 
 type untagged =
-  [ state
-  | `Bye of code * string
-  | `Preauth of code * string
-  | `Flags of flag list
-  | `List of mbx_flag list * char option * string
-  | `Lsub of mbx_flag list * char option * string
-  | `Search of uint32 list * uint64 option
-  | `Status of string * status_response list
-  | `Exists of int
-  | `Recent of int
-  | `Expunge of uint32
-  | `Fetch of uint32 * fetch_response list
-  | `Capability of capability list
-  | `Vanished of set
-  | `Vanished_earlier of set
-  | `Enabled of capability list ]
+  | State of state
+  | Bye of code * string
+  | Preauth of code * string
+  | Flags of flag list
+  | List of mbx_flag list * char option * string
+  | Lsub of mbx_flag list * char option * string
+  | Search of uint32 list * uint64 option
+  | Status of string * status_response list
+  | Exists of int
+  | Recent of int
+  | Expunge of uint32
+  | Fetch of uint32 * fetch_response list
+  | Capability of capability list
+  | Vanished of set
+  | Vanished_earlier of set
+  | Enabled of capability list
 
 type response =
-  [ untagged
-  | `Cont of string
-  | `Tagged of string * state ]
+  | Untagged of untagged
+  | Cont of string
+  | Tagged of string * state
 
 let pp = Format.fprintf
 
@@ -511,9 +513,9 @@ let pp_code : _ -> [< code] -> _ = fun ppf c ->
   | `None                 -> pp ppf "none"
 
 let pp_state ppf = function
-  | `Ok (c, t)  -> pp ppf "@[<2>(ok@ %a@ %S)@]" pp_code c t
-  | `No (c, t)  -> pp ppf "@[<2>(no@ %a@ %S)@]" pp_code c t
-  | `Bad (c, t) -> pp ppf "@[<2>(bad@ %a@ %S)@]" pp_code c t
+  | Ok (c, t)  -> pp ppf "@[<2>(ok@ %a@ %S)@]" pp_code c t
+  | No (c, t)  -> pp ppf "@[<2>(no@ %a@ %S)@]" pp_code c t
+  | Bad (c, t) -> pp ppf "@[<2>(bad@ %a@ %S)@]" pp_code c t
 
 let pp_mbx_flag : _ -> [< mbx_flag] -> _ = fun ppf f ->
   match f with
@@ -541,28 +543,30 @@ let pp_mbx_status : _ -> [< status_response] -> _ = fun ppf s ->
   | `Unseen n         -> pp ppf "(unseen %a)" Uint32.printer n
   | `Highest_modseq m -> pp ppf "(highest-modseq %a)" Uint64.printer m
 
-let pp_response : _ -> [< response] -> _ = fun ppf r ->
-  match r with
-  | #state as s         -> pp_state ppf s
-  | `Bye (c, t)         -> pp ppf "@[<2>(bye@ %a@ %S)@]" pp_code c t
-  | `Flags flags        -> pp ppf "@[<2>(flags@ %a)@]" (pp_list pp_flag) flags
-  | `List (f, s, m)     -> pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
-                             (pp_opt pp_char) s m
-  | `Lsub (f, s, m)     -> pp ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
-                             (pp_opt pp_char) s m
-  | `Search (ns, m)     -> pp ppf "@[<2>(search@ %a@ %a)@]" (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
-  | `Status (m, s)      -> pp ppf "@[<2>(status@ %S@ %a)@]" m (pp_list pp_mbx_status) s
-  | `Exists n           -> pp ppf "(exists %i)" n
-  | `Recent n           -> pp ppf "(recent %i)" n
-  | `Expunge n          -> pp ppf "(expunge %a)" Uint32.printer n
-  | `Fetch (n, atts)    -> pp ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list pp_msg_att) atts
-  | `Capability r       -> pp ppf "@[<2>(capability %a)@]" (pp_list pp_cap) r
-  | `Preauth (c, t)     -> pp ppf "@[<2>(preauth@ %a@ %S)@]" pp_code c t
-  | `Cont s             -> pp ppf "@[<2>(cont@ %S)@]" s
-  | `Tagged (t, s)      -> pp ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
-  | `Vanished s         -> pp ppf "@[<2>(vanished@ %a)@]" pp_set s
-  | `Vanished_earlier s -> pp ppf "@[<2>(vanished-earlier@ %a)@]" pp_set s
-  | `Enabled s          -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list pp_cap) s
+let pp_untagged ppf = function
+  | State s            -> pp_state ppf s
+  | Bye (c, t)         -> pp ppf "@[<2>(bye@ %a@ %S)@]" pp_code c t
+  | Flags flags        -> pp ppf "@[<2>(flags@ %a)@]" (pp_list pp_flag) flags
+  | List (f, s, m)     -> pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
+                            (pp_opt pp_char) s m
+  | Lsub (f, s, m)     -> pp ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
+                            (pp_opt pp_char) s m
+  | Search (ns, m)     -> pp ppf "@[<2>(search@ %a@ %a)@]" (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
+  | Status (m, s)      -> pp ppf "@[<2>(status@ %S@ %a)@]" m (pp_list pp_mbx_status) s
+  | Exists n           -> pp ppf "(exists %i)" n
+  | Recent n           -> pp ppf "(recent %i)" n
+  | Expunge n          -> pp ppf "(expunge %a)" Uint32.printer n
+  | Fetch (n, atts)    -> pp ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list pp_msg_att) atts
+  | Capability r       -> pp ppf "@[<2>(capability %a)@]" (pp_list pp_cap) r
+  | Preauth (c, t)     -> pp ppf "@[<2>(preauth@ %a@ %S)@]" pp_code c t
+  | Vanished s         -> pp ppf "@[<2>(vanished@ %a)@]" pp_set s
+  | Vanished_earlier s -> pp ppf "@[<2>(vanished-earlier@ %a)@]" pp_set s
+  | Enabled s          -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list pp_cap) s
+
+let pp_response ppf = function
+  | Untagged u         -> pp_untagged ppf u
+  | Cont s             -> pp ppf "@[<2>(cont@ %S)@]" s
+  | Tagged (t, s)      -> pp ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
 
 module D = struct
 
@@ -1313,11 +1317,11 @@ module D = struct
     let a = p_atom d in
     match String.uppercase a with
     | "OK" ->
-        p_sp d; p_resp_text (fun c t -> k (`Ok (c, t))) d
+        p_sp d; p_resp_text (fun c t -> k (Ok (c, t))) d
     | "NO" ->
-        p_sp d; p_resp_text (fun c t -> k (`No (c, t))) d
+        p_sp d; p_resp_text (fun c t -> k (No (c, t))) d
     | "BAD" ->
-        p_sp d; p_resp_text (fun c t -> k (`Bad (c, t))) d
+        p_sp d; p_resp_text (fun c t -> k (Bad (c, t))) d
     | _ ->
         err_unexpected_s a d
 
@@ -2013,13 +2017,13 @@ module D = struct
   let p_response_data_t k d =
     let a = p_atom d in
     match String.uppercase a with
-    | "OK" -> p_sp d; p_resp_text (fun c t -> k (`Ok (c, t))) d
-    | "NO" -> p_sp d; p_resp_text (fun c t -> k (`No (c, t))) d
-    | "BAD" -> p_sp d; p_resp_text (fun c t -> k (`Bad (c, t))) d
-    | "BYE" -> p_sp d; p_resp_text (fun c t -> k (`Bye (c, t))) d
-    | "FLAGS" -> p_sp d; p_list (lift p_flag) (fun xs -> k (`Flags xs)) d
-    | "LIST" -> p_sp d; p_mailbox_list (fun xs c m -> k (`List (xs, c, m))) d
-    | "LSUB" -> p_sp d; p_mailbox_list (fun xs c m -> k (`Lsub (xs, c, m))) d
+    | "OK" -> p_sp d; p_resp_text (fun c t -> k (State (Ok (c, t)))) d
+    | "NO" -> p_sp d; p_resp_text (fun c t -> k (State (No (c, t)))) d
+    | "BAD" -> p_sp d; p_resp_text (fun c t -> k (State (Bad (c, t)))) d
+    | "BYE" -> p_sp d; p_resp_text (fun c t -> k (Bye (c, t))) d
+    | "FLAGS" -> p_sp d; p_list (lift p_flag) (fun xs -> k (Flags xs)) d
+    | "LIST" -> p_sp d; p_mailbox_list (fun xs c m -> k (List (xs, c, m))) d
+    | "LSUB" -> p_sp d; p_mailbox_list (fun xs c m -> k (Lsub (xs, c, m))) d
     | "SEARCH" ->
         let rec nxt acc d =
           match peekc d with
@@ -2032,20 +2036,20 @@ module D = struct
                   p_sp d;
                   let n = p_uint64 d in
                   p_ch ')' d;
-                  k (`Search (List.rev acc, Some n)) d
+                  k (Search (List.rev acc, Some n)) d
               | _ ->
                   let n = p_uint32 d in
                   nxt (n :: acc) d
               end
           | _ ->
-              k (`Search (List.rev acc, None)) d
+              k (Search (List.rev acc, None)) d
         in
         nxt [] d
     | "STATUS" ->
-        let nxt m d = p_sp d; p_list (lift p_status_att) (fun a -> k (`Status (m, a))) d in
+        let nxt m d = p_sp d; p_list (lift p_status_att) (fun a -> k (Status (m, a))) d in
         p_sp d; p_mailbox nxt d
-    | "CAPABILITY" -> let xs = p_sep p_cap d in k (`Capability xs) d
-    | "PREAUTH" -> p_sp d; p_resp_text (fun c t -> k (`Preauth (c, t))) d
+    | "CAPABILITY" -> let xs = p_sep p_cap d in k (Capability xs) d
+    | "PREAUTH" -> p_sp d; p_resp_text (fun c t -> k (Preauth (c, t))) d
     | "VANISHED" ->
         p_sp d;
         begin match cur d with
@@ -2055,11 +2059,11 @@ module D = struct
             p_ch ')' d;
             p_sp d;
             let s = p_set d in
-            k (`Vanished_earlier s) d
+            k (Vanished_earlier s) d
         | _ ->
-            let s = p_set d in k (`Vanished s) d
+            let s = p_set d in k (Vanished s) d
         end
-    | "ENABLED" -> let xs = p_sep p_cap d in k (`Enabled xs) d
+    | "ENABLED" -> let xs = p_sep p_cap d in k (Enabled xs) d
     | _ -> err_unexpected_s a d
 
   let p_response_data_n k d =
@@ -2067,10 +2071,10 @@ module D = struct
     p_sp d;
     let a = p_atom d in
     match String.uppercase a with
-    | "EXPUNGE" -> k (`Expunge n) d
-    | "FETCH" -> p_sp d; p_list1 p_msg_att (fun a -> k (`Fetch (n, a))) d
-    | "EXISTS" -> k (`Exists (Uint32.to_int n)) d
-    | "RECENT" -> k (`Recent (Uint32.to_int n)) d
+    | "EXPUNGE" -> k (Expunge n) d
+    | "FETCH" -> p_sp d; p_list1 p_msg_att (fun a -> k (Fetch (n, a))) d
+    | "EXISTS" -> k (Exists (Uint32.to_int n)) d
+    | "RECENT" -> k (Recent (Uint32.to_int n)) d
     | _ -> err_unexpected_s a d
 
   let p_untagged k d = (* '*' was eaten *)
@@ -2124,12 +2128,12 @@ module D = struct
     match cur d with
     | '+' ->
         junkc d;
-        k (`Cont (p_continue_req d)) d
+        k (Cont (p_continue_req d)) d
     | '*' ->
         junkc d;
-        p_untagged k d
+        p_untagged (fun u -> k (Untagged u)) d
     | _ ->
-        p_tagged (fun t s -> k (`Tagged (t, s))) d
+        p_tagged (fun t s -> k (Tagged (t, s))) d
 
   let decode d =
     let open Readline in
@@ -2694,7 +2698,7 @@ type connection =
 
 let rec cont_req k r c =
   match r with
-  | `Cont _ -> k c
+  | Cont _ -> k c
   | _ -> decode (cont_req k) c
 
 and encode x k c =
@@ -2708,7 +2712,7 @@ and encode x k c =
   in
   loop (E.encode c.e x)
 
-and decode (k : _ -> connection -> _) c =
+and decode k c =
   let rec loop = function
     | `Ok x ->
         k x c
@@ -2726,37 +2730,38 @@ let rec h_tagged tag r c =
     `Error (`Incorrect_tag (cur, tag))
   else (* FIXME alert the user and continue ? *)
     match r with
-    | `Ok _ as ok -> ok
-    | (`Bad _ | `No _) as e -> `Error e
+    | Ok (code, s) -> `Ok (code, s)
+    | Bad (code, s) -> `Error (`Bad (code, s))
+    | No (code, s) -> `Error (`No (code, s))
 
 and h_response r c =
   match r with
-  | #untagged as r ->
+  | Untagged r ->
       `Untagged (r, fun () -> decode h_response c)
-  | `Cont _ ->
+  | Cont _ ->
       `Error `Unexpected_cont (* FIXME ignore and continue ? *)
-  | `Tagged (g, r) ->
+  | Tagged (g, r) ->
       h_tagged g r c
 
 and h_idle_response r c =
   match r with
-  | #untagged as r ->
+  | Untagged r ->
       `Untagged (r, fun () -> decode h_idle_response c)
-  | `Cont _ when not c.idling ->
+  | Cont _ when not c.idling ->
       c.idling <- true; decode h_idle_response c
-  | `Cont _ ->
+  | Cont _ ->
       `Error `Unexpected_cont
-  | `Tagged (g, r) ->
+  | Tagged (g, r) ->
       c.idling <- false;
       h_tagged g r c
 
 and h_authenticate auth r c =
   match r with
-  | #untagged as r ->
+  | Untagged r ->
       `Untagged (r, fun () -> decode (h_authenticate auth) c)
-  | `Tagged (g, r) ->
+  | Tagged (g, r) ->
       h_tagged g r c
-  | `Cont data ->
+  | Cont data ->
       begin match auth.step (B64.decode data) with
       | `Ok data ->
           let data = B64.encode ~pad:true data in
@@ -2767,7 +2772,7 @@ and h_authenticate auth r c =
 
 let h_greetings r c =
   match r with
-  | `Ok _ as ok -> ok
+  | Untagged (State (Ok (code, s))) -> `Ok (code, s)
   | _ -> `Error `Bad_greeting (* FIXME continue until [`Ok] ? *)
 
 let run c cmd =

@@ -453,7 +453,9 @@ type status_response =
     carries a human-readable explanation of the {!code}. *)
 
 type state =
-  [ `Ok of code * string | `No of code * string | `Bad of code * string ]
+  | Ok of code * string
+  | No of code * string
+  | Bad of code * string
 
 val pp_state : Format.formatter -> state -> unit
 
@@ -465,47 +467,47 @@ val pp_state : Format.formatter -> state -> unit
     {!run}. *)
 
 type untagged =
-  [ state
+  | State of state
   (** Untagged status response. *)
 
-  | `Bye of code * string
+  | Bye of code * string
   (** The server will be closing the connection soon. *)
 
-  | `Preauth of code * string
+  | Preauth of code * string
   (** The session as been Pre-Authorized and no authentication is necessary.
       This should not occur in normal circumstances. *)
 
-  | `Flags of flag list
+  | Flags of flag list
   (** The [`Flags] response occurs as a result of a {!select} or {!examine}
       command.  Contains the list of flag that are applicable for this
       mailbox. *)
 
-  | `List of mbx_flag list * char option * string
+  | List of mbx_flag list * char option * string
   (** [LIST] response: mailbox flags, character used as path delimiter
       (optional), and mailbox name. *)
 
-  | `Lsub of mbx_flag list * char option * string
+  | Lsub of mbx_flag list * char option * string
   (** [LSUB] response, same information as [LIST]. *)
 
-  | `Search of uint32 list * uint64 option
+  | Search of uint32 list * uint64 option
   (** [SEARCH] or [UID SEARCH] response: list of message numbers (UID or
       Sequence), and optionally the highest modification sequence number of the
       returned list of messages if [CONDSTORE] is enabled. *)
 
-  | `Status of string * status_response list
+  | Status of string * status_response list
   (** [STATUS] response: mailbox name, list of status items. *)
 
-  | `Exists of int
+  | Exists of int
   (** The [`Exists] response reports the number of messages in the mailbox.
       This response occurs as a result of a {!select} or {!examine} command, and
       if the size of the mailbox changes (e.g., new messages). *)
 
-  | `Recent of int
+  | Recent of int
   (** The [`Recent] response reports the number of messages with the [`Recent]
       flag set.  This response occurs as a result of a {!select} or {!examine}
       command, and if the size of the mailbox changes (e.g., new messages). *)
 
-  | `Expunge of uint32
+  | Expunge of uint32
   (** The [`Expunge] response reports that the specified message sequence number
       has been permanently removed from the mailbox.  The message sequence
       number for each successive message in the mailbox is immediately
@@ -526,42 +528,42 @@ type untagged =
       "higher to lower server" will send successive untagged [`Expunge]
       responses for message sequence numbers 9, 8, 7, 6, and 5. *)
 
-  | `Fetch of uint32 * fetch_response list
+  | Fetch of uint32 * fetch_response list
   (** The [`Fetch] response returns data about a message to the client.  It
       contains the message number and the list of data items and their values.
       This response occurs as the result of a {!fetch} or {!store} command, as
       well as by unilateral server decision (e.g., flag updates). *)
 
-  | `Capability of capability list
+  | Capability of capability list
   (** List of capabilities supported by the server. *)
 
-  | `Vanished of (uint32 * uint32) list
+  | Vanished of (uint32 * uint32) list
   (** List of UIDs of messages that have been expunged from the current
       mailbox.  Requires [QRESYNC]. *)
 
-  | `Vanished_earlier of (uint32 * uint32) list
+  | Vanished_earlier of (uint32 * uint32) list
   (** Same as [`Vanished], but sent only in response to a [FETCH (VANISHED)] or
       [SELECT/EXAMINE (QRESYNC)] command.  Requires [QRESYNC]. *)
 
-  | `Enabled of capability list
-  (** List of capabilities enabled after issuing {!enable} command. *) ]
+  | Enabled of capability list
+  (** List of capabilities enabled after issuing {!enable} command. *)
 
 type response =
-  [ untagged
+  | Untagged of untagged
   (** Untagged data response. *)
 
-  | `Cont of string
+  | Cont of string
   (** Continuation request: the server is waiting for client data.  The client
       must wait for this message before sending literal data. *)
 
-  | `Tagged of string * state
-  (** Tagged response: tag, result status. *) ]
+  | Tagged of string * state
+  (** Tagged response: tag, result status. *)
 
 (** {3 Pretty printing responses}
 
     Will print the given response in s-expression format. *)
 
-val pp_response : Format.formatter -> [< response] -> unit
+val pp_response : Format.formatter -> response -> unit
 
 (** {1 Types for queries}
 
