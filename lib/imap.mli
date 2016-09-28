@@ -182,10 +182,10 @@ module MIME : sig
       - [`Multipart (p, s)] corresponds to the MIME type ["MULTIPART/" ^ s].  [p]
         is the lists of MIME subparts. *)
   type mime =
-    [ `Text of string * fields * int
-    | `Message of fields * Envelope.envelope * mime * int
-    | `Basic of string * string * fields
-    | `Multipart of mime list * string ]
+    | Text of string * fields * int
+    | Message of fields * Envelope.envelope * mime * int
+    | Basic of string * string * fields
+    | Multipart of mime list * string
 
   val pp_mime : Format.formatter -> mime -> unit
 end

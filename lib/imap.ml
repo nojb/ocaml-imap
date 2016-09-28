@@ -339,17 +339,11 @@ module MIME = struct
       ext_ext: body_extension list;
     }
 
-  (* type mime_sext = *)
-  (*   string option * part_extension *)
-
-  (* type mime_mext = *)
-  (*   (string * string) list * part_extension *)
-
   type mime =
-    [ `Text of string * fields * int
-    | `Message of fields * Envelope.envelope * mime * int
-    | `Basic of string * string * fields
-    | `Multipart of mime list * string ]
+    | Text of string * fields * int
+    | Message of fields * Envelope.envelope * mime * int
+    | Basic of string * string * fields
+    | Multipart of mime list * string
 
   open Format
 
@@ -363,14 +357,14 @@ module MIME = struct
       f.fld_octets
 
   let rec pp_mime ppf = function
-    | `Text (m, f, i) ->
+    | Text (m, f, i) ->
         fprintf ppf "@[<2>(text@ %S@ %a@ %d)@]" m pp_fields f i
-    | `Message (f, e, b, i) ->
+    | Message (f, e, b, i) ->
         fprintf ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]"
           pp_fields f Envelope.pp_envelope e pp_mime b i
-    | `Basic (m, t, f) ->
+    | Basic (m, t, f) ->
         fprintf ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
-    | `Multipart (b, m) ->
+    | Multipart (b, m) ->
         fprintf ppf "@[<2>(multipart@ %a@ %S)@]" (pp_list pp_mime) b m
 end
 
@@ -2241,14 +2235,14 @@ module Decoder = struct
       let bodies = list1 ~sep:empty body d in
       let media_subtype = sp imap_string d in
       ignore (option (sp body_ext_mpart) d);
-      `Multipart (bodies, media_subtype)
+      MIME.Multipart (bodies, media_subtype)
     in
     push "body-type-mpart" aux d
 
   and body_type_basic media_type media_subtype d =
     let aux d =
       let body_fields = sp body_fields d in
-      `Basic (media_type, media_subtype, body_fields)
+      MIME.Basic (media_type, media_subtype, body_fields)
     in
     push "body-type-basic" aux d
 
@@ -2258,7 +2252,7 @@ module Decoder = struct
       let envelope = sp envelope d in
       let body = sp body d in
       let body_fld_lines = sp body_fld_lines d in
-      `Message (body_fields, envelope, body, body_fld_lines)
+      MIME.Message (body_fields, envelope, body, body_fld_lines)
     in
     push "body-type-msg" aux d
 
@@ -2266,7 +2260,7 @@ module Decoder = struct
     let aux d =
       let body_fields = sp body_fields d in
       let body_fld_lines = sp body_fld_lines d in
-      `Text (media_subtype, body_fields, body_fld_lines)
+      MIME.Text (media_subtype, body_fields, body_fld_lines)
     in
     push "body-type-text" aux d
 
