@@ -30,11 +30,11 @@ let rec perform sock buf = function
       Lwt.fail (Failure "error")
   | Imap.Send (s, p) ->
       complete (Lwt_ssl.write sock) s 0 (String.length s) >>= fun () ->
-      Printf.eprintf "<<< %d\n%s\n<<<\n%!" (String.length s) s;
+      Printf.eprintf "<<< %d\n%s<<<\n%!" (String.length s) s;
       perform sock buf (Imap.continue p)
   | Imap.Refill p ->
       Lwt_ssl.read sock buf 0 (String.length buf) >>= fun n ->
-      Printf.eprintf ">>> %d\n%s\n>>>\n%!" n (String.sub buf 0 n);
+      Printf.eprintf ">>> %d\n%s>>>\n%!" n (String.sub buf 0 n);
       perform sock buf (Imap.feed p buf 0 n)
 
 let run c cmd =
@@ -58,6 +58,7 @@ let connect ?(port = 993) host =
   Lwt.return {state; mutex = Lwt_mutex.create (); sock; buf}
 
 let () =
+  Ssl.init ();
   Printexc.record_backtrace true
 
 let () =
