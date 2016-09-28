@@ -8,7 +8,6 @@ license: "MIT"
 build: [make]
 build-doc: [make "doc"]
 depends: [
-  "uint"
   "base64"
   "uutf"
 ]

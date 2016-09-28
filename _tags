@@ -1,16 +1,14 @@
-true: bin_annot
+true: bin_annot, debug
 
 # imap
 
-true: package(uutf)
-true: package(base64)
+true: package(uutf), package(base64)
 
 <lib>: include
 
 # imap_shell
 
-<test/imap_shell.*>: package(lwt), package(lwt.ssl)
-<test/imap_shell.*>: package(cmdliner)
+<test/imap_shell.*>: package(lwt), package(lwt.ssl), package(cmdliner)
 
 # wait_mail
 
@@ -18,5 +16,3 @@ true: package(base64)
 
 # imap_lwt
 <test/imap_lwt.*>: package(ssl), package(lwt.ssl)
-
-true: debug

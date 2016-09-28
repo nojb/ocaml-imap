@@ -1,39 +1,46 @@
-(* this code is in the public domain *)
+(* This file is released under the terms of an MIT-like license.     *)
+(* See the attached LICENSE file.                                    *)
+(* Copyright 2016 Nicolas Ojeda Bar <n.oje.bar@gmail.com>            *)
 
 open Lwt.Infix
 
 type connection =
   {
-    c : Imap.connection;
-    sock : Lwt_ssl.socket;
+    mutable state: Imap.state;
+    mutex: Lwt_mutex.t;
+    sock: Lwt_ssl.socket;
+    buf: bytes;
   }
 
-let rec process c : Imap.result -> _ = function
-  | `Read (s, i, l, k) ->
-      Lwt_ssl.read c.sock s i l >>= fun n ->
-      process c (k n)
-  | `Write (o, pos, len, k) ->
-      Lwt_ssl.write c.sock o pos len >>= fun n ->
-      process c (k n)
-  | `Untagged _ as r ->
-      (* LTerm.eprintl "Untagged" >>= fun () -> *)
-      Lwt.return r
-  | `Ok _ ->
-      Lwt.return `Ok
-  | `Error e ->
-      Imap.pp_error Format.str_formatter e;
-      Lwt.fail (Failure (Format.flush_str_formatter ()))
+let complete f b o l =
+  let rec loop o l =
+    if l <= 0 then
+      Lwt.return_unit
+    else
+      f b o l >>= function
+      | 0 -> Lwt.fail End_of_file
+      | n -> loop (o + n) (l - n)
+  in
+  loop o l
 
 let run c cmd =
-  let next = ref (fun () -> Imap.run c.c cmd) in
-  Lwt_stream.from (fun () ->
-      process c (!next ()) >>= function
-      | `Untagged (u, k) ->
-          next := k;
-          Lwt.return (Some u)
-      | `Ok ->
-          Lwt.return None
-    )
+  let open Imap in
+  let perform () =
+    let rec loop = function
+      | Ok res -> Lwt.return res
+      | Error _ -> Lwt.fail (Failure "error")
+      | Send (s, p) ->
+          complete (Lwt_ssl.write c.sock) s 0 (String.length s) >>= fun () ->
+          Printf.eprintf "<<< %d\n%s\n<<<\n%!" (String.length s) s;
+          loop (continue p)
+      | Refill p ->
+          Lwt_ssl.read c.sock c.buf 0 (String.length c.buf) >>= fun n ->
+          Printf.eprintf ">>> %d\n%s\n>>>\n%!" n (String.sub c.buf 0 n);
+          loop (feed p c.buf 0 n)
+    in
+    loop (continue (run c.state cmd))
+  in
+  Lwt_mutex.with_lock c.mutex perform
 
 let connect ?(port = 993) host =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
@@ -41,15 +48,5 @@ let connect ?(port = 993) host =
   Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
-  let c, v = Imap.connection () in
-  let c =
-    {
-      c;
-      sock;
-    }
-  in
-  let rec handle = function
-    | `Untagged (_, k) -> process c (k ()) >>= handle
-    | `Ok -> Lwt.return_unit
-  in
-  process c v >>= handle >>= fun () -> Lwt.return c
+  let state = Imap.client in
+  Lwt.return {state; mutex = Lwt_mutex.create (); sock; buf = Bytes.create 512}

@@ -1,15 +1,5 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
 OCAMLFLAGS := -bin-annot -g -w -3
-OCAMLC := ocamlc $(OCAMLFLAGS)
-OCAMLOPT := ocamlopt $(OCAMLFLAGS)
-UUTF_DIR := $(shell ocamlfind -query uutf)
-BASE64_DIR := $(shell ocamlfind -query base64)
-
-lib/imap.cmxa: lib/imap.mli lib/imap.ml
-	$(OCAMLOPT) -a -o lib/imap.cmxa -I $(UUTF_DIR) -I $(BASE64_DIR) -I lib lib/imap.mli lib/imap.ml
-
-lib/imap.cma: lib/imap.mli lib/imap.ml
-	$(OCAMLC) -a -o lib/imap.cma -I $(UUTF_DIR) -I $(BASE64_DIR) -I lib lib/imap.mli lib/imap.ml
 
 imap_shell:
 	$(OCAMLBUILD) test/imap_shell.byte
