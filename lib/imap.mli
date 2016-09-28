@@ -55,19 +55,12 @@ module Modseq : module type of Uint64
 module UID : module type of Uint32
 module Seq : module type of Uint32
 
+type _ uid_or_seq =
+  | UID : UID.t uid_or_seq
+  | Seq : Seq.t uid_or_seq
+
 type date = { day : int; month : int ; year : int }
 type time = { hours : int; minutes : int; seconds : int; zone : int }
-
-(** Message flags.  The underlying string of [`Extension s] is ['\\' ^ s], while
-    [`Keyword s] is [s]. *)
-type flag =
-  [ `Answered
-  | `Flagged
-  | `Deleted
-  | `Seen
-  | `Draft
-  | `Keyword of string
-  | `Extension of string ]
 
 module Capability : sig
   (** List of standard capabilites.  These are returned by the {!capability}
@@ -198,6 +191,17 @@ module MIME : sig
 end
 
 module Msg : sig
+  (** Message flags.  The underlying string of [`Extension s] is ['\\' ^ s], while
+      [`Keyword s] is [s]. *)
+  type flag =
+    [ `Answered
+    | `Flagged
+    | `Deleted
+    | `Seen
+    | `Draft
+    | `Keyword of string
+    | `Extension of string ]
+
   (** Message number (either sequence or UIDs) sets, as a union of intervals.  It
       is the responsability of the client to make any necessary validity check, as
       none is performed by the library.
@@ -217,13 +221,13 @@ module Msg : sig
       on MIME headers, see {{:https://tools.ietf.org/html/rfc2045#section-3}RFC
       2045, 3}. *)
   type section =
-    [ `Header                             (* Full RFC 2822 message headers *)
-    | `Header_fields of string list       (* Header fields matching one of the given field names *)
-    | `Header_fields_not of string list   (* Header fields not matching any of the given field names *)
-    | `Text                               (* The text body of this part, omitting RFC2822 headers *)
-    | `Mime                               (* The MIME headers of this part *)
-    | `Part of int * section              (* Subpart *)
-    | `All ]                              (* The whole message *)
+    | HEADER                             (* Full RFC 2822 message headers *)
+    | HEADER_FIELDS of string list       (* Header fields matching one of the given field names *)
+    | HEADER_FIELDS_NOT of string list   (* Header fields not matching any of the given field names *)
+    | TEXT                               (* The text body of this part, omitting RFC2822 headers *)
+    | MIME                               (* The MIME headers of this part *)
+    | Part of int * section              (* Subpart *)
+    | All                              (* The whole message *)
 
   val pp_section : Format.formatter -> section -> unit
 
@@ -282,6 +286,56 @@ module Msg : sig
     | X_GM_LABELS of string list
       (** Gmail labels. *)
 
+  module Request : sig
+    (** Message attributes that can be requested using the {!fetch} command. *)
+
+    type t
+
+    val envelope: t
+    (** The envelope structure of the message.  This is computed by the server
+        by parsing the header into the component parts, defaulting various
+        fields as necessary. *)
+
+    val internaldate: t
+    (** The internal date of the message. *)
+
+    val rfc822_header: t
+    (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
+        differing in the syntax of the resulting untagged [`Fetch]
+        {{!untagged}data} ([`Rfc822_header] is returned). *)
+
+    val rfc822_text: t
+    (** Functionally equivalent to [`Body_section (`Look, `Text, None)],
+        differing in the syntax of the resulting untagged [`Fetch]
+        {{!untagged}data} ([`Rfc822_text] is returned). *)
+
+    val rfc822_size: t
+    (** The size of the message. *)
+
+    val rfc822: t
+    (** Functionally equivalent to [`Body_section (`Look, `All, None)],
+        differing in the syntax of the resulting untagged [`Fetch]
+        {{!untagged}data} ([`Rfc822] is returned). *)
+
+    val body: t
+    (** Non-extensible form of [`Body_structure]. *)
+
+    val body_section: [ `Peek | `Look ] -> section -> (int * int) option -> t
+    (** The text of a particular body section.  The [`Peek] flag is an alternate
+        form that does not implicitly set the [`Seen] {!flag}. *)
+
+    val bodystructure: t
+    (** The MIME body structure of the message.  This is computed by the server
+        by parsing the MIME header fields in the [RFC-2822] header and MIME
+        headers. *)
+
+    val uid: t
+    (** The unique identifier for the message. *)
+
+    val flags: t
+    (** The {{!flag}flags} that are set for this message. *)
+  end
+
   val pp: Format.formatter -> msg_att -> unit
 end
 
@@ -312,7 +366,7 @@ module Code : sig
         {!capability} command if it recognizes this response. *)
     | PARSE
     (** An error occurred in parsing the headers of a message in the mailbox. *)
-    | PERMANENTFLAGS of [ flag | `All ] list
+    | PERMANENTFLAGS of [ Msg.flag | `All ] list
     (** The list of flags the client can change permanently.  Any flags that are
         in the untagged [`Flags] {{!untagged}response}, but not in the
         [`Permanent_flags] list, can not be set permanently.  If the client
@@ -438,12 +492,32 @@ module Mailbox : sig
     | HIGHESTMODSEQ of Modseq.t
       (** The highest modification sequence number of all the messages in the
           mailbox.  This is only sent back if [CONDSTORE] is enabled. *)
+
+  module Request : sig
+    (** Mailbox attibutes that can be requested with the {!status} command. *)
+
+    type t
+
+    val messages: t
+    (** The number of messages in the mailbox. *)
+
+    val recent: t
+    (** The number of messages with the [`Recent] {!flag} set. *)
+
+    val uidnext: t
+    (** The next unique identifier value of the mailbox. *)
+
+    val uidvalidity: t
+    (** The unique identifier validity value of the mailbox. *)
+
+    val unseen: t
+    (** The number of messages which do not have the [`Seen] {!flag}
+        set. *)
+
+    val highestmodseq: t
+    (** TODO *)
+  end
 end
-
-(** {1 Types for queries}
-
-    These types are used to describe queries to the server using the different
-    {{!section:commands}commands}. *)
 
 (** {e Extended} message numbers sets, as a union of intervals.  The second
     component of an interval being [None] means that it should take the largest
@@ -605,104 +679,39 @@ module Search : sig
   (** Messages with given Gmail labels. *)
 end
 
-(** Message attributes that can be requested using the {!fetch} command. *)
-type fetch_query =
-  [ `Envelope
-  (** The envelope structure of the message.  This is computed by the server by
-      parsing the header into the component parts, defaulting various fields as
-      necessary. *)
+module Auth : sig
+  (** {1 Authenticators}
 
-  | `Internal_date
-  (** The internal date of the message. *)
+      These are used to implement SASL authentication. SASL authentication is
+      initiated by the {!authenticate} command and typically would occur right
+      after receiving the server greeting.
 
-  | `Rfc822_header
-  (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
-      differing in the syntax of the resulting untagged [`Fetch]
-      {{!untagged}data} ([`Rfc822_header] is returned). *)
+      The authentication protocol exchange consists of a series of server
+      challenges and client responses that are specific to the authentication
+      mechanism.  If [a] is the authenticator being used, [a.step] will be called
+      with each of the server's challenges.  The return value of [a.step] can
+      signal an error or give the corresponding response.
 
-  | `Rfc822_text
-  (** Functionally equivalent to [`Body_section (`Look, `Text, None)], differing
-      in the syntax of the resulting untagged [`Fetch] {{!untagged}data}
-      ([`Rfc822_text] is returned). *)
+      [step] functions do {e not} have to perform base64-encoding and decoding, as
+      this is handled automatically by the library.
 
-  | `Rfc822_size
-  (** The size of the message. *)
+      The implementation of particular SASL authenticaton methods is outside the
+      scope of this library and should be provided independently. Only [PLAIN] and
+      [XOAUTH2] are provided as way of example. *)
 
-  | `Rfc822
-  (** Functionally equivalent to [`Body_section (`Look, `All, None)], differing
-      in the syntax of the resulting untagged [`Fetch] {{!untagged}data}
-      ([`Rfc822] is returned). *)
+  type authenticator =
+    { name : string;
+      step : string -> [ `Ok of string | `Error of string ] }
 
-  | `Body
-  (** Non-extensible form of [`Body_structure]. *)
+  val plain : string -> string -> authenticator
+  (** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
+      and password [pass]. *)
 
-  | `Body_section of [ `Peek | `Look ] * Msg.section * (int * int) option
-  (** The text of a particular body section.  The [`Peek] flag is an alternate
-      form that does not implicitly set the [`Seen] {!flag}. *)
-
-  | `Body_structure
-  (** The MIME body structure of the message.  This is computed by the
-      server by parsing the MIME header fields in the [RFC-2822] header
-      and MIME headers. *)
-
-  | `Uid
-  (** The unique identifier for the message. *)
-
-  | `Flags
-  (** The {{!flag}flags} that are set for this message. *) ]
-
-(** Mailbox attibutes that can be requested with the {!status} command. *)
-type status_query =
-  [ `Messages
-  (** The number of messages in the mailbox. *)
-
-  | `Recent
-  (** The number of messages with the [`Recent] {!flag} set. *)
-
-  | `Uid_next
-  (** The next unique identifier value of the mailbox. *)
-
-  | `Uid_validity
-  (** The unique identifier validity value of the mailbox. *)
-
-  | `Unseen
-  (** The number of messages which do not have the [`Seen] {!flag}
-      set. *)
-
-  | `Highest_modseq
-  (** TODO *) ]
-
-(** {1 Authenticators}
-
-    These are used to implement SASL authentication. SASL authentication is
-    initiated by the {!authenticate} command and typically would occur right
-    after receiving the server greeting.
-
-    The authentication protocol exchange consists of a series of server
-    challenges and client responses that are specific to the authentication
-    mechanism.  If [a] is the authenticator being used, [a.step] will be called
-    with each of the server's challenges.  The return value of [a.step] can
-    signal an error or give the corresponding response.
-
-    [step] functions do {e not} have to perform base64-encoding and decoding, as
-    this is handled automatically by the library.
-
-    The implementation of particular SASL authenticaton methods is outside the
-    scope of this library and should be provided independently. Only [PLAIN] and
-    [XOAUTH2] are provided as way of example. *)
-
-type authenticator =
-  { name : string;
-    step : string -> [ `Ok of string | `Error of string ] }
-
-val plain : string -> string -> authenticator
-(** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
-    and password [pass]. *)
-
-val xoauth2 : string -> string -> authenticator
-(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
-    [user] and access token [token].  The access token should be obtained
-    independently. *)
+  val xoauth2 : string -> string -> authenticator
+  (** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
+      [user] and access token [token].  The access token should be obtained
+      independently. *)
+end
 
 (** {1:commands Commands}
 
@@ -783,7 +792,7 @@ val lsub: ?ref:string -> string -> (Mailbox.mbx_flag list * char option * string
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status: string -> status_query list -> (string * Mailbox.status_response list) command
+val status: string -> Mailbox.Request.t list -> (string * Mailbox.status_response list) command
 (** [status] requests {{!status_query}status information} of the indicated
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
@@ -809,7 +818,8 @@ val expunge: uint32 list command
     returning an [`Ok] to the client, an untagged [`Expunge]
     {{!untagged}response} is sent for each message that is removed. *)
 
-val search: ?uid:bool -> Search.key -> (uint32 list * uint64 option) command
+val uid_search: Search.key -> (UID.t list * Modseq.t option) command
+val search: Search.key -> (Seq.t list * Modseq.t option) command
 (** [search uid sk] searches the mailbox for messages that match the given
     searching criteria.  If [uid] is [true] (the default), then the matching
     messages' unique identification numbers are returned.  Otherwise, their
@@ -831,7 +841,7 @@ val examine: 'a condstore_flag -> string -> 'a command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
-val append: string -> ?flags:flag list -> string -> unit command
+val append: string -> ?flags:Msg.flag list -> string -> unit command
 (** [append m flags id data] appends [data] as a new message to the end of the
     mailbox [m].  This argument should be in the format of an [RFC-2822]
     message.
@@ -854,11 +864,7 @@ val append: string -> ?flags:flag list -> string -> unit command
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-type _ uid_or_seq =
-  | UID : UID.t uid_or_seq
-  | Seq : Seq.t uid_or_seq
-
-val fetch: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> fetch_query list -> ('a * Msg.msg_att list) list command
+val fetch: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> Msg.Request.t list -> ('a * Msg.msg_att list) list command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
@@ -882,7 +888,7 @@ val fetch_full: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> ('
 
 (** {2 Store commands} *)
 
-val store_add_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> unit command
+val store_add_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -892,11 +898,11 @@ val store_add_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset 
     the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
     value is at least the passed value (requires the [CONDSTORE] extension). *)
 
-val store_set_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> ('a * Msg.msg_att list) list command
+val store_set_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
 (** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
     instead of adding to it. *)
 
-val store_remove_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> flag list -> ('a * Msg.msg_att list) list command
+val store_remove_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
@@ -913,9 +919,9 @@ val store_remove_labels: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> e
 (** [store_remove_labels] is like {!store_add_labels} but removes labels instead
     of adding them. *)
 
-val enable: Capability.capability list -> unit command
+val enable: Capability.capability list -> Capability.capability list command
 
-val authenticate: authenticator -> unit command
+val authenticate: Auth.authenticator -> unit command
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
     If the server supports the requested authentication mechanism, it performs
     an authentication protocol exchange to authenticate and identify the client.
@@ -934,46 +940,42 @@ val idle: unit -> unit command * (unit -> unit)
 
 (** {1 Running commands and receiving responses} *)
 
-type error =
-  | Incorrect_tag of string * string
-  (** The server response tag does not have a matching message tag.  The
-      connection should be closed. *)
+module Error : sig
+  type error =
+    | Incorrect_tag of string * string
+    (** The server response tag does not have a matching message tag.  The
+        connection should be closed. *)
 
-  | Decode_error of
-      [ `Expected_char of char
-      | `Expected_string of string
-      | `Unexpected_char of char
-      | `Unexpected_string of string
-      | `Illegal_char of char
-      | `Unexpected_eoi ] * string * int
-  (** Decoding error. It contains the reason, the curren tinput buffer and the
-      current position.  The connection should be closed after this.  In some
-      cases it might be possible to continue fater a decoding error, but this is
-      not yet implemented. *)
+    | Decode_error of string * int
+    (** Decoding error. It contains the reason, the curren tinput buffer and the
+        current position.  The connection should be closed after this.  In some
+        cases it might be possible to continue fater a decoding error, but this is
+        not yet implemented. *)
 
-  | Unexpected_cont
-  (** A continuation request '+' is received from the server at an unexpected
-      time.  The connection should be closed after seeing this error, as there is no
-      safe way to continue. *)
+    | Unexpected_cont
+    (** A continuation request '+' is received from the server at an unexpected
+        time.  The connection should be closed after seeing this error, as there is no
+        safe way to continue. *)
 
-  | Bad_greeting
-  (** The server did not send a valid greeting message.  The connection should
-      be closed. *)
+    | Bad_greeting
+    (** The server did not send a valid greeting message.  The connection should
+        be closed. *)
 
-  | Auth_error of string
-  (** An client-side SASL authentication error ocurred.  This error can only
-      appear when using the SASL-based {!authenticate} command.  The error is
-      communicated to the server and the server responds with a [BAD] response.
-      Thus, after receiving this error the client should pass [`Await] to {!run}
-      until [`Error `Bad] is received, and then take appropiate action. *)
+    | Auth_error of string
+    (** An client-side SASL authentication error ocurred.  This error can only
+        appear when using the SASL-based {!authenticate} command.  The error is
+        communicated to the server and the server responds with a [BAD] response.
+        Thus, after receiving this error the client should pass [`Await] to {!run}
+        until [`Error `Bad] is received, and then take appropiate action. *)
 
-  | Bad of Code.code * string
-  (** The server could not parse the request. *)
+    | Bad of Code.code * string
+    (** The server could not parse the request. *)
 
-  | No of Code.code * string
-  (** The server could not perform the requested action. *)
+    | No of Code.code * string
+    (** The server could not perform the requested action. *)
 
-val pp_error: Format.formatter -> error -> unit
+  val pp: Format.formatter -> error -> unit
+end
 
 (** {3 Connections}
 
@@ -984,7 +986,7 @@ type 'a progress
 
 type 'a result =
   | Ok of 'a
-  | Error of error
+  | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
 
