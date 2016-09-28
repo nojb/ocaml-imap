@@ -369,309 +369,6 @@ module MIME = struct
 end
 
 module E = struct
-  (* (\* Encoder *\) *)
-
-  (* type command_lexeme = *)
-  (*   [ command_ordinary *)
-  (*   | `Idle *)
-  (*   | `Authenticate of string ] *)
-
-  (* type encode = *)
-  (*   [ `Cmd of string * command_lexeme | `Idle_done | `Auth_step of string | `Auth_error ] *)
-
-  (* let pp_encode : _ -> [< encode] -> _ = fun ppf e -> match e with *)
-  (*   | `Cmd _ -> pp ppf "`Cmd" (\* FIXME *\) *)
-  (*   | `Idle_done -> pp ppf "`Idle_done" *)
-  (*   | `Auth_step _ -> pp ppf "`Auth_step" *)
-  (*   | `Auth_error -> pp ppf "`Auth_error" *)
-
-  (* type encoder = *)
-  (*   { *)
-  (*     mutable o : string; *)
-  (*     mutable o_pos : int; *)
-  (*   } *)
-
-  (* let flush k e = *)
-  (*   if e.o_pos > 0 then *)
-  (*     let rec k1 n = *)
-  (*       if n < e.o_pos then *)
-  (*         `Partial (e.o, n, e.o_pos - n, fun m -> k1 (n + m)) *)
-  (*       else *)
-  (*         (e.o_pos <- 0; k e) *)
-  (*     in *)
-  (*     k1 0 *)
-  (*   else *)
-  (*     k e *)
-
-  (* let wait_for_cont k e = *)
-  (*   `Wait_for_cont k *)
-
-  (* let rec writes s k e = *)
-  (*   let o_len = String.length e.o in *)
-  (*   let rec loop j l e = *)
-  (*     let rem = o_len - e.o_pos in *)
-  (*     let len = if l > rem then rem else l in *)
-  (*     String.unsafe_blit s j e.o e.o_pos len; *)
-  (*     e.o_pos <- e.o_pos + len; *)
-  (*     if len < l then flush (loop (j + len) (l - len)) e else k e *)
-  (*   in *)
-  (*   loop 0 (String.length s) e *)
-
-  (* let w s k e = writes s k e *)
-
-  (* let classify_string str = *)
-  (*   let literal = function *)
-  (*     | '\x80' .. '\xFF' | '\r' | '\n' -> true *)
-  (*     | _ -> false *)
-  (*   in *)
-  (*   let quotes = function *)
-  (*     | '(' | ')' | '{' | ' ' | '\x00' .. '\x1F' | '\x7F' *)
-  (*     | '%' | '*' | '\"' | '\\' -> true *)
-  (*     | _ -> false *)
-  (*   in *)
-  (*   let needs f s = *)
-  (*     let rec loop i = *)
-  (*       if i >= String.length s then false else *)
-  (*       if f s.[i] then true else *)
-  (*         loop (i+1) *)
-  (*     in *)
-  (*     loop 0 *)
-  (*   in *)
-  (*   if str = "" then `Quoted else *)
-  (*   if needs literal str then `Literal else *)
-  (*   if needs quotes str then `Quoted else *)
-  (*     `Raw *)
-
-  (* let w_literal x k e = *)
-  (*   w (Printf.sprintf "{%d}\r\n" (String.length x)) (flush (wait_for_cont (w x k))) e *)
-
-  (* let w_string x k e = match classify_string x with *)
-  (*   | `Raw     -> w x k e *)
-  (*   | `Quoted  -> w "\"" (w x (w "\"" k)) e *)
-  (*   | `Literal -> w_literal x k e *)
-
-  (* let w_sep ?(sep = ' ') f l k e = *)
-  (*   let rec loop xs e = match xs with *)
-  (*     | [] -> k e *)
-  (*     | x :: [] -> f x k e *)
-  (*     | x :: xs -> f x (w (String.make 1 sep) (loop xs)) e *)
-  (*   in *)
-  (*   loop l e *)
-
-  (* let (&) x y k e = x (w " " (y k)) e *)
-  (* let ($) x y k e = x (y k) e *)
-
-  (* let w_crlf k e = *)
-  (*   w "\r\n" k e *)
-
-  (* let w_status_att = function *)
-  (*   | `Messages -> w "MESSAGES" *)
-  (*   | `Recent -> w "RECENT" *)
-  (*   | `Uid_next -> w "UIDNEXT" *)
-  (*   | `Uid_validity -> w "UIDVALIDITY" *)
-  (*   | `Unseen -> w "UNSEEN" *)
-  (*   | `Highest_modseq -> w "HIGHESTMODSEQ" *)
-
-  (* let w_int n = w (string_of_int n) *)
-  (* let w_uint32 m = w (Uint32.to_string m) *)
-  (* let w_uint64 m = w (Uint64.to_string m) *)
-
-  (* let w_label l = *)
-  (*   w_string (Mutf7.encode l) *)
-
-  (* let w_list f l k e = *)
-  (*   let rec loop xs e = match xs with *)
-  (*     | [] -> w ")" k e *)
-  (*     | [x] -> f x (w ")" k) e *)
-  (*     | x :: xs -> f x (w " " (loop xs)) e *)
-  (*   in *)
-  (*   w "(" (loop l) e *)
-
-  (* let w_eset s k e = *)
-  (*   let f = function *)
-  (*     | (lo, Some hi) when lo = hi -> w_uint32 lo *)
-  (*     | (lo, Some hi) -> w_uint32 lo $ w ":" $ w_uint32 hi *)
-  (*     | (lo, None) -> w_uint32 lo $ w ":*" *)
-  (*   in *)
-  (*   w_sep ~sep:',' f s k e *)
-
-  (* let w_mailbox s = *)
-  (*   w_string (Mutf7.encode s) *)
-
-  (* let months = *)
-  (*   [| "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun"; *)
-  (*      "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec" |] *)
-
-  (* let w_date d = *)
-  (*   w (Printf.sprintf "%d-%s-%4d" d.day months.(d.month) d.year) *)
-
-  (* let w_p f x = w "(" $ f x $ w ")" *)
-
-  (* let rec w_search_key : [< search_key] -> _ = function *)
-  (*   | `Seq s -> w_eset s *)
-  (*   | `All -> w "ALL" *)
-  (*   | `Answered -> w "ANSWERED" *)
-  (*   | `Bcc s -> w "BCC" & w_string s *)
-  (*   | `Before d -> w "BEFORE" & w_date d *)
-  (*   | `Body s -> w "BODY" & w_string s *)
-  (*   | `Cc s -> w "CC" & w_string s *)
-  (*   | `Deleted -> w "DELETED" *)
-  (*   | `Draft -> w "DRAFT" *)
-  (*   | `Flagged -> w "FLAGGED" *)
-  (*   | `From s -> w "FROM" & w_string s *)
-  (*   | `Header (s1, s2) -> w "HEADER" & w_string s1 & w_string s2 *)
-  (*   | `Keyword s -> w "KEYWORD" & w_string s *)
-  (*   | `Larger n -> w "LARGER" & w_int n *)
-  (*   | `New -> w "NEW" *)
-  (*   | `Old -> w "OLD" *)
-  (*   | `On d -> w "ON" & w_date d *)
-  (*   | `Recent -> w "RECENT" *)
-  (*   | `Seen -> w "SEEN" *)
-  (*   | `Sent_before d -> w "SENTBEFORE" & w_date d *)
-  (*   | `Sent_on d -> w "SENT_ON" & w_date d *)
-  (*   | `Sent_since d -> w "SENTSINCE" & w_date d *)
-  (*   | `Since d -> w "SINCE" & w_date d *)
-  (*   | `Smaller n -> w "SMALLER" & w_int n *)
-  (*   | `Subject s -> w "SUBJECT" & w_string s *)
-  (*   | `Text s -> w "TEXT" & w_string s *)
-  (*   | `To s -> w "TO" & w_string s *)
-  (*   | `Uid s -> w "UID" & w_eset s *)
-  (*   | `Unanswered -> w "UNANSWERED" *)
-  (*   | `Undeleted -> w "UNDELETED" *)
-  (*   | `Undraft -> w "UNDRAFT" *)
-  (*   | `Unflagged -> w "UNFLAGGED" *)
-  (*   | `Unkeyword s -> w "UNKEYWORD" & w_string s *)
-  (*   | `Unseen -> w "UNSEEN" *)
-  (*   | `Not sk -> w "NOT" & w_p w_search_key sk *)
-  (*   | `Or (sk1, sk2) -> w "OR" & w_p w_search_key sk1 & w_p w_search_key sk2 *)
-  (*   | `And (sk1, sk2) -> w_p w_search_key sk1 & w_p w_search_key sk2 *)
-  (*   | `Modseq m -> w "MODSEQ" & w_uint64 m *)
-  (*   | `Gm_raw s -> w "X-GM-RAW" & w_string s *)
-  (*   | `Gm_msgid m -> w "X-GM-MSGID" & w_uint64 m *)
-  (*   | `Gm_thrid m -> w "X-GM-THRID" & w_uint64 m *)
-  (*   | `Gm_labels l -> w "X-GM-LABELS" & w_list w_string l *)
-
-  (* let rec w_section : [< section] -> _ = function *)
-  (*   | `Header -> w "HEADER" *)
-  (*   | `Header_fields l -> w "HEADER.FIELDS" & w_list w l *)
-  (*   | `Header_fields_not l -> w "HEADER.FIELDS.NOT" & w_list w l *)
-  (*   | `Text -> w "TEXT" *)
-  (*   | `Mime -> w "MIME" *)
-  (*   | `Part (n, s) -> w_int n $ w "." $ w_section s *)
-  (*   | `All -> w "" *)
-
-  (* let w_fetch_att : [< fetch_query] -> _ = function *)
-  (*   | `Envelope -> w "ENVELOPE" *)
-  (*   | `Internal_date -> w "INTERNALDATE" *)
-  (*   | `Rfc822_header -> w "RFC822.HEADER" *)
-  (*   | `Rfc822_text -> w "RFC822.TEXT" *)
-  (*   | `Rfc822_size -> w "RFC822.SIZE" *)
-  (*   | `Rfc822 -> w "RFC822" *)
-  (*   | `Body -> w "BODY" *)
-  (*   | `Body_section (peek, s, partial) -> *)
-  (*       let cmd = match peek with `Peek -> "BODY.PEEK" | `Look -> "BODY" in *)
-  (*       let partial = match partial with *)
-  (*         | None -> w "" *)
-  (*         | Some (n, l) -> w "<" $ w_int n $ w "." $ w_int l $ w ">" *)
-  (*       in *)
-  (*       w cmd $ w "[" $ w_section s $ w "]" $ partial *)
-  (*   | `Body_structure -> w "BODYSTRUCTURE" *)
-  (*   | `Uid -> w "UID" *)
-  (*   | `Flags -> w "FLAGS" *)
-
-  (* let w_flag = function *)
-  (*   | `Answered -> w "\\Answered" *)
-  (*   | `Flagged -> w "\\Flagged" *)
-  (*   | `Deleted -> w "\\Deleted" *)
-  (*   | `Seen -> w "\\Seen" *)
-  (*   | `Draft -> w "\\Draft" *)
-  (*   | `Keyword s -> w s *)
-  (*   | `Extension s -> w ("\\" ^ s) *)
-
-  (* let w_tagged : [< command_lexeme] -> _ = function *)
-  (*   | `Capability -> w "CAPABILITY" *)
-  (*   | `Login (u, p) -> w "LOGIN" & w_string u & w_string p *)
-  (*   | `Logout -> w "LOGOUT" *)
-  (*   | `Noop -> w "NOOP" *)
-  (*   | `Subscribe m -> w "SUBSCRIBE" & w_mailbox m *)
-  (*   | `Unsubscribe m -> w "UNSUBSCRIBE" & w_mailbox m *)
-  (*   | `List (m, s) -> w "LIST" & w_mailbox m & w_string s *)
-  (*   | `Lsub (m, s) -> w "LSUB" & w_mailbox m & w_string s *)
-  (*   | `Select (`Plain, m) -> w "SELECT" & w_mailbox m *)
-  (*   | `Select (`Condstore, m) -> w "SELECT" & w_mailbox m & w "(CONDSTORE)" *)
-  (*   | `Examine (`Plain, m) -> w "EXAMINE" & w_mailbox m *)
-  (*   | `Examine (`Condstore, m) -> w "EXAMINE" & w_mailbox m & w "(CONDSTORE)" *)
-  (*   | `Append (m, flags, internaldate, data) -> *)
-  (*       let flags = match flags with None -> w "" | Some f -> w " " $ w_list w_flag f in *)
-  (*       (\* TODO internaldate *\) *)
-  (*       w "APPEND" & w_mailbox m $ flags & w_literal data *)
-  (*   | `Create m -> w "CREATE" & w_mailbox m *)
-  (*   | `Delete m -> w "DELETE" & w_mailbox m *)
-  (*   | `Rename (m1, m2) -> w "RENAME" & w_mailbox m1 & w_mailbox m2 *)
-  (*   | `Status (m, att) -> w "STATUS" & w_mailbox m & w_list w_status_att att *)
-  (*   | `Close -> w "CLOSE" *)
-  (*   | `Check -> w "CHECK" *)
-  (*   | `Expunge -> w "EXPUNGE" *)
-  (*   | `Fetch (uid, set, att, changed_since) -> *)
-  (*       let changed_since = match changed_since with *)
-  (*         | `All -> w "" *)
-  (*         | `Changed_since m -> *)
-  (*             w " (" $ w "CHANGEDSINCE" & w_uint64 m $ w ")" *)
-  (*         | `Changed_since_vanished m -> *)
-  (*             w " (" $ w "CHANGEDSINCE" & w_uint64 m & w "VANISHED" $ w ")" *)
-  (*       in *)
-  (*       let cmd = match uid with `Seq -> "FETCH" | `Uid -> "UID FETCH" in *)
-  (*       let att = match att with *)
-  (*         | `Fast -> w "FAST" *)
-  (*         | `Full -> w "FULL" *)
-  (*         | `All -> w "ALL" *)
-  (*         | `List [x] -> w_fetch_att x *)
-  (*         | `List l -> w_list w_fetch_att l *)
-  (*       in *)
-  (*       w cmd & w_eset set & att $ changed_since *)
-  (*   | `Store (uid, set, silent, unchanged_since, mode, att) -> *)
-  (*       let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in *)
-  (*       let silent = match silent with `Silent -> ".SILENT" | `Loud -> "" in *)
-  (*       let base = match att with *)
-  (*         | `Flags _ -> mode ^ "FLAGS" ^ silent *)
-  (*         | `Labels _ -> mode ^ "X-GM-LABELS" ^ silent *)
-  (*       in *)
-  (*       let att = match att with *)
-  (*         | `Flags flags -> w_list w_flag flags *)
-  (*         | `Labels labels -> w_list w_label labels *)
-  (*       in *)
-  (*       let unchanged_since = match unchanged_since with *)
-  (*         | `All -> w "" *)
-  (*         | `Unchanged_since m -> w " (" $ w "UNCHANGEDSINCE" & w_uint64 m $ w ")" *)
-  (*       in *)
-  (*       let cmd = match uid with `Seq -> "STORE" | `Uid -> "UID STORE" in *)
-  (*       w cmd & w_eset set $ unchanged_since & w base & att *)
-  (*   | `Copy (uid, set, m) -> *)
-  (*       let cmd = match uid with `Seq -> "COPY" | `Uid -> "UID COPY" in *)
-  (*       w cmd & w_eset set & w_mailbox m *)
-  (*   | `Search (uid, sk) -> *)
-  (*       let cmd = match uid with `Seq -> "SEARCH" | `Uid -> "UID SEARCH" in *)
-  (*       w cmd & w_search_key sk *)
-  (*   | `Enable c -> *)
-  (*       w "ENABLE" & w_sep (fun x -> w (string_of_capability x)) c *)
-  (*   | `Idle -> w "IDLE" *)
-  (*   | `Authenticate name -> *)
-  (*       w "AUTHENTICATE" & w name *)
-
-  (* let ret _ = `Ok *)
-
-  (* let rec encode e = function *)
-  (*   | `Cmd (tag, x) -> w tag (w " " (w_tagged x (w_crlf (flush ret)))) e *)
-  (*   | `Idle_done -> w "DONE" (w_crlf (flush ret)) e *)
-  (*   | `Auth_step data -> w data (w_crlf (flush ret)) e *)
-  (*   | `Auth_error -> w "*" (w_crlf (flush ret)) e *)
-
-  (* let encoder () = *)
-  (*   { *)
-  (*     o = Bytes.create 4096; *)
-  (*     o_pos = 0; *)
-  (*   } *)
-
   type rope =
     | Cat of rope * rope
     | Flush
@@ -797,7 +494,7 @@ module Msg = struct
     | `Keyword of string
     | `Extension of string ]
 
-  let flag : flag -> _ = function
+  let flag = function
     | `Answered -> E.raw "\\Answered"
     | `Flagged -> E.raw "\\Flagged"
     | `Deleted -> E.raw "\\Deleted"
@@ -840,6 +537,15 @@ module Msg = struct
 
     type t = rope
 
+    let rec section = function
+      | HEADER -> raw "HEADER"
+      | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ list str l
+      | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ list str l
+      | TEXT -> raw "TEXT"
+      | MIME -> raw "MIME"
+      | Part (n, s) -> Cat (int n, Cat (str ".", section s))
+      | All -> empty
+
     let envelope = raw "ENVELOPE"
     let internaldate = raw "INTERNALDATE"
     let rfc822_header = raw "RFC822.HEADER"
@@ -847,15 +553,14 @@ module Msg = struct
     let rfc822_size = raw "RFC822.SIZE"
     let rfc822 = raw "RFC822"
     let body = raw "BODY"
-    let body_section mode sec partial =
-      assert false
-    (* let cmd = match peek with `Peek -> str "BODY.PEEK" | `Look -> str "BODY" in *)
-    (* let partial = *)
-    (*   match partial with *)
-    (*   | None -> w "" *)
-    (*   | Some (n, l) -> w "<" $ w_int n $ w "." $ w_int l $ w ">" *)
-    (* in *)
-    (* cmd $ w "[" $ w_section s $ w "]" $ partial *)
+    let body_section peek s partial =
+      let cmd = match peek with `Peek -> "BODY.PEEK" | `Look -> "BODY" in
+      let partial =
+        match partial with
+        | None -> empty
+        | Some (n, l) -> raw (Printf.sprintf "<%d.%d>" n l)
+      in
+      Cat (raw cmd, Cat (raw "[", Cat (section s, Cat (raw "]", partial))))
     let bodystructure = raw "BODYSTRUCTURE"
     let uid = raw "UID"
     let flags = raw "FLAGS"
