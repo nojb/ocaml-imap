@@ -289,6 +289,9 @@ module Envelope = struct
     fprintf ppf "@[<hv 2>(address@ (name %S)@ (addr %S)@ (mailbox %S)@ (host %S))@]"
       x.ad_name x.ad_adl x.ad_mailbox x.ad_host
 
+  let pp_address_list =
+    pp_print_list ~pp_sep:pp_print_space pp_address
+
   let pp_envelope ppf env =
     fprintf ppf
       "@[<hv 2>(envelope@ (date %S)@ (subject %S)@ \
@@ -297,20 +300,17 @@ module Envelope = struct
        (message-id %S))@]"
       env.env_date
       env.env_subject
-      (pp_list pp_address) env.env_from
-      (pp_list pp_address) env.env_sender
-      (pp_list pp_address) env.env_reply_to
-      (pp_list pp_address) env.env_to
-      (pp_list pp_address) env.env_cc
-      (pp_list pp_address) env.env_bcc
+      pp_address_list env.env_from
+      pp_address_list env.env_sender
+      pp_address_list env.env_reply_to
+      pp_address_list env.env_to
+      pp_address_list env.env_cc
+      pp_address_list env.env_bcc
       env.env_in_reply_to
       env.env_message_id
 end
 
-module Response = struct
-  type set =
-    (uint32 * uint32) list
-
+module MIME = struct
   type fields =
     {
       fld_params : (string * string) list;
@@ -328,10 +328,10 @@ module Response = struct
 
   type part_extension =
     {
-      ext_dsp : (string * (string * string) list) option;
-      ext_lang : string list;
-      ext_loc : string option;
-      ext_ext : body_extension list;
+      ext_dsp: (string * (string * string) list) option;
+      ext_lang: string list;
+      ext_loc: string option;
+      ext_ext: body_extension list;
     }
 
   (* type mime_sext = *)
@@ -346,6 +346,33 @@ module Response = struct
     | `Basic of string * string * fields
     | `Multipart of mime list * string ]
 
+  open Format
+
+  let pp_param ppf (k, v) =
+    fprintf ppf "(%S@ %S)" k v
+
+  let pp_fields ppf f =
+    fprintf ppf "@[<hv 2>(fields@ @[<hv 2>(params@ %a)@]@ (id %a)@ (desc %a)@ (enc %S)@ (octets %d)@]"
+      (pp_print_list ~pp_sep:pp_print_space pp_param) f.fld_params (pp_opt pp_string) f.fld_id
+      (pp_opt pp_string) f.fld_desc f.fld_enc
+      f.fld_octets
+
+  let rec pp_mime ppf = function
+    | `Text (m, f, i) ->
+        fprintf ppf "@[<2>(text@ %S@ %a@ %d)@]" m pp_fields f i
+    | `Message (f, e, b, i) ->
+        fprintf ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]"
+          pp_fields f Envelope.pp_envelope e pp_mime b i
+    | `Basic (m, t, f) ->
+        fprintf ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
+    | `Multipart (b, m) ->
+        fprintf ppf "@[<2>(multipart@ %a@ %S)@]" (pp_list pp_mime) b m
+end
+
+module Msg = struct
+  type set =
+    (uint32 * uint32) list
+
   type section =
     | HEADER
     | HEADER_FIELDS of string list
@@ -355,124 +382,154 @@ module Response = struct
     | Part of int * section
     | All
 
-  module Msg = struct
-    type msg_att =
-      | FLAGS of [ flag | `Recent ] list
-      | ENVELOPE of Envelope.envelope
-      | INTERNALDATE of date * time
-      | RFC822 of string option
-      | RFC822_HEADER of string option
-      | RFC822_TEXT of string option
-      | RFC822_SIZE of int
-      | BODY of mime
-      | BODYSTRUCTURE of mime
-      | BODY_SECTION of section * int option * string option
-      | UID of uint32
-      | MODSEQ of uint64
-      | X_GM_MSGID of uint64
-      | X_GM_THRID of uint64
-      | X_GM_LABELS of string list
+  type msg_att =
+    | FLAGS of [ flag | `Recent ] list
+    | ENVELOPE of Envelope.envelope
+    | INTERNALDATE of date * time
+    | RFC822 of string option
+    | RFC822_HEADER of string option
+    | RFC822_TEXT of string option
+    | RFC822_SIZE of int
+    | BODY of MIME.mime
+    | BODYSTRUCTURE of MIME.mime
+    | BODY_SECTION of section * int option * string option
+    | UID of uint32
+    | MODSEQ of uint64
+    | X_GM_MSGID of uint64
+    | X_GM_THRID of uint64
+    | X_GM_LABELS of string list
 
-    open Format
+  open Format
 
-    let pp ppf = function
-      | FLAGS r ->
-          fprintf ppf "@[<2>(flags %a)@]"
-            (pp_print_list ~pp_sep:pp_print_space pp_flag_fetch) r
-      | ENVELOPE e -> Envelope.pp_envelope ppf e
-      | INTERNALDATE (d, t) ->
-          fprintf ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
-      | RFC822 s -> fprintf ppf "(rfc822 %a)" (pp_opt pp_qstr) s
-      | RFC822_HEADER s -> fprintf ppf "(rfc822-header %a)" (pp_opt pp_qstr) s
-      | RFC822_TEXT s -> fprintf ppf "(rfc822-text %a)" (pp_opt pp_qstr) s
-      | RFC822_SIZE n -> fprintf ppf "(rfc822-size %i)" n
-      | BODY b -> fprintf ppf "@[<2>(body@ %a)@]" pp_mime b
-      | BODYSTRUCTURE b -> fprintf ppf "@[<2>(bodystructure@ %a)@]" pp_mime b
-      | BODY_SECTION (s, n, x) ->
-          fprintf ppf "@[<2>(body-section@ %a@ %a@ %a)@]"
-            pp_section s (pp_opt Format.pp_print_int) n (pp_opt pp_qstr) x
-      | UID n -> fprintf ppf "(uid %a)" Uint32.printer n
-      | MODSEQ m -> fprintf ppf "(modseq %a)" Uint64.printer m
-      | X_GM_MSGID m -> fprintf ppf "(gm-msgid %a)" Uint64.printer m
-      | X_GM_THRID m -> fprintf ppf "(gm-thrid %a)" Uint64.printer m
-      | X_GM_LABELS l ->
-          fprintf ppf "@[<2>(gm-labels@ %a)@]" (pp_list pp_qstr) l
-  end
+  let pp_set ppf s =
+    let rg ppf (x, y) = pp ppf "%a-%a" Uint32.printer x Uint32.printer y in
+    pp_list rg ppf s
 
-  module Code = struct
-    type code =
-      | ALERT
-      | BADCHARSET of string list
-      | CAPABILITY of Capability.capability list
-      | PARSE
-      | PERMANENTFLAGS of [ flag | `All ] list
-      | READ_ONLY
-      | READ_WRITE
-      | TRYCREATE
-      | UIDNEXT of uint32
-      | UIDVALIDITY of uint32
-      | UNSEEN of uint32
-      | OTHER of string * string option
-      | CLOSED
-      | HIGHESTMODSEQ of uint64
-      | NOMODSEQ
-      | MODIFIED of (uint32 * uint32) list
-      | APPENDUID of uint32 * uint32
-      | COPYUID of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
-      | UIDNOTSTICKY
-      | COMPRESSIONACTIVE
-      | USEATTR
+  let pp_flag ppf = function
+    | `Answered    -> fprintf ppf "answered"
+    | `Flagged     -> fprintf ppf "flagged"
+    | `Deleted     -> fprintf ppf "deleted"
+    | `Seen        -> fprintf ppf "seen"
+    | `Draft       -> fprintf ppf "draft"
+    | `Keyword k   -> fprintf ppf "(keyword %S)" k
+    | `Extension k -> fprintf ppf "(extension %S)" k
 
-    open Format
+  let pp_flag_perm ppf = function
+    | `All       -> fprintf ppf "all"
+    | #flag as f -> pp_flag ppf f
 
-    let pp ppf = function
-      | ALERT ->
-          fprintf ppf "alert"
-      | BADCHARSET cs ->
-          fprintf ppf "@[<2>(badcharset %a)@]"
-            (pp_print_list ~pp_sep:pp_print_space pp_print_string) cs
-      | CAPABILITY caps ->
-          fprintf ppf "@[<2>(capability %a)@]"
-            (pp_print_list ~pp_sep:pp_print_space Capability.pp) caps
-      | PARSE ->
-          fprintf ppf "parse"
-      | PERMANENTFLAGS fl ->
-          fprintf ppf "@[<2>(permanent-flags %a)@]"
-            (pp_print_list ~pp_sep:pp_print_space pp_flag_perm) fl
-      | READ_ONLY ->
-          fprintf ppf "read-only"
-      | READ_WRITE ->
-          fprintf ppf "read-write"
-      | TRYCREATE ->
-          fprintf ppf "try-create"
-      | UIDNEXT uid ->
-          fprintf ppf "(uid-next %a)" Uint32.printer uid
-      | UIDVALIDITY uid ->
-          fprintf ppf "(uid-validity %a)" Uint32.printer uid
-      | UNSEEN n ->
-          fprintf ppf "(unseen %a)" Uint32.printer n
-      | OTHER (k, v) ->
-          fprintf ppf "(other@ %S@ %a)" k (pp_opt pp_qstr) v
-      | CLOSED ->
-          fprintf ppf "closed"
-      | HIGHESTMODSEQ m ->
-          fprintf ppf "(highest-modseq %a)" Uint64.printer m
-      | NOMODSEQ ->
-          fprintf ppf "no-modseq"
-      | MODIFIED s ->
-          fprintf ppf "(modified@ %a)" pp_set s
-      | APPENDUID (n, m) ->
-          fprintf ppf "(append-uid %a@ %a)" Uint32.printer n Uint32.printer m
-      | COPYUID (n, s1, s2) ->
-          fprintf ppf "(copy-uid %a@ %a@ %a)" Uint32.printer n pp_set s1 pp_set s2
-      | UIDNOTSTICKY ->
-          fprintf ppf "uid-not-sticky"
-      | COMPRESSIONACTIVE ->
-          fprintf ppf "compression-active"
-      | USEATTR ->
-          fprintf ppf "use-attr"
-  end
+  let pp_flag_fetch ppf = function
+    | `Recent    -> fprintf ppf "recent"
+    | #flag as f -> pp_flag ppf f
 
+  let rec pp_section ppf = function
+    | HEADER -> pp ppf "header"
+    | HEADER_FIELDS l -> pp ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
+    | HEADER_FIELDS_NOT l -> pp ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
+    | TEXT -> pp ppf "text"
+    | MIME -> pp ppf "mime"
+    | Part (n, s) -> pp ppf "@[<2>(part %d@ %a)@]" n pp_section s
+    | All -> pp ppf "all"
+
+  let pp ppf = function
+    | FLAGS r ->
+        fprintf ppf "@[<2>(flags %a)@]"
+          (pp_print_list ~pp_sep:pp_print_space pp_flag_fetch) r
+    | ENVELOPE e -> Envelope.pp_envelope ppf e
+    | INTERNALDATE (d, t) ->
+        fprintf ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
+    | RFC822 s -> fprintf ppf "(rfc822 %a)" (pp_opt pp_qstr) s
+    | RFC822_HEADER s -> fprintf ppf "(rfc822-header %a)" (pp_opt pp_qstr) s
+    | RFC822_TEXT s -> fprintf ppf "(rfc822-text %a)" (pp_opt pp_qstr) s
+    | RFC822_SIZE n -> fprintf ppf "(rfc822-size %i)" n
+    | BODY b -> fprintf ppf "@[<2>(body@ %a)@]" pp_mime b
+    | BODYSTRUCTURE b -> fprintf ppf "@[<2>(bodystructure@ %a)@]" pp_mime b
+    | BODY_SECTION (s, n, x) ->
+        fprintf ppf "@[<2>(body-section@ %a@ %a@ %a)@]"
+          pp_section s (pp_opt Format.pp_print_int) n (pp_opt pp_qstr) x
+    | UID n -> fprintf ppf "(uid %a)" Uint32.printer n
+    | MODSEQ m -> fprintf ppf "(modseq %a)" Uint64.printer m
+    | X_GM_MSGID m -> fprintf ppf "(gm-msgid %a)" Uint64.printer m
+    | X_GM_THRID m -> fprintf ppf "(gm-thrid %a)" Uint64.printer m
+    | X_GM_LABELS l ->
+        fprintf ppf "@[<2>(gm-labels@ %a)@]" (pp_list pp_qstr) l
+end
+
+module Code = struct
+  type code =
+    | ALERT
+    | BADCHARSET of string list
+    | CAPABILITY of Capability.capability list
+    | PARSE
+    | PERMANENTFLAGS of [ flag | `All ] list
+    | READ_ONLY
+    | READ_WRITE
+    | TRYCREATE
+    | UIDNEXT of uint32
+    | UIDVALIDITY of uint32
+    | UNSEEN of uint32
+    | OTHER of string * string option
+    | CLOSED
+    | HIGHESTMODSEQ of uint64
+    | NOMODSEQ
+    | MODIFIED of (uint32 * uint32) list
+    | APPENDUID of uint32 * uint32
+    | COPYUID of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
+    | UIDNOTSTICKY
+    | COMPRESSIONACTIVE
+    | USEATTR
+
+  open Format
+
+  let pp ppf = function
+    | ALERT ->
+        fprintf ppf "alert"
+    | BADCHARSET cs ->
+        fprintf ppf "@[<2>(badcharset %a)@]"
+          (pp_print_list ~pp_sep:pp_print_space pp_print_string) cs
+    | CAPABILITY caps ->
+        fprintf ppf "@[<2>(capability %a)@]"
+          (pp_print_list ~pp_sep:pp_print_space Capability.pp) caps
+    | PARSE ->
+        fprintf ppf "parse"
+    | PERMANENTFLAGS fl ->
+        fprintf ppf "@[<2>(permanent-flags %a)@]"
+          (pp_print_list ~pp_sep:pp_print_space pp_flag_perm) fl
+    | READ_ONLY ->
+        fprintf ppf "read-only"
+    | READ_WRITE ->
+        fprintf ppf "read-write"
+    | TRYCREATE ->
+        fprintf ppf "try-create"
+    | UIDNEXT uid ->
+        fprintf ppf "(uid-next %a)" Uint32.printer uid
+    | UIDVALIDITY uid ->
+        fprintf ppf "(uid-validity %a)" Uint32.printer uid
+    | UNSEEN n ->
+        fprintf ppf "(unseen %a)" Uint32.printer n
+    | OTHER (k, v) ->
+        fprintf ppf "(other@ %S@ %a)" k (pp_opt pp_qstr) v
+    | CLOSED ->
+        fprintf ppf "closed"
+    | HIGHESTMODSEQ m ->
+        fprintf ppf "(highest-modseq %a)" Uint64.printer m
+    | NOMODSEQ ->
+        fprintf ppf "no-modseq"
+    | MODIFIED s ->
+        fprintf ppf "(modified@ %a)" pp_set s
+    | APPENDUID (n, m) ->
+        fprintf ppf "(append-uid %a@ %a)" Uint32.printer n Uint32.printer m
+    | COPYUID (n, s1, s2) ->
+        fprintf ppf "(copy-uid %a@ %a@ %a)" Uint32.printer n pp_set s1 pp_set s2
+    | UIDNOTSTICKY ->
+        fprintf ppf "uid-not-sticky"
+    | COMPRESSIONACTIVE ->
+        fprintf ppf "compression-active"
+    | USEATTR ->
+        fprintf ppf "use-attr"
+end
+
+module Mailbox = struct
   type mbx_flag =
     [ `Noselect
     | `Marked
@@ -497,6 +554,33 @@ module Response = struct
     | UNSEEN of uint32
     | HIGHESTMODSEQ of uint64
 
+  let pp_mbx_flag : _ -> [< mbx_flag] -> _ = fun ppf f ->
+    match f with
+    | `Noselect      -> pp ppf "noselect"
+    | `Marked        -> pp ppf "marked"
+    | `Unmarked      -> pp ppf "unmarked"
+    | `Noinferiors   -> pp ppf "noinferiors"
+    | `HasChildren   -> pp ppf "has-children"
+    | `HasNoChildren -> pp ppf "has-no-children"
+    | `All           -> pp ppf "all"
+    | `Archive       -> pp ppf "archive"
+    | `Drafts        -> pp ppf "drafts"
+    | `Flagged       -> pp ppf "flagged"
+    | `Junk          -> pp ppf "junk"
+    | `Sent          -> pp ppf "sent"
+    | `Trash         -> pp ppf "trash"
+    | `Extension s   -> pp ppf "(extension %s)" s
+
+  let pp_mbx_status ppf = function
+    | MESSAGES n       -> pp ppf "(messages %i)" n
+    | RECENT n         -> pp ppf "(recent %i)" n
+    | UIDNEXT uid     -> pp ppf "(uid-next %a)" Uint32.printer uid
+    | UIDVALIDITY uid -> pp ppf "(uid-validity %a)" Uint32.printer uid
+    | UNSEEN n         -> pp ppf "(unseen %a)" Uint32.printer n
+    | HIGHESTMODSEQ m -> pp ppf "(highest-modseq %a)" Uint64.printer m
+end
+
+module Response = struct
   type state =
     | OK of Code.code option * string
     | NO of Code.code option * string
@@ -538,62 +622,13 @@ module Response = struct
   let pp_qstr ppf s = pp ppf "%S" s
   let pp_char ppf c = pp ppf "%C" c
 
-  let pp_flag ppf = function
-    | `Answered    -> pp ppf "answered"
-    | `Flagged     -> pp ppf "flagged"
-    | `Deleted     -> pp ppf "deleted"
-    | `Seen        -> pp ppf "seen"
-    | `Draft       -> pp ppf "draft"
-    | `Keyword k   -> pp ppf "(keyword %S)" k
-    | `Extension k -> pp ppf "(extension %S)" k
-
-  let pp_flag_perm ppf = function
-    | `All       -> pp ppf "all"
-    | #flag as f -> pp_flag ppf f
-
-  let pp_flag_fetch ppf = function
-    | `Recent    -> pp ppf "recent"
-    | #flag as f -> pp_flag ppf f
-
   let pp_opt f ppf = function
     | None   -> pp ppf "nil"
     | Some c -> pp ppf "%a" f c
 
-  let pp_param ppf (k, v) =
-    pp ppf "(%S@ %S)" k v
-
-  let pp_fields ppf f =
-    pp ppf "@[<hv 2>(fields@ @[<hv 2>(params@ %a)@]@ (id %a)@ (desc %a)@ (enc %S)@ (octets %d)@]"
-      (pp_list pp_param) f.fld_params (pp_opt pp_string) f.fld_id (pp_opt pp_string) f.fld_desc f.fld_enc
-      f.fld_octets
-
-  let rec pp_mime ppf = function
-    | `Text (m, f, i) ->
-        pp ppf "@[<2>(text@ %S@ %a@ %d)@]" m pp_fields f i
-    | `Message (f, e, b, i) ->
-        pp ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]"
-          pp_fields f Envelope.pp_envelope e pp_mime b i
-    | `Basic (m, t, f) ->
-        pp ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
-    | `Multipart (b, m) ->
-        pp ppf "@[<2>(multipart@ %a@ %S)@]" (pp_list pp_mime) b m
-
-  let rec pp_section ppf = function
-    | HEADER -> pp ppf "header"
-    | HEADER_FIELDS l -> pp ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
-    | HEADER_FIELDS_NOT l -> pp ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
-    | TEXT -> pp ppf "text"
-    | MIME -> pp ppf "mime"
-    | Part (n, s) -> pp ppf "@[<2>(part %d@ %a)@]" n pp_section s
-    | All -> pp ppf "all"
-
   let pp_date_time ppf (d, t) =
     pp ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
       d.day d.month d.year t.hours t.minutes t.seconds t.zone
-
-  let pp_set ppf s =
-    let rg ppf (x, y) = pp ppf "%a-%a" Uint32.printer x Uint32.printer y in
-    pp_list rg ppf s
 
   let pp_option f ppf = function
     | Some x -> f ppf x
@@ -603,31 +638,6 @@ module Response = struct
     | OK (c, t)  -> pp ppf "@[<2>(ok@ %a@ %S)@]" (pp_option Code.pp) c t
     | NO (c, t)  -> pp ppf "@[<2>(no@ %a@ %S)@]" (pp_option Code.pp) c t
     | BAD (c, t) -> pp ppf "@[<2>(bad@ %a@ %S)@]" (pp_option Code.pp) c t
-
-  let pp_mbx_flag : _ -> [< mbx_flag] -> _ = fun ppf f ->
-    match f with
-    | `Noselect      -> pp ppf "noselect"
-    | `Marked        -> pp ppf "marked"
-    | `Unmarked      -> pp ppf "unmarked"
-    | `Noinferiors   -> pp ppf "noinferiors"
-    | `HasChildren   -> pp ppf "has-children"
-    | `HasNoChildren -> pp ppf "has-no-children"
-    | `All           -> pp ppf "all"
-    | `Archive       -> pp ppf "archive"
-    | `Drafts        -> pp ppf "drafts"
-    | `Flagged       -> pp ppf "flagged"
-    | `Junk          -> pp ppf "junk"
-    | `Sent          -> pp ppf "sent"
-    | `Trash         -> pp ppf "trash"
-    | `Extension s   -> pp ppf "(extension %s)" s
-
-  let pp_mbx_status ppf = function
-    | MESSAGES n       -> pp ppf "(messages %i)" n
-    | RECENT n         -> pp ppf "(recent %i)" n
-    | UIDNEXT uid     -> pp ppf "(uid-next %a)" Uint32.printer uid
-    | UIDVALIDITY uid -> pp ppf "(uid-validity %a)" Uint32.printer uid
-    | UNSEEN n         -> pp ppf "(unseen %a)" Uint32.printer n
-    | HIGHESTMODSEQ m -> pp ppf "(highest-modseq %a)" Uint64.printer m
 
   let pp_untagged ppf = function
     | State s ->
@@ -2233,29 +2243,15 @@ module Decoder = struct
     push "tag" (while1 is_tag_char)
 
   let response_tagged =
-    push "response-tagged" (pair ~sep:(char ' ') tag resp_cond_state)
+    push "response-tagged" (terminated (pair ~sep:(char ' ') tag resp_cond_state) crlf)
 
   let continue_req =
-    push "continue-req" (preceded (char '+') (sp (resp_text ||| base64)))
+    push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| base64))) crlf)
   (* space is optional CHECKME ! *)
 
   let rec response =
     let response_data d = Untagged (response_data d) in
     push "response" (continue_req ||| response_data ||| tagged_response)
-    let x =
-      match cur d with
-      | '+' ->
-          junkc d;
-          Cont (p_continue_req d)
-      | '*' ->
-          junkc d;
-          Untagged (p_untagged d)
-      | _ ->
-          let c, x = p_tagged d in
-          Tagged (c, x)
-    in
-    p_crlf d;
-    x
 
   let decode i =
     let d = {i; p = ref 0; c = []} in
