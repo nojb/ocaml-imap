@@ -454,154 +454,156 @@ end
     [[(1, Some 1); (2, Some 3); (4, None)]]. *)
 type eset = (uint32 * uint32 option) list
 
-(** Search keys. See {!search} command. *)
-type search_key =
-  [  `Seq of eset
+module Search : sig
+  (** Search keys. See {!search} command. *)
+  type key
+
+  val all: key
+  (** All messages in the mailbox; the default initial key for ANDing. *)
+
+  val seq: eset -> key
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
 
-  | `All
-  (** All messages in the mailbox; the default initial key for ANDing. *)
-
-  | `Answered
+  val answered: key
   (** Messages with the [`Answered] flag set. *)
 
-  | `Bcc of string
+  val bcc: string -> key
   (** Messages that contain the specified string in the envelope structure's
       "BCC" field. *)
 
-  | `Before of date
+  val before: date -> key
   (** Messages whose internal date (disregarding time and timezone) is earlier
       than the specified date. *)
 
-  | `Body of string
+  val body: string -> key
   (** Messages that contain the specified string in the body of the message. *)
 
-  | `Cc of string
+  val cc: string -> key
   (** Messages that contain the specified string in the envelope structure's
       "CC" field. *)
 
-  | `Deleted
+  val deleted: key
   (** Messages with the [`Deleted] {!flag} set. *)
 
-  | `Draft
+  val draft: key
   (** Messages with the [`Draft] {!flag} set. *)
 
-  | `Flagged
+  val flagged: key
   (** Messages with the [`Flagged] {!flag} set. *)
 
-  | `From of string
+  val from: string -> key
   (** Messages that contain the specified string in the envelope structure's
       "FROM" field. *)
 
-  | `Header of string * string
+  val header: string -> string -> key
   (** Messages that have a header with the specified field-name and that
       contains the specified string in the text of the header (what comes after
       the colon).  If the string to search is zero-length, this matches all
       messages that have a header line with the specified field-name regardless
       of the contents. *)
 
-  | `Keyword of string
+  val keyword: string -> key
   (** Messages with the specified keyword {!flag} set. *)
 
-  | `Larger of int
+  val larger: int -> key
   (** Messages with a size larger than the specified number of octets. *)
 
-  | `New
-  (** Messages that have the [`Recent] {!flag} set but not the
-      [`Seen] {!flag}.  This is functionally equivalent to
-      [`And (`Recent, `Unseen)]. *)
+  val new_: key
+  (** Messages that have the [`Recent] {!flag} set but not the [`Seen] {!flag}.
+      This is functionally equivalent to [`And (`Recent, `Unseen)]. *)
 
-  | `Not of search_key
+  val not: key -> key
   (** Messages that do not match the specified search key. *)
 
-  | `Old
+  val old: key
   (** Messages that do not have the [`Recent] {!flag} set.  This is
       functionally equivalent to [`Not `Recent] (as opposed to [`Not `New]). *)
 
-  | `On of date
+  val on: date -> key
   (** Messages whose internal date (disregarding time and timezone) is within
       the specified date.  *)
 
-  | `Or of search_key * search_key
+  val (||): key -> key -> key
   (** Messages that match either search key. *)
 
-  | `Recent
+  val recent: key
   (** Messages that have the [`Recent] {!flag} set. *)
 
-  | `Seen
+  val seen: key
   (** Messages that have the [`Seen] {!flag} set. *)
 
-  | `Sent_before of date
+  val sent_before: date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
       than the specified date. *)
 
-  | `Sent_on of date
+  val sent_on: date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is within
       the specified date. *)
 
-  | `Sent_since of date
+  val sent_since: date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is within
       or later than the specified date.  *)
 
-  | `Since of date
+  val since: date -> key
   (** Messages whose internal date (disregarding time and timezone) is within or
       later than the specified date.  *)
 
-  | `Smaller of int
+  val smaller: int -> key
   (** Messages with a size smaller than the specified number of octets. *)
 
-  | `Subject of string
+  val subject: string -> key
   (** Messages that contain the specified string in the envelope structure's
       "SUBJECT" field. *)
 
-  | `Text of string
+  val text: string -> key
   (** Messages that contain the specified string in the header or body of the
       message. *)
 
-  | `To of string
+  val to_: string -> key
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  | `Uid of eset
+  val uid: eset -> key
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set.  Sequence set ranges are permitted. *)
 
-  | `Unanswered
+  val unanswered: key
   (** Messages that do not have the [`Answered] {!flag} set. *)
 
-  | `Undeleted
+  val undeleted: key
   (** Messages that do not have the [`Deleted] {!flag} set. *)
 
-  | `Undraft
+  val undraft: key
   (** Messages that do not have the [`Draft] {!flag} set. *)
 
-  | `Unflagged
+  val unflagged: key
   (** Messages that do not have the [`Flagged] {!flag} set. *)
 
-  | `Unkeyword of string
+  val unkeyword: string -> key
   (** Messages that do not have the specified keyword {!flag} set. *)
 
-  | `Unseen
+  val unseen: key
   (** Messages that do not have the [`Seen] {!flag} set. *)
 
-  | `And of search_key * search_key
+  val (&&): key -> key -> key
   (** Messages that satisfy both search criteria. *)
 
-  | `Modseq of uint64
+  val modseq: Modseq.t -> key
   (** Messages that have equal or greater modification sequence numbers. *)
 
-  | `Gm_raw of string
+  val x_gm_raw: string -> key
   (** TOOD *)
 
-  | `Gm_msgid of uint64
+  val x_gm_msgid: uint64 -> key
   (** Messages with a given Gmail Message ID. *)
 
-  | `Gm_thrid of uint64
+  val x_gm_thrid: uint64 -> key
   (** Messages with a given Gmail Thread ID. *)
 
-  | `Gm_labels of string list
-  (** Messages with given Gmail labels. *) ]
+  val x_gm_labels: string list -> key
+  (** Messages with given Gmail labels. *)
+end
 
 (** Message attributes that can be requested using the {!fetch} command. *)
 type fetch_query =
@@ -807,7 +809,7 @@ val expunge: uint32 list command
     returning an [`Ok] to the client, an untagged [`Expunge]
     {{!untagged}response} is sent for each message that is removed. *)
 
-val search: ?uid:bool -> search_key -> (uint32 list * uint64 option) command
+val search: ?uid:bool -> Search.key -> (uint32 list * uint64 option) command
 (** [search uid sk] searches the mailbox for messages that match the given
     searching criteria.  If [uid] is [true] (the default), then the matching
     messages' unique identification numbers are returned.  Otherwise, their

@@ -2166,16 +2166,6 @@ module Decoder = struct
     in
     push "enable-data" (switch cases stop)
 
-  let resp_cond_state =
-    let cases =
-      [
-        "OK", (fun d -> let c, t = sp resp_text d in State (OK (c, t)));
-        "NO", (fun d -> let c, t = sp resp_text d in State (NO (c, t)));
-        "BAD", (fun d -> let c, t = sp resp_text d in State (BAD (c, t)));
-      ]
-    in
-    push "resp-cond-state" (switch cases stop)
-
   let resp_cond_bye =
     let cases =
       [
@@ -2215,6 +2205,7 @@ module Decoder = struct
     switch cases stop
 
   let response_data =
+    let resp_cond_state d = State (resp_cond_state d) in
     let data =
       resp_cond_state ||| resp_cond_bye ||| mailbox_data |||
       message_data ||| capability_data ||| enable_data |||
@@ -2249,15 +2240,20 @@ module Decoder = struct
     push "tag" (while1 is_tag_char)
 
   let response_tagged =
-    push "response-tagged" (terminated (pair tag resp_cond_state) crlf)
+    let aux d =
+      let tag, state = pair tag resp_cond_state d in
+      Tagged (tag, state)
+    in
+    push "response-tagged" (terminated aux crlf)
 
   let continue_req =
-    push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| base64))) crlf)
-  (* space is optional CHECKME ! *)
+    let resp_text d = Cont (snd (resp_text d)) in
+    push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| resp_text))) crlf)
+  (* space is optional CHECKME ! base64 *)
 
   let rec response =
     let response_data d = Untagged (response_data d) in
-    push "response" (continue_req ||| response_data ||| tagged_response)
+    push "response" (continue_req ||| response_data ||| response_tagged)
 
   let decode i =
     let d = {i; p = ref 0; c = []} in
@@ -2266,123 +2262,7 @@ end
 
 (* Commands *)
 
-type eset = (uint32 * uint32 option) list
-
-type search_key =
-  [ `Seq of eset
-  | `All
-  | `Answered
-  | `Bcc of string
-  | `Before of date
-  | `Body of string
-  | `Cc of string
-  | `Deleted
-  | `Draft
-  | `Flagged
-  | `From of string
-  | `Header of string * string
-  | `Keyword of string
-  | `Larger of int
-  | `New
-  | `Not of search_key
-  | `Old
-  | `On of date
-  | `Or of search_key * search_key
-  | `Recent
-  | `Seen
-  | `Sent_before of date
-  | `Sent_on of date
-  | `Sent_since of date
-  | `Since of date
-  | `Smaller of int
-  | `Subject of string
-  | `Text of string
-  | `To of string
-  | `Uid of eset
-  | `Unanswered
-  | `Undeleted
-  | `Undraft
-  | `Unflagged
-  | `Unkeyword of string
-  | `Unseen
-  | `And of search_key * search_key
-  | `Modseq of uint64
-  | `Gm_raw of string
-  | `Gm_msgid of uint64
-  | `Gm_thrid of uint64
-  | `Gm_labels of string list ]
-
-type fetch_query =
-  [ `Envelope
-  | `Internal_date
-  | `Rfc822_header
-  | `Rfc822_text
-  | `Rfc822_size
-  | `Rfc822
-  | `Body
-  | `Body_section of [ `Peek | `Look ] * Response.section * (int * int) option
-  | `Body_structure
-  | `Uid
-  | `Flags ]
-
-type status_query =
-  [ `Messages
-  | `Recent
-  | `Uid_next
-  | `Uid_validity
-  | `Unseen
-  | `Highest_modseq ]
-
-(* Authenticator *)
-
-type authenticator =
-  { name : string;
-    step : string -> [ `Ok of string | `Error of string ] }
-
-let plain user pass =
-  let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
-  { name = "PLAIN"; step }
-
-let xoauth2 user token =
-  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-  let stage = ref `Begin in
-  let step _ = match !stage with
-    | `Begin -> stage := `Error; `Ok s
-    | `Error -> `Ok "" (* CHECK *)
-  in
-  { name = "XOAUTH2"; step }
-
-(* type command_ordinary = *)
-(*   [ `Login of string * string *)
-(*   | `Capability *)
-(*   | `Create of string *)
-(*   | `Delete of string *)
-(*   | `Rename of string * string *)
-(*   | `Logout *)
-(*   | `Noop *)
-(*   | `Subscribe of string *)
-(*   | `Unsubscribe of string *)
-(*   | `List of string * string *)
-(*   | `Lsub of string * string *)
-(*   | `Status of string * status_query list *)
-(*   | `Copy of [ `Uid | `Seq ] * eset * string *)
-(*   | `Check *)
-(*   | `Close *)
-(*   | `Expunge *)
-(*   | `Search of [ `Uid | `Seq ] * search_key *)
-(*   | `Select of [ `Condstore | `Plain ] * string *)
-(*   | `Examine of [ `Condstore | `Plain ] * string *)
-(*   | `Append of string * flag list option * (date * time) option * string *)
-(*   | `Fetch of [ `Uid | `Seq ] * eset * *)
-(*               [ `All | `Fast | `Full | `List of fetch_query list ] * *)
-(*               [ `Changed_since of uint64 | `Changed_since_vanished of uint64 | `All ] *)
-(*   | `Store of [ `Uid | `Seq ] * eset * [ `Silent | `Loud ] * *)
-(*               [ `Unchanged_since of uint64 | `All ] * *)
-(*               [ `Add | `Set | `Remove ] * [ `Flags of flag list | `Labels of string list ] *)
-(*   | `Enable of capability list ] *)
-
 module E = struct
-
   (* (\* Encoder *\) *)
 
   (* type command_lexeme = *)
@@ -2777,9 +2657,6 @@ module E = struct
     | `Unseen -> raw "UNSEEN"
     | `Highest_modseq -> raw "HIGHESTMODSEQ"
 
-  let search_key _ =
-    assert false
-
   let flag = function
     | `Answered -> raw "\\Answered"
     | `Flagged -> raw "\\Flagged"
@@ -2797,7 +2674,7 @@ module E = struct
     | RFC822_SIZE -> raw "RFC822.SIZE"
     | RFC822 -> raw "RFC822"
     | BODY -> raw "BODY"
-    | Body_section (peek, s, partial) ->
+    | BODY_SECTION (peek, s, partial) ->
         assert false
         (* let cmd = match peek with `Peek -> str "BODY.PEEK" | `Look -> str "BODY" in *)
         (* let partial = *)
@@ -2810,8 +2687,8 @@ module E = struct
     | UID -> raw "UID"
     | FLAGS -> raw "FLAGS"
 
-  let capability _ =
-    assert false
+  let capability s =
+    raw (Capability.string_of_capability s)
 
   type result =
     | WaitForCont of string * rope
@@ -2832,6 +2709,97 @@ module E = struct
     let k = Cat (k, Cat (Raw "\r\n", Flush)) in
     out (Buffer.create 32) empty k
 end
+
+type eset = (uint32 * uint32 option) list
+
+module Search = struct
+  open E
+
+  type key = rope
+
+  let all = raw "ALL"
+  let seq s = eset s
+  let anwsered = raw "ANSWERED"
+  let bcc s = raw "BCC" ++ str s
+  let before t = raw "BEFORE" ++ date t
+  let body s = raw "BODY" ++ str s
+  let cc s = raw "CC" ++ str s
+  let deleted = raw "DELETED"
+  let draft = raw "DRAFT"
+  let flagged = raw "FLAGGED"
+  let from s = raw "FROM" ++ str s
+  let header s1 s2 = raw "HEADER" ++ str s1 ++ str s2
+  let keyword s = raw "KEYWORD" ++ str s
+  let larger n = raw "LARGER" ++ int n
+  let new_ = raw "NEW"
+  let not k = raw "NOT" ++ p k
+  let old = raw "OLD"
+  let on t = raw "ON" ++ date t
+  let (||) k1 k2 = raw "OR" ++ p k1 ++ p k2
+  let recent = raw "RECENT"
+  let seen = raw "SEEN"
+  let sent_before t = raw "SENTBEFORE" ++ date t
+  let sent_on t = raw "SENTON" ++ date t
+  let sent_since t = raw "SENTSINCE" ++ date t
+  let since t = raw "SINCE" ++ date t
+  let smaller n = raw "SMALLER" ++ int n
+  let subject s = raw "SUBJECT" ++ str s
+  let text s = raw "TEXT" ++ str s
+  let to_ s = raw "TO" ++ str s
+  let uid s = raw "UID" ++ eset s
+  let unanswered = raw "UNANSWERED"
+  let undeleted = raw "UNDELETED"
+  let undraft = raw "UNDRAFT"
+  let unflagged = raw "UNFLAGGED"
+  let unkeyword s = raw "UNKEYWORD" ++ str s
+  let unseen = raw "UNSEEN"
+  let (&&) k1 k2 = p k1 ++ p k2
+  let modseq n = raw "MODSEQ" ++ uint64 n
+  let x_gm_raw s = raw "X-GM-RAW" ++ str s
+  let x_gm_msgid n = raw "X-GM-MSGID" ++ uint64 n
+  let x_gm_thrid n = raw "X-GM-THRID" ++ uint64 n
+  let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
+end
+
+type fetch_query =
+  [ `Envelope
+  | `Internal_date
+  | `Rfc822_header
+  | `Rfc822_text
+  | `Rfc822_size
+  | `Rfc822
+  | `Body
+  | `Body_section of [ `Peek | `Look ] * Response.section * (int * int) option
+  | `Body_structure
+  | `Uid
+  | `Flags ]
+
+type status_query =
+  [ `Messages
+  | `Recent
+  | `Uid_next
+  | `Uid_validity
+  | `Unseen
+  | `Highest_modseq ]
+
+(* Authenticator *)
+
+type authenticator =
+  { name : string;
+    step : string -> [ `Ok of string | `Error of string ] }
+
+let plain user pass =
+  let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
+  { name = "PLAIN"; step }
+
+let xoauth2 user token =
+  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
+  let stage = ref `Begin in
+  let step _ = match !stage with
+    | `Begin -> stage := `Error; `Ok s
+    | `Error -> `Ok "" (* CHECK *)
+  in
+  { name = "XOAUTH2"; step }
 
 (* Running commands *)
 
@@ -3012,7 +2980,7 @@ let search ?(uid = true) sk =
   let open E in
   let cmd = str "SEARCH" in
   let cmd = if uid then str "UID" ++ cmd else cmd in
-  cmd ++ search_key sk
+  cmd ++ sk
 
 let select_gen: type a. _ -> a condstore_flag -> _ -> a command = fun cmd condstore_flag m ->
   let open E in
