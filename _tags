@@ -3,7 +3,6 @@ true: bin_annot
 # imap
 
 true: package(uutf)
-true: package(uint)
 true: package(base64)
 
 <lib>: include

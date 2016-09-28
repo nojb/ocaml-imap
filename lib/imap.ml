@@ -28,30 +28,50 @@ let pp_opt f ppf = function
 let pp_list ?(pp_sep = Format.pp_print_space) =
   Format.pp_print_list ~pp_sep
 
+module type NUMBER = sig
+  type t
+  val zero: t
+  val compare: t -> t -> int
+end
+
 module Uint32 = struct
-  include Uint32
-  let printer ppf n = Format.pp_print_string ppf (to_string n)
+  type t = int32
+  let zero = 0l
+  let msb n = Int32.(logand n (shift_left 1l 31)) <> 0l
+  let compare n1 n2 =
+    match msb n1, msb n2 with
+    | true, true -> Int32.(compare (logand n1 0x7fffffffl) (logand n2 0x7fffffffl))
+    | true, false -> 1
+    | false, true -> -1
+    | false, false -> Int32.compare n1 n2
 end
 
-module Uint64 = struct
-  include Uint64
-  let printer ppf n = Format.pp_print_string ppf (to_string n)
-end
-
-module Modseq = Uint64
-module UID = Uint32
+module Modseq = Int64
+module Uid = Uint32
 module Seq = Uint32
 
-type _ uid_or_seq =
-  | UID : UID.t uid_or_seq
-  | Seq : Seq.t uid_or_seq
+module type NUMBER_SET = sig
+  type elt
+  type t
+  val singleton: elt -> t
+  val union: t -> t -> t
+  val add: elt -> t -> t
+  val interval: elt -> elt -> t
+end
 
-type _ condstore_flag =
-  | Condstore : Uint64.t condstore_flag
-  | No_condstore : unit condstore_flag
+module Uint32Set = struct
+  type t = (int32 * int32) list (* disjoint, sorted intervals *)
+  let singleton n = [(n, n)]
+  let union s1 s2 =
+    assert false
+  let add n s =
+    assert false
+  let interval n m =
+    [(n, m)]
+end
 
-type uint32 = Uint32.t
-type uint64 = Uint64.t
+module UidSet = Uint32Set
+module SeqSet = Uint32Set
 
 module Mutf7 = struct
 
@@ -326,10 +346,9 @@ module MIME = struct
     }
 
   type body_extension =
-    [ `List of body_extension list
-    | `Number of uint32
-    | `String of string
-    | `None ]
+    | List of body_extension list
+    | Number of int32
+    | String of string
 
   type part_extension =
     {
@@ -428,10 +447,10 @@ module E = struct
     raw (string_of_int n)
 
   let uint32 m =
-    raw (Uint32.to_string m)
+    raw (Printf.sprintf "%lu" m)
 
   let uint64 m =
-    raw (Uint64.to_string m)
+    raw (Printf.sprintf "%Lu" m)
 
   let label l =
     raw (Mutf7.encode l)
@@ -454,10 +473,10 @@ module E = struct
     raw (Printf.sprintf "%d-%s-%4d" day months.(month) year)
 
   let eset s =
+    let elt = function 0l -> "*" | n -> Printf.sprintf "%lu" n in
     let f = function
-      | (lo, Some hi) when lo = hi -> uint32 lo
-      | (lo, Some hi) -> str (Printf.sprintf "%s:%s" (Uint32.to_string lo) (Uint32.to_string hi))
-      | (lo, None) -> str (Printf.sprintf "%s:*" (Uint32.to_string lo))
+      | (lo, hi) when lo = hi -> raw (elt lo)
+      | (lo, hi) -> raw (Printf.sprintf "%s:%s" (elt lo) (elt hi))
     in
     list ~sep:',' f s
 
@@ -503,9 +522,6 @@ module Msg = struct
     | `Keyword s -> E.raw s
     | `Extension s -> E.raw ("\\" ^ s)
 
-  type set =
-    (uint32 * uint32) list
-
   type section =
     | HEADER
     | HEADER_FIELDS of string list
@@ -526,10 +542,10 @@ module Msg = struct
     | BODY of MIME.mime
     | BODYSTRUCTURE of MIME.mime
     | BODY_SECTION of section * int option * string option
-    | UID of uint32
-    | MODSEQ of uint64
-    | X_GM_MSGID of uint64
-    | X_GM_THRID of uint64
+    | UID of int32
+    | MODSEQ of int64
+    | X_GM_MSGID of int64
+    | X_GM_THRID of int64
     | X_GM_LABELS of string list
 
   module Request = struct
@@ -564,12 +580,16 @@ module Msg = struct
     let bodystructure = raw "BODYSTRUCTURE"
     let uid = raw "UID"
     let flags = raw "FLAGS"
+
+    let all = [flags; internaldate; rfc822_size; envelope]
+    let fast = [flags; internaldate; rfc822_size]
+    let full = [flags; internaldate; rfc822_size; envelope; body]
   end
 
   open Format
 
   let pp_set ppf s =
-    let rg ppf (x, y) = fprintf ppf "%a-%a" Uint32.printer x Uint32.printer y in
+    let rg ppf (x, y) = fprintf ppf "%lu-%lu" x y in
     pp_list rg ppf s
 
   let pp_date_time ppf (d, t) =
@@ -619,10 +639,10 @@ module Msg = struct
     | BODY_SECTION (s, n, x) ->
         fprintf ppf "@[<2>(body-section@ %a@ %a@ %a)@]"
           pp_section s (pp_opt Format.pp_print_int) n (pp_opt pp_qstr) x
-    | UID n -> fprintf ppf "(uid %a)" Uint32.printer n
-    | MODSEQ m -> fprintf ppf "(modseq %a)" Uint64.printer m
-    | X_GM_MSGID m -> fprintf ppf "(gm-msgid %a)" Uint64.printer m
-    | X_GM_THRID m -> fprintf ppf "(gm-thrid %a)" Uint64.printer m
+    | UID n -> fprintf ppf "(uid %lu)" n
+    | MODSEQ m -> fprintf ppf "(modseq %Lu)" m
+    | X_GM_MSGID m -> fprintf ppf "(gm-msgid %Lu)" m
+    | X_GM_THRID m -> fprintf ppf "(gm-thrid %Lu)" m
     | X_GM_LABELS l ->
         fprintf ppf "@[<2>(gm-labels@ %a)@]" (pp_list pp_qstr) l
 end
@@ -637,16 +657,16 @@ module Code = struct
     | READ_ONLY
     | READ_WRITE
     | TRYCREATE
-    | UIDNEXT of uint32
-    | UIDVALIDITY of uint32
-    | UNSEEN of uint32
+    | UIDNEXT of int32
+    | UIDVALIDITY of int32
+    | UNSEEN of int32
     | OTHER of string * string option
     | CLOSED
-    | HIGHESTMODSEQ of uint64
+    | HIGHESTMODSEQ of int64
     | NOMODSEQ
-    | MODIFIED of (uint32 * uint32) list
-    | APPENDUID of uint32 * uint32
-    | COPYUID of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
+    | MODIFIED of (int32 * int32) list
+    | APPENDUID of int32 * int32
+    | COPYUID of int32 * (int32 * int32) list * (int32 * int32) list
     | UIDNOTSTICKY
     | COMPRESSIONACTIVE
     | USEATTR
@@ -671,25 +691,25 @@ module Code = struct
     | TRYCREATE ->
         fprintf ppf "try-create"
     | UIDNEXT uid ->
-        fprintf ppf "(uid-next %a)" Uint32.printer uid
+        fprintf ppf "(uid-next %lu)" uid
     | UIDVALIDITY uid ->
-        fprintf ppf "(uid-validity %a)" Uint32.printer uid
+        fprintf ppf "(uid-validity %lu)" uid
     | UNSEEN n ->
-        fprintf ppf "(unseen %a)" Uint32.printer n
+        fprintf ppf "(unseen %lu)" n
     | OTHER (k, v) ->
         fprintf ppf "(other@ %S@ %a)" k (pp_opt pp_qstr) v
     | CLOSED ->
         fprintf ppf "closed"
     | HIGHESTMODSEQ m ->
-        fprintf ppf "(highest-modseq %a)" Uint64.printer m
+        fprintf ppf "(highest-modseq %Lu)" m
     | NOMODSEQ ->
         fprintf ppf "no-modseq"
     | MODIFIED s ->
         fprintf ppf "(modified@ %a)" Msg.pp_set s
     | APPENDUID (n, m) ->
-        fprintf ppf "(append-uid %a@ %a)" Uint32.printer n Uint32.printer m
+        fprintf ppf "(append-uid %lu@ %lu)" n m
     | COPYUID (n, s1, s2) ->
-        fprintf ppf "(copy-uid %a@ %a@ %a)" Uint32.printer n Msg.pp_set s1 Msg.pp_set s2
+        fprintf ppf "(copy-uid %lu@ %a@ %a)" n Msg.pp_set s1 Msg.pp_set s2
     | UIDNOTSTICKY ->
         fprintf ppf "uid-not-sticky"
     | COMPRESSIONACTIVE ->
@@ -718,10 +738,10 @@ module Mailbox = struct
   type status_response =
     | MESSAGES of int
     | RECENT of int
-    | UIDNEXT of uint32
-    | UIDVALIDITY of uint32
-    | UNSEEN of uint32
-    | HIGHESTMODSEQ of uint64
+    | UIDNEXT of int32
+    | UIDVALIDITY of int32
+    | UNSEEN of int32
+    | HIGHESTMODSEQ of int64
 
   module Request = struct
     open E
@@ -757,10 +777,10 @@ module Mailbox = struct
   let pp_mbx_status ppf = function
     | MESSAGES n -> fprintf ppf "(messages %i)" n
     | RECENT n -> fprintf ppf "(recent %i)" n
-    | UIDNEXT uid -> fprintf ppf "(uid-next %a)" Uint32.printer uid
-    | UIDVALIDITY uid -> fprintf ppf "(uid-validity %a)" Uint32.printer uid
-    | UNSEEN n -> fprintf ppf "(unseen %a)" Uint32.printer n
-    | HIGHESTMODSEQ m -> fprintf ppf "(highest-modseq %a)" Uint64.printer m
+    | UIDNEXT uid -> fprintf ppf "(uid-next %lu)" uid
+    | UIDVALIDITY uid -> fprintf ppf "(uid-validity %lu)" uid
+    | UNSEEN n -> fprintf ppf "(unseen %lu)" n
+    | HIGHESTMODSEQ m -> fprintf ppf "(highest-modseq %Lu)" m
 end
 
 module Response = struct
@@ -776,15 +796,15 @@ module Response = struct
     | FLAGS of Msg.flag list
     | LIST of Mailbox.mbx_flag list * char option * string
     | LSUB of Mailbox.mbx_flag list * char option * string
-    | SEARCH of uint32 list * uint64 option
+    | SEARCH of int32 list * int64 option
     | STATUS of string * Mailbox.status_response list
     | EXISTS of int
     | RECENT of int
-    | EXPUNGE of uint32
-    | FETCH of uint32 * Msg.msg_att list
+    | EXPUNGE of int32
+    | FETCH of int32 * Msg.msg_att list
     | CAPABILITY of Capability.capability list
-    | VANISHED of Msg.set
-    | VANISHED_EARLIER of Msg.set
+    | VANISHED of Uint32Set.t
+    | VANISHED_EARLIER of Uint32Set.t
     | ENABLED of Capability.capability list
 
   type response =
@@ -814,7 +834,8 @@ module Response = struct
     | LSUB (f, s, m) ->
         fprintf ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
     | SEARCH (ns, m) ->
-        fprintf ppf "@[<2>(search@ %a@ %a)@]" (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
+        fprintf ppf "@[<2>(search@ %a@ %a)@]"
+          (pp_list (fun ppf -> fprintf ppf "%lu")) ns (pp_opt (fun ppf -> fprintf ppf "%Lu")) m
     | STATUS (m, s) ->
         fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list Mailbox.pp_mbx_status) s
     | EXISTS n ->
@@ -822,9 +843,9 @@ module Response = struct
     | RECENT n ->
         fprintf ppf "(recent %i)" n
     | EXPUNGE n ->
-        fprintf ppf "(expunge %a)" Uint32.printer n
+        fprintf ppf "(expunge %lu)" n
     | FETCH (n, atts) ->
-        fprintf ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list Msg.pp) atts
+        fprintf ppf "@[<2>(fetch %lu@ %a)@]" n (pp_list Msg.pp) atts
     | CAPABILITY r ->
         fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) r
     | PREAUTH (c, t) ->
@@ -1204,17 +1225,13 @@ module Decoder = struct
     | _ -> false
 
   let number d =
-    Uint32.of_string (while1 is_digit d)
+    Scanf.sscanf (while1 is_digit d) "%lu" (fun n -> n)
 
   let nz_number d =
-    Uint32.of_string (capture (preceded (char_pred is_nz_digit) (rep is_digit)) d)
+    Scanf.sscanf (capture (preceded (char_pred is_nz_digit) (rep is_digit)) d) "%lu" (fun n -> n)
 
   let uniqueid =
     nz_number
-
-  (* let uint d = int_of_string (while1 is_digit d) *)
-  (* let uint32 d = Uint32.of_string (while1 is_digit d) *)
-  (* let uint64 d = Uint64.of_string (while1 is_digit d) *)
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -1238,7 +1255,7 @@ module Decoder = struct
 *)
 
   let literal d =
-    let n = Uint32.to_int (delimited '{' number '}' d) in
+    let n = Int32.to_int (delimited '{' number '}' d) in
     ignore (crlf d);
     str_length n d
 
@@ -1680,8 +1697,8 @@ module Decoder = struct
     let open Mailbox in
     let cases =
       [
-        "MESSAGES", (fun d -> MESSAGES (Uint32.to_int (sp number d)));
-        "RECENT", (fun d -> RECENT (Uint32.to_int (sp number d)));
+        "MESSAGES", (fun d -> MESSAGES (Int32.to_int (sp number d)));
+        "RECENT", (fun d -> RECENT (Int32.to_int (sp number d)));
         "UIDNEXT", (fun d -> UIDNEXT (sp number d));
         "UIDVALIDITY", (fun d -> UIDVALIDITY (sp number d));
         "UNSEEN", (fun d -> UNSEEN (sp number d));
@@ -1809,7 +1826,7 @@ module Decoder = struct
     let fld_id = sp nstring d in
     let fld_desc = sp nstring d in
     let fld_enc = sp imap_string d in
-    let fld_octets = Uint32.to_int (sp body_fld_octets d) in
+    let fld_octets = Int32.to_int (sp body_fld_octets d) in
     {MIME.fld_params; fld_id; fld_desc; fld_enc; fld_octets}
 
   let body_fields =
@@ -1827,9 +1844,10 @@ module Decoder = struct
 *)
 
   let rec body_extension d =
-    let nstring d = `String (nstring' d) in
-    let number d = `Number (number d) in
-    let list d = `List (plist1 body_extension d) in
+    let open MIME in
+    let nstring d = String (nstring' d) in
+    let number d = Number (number d) in
+    let list d = List (plist1 body_extension d) in
     push "body-extension" (nstring ||| number ||| list) d
 
 (*
@@ -1926,7 +1944,7 @@ module Decoder = struct
 *)
 
   let body_fld_lines =
-    let number d = Uint32.to_int (number d) in
+    let number d = Int32.to_int (number d) in
     push "body-fld-lines" number
 
   let media_subtype =
@@ -2127,7 +2145,7 @@ module Decoder = struct
     let aux d =
       let l = section_part d in
       let p = (section_text ||| const All) d in
-      List.fold_right (fun i x -> Part (Uint32.to_int i, x)) l p
+      List.fold_right (fun i x -> Part (Int32.to_int i, x)) l p
     in
     push "section-spec" (section_msgtext ||| aux)
 
@@ -2191,7 +2209,7 @@ module Decoder = struct
         "INTERNALDATE", (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
         "RFC822.HEADER", (fun d -> RFC822_HEADER (sp nstring d));
         "RFC822.TEXT", (fun d -> RFC822_TEXT (sp nstring d));
-        "RFC822.SIZE", (fun d -> RFC822_SIZE (Uint32.to_int (sp number d)));
+        "RFC822.SIZE", (fun d -> RFC822_SIZE (Int32.to_int (sp number d)));
         "RFC822", (fun d -> RFC822 (sp nstring d));
         "BODYSTRUCTURE", (fun d -> BODYSTRUCTURE (sp body d));
         "BODY",
@@ -2200,7 +2218,7 @@ module Decoder = struct
            let section d =
              let s = section d in
              let r =
-               let number d = Uint32.to_int (number d) in
+               let number d = Int32.to_int (number d) in
                option (delimited '<' number '>') d
              in
              let x = sp nstring d in
@@ -2282,8 +2300,8 @@ module Decoder = struct
       let n = number d in
       let cases =
         [
-          "EXISTS", const (EXISTS (Uint32.to_int n));
-          "RECENT", const (RECENT (Uint32.to_int n));
+          "EXISTS", const (EXISTS (Int32.to_int n));
+          "RECENT", const (RECENT (Int32.to_int n));
         ]
       in
       sp (switch cases stop) d
@@ -2401,8 +2419,6 @@ module Decoder = struct
 end
 
 (* Commands *)
-
-type eset = (uint32 * uint32 option) list
 
 module Search = struct
   open E
@@ -2622,14 +2638,17 @@ let status m att =
   in
   {format; default; process}
 
-let copy ?(uid = true) s m =
-  let open E in
-  let cmd = str "COPY" in
-  let cmd = if uid then str "UID" ++ cmd else cmd in
-  let format = cmd ++ eset s ++ mailbox m in
+let copy_gen cmd s m =
+  let format = E.(cmd ++ eset s ++ mailbox m) in
   let default = () in
   let process _ () = () in
   {format; default; process}
+
+let copy s m =
+  copy_gen E.(raw "COPY") s m
+
+let uid_copy s m =
+  copy_gen E.(raw "UID" ++ raw "COPY") s m
 
 let check =
   let format = E.(str "CHECK") in
@@ -2669,27 +2688,35 @@ let search =
 let uid_search =
   search_gen E.(raw "UID" ++ raw "SEARCH")
 
-let select_gen: type a. _ -> a condstore_flag -> _ -> a command = fun cmd condstore_flag m ->
+let select_gen cmd m =
   let open E in
-  let condstore = match condstore_flag with Condstore -> p (str "CONDSTORE") | No_condstore -> str "" in
-  let format = cmd ++ mailbox m ++ condstore in
-  let default : a =
-    match condstore_flag with
-    | Condstore -> Modseq.zero
-    | No_condstore -> ()
-  in
-  let process: untagged -> a -> a = fun u m ->
-    match condstore_flag, u with
-    | Condstore, State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
+  let format = cmd ++ mailbox m in
+  let default = () in
+  let process _ () = () in
+  {format; default; process}
+
+let condstore_select_gen cmd m =
+  let open E in
+  let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in
+  let default = Int64.zero in
+  let process u m =
+    match u with
+    | State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
     | _ -> m
   in
   {format; default; process}
 
-let select condstore =
-  select_gen E.(raw "SELECT") condstore
+let select =
+  select_gen E.(raw "SELECT")
 
-let examine condstore =
-  select_gen E.(raw "EXAMINE") condstore
+let examine =
+  select_gen E.(raw "EXAMINE")
+
+let condstore_select =
+  condstore_select_gen E.(raw "SELECT")
+
+let condstore_examine =
+  condstore_select_gen E.(raw "EXAMINE")
 
 let append m ?(flags = []) data =
   let format = E.(raw "APPEND" ++ mailbox m ++ p (list Msg.flag flags) ++ literal data) in
@@ -2697,51 +2724,40 @@ let append m ?(flags = []) data =
   let process _ () = () in
   {format; default; process}
 
-let fetch_gen: type a. a uid_or_seq -> changed:_ -> vanished:_ -> _ -> _ -> (a * _) list command = fun uid ~changed ~vanished set att ->
+let fetch_gen cmd ?changed ?(vanished = false) set att =
   let open E in
-  let cmd = raw "FETCH" in
-  let cmd = match uid with UID -> str "UID" ++ cmd | Seq -> cmd in
   let att =
     match att with
-    | `Fast -> raw "FAST"
-    | `Full -> raw "FULL"
-    | `All -> raw "ALL"
-    | `List [x] -> x
-    | `List xs -> p (list (fun x -> x) xs)
+    (* | `Fast -> raw "FAST" *)
+    (* | `Full -> raw "FULL" *)
+    (* | `All -> raw "ALL" *)
+    | [x] -> x
+    | xs -> p (list (fun x -> x) xs)
   in
   let changed_since =
     match changed, vanished with
     | None, true -> invalid_arg "fetch_gen"
-    | None, false -> str ""
+    | None, false -> empty
     | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
     | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
   let format = cmd ++ eset set ++ att ++ changed_since in
   let default = [] in
-  let process: untagged -> (a * 'b) list -> (a * 'b) list = fun u info ->
-    match uid, u with
-    | UID, FETCH (id, infos) -> (id, infos) :: info
-    | Seq, FETCH (id, infos) -> (id, infos) :: info
+  let process u info =
+    match u with
+    | FETCH (id, infos) -> (id, infos) :: info
     | _ -> info
   in
   {format; default; process}
 
-let fetch uid ?changed ?(vanished = false) set att =
-  fetch_gen uid ~changed ~vanished set (`List att)
+let fetch =
+  fetch_gen E.(raw "FETCH")
 
-let fetch_fast uid ?changed ?(vanished = false) set =
-  fetch_gen uid ~changed ~vanished set `Fast
+let uid_fetch =
+  fetch_gen E.(raw "UID" ++ raw "FETCH")
 
-let fetch_full uid ?changed ?(vanished = false) set =
-  fetch_gen uid ~changed ~vanished set `Full
-
-let fetch_all uid ?changed ?(vanished = false) set =
-  fetch_gen uid ~changed ~vanished set `All
-
-let store_gen: type a. a uid_or_seq -> silent:_ -> unchanged:_ -> _ -> _ -> _ -> (a * _) list command = fun uid ~silent ~unchanged mode set att ->
+let store_gen cmd ~silent ~unchanged mode set att =
   let open E in
-  let cmd = str "STORE" in
-  let cmd = match uid with UID -> str "UID" ++ cmd | Seq -> cmd in
   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
   let silent = if silent then ".SILENT" else "" in
   let base =
@@ -2766,23 +2782,42 @@ let store_gen: type a. a uid_or_seq -> silent:_ -> unchanged:_ -> _ -> _ -> _ ->
   let process u m = m in
   {format; default; process}
 
-let store_add_flags uid ?(silent = false) ?unchanged set flags =
-  store_gen uid ~silent ~unchanged `Add set (`Flags flags)
+let add_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
 
-let store_set_flags uid ?(silent = false) ?unchanged set flags =
-  store_gen uid ~silent ~unchanged `Set set (`Flags flags)
+let set_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
 
-let store_remove_flags uid ?(silent = false) ?unchanged set flags =
-  store_gen uid ~silent ~unchanged `Remove set (`Flags flags)
+let remove_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
 
-let store_add_labels uid ?(silent = false) ?unchanged set labels =
-  store_gen uid ~silent ~unchanged `Add set (`Labels labels)
+let add_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
 
-let store_set_labels uid ?(silent = false) ?unchanged set labels =
-  store_gen uid ~silent ~unchanged `Set set (`Labels labels)
+let set_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
 
-let store_remove_labels uid ?(silent = false) ?unchanged set labels =
-  store_gen uid ~silent ~unchanged `Remove set (`Labels labels)
+let remove_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
+
+let uid_add_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
+
+let uid_set_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
+
+let uid_remove_flags ?(silent = false) ?unchanged set flags =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
+
+let uid_add_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
+
+let uid_set_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
+
+let uid_remove_labels ?(silent = false) ?unchanged set labels =
+  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
+
 
 let enable caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
@@ -2805,33 +2840,6 @@ let idle () =
   (* let stop = ref false in *)
   (* let stop_l = Lazy.from_fun (fun () -> stop := true) in *)
   (* `Idle stop, (fun () -> Lazy.force stop_l) *)
-
-(* let rec cont_req k r c = *)
-(*   match r with *)
-(*   | Cont _ -> k c *)
-(*   | _ -> decode (cont_req k) c *)
-
-(* and encode x k c = *)
-(*   let rec loop = function *)
-(*     | `Partial (s, i, l, k) -> *)
-(*         `Write (s, i, l, (fun n -> loop (k n))) *)
-(*     | `Wait_for_cont k -> *)
-(*         decode (cont_req (fun c -> loop (k c.e))) c *)
-(*     | `Ok -> *)
-(*         k c *)
-(*   in *)
-(*   loop (E.encode c.e x) *)
-
-(* and decode k c = *)
-(*   let rec loop = function *)
-(*     | `Ok x -> *)
-(*         k x c *)
-(*     | `Read (s, i, l, k) -> *)
-(*         `Read (s, i, l, fun n -> loop (k n)) *)
-(*     | `Error e -> *)
-(*         `Error (`Decode_error e) (\* FIXME resume on the next line of input *\) *)
-(*   in *)
-(*   loop (D.decode c.d) *)
 
 (* let rec h_tagged tag r c = *)
 (*   let cur = string_of_int c.tag in *)

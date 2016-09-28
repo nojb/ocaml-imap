@@ -43,21 +43,32 @@
 
 (** {1 Common types for IMAP} *)
 
-(** Unsigned 32-bit integers are used for: message sequence numbers, unique
-    identification numbers (UIDs). *)
-type uint32 = Uint32.t
+module type NUMBER = sig
+  type t
+  val zero: t
+  val compare: t -> t -> int
+end
 
+module Modseq : NUMBER
 (** Unsigned 64-bit integers are used for: mod-sequence numbers, Gmail message
     and thread IDs. *)
-type uint64 = Uint64.t
 
-module Modseq : module type of Uint64
-module UID : module type of Uint32
-module Seq : module type of Uint32
+module Uid : NUMBER
+module Seq : NUMBER
+(** Unsigned 32-bit integers are used for: message sequence numbers, unique
+    identification numbers (UIDs). *)
 
-type _ uid_or_seq =
-  | UID : UID.t uid_or_seq
-  | Seq : Seq.t uid_or_seq
+module type NUMBER_SET = sig
+  type elt
+  type t
+  val singleton: elt -> t
+  val union: t -> t -> t
+  val add: elt -> t -> t
+  val interval: elt -> elt -> t
+end
+
+module SeqSet : NUMBER_SET with type elt := Seq.t
+module UidSet : NUMBER_SET with type elt := Uid.t
 
 type date = { day : int; month : int ; year : int }
 type time = { hours : int; minutes : int; seconds : int; zone : int }
@@ -204,15 +215,6 @@ module Msg : sig
     | `Keyword of string
     | `Extension of string ]
 
-  (** Message number (either sequence or UIDs) sets, as a union of intervals.  It
-      is the responsability of the client to make any necessary validity check, as
-      none is performed by the library.
-
-      For example, the IMAP sequence set [1,2:3] is represented by [[(1, 1); (2, 3)]]. *)
-  type set = (uint32 * uint32) list
-
-  val pp_set: Format.formatter -> set -> unit
-
   (** The [section] type is used to specify which part(s) of a message should be
       retrieved when using {!fetch} with [`Body_section].  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
@@ -273,16 +275,16 @@ module Msg : sig
     | BODY_SECTION of section * int option * string option
     (** A message MIME part, starting offset, part data. *)
 
-    | UID of uint32
+    | UID of Uid.t
     (** The unique identifier of the message. *)
 
-    | MODSEQ of uint64
+    | MODSEQ of Modseq.t
     (** The modification sequence number of this message.  Requires [CONDSTORE]. *)
 
-    | X_GM_MSGID of uint64
+    | X_GM_MSGID of Modseq.t
     (** Gmail message ID. *)
 
-    | X_GM_THRID of uint64
+    | X_GM_THRID of Modseq.t
     (** Gmail thread ID. *)
 
     | X_GM_LABELS of string list
@@ -336,6 +338,18 @@ module Msg : sig
 
     val flags: t
     (** The {{!flag}flags} that are set for this message. *)
+
+    val all: t list
+    val fast: t list
+    val full: t list
+(** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
+
+(** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+    [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
+
+(** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
+    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
   end
 
   val pp: Format.formatter -> msg_att -> unit
@@ -389,13 +403,13 @@ module Code : sig
         not exist (as opposed to some other reason).  This is a hint to the client
         that the operation can succeed if the mailbox is first created by the
         {!create} command. *)
-    | UIDNEXT of uint32
+    | UIDNEXT of Uid.t
     (** The next unique identifier value.  Refer to {{:fdfads}???} for more
         information. *)
-    | UIDVALIDITY of uint32
+    | UIDVALIDITY of Uid.t
     (** The unique identifier validity value.  Refer to {{::fdfdsa}???} for more
         information. *)
-    | UNSEEN of uint32
+    | UNSEEN of Seq.t
     (** The number of the first message without the [`Seen] flag set. *)
     | OTHER of string * string option
     (** Another response code. *)
@@ -403,7 +417,7 @@ module Code : sig
     (** Signals that the current mailbox has been closed.  It is sent when closing
         a mailbox implictly as a consequence of selecting a different mailbox.
         Requires [QRESYNC]. *)
-    | HIGHESTMODSEQ of uint64
+    | HIGHESTMODSEQ of Modseq.t
     (** The highest mod-sequence value of all messages in the mailbox.  Returned
         in an untagged [`Ok] {{!untagged}response} to the {!select} and
         {!examine} commands. *)
@@ -412,17 +426,17 @@ module Code : sig
         the mailbox MUST send this code in an untagged [`Ok]
         {{!untagged}response} to every successful {!select} or {!examine}
         command. *)
-    | MODIFIED of (uint32 * uint32) list
+    | MODIFIED of (Uid.t * Uid.t) list (* FIXME *)
     (** The [`Modified] response code includes the message set or set of UIDs of
         the most recent {!sotre} command of all messages that failed the
         [UNCHANGESINCE] test. *)
-    | APPENDUID of uint32 * uint32
+    | APPENDUID of Uid.t * Uid.t
     (** Contains the [`Uid_validity] of the destination mailbox and the
         [`Uid] assigned to the appended message in the destination mailbox.
 
         This response code is returned in a tagged [`Ok] response to the {!append}
         command. *)
-    | COPYUID of uint32 * (uint32 * uint32) list * (uint32 * uint32) list
+    | COPYUID of Uid.t * (Uid.t * Uid.t) list * (Uid.t * Uid.t) list
     (** Sent in response to a [COPY] command, contains the [UIDVALIDITY] of the
         destination mailbox, followed by the set of UIDs of the source messages,
         and the set of UIDs of the destination messages (in the same order).
@@ -481,13 +495,13 @@ module Mailbox : sig
     | RECENT of int
     (** Number of messages in the mailbox with the [`Recent] flag. *)
 
-    | UIDNEXT of UID.t
+    | UIDNEXT of Uid.t
     (** The expected UID of the next message to be added to this mailbox. *)
 
-    | UIDVALIDITY of UID.t
+    | UIDVALIDITY of Uid.t
     (** The UID VALIDITY value of this mailbox. *)
 
-    | UNSEEN of uint32
+    | UNSEEN of Seq.t
     (** The Sequence number of the first message in the mailbox that has not been
         seen. *)
 
@@ -528,8 +542,6 @@ end
 
     For example, the IMAP extended set [1,2:3,4:*] will be represented by
     [[(1, Some 1); (2, Some 3); (4, None)]]. *)
-type eset = (uint32 * uint32 option) list
-
 module Search : sig
   (** Search keys. See {!search} command. *)
   type key
@@ -537,7 +549,7 @@ module Search : sig
   val all: key
   (** All messages in the mailbox; the default initial key for ANDing. *)
 
-  val seq: eset -> key
+  val seq: SeqSet.t -> key
   (** Messages with message sequence numbers corresponding to the specified
       message sequence number set. *)
 
@@ -640,7 +652,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  val uid: eset -> key
+  val uid: UidSet.t -> key
   (** Messages with unique identifiers corresponding to the specified unique
       identifier set.  Sequence set ranges are permitted. *)
 
@@ -671,10 +683,10 @@ module Search : sig
   val x_gm_raw: string -> key
   (** TOOD *)
 
-  val x_gm_msgid: uint64 -> key
+  val x_gm_msgid: Modseq.t -> key
   (** Messages with a given Gmail Message ID. *)
 
-  val x_gm_thrid: uint64 -> key
+  val x_gm_thrid: Modseq.t -> key
   (** Messages with a given Gmail Thread ID. *)
 
   val x_gm_labels: string list -> key
@@ -801,7 +813,8 @@ val status: string -> Mailbox.Request.t list -> (string * Mailbox.status_respons
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
 
-val copy: ?uid:bool -> eset -> string -> unit command
+val copy: SeqSet.t -> string -> unit command
+val uid_copy: UidSet.t -> string -> unit command
 (** [copy uid set m] copies the messages in [set] to the end of the specified
     mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
     [true] (the default) or sequence numbers if [uid] is [false]. *)
@@ -816,13 +829,13 @@ val close: unit command
     {!flag} set from the currently selected mailbox, and returns to
     the authenticated state from the selected state. *)
 
-val expunge: uint32 list command
+val expunge: Seq.t list command
 (** [expunge] permanently removes all messages that have the [`Deleted]
     {!flag} set from the currently selected mailbox.  Before
     returning an [`Ok] to the client, an untagged [`Expunge]
     {{!untagged}response} is sent for each message that is removed. *)
 
-val uid_search: Search.key -> (UID.t list * Modseq.t option) command
+val uid_search: Search.key -> (Uid.t list * Modseq.t option) command
 val search: Search.key -> (Seq.t list * Modseq.t option) command
 (** [search uid sk] searches the mailbox for messages that match the given
     searching criteria.  If [uid] is [true] (the default), then the matching
@@ -831,17 +844,15 @@ val search: Search.key -> (Seq.t list * Modseq.t option) command
     from the server contains a listing of message numbers corresponding to those
     messages that match the searching criteria. *)
 
-type _ condstore_flag =
-  | Condstore: uint64 condstore_flag
-  | No_condstore: unit condstore_flag
-
-val select: 'a condstore_flag -> string -> 'a command
+val select: string -> unit command
+val condstore_select: string -> Modseq.t command
 (** [select condstore m] selects the mailbox [m] so that its messages can be
     accessed.  If [condstore] (default value [false]) is [true], then the server
     will return the [`Modseq] data item in all subsequent untagged [`Fetch]
     {{!untagged}responses}. *)
 
-val examine: 'a condstore_flag -> string -> 'a command
+val examine: string -> unit command
+val condstore_examine: string -> Modseq.t command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
@@ -868,7 +879,8 @@ val append: string -> ?flags:Msg.flag list -> string -> unit command
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-val fetch: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> Msg.Request.t list -> ('a * Msg.msg_att list) list command
+val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Msg.Request.t list -> (Seq.t * Msg.msg_att list) list command
+val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> (Uid.t * Msg.msg_att list) list command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
@@ -878,21 +890,14 @@ val fetch: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> Msg.Req
     The [vanished] optional parameter specifies whether one wants to receive
     [`Vanished] responses as well. *)
 
-val fetch_all: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> ('a * Msg.msg_att list) list command
-(** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
-
-val fetch_fast: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> ('a * Msg.msg_att list) list command
-(** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-    [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
-
-val fetch_full: 'a uid_or_seq -> ?changed:uint64 -> ?vanished:bool -> eset -> ('a * Msg.msg_att list) list command
-(** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
-    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
-
 (** {2 Store commands} *)
 
-val store_add_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
+val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.msg_att list) list command
+val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.msg_att list) list command
+val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.msg_att list) list command
+val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.msg_att list) list command
+val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.msg_att list) list command
+val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.msg_att list) list command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -901,25 +906,22 @@ val store_add_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset 
     default) or [false].  Specifying a [?unchanged] argument will further reduce
     the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
     value is at least the passed value (requires the [CONDSTORE] extension). *)
-
-val store_set_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
 (** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
     instead of adding to it. *)
-
-val store_remove_flags: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> Msg.flag list -> ('a * Msg.msg_att list) list command
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
-val store_add_labels: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> ('a * Msg.msg_att list) list command
+val add_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.msg_att list) list command
+val set_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.msg_att list) list command
+val remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.msg_att list) list command
+val uid_add_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.msg_att list) list command
+val uid_set_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.msg_att list) list command
+val uid_remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.msg_att list) list command
 (** [store_add_labels] is like {!store_add_flags} but adds
     {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
     instead of regular flags. *)
-
-val store_set_labels: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> ('a * Msg.msg_att list) list command
 (** [store_set_labels] is like {!store_add_labels} but replaces the set of
     labels instead of adding to it. *)
-
-val store_remove_labels: 'a uid_or_seq -> ?silent:bool -> ?unchanged:uint64 -> eset -> string list -> ('a * Msg.msg_att list) list command
 (** [store_remove_labels] is like {!store_add_labels} but removes labels instead
     of adding them. *)
 
