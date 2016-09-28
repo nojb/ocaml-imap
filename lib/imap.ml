@@ -548,6 +548,62 @@ module Msg = struct
     | X_GM_THRID of int64
     | X_GM_LABELS of string list
 
+  type att =
+    {
+      flags: [ flag | `Recent ] list;
+      envelope: Envelope.envelope option;
+      internaldate: (date * time) option;
+      rfc822: string;
+      rfc822_header: string;
+      rfc822_text: string;
+      rfc822_size: int option;
+      body: MIME.mime option;
+      body_section: (section * int option * string option) option;
+      uid: int32;
+      modseq: int64;
+      x_gm_msgid: int64;
+      x_gm_thrid: int64;
+      x_gm_labels: string list;
+    }
+
+  let empty_att =
+    {
+      flags = [];
+      envelope = None;
+      internaldate = None;
+      rfc822 = "";
+      rfc822_header = "";
+      rfc822_text = "";
+      rfc822_size = None;
+      body = None;
+      body_section = None;
+      uid = 0l;
+      modseq = 0L;
+      x_gm_msgid = 0L;
+      x_gm_thrid = 0L;
+      x_gm_labels = [];
+    }
+
+  let merge_att att = function
+    | FLAGS flags -> {att with flags}
+    | ENVELOPE envelope -> {att with envelope = Some envelope}
+    | INTERNALDATE (d, t) -> {att with internaldate = Some (d, t)}
+    | RFC822 None -> {att with rfc822 = ""}
+    | RFC822 (Some rfc822) -> {att with rfc822}
+    | RFC822_HEADER None -> {att with rfc822_header = ""}
+    | RFC822_HEADER (Some rfc822_header) -> {att with rfc822_header}
+    | RFC822_TEXT None -> {att with rfc822_text = ""}
+    | RFC822_TEXT (Some rfc822_text) -> {att with rfc822_text}
+    | RFC822_SIZE n -> {att with rfc822_size = Some n}
+    | BODY mime
+    | BODYSTRUCTURE mime -> {att with body = Some mime}
+    | BODY_SECTION (sec, o, s) -> {att with body_section = Some (sec, o, s)}
+    | UID uid -> {att with uid}
+    | MODSEQ modseq -> {att with modseq}
+    | X_GM_MSGID x_gm_msgid -> {att with x_gm_msgid}
+    | X_GM_THRID x_gm_thrid -> {att with x_gm_thrid}
+    | X_GM_LABELS x_gm_labels -> {att with x_gm_labels}
+
   module Request = struct
     open E
 
@@ -742,6 +798,34 @@ module Mailbox = struct
     | UIDVALIDITY of int32
     | UNSEEN of int32
     | HIGHESTMODSEQ of int64
+
+  type att =
+    {
+      messages: int;
+      recent: int;
+      uidnext: int32;
+      uidvalidity: int32;
+      unseen: int32;
+      highestmodseq: int64;
+    }
+
+  let empty_att =
+    {
+      messages = -1;
+      recent = -1;
+      uidnext = 0l;
+      uidvalidity = 0l;
+      unseen = 0l;
+      highestmodseq = 0L;
+    }
+
+  let merge_att att = function
+    | MESSAGES messages -> {att with messages}
+    | RECENT recent -> {att with recent}
+    | UIDNEXT uidnext -> {att with uidnext}
+    | UIDVALIDITY uidvalidity -> {att with uidvalidity}
+    | UNSEEN unseen -> {att with unseen}
+    | HIGHESTMODSEQ highestmodseq -> {att with highestmodseq}
 
   module Request = struct
     open E
@@ -2630,11 +2714,13 @@ let lsub ?(ref = "") s =
 
 let status m att =
   let format = E.(str "STATUS" ++ mailbox m ++ p (list (fun x -> x) att)) in
-  let default = ("", []) in
-  let process u items =
+  let default = Mailbox.empty_att in
+  let process u att =
     match u with
-    | STATUS (mbox, items1) -> (mbox, items1)
-    | _ -> items
+    | STATUS (mbox, items) when m = mbox ->
+        List.fold_left Mailbox.merge_att att items
+    | _ ->
+        att
   in
   {format; default; process}
 
@@ -2743,10 +2829,13 @@ let fetch_gen cmd ?changed ?(vanished = false) set att =
   in
   let format = cmd ++ eset set ++ att ++ changed_since in
   let default = [] in
-  let process u info =
+  let process u atts =
     match u with
-    | FETCH (id, infos) -> (id, infos) :: info
-    | _ -> info
+    | FETCH (id, infos) ->
+        let att = List.fold_left Msg.merge_att Msg.empty_att infos in
+        (id, att) :: atts
+    | _ ->
+        atts
   in
   {format; default; process}
 
@@ -2775,7 +2864,7 @@ let store_gen cmd ~silent ~unchanged mode set att =
   let unchanged_since =
     match unchanged with
     | None -> str ""
-    | Some m -> p (str "UNCHANGEDSINCE" ++ uint64 m)
+    | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format = cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
   let default = [] in
