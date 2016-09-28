@@ -4,6 +4,6 @@
 
 type connection
 
-val connect: ?port:int -> string -> connection Lwt.t
+val connect: int -> string -> connection Lwt.t
 
 val run: connection -> 'a Imap.command -> 'a Lwt.t

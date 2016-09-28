@@ -446,6 +446,9 @@ module E = struct
   let int n =
     raw (string_of_int n)
 
+  let tag n =
+    Printf.ksprintf raw "%04d" n
+
   let uint32 m =
     raw (Printf.sprintf "%lu" m)
 
@@ -2983,7 +2986,9 @@ let continue : type a. a progress -> a action = fun progress ->
   let {state; progress_state} = progress in
   match progress_state with
   | Sending {format; default; process} ->
-      begin match E.out format with
+      let n = state.tag in
+      let state = {tag = n + 1} in
+      begin match E.out E.(tag n ++ format) with
       | E.Done s ->
           let progress_state = Receiving (Readline.empty, default, process) in
           Send (s, {state; progress_state})
@@ -3053,15 +3058,3 @@ let run state cmd =
   (* | #command_ordinary as cmd -> *)
   (*     encode (`Cmd (string_of_int c.tag, cmd)) *)
   (*       (decode h_response) c *)
-
-(* let connection () = *)
-(*   let c = *)
-(*     { *)
-(*       e = E.encoder (); *)
-(*       d = D.decoder (); *)
-(*       idling = false; *)
-(*       idle_stop = ref false; *)
-(*       tag = 0; *)
-(*     } *)
-(*   in *)
-(*   c, decode h_greetings c *)
