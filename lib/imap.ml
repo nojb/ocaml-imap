@@ -2605,11 +2605,6 @@ type state =
     tag: int;
   }
 
-let client =
-  {
-    tag = 1;
-  }
-
 type 'a command =
   {
     format: E.rope;
@@ -2618,9 +2613,10 @@ type 'a command =
   }
 
 type 'a progress_state =
-  | Sending of 'a command
-  | WaitingForCont of Readline.state * E.rope
-  | Receiving of Readline.state * 'a * (untagged -> 'a -> 'a)
+  | Sending : 'a command -> 'a progress_state
+  | WaitingForCont : Readline.state * E.rope -> 'a progress_state
+  | Receiving : Readline.state * 'a * (untagged -> 'a -> 'a) -> 'a progress_state
+  | ReceivingGreeting : Readline.state -> unit progress_state
 
 type 'a progress =
   {
@@ -2628,11 +2624,18 @@ type 'a progress =
     progress_state: 'a progress_state;
   }
 
-type 'a result =
-  | Ok of 'a
+type 'a action =
+  | Ok of 'a * state
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
+
+let initiate =
+  Refill
+    {
+      state = {tag = 1};
+      progress_state = ReceivingGreeting Readline.empty;
+    }
 
 let login username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
@@ -2907,7 +2910,6 @@ let uid_set_labels ?(silent = false) ?unchanged set labels =
 let uid_remove_labels ?(silent = false) ?unchanged set labels =
   store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
 
-
 let enable caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
   let default = [] in
@@ -2977,12 +2979,7 @@ let idle () =
 (*           encode `Auth_error (fun _ -> `Error (`Auth_error s)) c (\* (await (decode (h_authenticate auth)))) c *\) *)
 (*       end *)
 
-(* let h_greetings r c = *)
-(*   match r with *)
-(*   | Untagged (State (Ok (code, s))) -> `Ok (code, s) *)
-(*   | _ -> `Error `Bad_greeting (\* FIXME continue until [`Ok] ? *\) *)
-
-let continue progress =
+let continue : type a. a progress -> a action = fun progress ->
   let {state; progress_state} = progress in
   match progress_state with
   | Sending {format; default; process} ->
@@ -2993,15 +2990,33 @@ let continue progress =
       | E.WaitForCont (s, format) ->
           Send (s, {state; progress_state = WaitingForCont (Readline.empty, format)})
       end
-  | WaitingForCont _
+  | WaitingForCont _ ->
+      Refill progress
   | Receiving _ ->
       Refill progress
+  | ReceivingGreeting _ ->
+      Refill progress
 
-let feed progress s off len =
+let feed : type a. a progress -> _ -> _ -> _ -> a action = fun progress s off len ->
   let {state; progress_state} = progress in
   match progress_state with
   | WaitingForCont (buf, _) ->
       assert false
+  | ReceivingGreeting buf ->
+      let rec loop = function
+        | Readline.Refill buf ->
+            Refill {state; progress_state = ReceivingGreeting buf}
+        | Readline.Next (buf, x) ->
+            begin match Decoder.decode x with
+            | Untagged (State (OK (code, s))) ->
+                Ok ((), state)
+            | _ ->
+                Error Error.Bad_greeting
+            end
+        | Readline.Error ->
+            Error Error.Bad_greeting
+      in
+      loop (Readline.feed buf s off len)
   | Receiving (buf, acc, process) ->
       let rec loop acc = function
         | Readline.Refill buf ->
@@ -3021,10 +3036,12 @@ let feed progress s off len =
       invalid_arg "feed"
 
 let run state cmd =
-  {
-    state;
-    progress_state = Sending cmd;
-  }
+  continue
+    {
+      state;
+      progress_state = Sending cmd;
+    }
+
   (* match cmd with *)
   (* | `Authenticate a -> *)
   (*     encode (`Cmd (string_of_int c.tag, `Authenticate a.name)) *)

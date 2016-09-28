@@ -1,6 +1,9 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
 OCAMLFLAGS := -bin-annot -g -w -3
 
+all:
+	$(OCAMLBUILD) lib/imap.cma
+
 imap_shell:
 	$(OCAMLBUILD) test/imap_shell.byte
 
@@ -10,7 +13,7 @@ wait_mail:
 imap_lwt:
 	$(OCAMLBUILD) test/imap_lwt.byte
 
-all: lib imap_shell wait_mail
+# all: lib imap_shell wait_mail
 
 clean:
 	$(OCAMLBUILD) -clean
@@ -54,4 +57,4 @@ endif
 publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
 
-.PHONY: lib clean doc imap_shell wait_mail install uninstall
+.PHONY: all lib clean doc imap_shell wait_mail install uninstall

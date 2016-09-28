@@ -939,21 +939,21 @@ end
     {{!connection}Connections} manage the encoder and decoder states and keeps
     track of message tags. *)
 
+type state
+(** The type for connections. *)
+
 type 'a progress
 
-type 'a result =
-  | Ok of 'a
+type 'a action =
+  | Ok of 'a * state
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
 
-val continue: 'a progress -> 'a result
-val feed: 'a progress -> string -> int -> int -> 'a result
+val continue: 'a progress -> 'a action
+val feed: 'a progress -> string -> int -> int -> 'a action
 
-type state
-(** The type for connections. *)
-
-val client: state
+val initiate: unit action
 
 (** [connection ()] creates a new connection object.  The connection should be
     supplied with input and output buffers as necessary using {!src} and {!dst}.
@@ -964,11 +964,6 @@ val client: state
     process the server greeting and start issuing commands.
 
     See the {{!ex}examples}. *)
-
-(** {3 I/O interface}
-
-    The following functions are used to provide input and/or output buffers to
-    {!run} when it returns [`Await_src] and/or [`Await_dst]. *)
 
 (** {3 Executing commands}
 
@@ -993,7 +988,7 @@ val client: state
 
     See the {{!ex}examples.} *)
 
-val run: state -> 'a command -> 'a progress
+val run: state -> 'a command -> 'a action
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul
