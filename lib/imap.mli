@@ -147,11 +147,13 @@ module MIME : sig
   (** Basic fields of a MIME body part.  See
       {{:https://tools.ietf.org/html/rfc2045}RFC 2045} for more details. *)
   type fields =
-    { fld_params : (string * string) list;      (* Part parameters *)
-      fld_id : string option;                   (* Optional part ID *)
-      fld_desc : string option;                 (* Optional content description *)
-      fld_enc : string;                         (* Content transfer encoding *)
-      fld_octets : int }                        (* Size in bytes *)
+    {
+      fld_params: (string * string) list;      (* Part parameters *)
+      fld_id: string option;                   (* Optional part ID *)
+      fld_desc: string option;                 (* Optional content description *)
+      fld_enc: string;                         (* Content transfer encoding *)
+      fld_octets: int;
+    }                        (* Size in bytes *)
 
   val pp_fields : Format.formatter -> fields -> unit
 
@@ -700,14 +702,16 @@ module Auth : sig
       [XOAUTH2] are provided as way of example. *)
 
   type authenticator =
-    { name : string;
-      step : string -> [ `Ok of string | `Error of string ] }
+    {
+      name: string;
+      step: string -> [ `Ok of string | `Error of string ];
+    }
 
-  val plain : string -> string -> authenticator
-  (** [plain user pass] authenticates via [PLAIN] mechanism using username [user]
-      and password [pass]. *)
+  val plain: string -> string -> authenticator
+  (** [plain user pass] authenticates via [PLAIN] mechanism using username
+      [user] and password [pass]. *)
 
-  val xoauth2 : string -> string -> authenticator
+  val xoauth2: string -> string -> authenticator
   (** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
       [user] and access token [token].  The access token should be obtained
       independently. *)
