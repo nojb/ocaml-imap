@@ -48,6 +48,7 @@ let run c cmd =
 let connect ?(port = 993) host =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname host >>= fun he ->
+  Printf.eprintf "gethostbyname: %s => %s\n%!" host (Unix.string_of_inet_addr he.Unix.h_addr_list.(0));
   Lwt_unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port)) >>= fun () ->
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
@@ -57,9 +58,13 @@ let connect ?(port = 993) host =
   Lwt.return {state; mutex = Lwt_mutex.create (); sock; buf}
 
 let () =
+  Printexc.record_backtrace true
+
+let () =
   try
     Lwt_main.run (connect "imap.gmail.com" >>= fun _ -> Lwt.return_unit)
   with e ->
     let s = match e with Failure s -> s | e -> Printexc.to_string e in
     Printf.eprintf ">> Failure: %s\n%!" s;
+    Printexc.print_backtrace stderr;
     exit 2
