@@ -20,7 +20,13 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-let io_buffer_size = 65536                           (* IO_BUFFER_SIZE 4.0.0 *)
+let pp_qstr ppf s = Format.fprintf ppf "%S" s
+let pp_char ppf c = Format.fprintf ppf "%C" c
+let pp_opt f ppf = function
+  | None   -> Format.fprintf ppf "none"
+  | Some c -> Format.fprintf ppf "%a" f c
+let pp_list ?(pp_sep = Format.pp_print_space) =
+  Format.pp_print_list ~pp_sep
 
 module Uint32 = struct
   include Uint32
@@ -137,12 +143,20 @@ module Mutf7 = struct
     Buffer.contents b
 end
 
-(* type month = *)
-(*   [ `Jan | `Feb | `Mar | `Apr | `May | `Jun *)
-(*   | `Jul | `Aug | `Sep | `Oct | `Nov | `Dec ] *)
+type date =
+  {
+    day: int;
+    month: int;
+    year: int;
+  }
 
-type date = { day : int; month : int ; year : int }
-type time = { hours : int; minutes : int; seconds : int; zone : int }
+type time =
+  {
+    hours: int;
+    minutes: int;
+    seconds: int;
+    zone: int;
+  }
 
 type flag =
   [ `Answered
@@ -290,7 +304,7 @@ module Envelope = struct
       x.ad_name x.ad_adl x.ad_mailbox x.ad_host
 
   let pp_address_list =
-    pp_print_list ~pp_sep:pp_print_space pp_address
+    pp_list pp_address
 
   let pp_envelope ppf env =
     fprintf ppf
@@ -353,8 +367,8 @@ module MIME = struct
 
   let pp_fields ppf f =
     fprintf ppf "@[<hv 2>(fields@ @[<hv 2>(params@ %a)@]@ (id %a)@ (desc %a)@ (enc %S)@ (octets %d)@]"
-      (pp_print_list ~pp_sep:pp_print_space pp_param) f.fld_params (pp_opt pp_string) f.fld_id
-      (pp_opt pp_string) f.fld_desc f.fld_enc
+      (pp_list pp_param) f.fld_params (pp_opt pp_print_string) f.fld_id
+      (pp_opt pp_print_string) f.fld_desc f.fld_enc
       f.fld_octets
 
   let rec pp_mime ppf = function
@@ -402,8 +416,12 @@ module Msg = struct
   open Format
 
   let pp_set ppf s =
-    let rg ppf (x, y) = pp ppf "%a-%a" Uint32.printer x Uint32.printer y in
+    let rg ppf (x, y) = fprintf ppf "%a-%a" Uint32.printer x Uint32.printer y in
     pp_list rg ppf s
+
+  let pp_date_time ppf (d, t) =
+    fprintf ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
+      d.day d.month d.year t.hours t.minutes t.seconds t.zone
 
   let pp_flag ppf = function
     | `Answered    -> fprintf ppf "answered"
@@ -423,18 +441,19 @@ module Msg = struct
     | #flag as f -> pp_flag ppf f
 
   let rec pp_section ppf = function
-    | HEADER -> pp ppf "header"
-    | HEADER_FIELDS l -> pp ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
-    | HEADER_FIELDS_NOT l -> pp ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
-    | TEXT -> pp ppf "text"
-    | MIME -> pp ppf "mime"
-    | Part (n, s) -> pp ppf "@[<2>(part %d@ %a)@]" n pp_section s
-    | All -> pp ppf "all"
+    | HEADER -> fprintf ppf "header"
+    | HEADER_FIELDS l ->
+        fprintf ppf "@[<2>(header-fields %a)@]" (pp_list pp_qstr) l
+    | HEADER_FIELDS_NOT l ->
+        fprintf ppf "@[<2>(header-fields-not %a)@]" (pp_list pp_qstr) l
+    | TEXT -> fprintf ppf "text"
+    | MIME -> fprintf ppf "mime"
+    | Part (n, s) -> fprintf ppf "@[<2>(part %d@ %a)@]" n pp_section s
+    | All -> fprintf ppf "all"
 
   let pp ppf = function
     | FLAGS r ->
-        fprintf ppf "@[<2>(flags %a)@]"
-          (pp_print_list ~pp_sep:pp_print_space pp_flag_fetch) r
+        fprintf ppf "@[<2>(flags %a)@]" (pp_list pp_flag_fetch) r
     | ENVELOPE e -> Envelope.pp_envelope ppf e
     | INTERNALDATE (d, t) ->
         fprintf ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
@@ -442,8 +461,8 @@ module Msg = struct
     | RFC822_HEADER s -> fprintf ppf "(rfc822-header %a)" (pp_opt pp_qstr) s
     | RFC822_TEXT s -> fprintf ppf "(rfc822-text %a)" (pp_opt pp_qstr) s
     | RFC822_SIZE n -> fprintf ppf "(rfc822-size %i)" n
-    | BODY b -> fprintf ppf "@[<2>(body@ %a)@]" pp_mime b
-    | BODYSTRUCTURE b -> fprintf ppf "@[<2>(bodystructure@ %a)@]" pp_mime b
+    | BODY b -> fprintf ppf "@[<2>(body@ %a)@]" MIME.pp_mime b
+    | BODYSTRUCTURE b -> fprintf ppf "@[<2>(bodystructure@ %a)@]" MIME.pp_mime b
     | BODY_SECTION (s, n, x) ->
         fprintf ppf "@[<2>(body-section@ %a@ %a@ %a)@]"
           pp_section s (pp_opt Format.pp_print_int) n (pp_opt pp_qstr) x
@@ -485,16 +504,13 @@ module Code = struct
     | ALERT ->
         fprintf ppf "alert"
     | BADCHARSET cs ->
-        fprintf ppf "@[<2>(badcharset %a)@]"
-          (pp_print_list ~pp_sep:pp_print_space pp_print_string) cs
+        fprintf ppf "@[<2>(badcharset %a)@]" (pp_list pp_print_string) cs
     | CAPABILITY caps ->
-        fprintf ppf "@[<2>(capability %a)@]"
-          (pp_print_list ~pp_sep:pp_print_space Capability.pp) caps
+        fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) caps
     | PARSE ->
         fprintf ppf "parse"
     | PERMANENTFLAGS fl ->
-        fprintf ppf "@[<2>(permanent-flags %a)@]"
-          (pp_print_list ~pp_sep:pp_print_space pp_flag_perm) fl
+        fprintf ppf "@[<2>(permanent-flags %a)@]" (pp_list Msg.pp_flag_perm) fl
     | READ_ONLY ->
         fprintf ppf "read-only"
     | READ_WRITE ->
@@ -516,11 +532,11 @@ module Code = struct
     | NOMODSEQ ->
         fprintf ppf "no-modseq"
     | MODIFIED s ->
-        fprintf ppf "(modified@ %a)" pp_set s
+        fprintf ppf "(modified@ %a)" Msg.pp_set s
     | APPENDUID (n, m) ->
         fprintf ppf "(append-uid %a@ %a)" Uint32.printer n Uint32.printer m
     | COPYUID (n, s1, s2) ->
-        fprintf ppf "(copy-uid %a@ %a@ %a)" Uint32.printer n pp_set s1 pp_set s2
+        fprintf ppf "(copy-uid %a@ %a@ %a)" Uint32.printer n Msg.pp_set s1 Msg.pp_set s2
     | UIDNOTSTICKY ->
         fprintf ppf "uid-not-sticky"
     | COMPRESSIONACTIVE ->
@@ -531,20 +547,20 @@ end
 
 module Mailbox = struct
   type mbx_flag =
-    [ `Noselect
-    | `Marked
-    | `Unmarked
-    | `Noinferiors
-    | `HasChildren
-    | `HasNoChildren
-    | `All
-    | `Archive
-    | `Drafts
-    | `Flagged
-    | `Junk
-    | `Sent
-    | `Trash
-    | `Extension of string ]
+    | Noselect
+    | Marked
+    | Unmarked
+    | Noinferiors
+    | HasChildren
+    | HasNoChildren
+    | All
+    | Archive
+    | Drafts
+    | Flagged
+    | Junk
+    | Sent
+    | Trash
+    | Extension of string
 
   type status_response =
     | MESSAGES of int
@@ -554,30 +570,31 @@ module Mailbox = struct
     | UNSEEN of uint32
     | HIGHESTMODSEQ of uint64
 
-  let pp_mbx_flag : _ -> [< mbx_flag] -> _ = fun ppf f ->
-    match f with
-    | `Noselect      -> pp ppf "noselect"
-    | `Marked        -> pp ppf "marked"
-    | `Unmarked      -> pp ppf "unmarked"
-    | `Noinferiors   -> pp ppf "noinferiors"
-    | `HasChildren   -> pp ppf "has-children"
-    | `HasNoChildren -> pp ppf "has-no-children"
-    | `All           -> pp ppf "all"
-    | `Archive       -> pp ppf "archive"
-    | `Drafts        -> pp ppf "drafts"
-    | `Flagged       -> pp ppf "flagged"
-    | `Junk          -> pp ppf "junk"
-    | `Sent          -> pp ppf "sent"
-    | `Trash         -> pp ppf "trash"
-    | `Extension s   -> pp ppf "(extension %s)" s
+  open Format
+
+  let pp_mbx_flag ppf = function
+    | Noselect -> fprintf ppf "noselect"
+    | Marked -> fprintf ppf "marked"
+    | Unmarked -> fprintf ppf "unmarked"
+    | Noinferiors -> fprintf ppf "noinferiors"
+    | HasChildren -> fprintf ppf "has-children"
+    | HasNoChildren -> fprintf ppf "has-no-children"
+    | All -> fprintf ppf "all"
+    | Archive -> fprintf ppf "archive"
+    | Drafts -> fprintf ppf "drafts"
+    | Flagged -> fprintf ppf "flagged"
+    | Junk -> fprintf ppf "junk"
+    | Sent -> fprintf ppf "sent"
+    | Trash -> fprintf ppf "trash"
+    | Extension s -> fprintf ppf "(extension %s)" s
 
   let pp_mbx_status ppf = function
-    | MESSAGES n       -> pp ppf "(messages %i)" n
-    | RECENT n         -> pp ppf "(recent %i)" n
-    | UIDNEXT uid     -> pp ppf "(uid-next %a)" Uint32.printer uid
-    | UIDVALIDITY uid -> pp ppf "(uid-validity %a)" Uint32.printer uid
-    | UNSEEN n         -> pp ppf "(unseen %a)" Uint32.printer n
-    | HIGHESTMODSEQ m -> pp ppf "(highest-modseq %a)" Uint64.printer m
+    | MESSAGES n -> fprintf ppf "(messages %i)" n
+    | RECENT n -> fprintf ppf "(recent %i)" n
+    | UIDNEXT uid -> fprintf ppf "(uid-next %a)" Uint32.printer uid
+    | UIDVALIDITY uid -> fprintf ppf "(uid-validity %a)" Uint32.printer uid
+    | UNSEEN n -> fprintf ppf "(unseen %a)" Uint32.printer n
+    | HIGHESTMODSEQ m -> fprintf ppf "(highest-modseq %a)" Uint64.printer m
 end
 
 module Response = struct
@@ -591,17 +608,17 @@ module Response = struct
     | BYE of Code.code option * string
     | PREAUTH of Code.code option * string
     | FLAGS of flag list
-    | LIST of mbx_flag list * char option * string
-    | LSUB of mbx_flag list * char option * string
+    | LIST of Mailbox.mbx_flag list * char option * string
+    | LSUB of Mailbox.mbx_flag list * char option * string
     | SEARCH of uint32 list * uint64 option
-    | STATUS of string * status_response list
+    | STATUS of string * Mailbox.status_response list
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of uint32
     | FETCH of uint32 * Msg.msg_att list
     | CAPABILITY of Capability.capability list
-    | VANISHED of set
-    | VANISHED_EARLIER of set
+    | VANISHED of Msg.set
+    | VANISHED_EARLIER of Msg.set
     | ENABLED of Capability.capability list
 
   type response =
@@ -609,71 +626,57 @@ module Response = struct
     | Cont of string
     | Tagged of string * state
 
-  let pp = Format.fprintf
-
-  let pp_list f ppf = function
-    | [] -> pp ppf "nil"
-    | x :: xs ->
-        pp ppf "@[%a" f x;
-        List.iter (fun x -> pp ppf "@ %a" f x) xs;
-        pp ppf "@]"
-
-  let pp_string ppf s = pp ppf "%s" s
-  let pp_qstr ppf s = pp ppf "%S" s
-  let pp_char ppf c = pp ppf "%C" c
-
-  let pp_opt f ppf = function
-    | None   -> pp ppf "nil"
-    | Some c -> pp ppf "%a" f c
-
-  let pp_date_time ppf (d, t) =
-    pp ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
-      d.day d.month d.year t.hours t.minutes t.seconds t.zone
-
-  let pp_option f ppf = function
-    | Some x -> f ppf x
-    | None -> Format.pp_print_string ppf "none"
+  open Format
 
   let pp_state ppf = function
-    | OK (c, t)  -> pp ppf "@[<2>(ok@ %a@ %S)@]" (pp_option Code.pp) c t
-    | NO (c, t)  -> pp ppf "@[<2>(no@ %a@ %S)@]" (pp_option Code.pp) c t
-    | BAD (c, t) -> pp ppf "@[<2>(bad@ %a@ %S)@]" (pp_option Code.pp) c t
+    | OK (c, t) ->
+        fprintf ppf "@[<2>(ok@ %a@ %S)@]" (pp_opt Code.pp) c t
+    | NO (c, t) ->
+        fprintf ppf "@[<2>(no@ %a@ %S)@]" (pp_opt Code.pp) c t
+    | BAD (c, t) ->
+        fprintf ppf "@[<2>(bad@ %a@ %S)@]" (pp_opt Code.pp) c t
 
   let pp_untagged ppf = function
     | State s ->
         pp_state ppf s
     | BYE (c, t) ->
-        pp ppf "@[<2>(bye@ %a@ %S)@]"
-          Code.pp c t
+        fprintf ppf "@[<2>(bye@ %a@ %S)@]" (pp_opt Code.pp) c t
     | FLAGS flags ->
-        pp ppf "@[<2>(flags@ %a)@]"
-          (pp_print_list ~pp_sep:pp_print_space pp_flag) flags
+        fprintf ppf "@[<2>(flags@ %a)@]" (pp_list Msg.pp_flag) flags
     | LIST (f, s, m) ->
-        pp ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
-          (pp_opt pp_char) s m
+        fprintf ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
     | LSUB (f, s, m) ->
-        pp ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list pp_mbx_flag) f
-          (pp_opt pp_char) s m
+        fprintf ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
     | SEARCH (ns, m) ->
-        pp ppf "@[<2>(search@ %a@ %a)@]"
-          (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
+        fprintf ppf "@[<2>(search@ %a@ %a)@]" (pp_list Uint32.printer) ns (pp_opt Uint64.printer) m
     | STATUS (m, s) ->
-        pp ppf "@[<2>(status@ %S@ %a)@]" m (pp_list pp_mbx_status) s
-    | EXISTS n -> pp ppf "(exists %i)" n
-    | RECENT n -> pp ppf "(recent %i)" n
-    | EXPUNGE n -> pp ppf "(expunge %a)" Uint32.printer n
+        fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list Mailbox.pp_mbx_status) s
+    | EXISTS n ->
+        fprintf ppf "(exists %i)" n
+    | RECENT n ->
+        fprintf ppf "(recent %i)" n
+    | EXPUNGE n ->
+        fprintf ppf "(expunge %a)" Uint32.printer n
     | FETCH (n, atts) ->
-        pp ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list Msg.pp) atts
-    | CAPABILITY r -> pp ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) r
-    | PREAUTH (c, t) -> pp ppf "@[<2>(preauth@ %a@ %S)@]" Code.pp c t
-    | VANISHED s -> pp ppf "@[<2>(vanished@ %a)@]" pp_set s
-    | VANISHED_EARLIER s -> pp ppf "@[<2>(vanished-earlier@ %a)@]" pp_set s
-    | ENABLED s -> pp ppf "@[<2>(enabled@ %a)@]" (pp_list Capability.pp) s
+        fprintf ppf "@[<2>(fetch %a@ %a)@]" Uint32.printer n (pp_list Msg.pp) atts
+    | CAPABILITY r ->
+        fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) r
+    | PREAUTH (c, t) ->
+        fprintf ppf "@[<2>(preauth@ %a@ %S)@]" (pp_opt Code.pp) c t
+    | VANISHED s ->
+        fprintf ppf "@[<2>(vanished@ %a)@]" Msg.pp_set s
+    | VANISHED_EARLIER s ->
+        fprintf ppf "@[<2>(vanished-earlier@ %a)@]" Msg.pp_set s
+    | ENABLED s ->
+        fprintf ppf "@[<2>(enabled@ %a)@]" (pp_list Capability.pp) s
 
   let pp_response ppf = function
-    | Untagged u         -> pp_untagged ppf u
-    | Cont s             -> pp ppf "@[<2>(cont@ %S)@]" s
-    | Tagged (t, s)      -> pp ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
+    | Untagged u ->
+        pp_untagged ppf u
+    | Cont s ->
+        fprintf ppf "@[<2>(cont@ %S)@]" s
+    | Tagged (t, s) ->
+        fprintf ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
 end
 
 module Readline = struct
@@ -939,13 +942,24 @@ module Parser = struct
     loop cases
 
   let pair ?sep p1 p2 d =
-    let sep = match sep with None -> empty | Some sep -> (fun d -> ignore (sep d)) in
+    let sep =
+      match sep with
+      | None -> (fun d -> ignore (char ' ' d))
+      | Some sep -> (fun d -> ignore (sep d))
+    in
     let x = p1 d in
-    ignore (sep d);
+    sep d;
     let y = p2 d in
     (x, y)
 
-  let stop _ = raise Stop
+  let stop _ =
+    raise Stop
+
+  let plist ?sep p =
+    delimited '(' (list ?sep p) ')'
+
+  let plist1 ?sep p =
+    delimited '(' (list1 ?sep p) ')'
 
   let push s p d =
     p {d with c = s :: d.c}
@@ -955,31 +969,31 @@ module Decoder = struct
   open Response
   open Parser
 
-  type error =
-    [ `Expected_char of char
-    | `Expected_string of string
-    | `Unexpected_char of char
-    | `Unexpected_string of string
-    | `Illegal_char of char
-    | `Unexpected_eoi ]
+  (* type error = *)
+  (*   [ `Expected_char of char *)
+  (*   | `Expected_string of string *)
+  (*   | `Unexpected_char of char *)
+  (*   | `Unexpected_string of string *)
+  (*   | `Illegal_char of char *)
+  (*   | `Unexpected_eoi ] *)
 
-  let pp_error ppf (e, _, _) = match e with
-    | `Expected_char c -> pp ppf "@[Expected@ character@ %C@]" c
-    | `Expected_string s   -> pp ppf "@[Expected@ string@ %S@]" s
-    | `Unexpected_char c   -> pp ppf "@[Unexpected@ character@ %C@]" c
-    | `Unexpected_string s -> pp ppf "@[Unexpected@ string@ %S@]" s
-    | `Illegal_char c      -> pp ppf "@[Illegal@ character@ %C@]" c
-    | `Unexpected_eoi      -> pp ppf "@[Unexpected end of input@]"
+  (* let pp_error ppf (e, _, _) = match e with *)
+  (*   | `Expected_char c -> fprintf ppf "@[Expected@ character@ %C@]" c *)
+  (*   | `Expected_string s -> fprintf ppf "@[Expected@ string@ %S@]" s *)
+  (*   | `Unexpected_char c -> fprintf ppf "@[Unexpected@ character@ %C@]" c *)
+  (*   | `Unexpected_string s -> fprintf ppf "@[Unexpected@ string@ %S@]" s *)
+  (*   | `Illegal_char c -> fprintf ppf "@[Illegal@ character@ %C@]" c *)
+  (*   | `Unexpected_eoi -> fprintf ppf "@[Unexpected end of input@]" *)
 
-  let pp_decode ppf = function
-    | `Ok r -> pp ppf "@[<2>`Ok@ %a@]" pp_response r
-    | `Read _ -> pp ppf "`Read"
-    | `Error e -> pp ppf "@[`Error %a@]" pp_error e
+  (* let pp_decode ppf = function *)
+  (*   | `Ok r -> fprintf ppf "@[<2>`Ok@ %a@]" pp_response r *)
+  (*   | `Read _ -> fprintf ppf "`Read" *)
+  (*   | `Error e -> fprintf ppf "@[`Error %a@]" pp_error e *)
 
-  type result =
-    [ `Ok of response
-    | `Read of bytes * int * int * (int -> result)
-    | `Error of error * string * int ]
+  (* type result = *)
+  (*   [ `Ok of response *)
+  (*   | `Read of bytes * int * int * (int -> result) *)
+  (*   | `Error of error * string * int ] *)
 
 (*
    CHAR           =  %x01-7F
@@ -1250,6 +1264,9 @@ module Decoder = struct
   let sequence_set =
     uid_set
 
+  let set =
+    sequence_set
+
 (*
    auth-type       = atom
                        ; Defined by [SASL]
@@ -1348,7 +1365,7 @@ module Decoder = struct
         "CAPABILITY", (fun d -> CAPABILITY (sp (list1 capability) d));
         "PARSE", const PARSE;
         "PERMANENTFLAGS",
-        (fun d -> PERMANENTFLAGS (sp (delimited '(' (list flag_perm) ')') d));
+        (fun d -> PERMANENTFLAGS (sp (plist flag_perm) d));
         "READ-ONLY", const READ_ONLY;
         "READ-WRITE", const READ_WRITE;
         "TRYCREATE", const TRYCREATE;
@@ -1390,7 +1407,7 @@ module Decoder = struct
 
   let resp_text =
     push "resp-text"
-      (pair (option (terminated (delimited '[' resp_text_code ']') (char ' '))) text)
+      (pair ~sep:empty (option (terminated (delimited '[' resp_text_code ']') (char ' '))) text)
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
@@ -1438,24 +1455,25 @@ module Decoder = struct
 *)
 
   let mbx_flag =
+    let open Mailbox in
     let cases =
       [
-        "Noselect", const `Noselect;
-        "Marked", const `Marked;
-        "Unmarked", const `Unmarked;
-        "Noinferiors", const `Noinferiors;
-        "HasChildren", const `HasChildren;
-        "HasNoChildren", const `HasNoChildren;
-        "All", const `All;
-        "Archive", const `Archive;
-        "Drafts", const `Drafts;
-        "Flagged", const `Flagged;
-        "Junk", const `Junk;
-        "Sent", const `Sent;
-        "Trash", const `Trash;
+        "Noselect", const Noselect;
+        "Marked", const Marked;
+        "Unmarked", const Unmarked;
+        "Noinferiors", const Noinferiors;
+        "HasChildren", const HasChildren;
+        "HasNoChildren", const HasNoChildren;
+        "All", const All;
+        "Archive", const Archive;
+        "Drafts", const Drafts;
+        "Flagged", const Flagged;
+        "Junk", const Junk;
+        "Sent", const Sent;
+        "Trash", const Trash;
       ]
     in
-    let extension d = `Extension (atom d) in
+    let extension d = Extension (atom d) in
     push "mbx-flag" (switch cases extension)
 
 (*
@@ -1489,7 +1507,7 @@ module Decoder = struct
     delimited '"' quoted_char '"' ||| (switch [ "NIL" , const None ] stop)
 
   let mailbox_list d =
-    let x = delimited '(' (list mbx_flag) ')' d in
+    let x = plist mbx_flag d in
     let y = sp delim d in
     let m = sp mailbox d in
     x, y, m
@@ -1519,6 +1537,7 @@ module Decoder = struct
     Modseq.of_string (while1 is_digit d)
 
   let status_att =
+    let open Mailbox in
     let cases =
       [
         "MESSAGES", (fun d -> MESSAGES (Uint32.to_int (sp number d)));
@@ -1594,7 +1613,7 @@ module Decoder = struct
 *)
 
   let envelope d =
-    let address_list = delimited '(' (list ~sep:empty address) ')' in
+    let address_list = plist1 ~sep:empty address ||| nil [] in
     ignore (char '(' d);
     let env_date = nstring' d in
     let env_subject = sp nstring' d in
@@ -1640,11 +1659,7 @@ module Decoder = struct
 *)
 
   let body_fld_param =
-    push "body-fld-param"
-      (
-        (delimited '(' (list1 (pair ~sep:(char ' ') imap_string imap_string)) ')') |||
-        nil []
-      )
+    push "body-fld-param" (plist1 (pair imap_string imap_string) ||| nil [])
 
   let body_fld_octets =
     push "body-fld-octets" number
@@ -1655,13 +1670,10 @@ module Decoder = struct
     let fld_desc = sp nstring d in
     let fld_enc = sp imap_string d in
     let fld_octets = Uint32.to_int (sp body_fld_octets d) in
-    {
-      fld_params;
-      fld_id;
-      fld_desc;
-      fld_enc;
-      fld_octets;
-    }
+    {MIME.fld_params; fld_id; fld_desc; fld_enc; fld_octets}
+
+  let body_fields =
+    push "body-fields" body_fields
 
 (*
    body-extension  = nstring / number /
@@ -1675,15 +1687,10 @@ module Decoder = struct
 *)
 
   let rec body_extension d =
-    if is_digit (cur d) then
-      let n = p_uint32 d in
-      `Number n
-    else if cur d = '(' then
-      `List (p_list1 p_body_ext d)
-    else
-      match p_nstring d with
-      | Some x -> `String x
-      | None -> `None
+    let nstring d = `String (nstring' d) in
+    let number d = `Number (number d) in
+    let list d = `List (plist1 body_extension d) in
+    push "body-extension" (nstring ||| number ||| list) d
 
 (*
    body-fld-md5    = nstring
@@ -1706,45 +1713,43 @@ module Decoder = struct
 *)
 
   let body_fld_dsp =
-    push "body-fld-dsp"
-      ((delimited '(' (pair ~sep:(char ' ') imap_string body_fld_param) ')') |||
-       nil [])
+    let dsp d = Some (pair imap_string body_fld_param d) in
+    push "body-fld-dsp" (delimited '(' dsp ')' ||| nil None)
 
   let body_fld_lang =
     let nstring d = [nstring' d] in
-    push "body-fld-lang" (nstring ||| delimited '(' (list1 imap_string) ')')
+    push "body-fld-lang" (nstring ||| plist1 imap_string)
 
-  let r_body_ext d =
-    match cur d with
-    | ' ' ->
-        junkc d;
-        let dsp = p_fld_dsp d in
-        begin match cur d with
-        | ' ' ->
-            junkc d;
-            let lang = p_fld_lang d in
-            begin match cur d with
-            | ' ' ->
-                junkc d;
-                let loc = p_nstring d in
-                let ext = p_sep p_body_ext d in
-                {ext_dsp = dsp; ext_lang = lang; ext_loc = loc; ext_ext = ext}
-            | _ ->
-                {ext_dsp = dsp; ext_lang = lang; ext_loc = None; ext_ext = []}
-            end
-        | _ ->
-            {ext_dsp = dsp; ext_lang = []; ext_loc = None; ext_ext = []}
-        end
-    | _ ->
-        {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
+  let body_fld_loc =
+    push "body-fld-loc" nstring
 
-  let r_sbody_ext d =
-    let md5 = p_nstring d in
-    md5, r_body_ext d
+  let body_ext_gen d =
+    let ext_dsp = option (sp body_fld_dsp) d in
+    let ext_lang =
+      match ext_dsp with
+      | None -> None
+      | Some _ -> option (sp body_fld_lang) d
+    in
+    let ext_loc =
+      match ext_lang with
+      | None -> None
+      | Some _ -> option (sp body_fld_loc) d
+    in
+    let ext_ext =
+      match ext_loc with
+      | None -> []
+      | Some _ -> list ~sep:empty (sp body_extension) d
+    in
+    let ext_dsp = match ext_dsp with None -> None | Some x -> x in
+    let ext_lang = match ext_lang with None -> [] | Some l -> l in
+    let ext_loc = match ext_loc with None -> None | Some s -> s in
+    {MIME.ext_dsp; ext_lang; ext_loc; ext_ext}
 
-  let r_mbody_ext d =
-    let params = p_fld_param d in
-    params, r_body_ext d
+  let body_ext_1part =
+    push "body-ext-1part" (pair ~sep:empty nstring body_ext_gen) (* FIXME *)
+
+  let body_ext_mpart =
+    push "body-ext-mpart" (pair ~sep:empty body_fld_param body_ext_gen) (* FIXME *)
 
 (*
    body-fld-lines  = number
@@ -1780,57 +1785,66 @@ module Decoder = struct
    body            = "(" (body-type-1part / body-type-mpart) ")"
 *)
 
+  let body_fld_lines =
+    let number d = Uint32.to_int (number d) in
+    push "body-fld-lines" number
+
+  let media_subtype =
+    push "media-subtype" imap_string
+
+  let media_basic =
+    push "media-basic" (pair imap_string media_subtype) (* FIXME *)
+
   let rec body_type_mpart d = (* TODO Return the extension data *)
-    let rec loop acc =
-      match cur d with
-      | '(' ->
-          let x = p_body d in
-          loop (x :: acc)
-      | ' ' ->
-          junkc d;
-          let m = p_string d in
-          begin match cur d with
-          | ' ' ->
-              junkc d;
-              let _ = r_mbody_ext d in
-              `Multipart (List.rev acc, m)
-          | _ ->
-              `Multipart (List.rev acc, m)
-          end
-      | c ->
-          failwith "unexpected" (* err_unexpected c d *)
+    let aux d =
+      let bodies = list1 ~sep:empty body d in
+      let media_subtype = sp imap_string d in
+      ignore (option (sp body_ext_mpart) d);
+      `Multipart (bodies, media_subtype)
     in
-    loop []
+    push "body-type-mpart" aux d
+
+  and body_type_basic media_type media_subtype d =
+    let aux d =
+      let body_fields = sp body_fields d in
+      `Basic (media_type, media_subtype, body_fields)
+    in
+    push "body-type-basic" aux d
+
+  and body_type_msg d =
+    let aux d =
+      let body_fields = sp body_fields d in
+      let envelope = sp envelope d in
+      let body = sp body d in
+      let body_fld_lines = sp body_fld_lines d in
+      `Message (body_fields, envelope, body, body_fld_lines)
+    in
+    push "body-type-msg" aux d
+
+  and body_type_text media_subtype d =
+    let aux d =
+      let body_fields = sp body_fields d in
+      let body_fld_lines = sp body_fld_lines d in
+      `Text (media_subtype, body_fields, body_fld_lines)
+    in
+    push "body-type-text" aux d
 
   and body_type_1part d = (* TODO Return the extension data *)
-    let ext x d =
-      match peekc d with
-      | Some ' ' ->
-          junkc d;
-          let _ = r_sbody_ext d in
-          x
-      | _ ->
-          x
+    let aux d =
+      let media_type, media_subtype = media_basic d in
+      let body =
+        match media_type, media_subtype with
+        | "MESSAGE", "RFC822" -> body_type_msg d
+        | "TEXT", _ -> body_type_text media_subtype d
+        | _ -> body_type_basic media_type media_subtype d
+      in
+      ignore (option (sp body_ext_1part) d);
+      body
     in
-    let m = p_string d in
-    let t = p_string d in
-    let f = p_body_fields d in
-    match String.uppercase m, String.uppercase t with
-    | "MESSAGE", "RFC822" ->
-        p_sp d;
-        let e = p_envelope d in
-        let b = p_body d in
-        let n = p_uint d in
-        ext (`Message (f, e, b, n)) d
-    | "TEXT", _ ->
-        p_sp d;
-        let n = p_uint d in
-        ext (`Text (t, f, n)) d
-    | _ ->
-        ext (`Basic (m, t, f)) d
+    push "body-type-1part" aux d
 
-  and body =
-    push "body" (delimited '(' (body_type_1part ||| body_type_mpart) ')')
+  and body d =
+    push "body" (delimited '(' (body_type_1part ||| body_type_mpart) ')') d
 
 (*
    DIGIT           =  %x30-39
@@ -1917,10 +1931,10 @@ module Decoder = struct
       ignore (char '-' d);
       let year = date_year d in
       ignore (char ' ' d);
-      let time = time d in
+      let hours, minutes, seconds = time d in
       ignore (char ' ' d);
       let zone = zone d in
-      (day, month, year, time, zone)
+      {day; month; year}, {hours; minutes; seconds; zone}
     in
     push "date-time" (delimited '"' aux '"')
 
@@ -1948,9 +1962,10 @@ module Decoder = struct
     push "header-fld-name" astring
 
   let header_list =
-    push "header-list" (delimited '(' (list1 header_fld_name) ')')
+    push "header-list" (plist1 header_fld_name)
 
   let section_msgtext =
+    let open Msg in
     let cases =
       [
         "HEADER", const HEADER;
@@ -1962,21 +1977,22 @@ module Decoder = struct
     push "section-msgtext" (switch cases stop)
 
   let section_text =
-    push "section-text" (section_msgtext ||| switch [ "MIME", const MIME ] stop)
+    push "section-text" (section_msgtext ||| switch [ "MIME", const Msg.MIME ] stop)
 
   let section_part =
     push "section-part" (list1 ~sep:(char '.') nz_number)
 
   let rec section_spec =
+    let open Msg in
     let aux d =
       let l = section_part d in
-      List.fold_right (fun i x -> Part (Uint32.to_int i, x)) l
-        ((section_text ||| const All) d)
+      let p = (section_text ||| const All) d in
+      List.fold_right (fun i x -> Part (Uint32.to_int i, x)) l p
     in
     push "section-spec" (section_msgtext ||| aux)
 
   let section =
-    push "section" (delimited '[' (section_spec ||| const All) ']')
+    push "section" (delimited '[' (section_spec ||| const Msg.All) ']')
 
 (*
    msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -2020,10 +2036,9 @@ module Decoder = struct
     let open Msg in
     let cases =
       [
-        "FLAGS", (fun d -> FLAGS (sp (delimited '(' (list flag_fetch) ')') d));
+        "FLAGS", (fun d -> FLAGS (sp (plist flag_fetch) d));
         "MODSEQ", (fun d -> MODSEQ (sp permsg_modsequence d));
-        "X-GM-LABELS",
-        (fun d -> X_GM_LABELS (sp (delimited '(' (list astring) ')') d));
+        "X-GM-LABELS", (fun d -> X_GM_LABELS (sp (plist astring ||| nil []) d));
       ]
     in
     push "msg-att-dynamic" (switch cases stop)
@@ -2033,8 +2048,7 @@ module Decoder = struct
     let cases =
       [
         "ENVELOPE", (fun d -> ENVELOPE (sp envelope d));
-        "INTERNALDATE",
-        (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
+        "INTERNALDATE", (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
         "RFC822.HEADER", (fun d -> RFC822_HEADER (sp nstring d));
         "RFC822.TEXT", (fun d -> RFC822_TEXT (sp nstring d));
         "RFC822.SIZE", (fun d -> RFC822_SIZE (Uint32.to_int (sp number d)));
@@ -2042,25 +2056,17 @@ module Decoder = struct
         "BODYSTRUCTURE", (fun d -> BODYSTRUCTURE (sp body d));
         "BODY",
         (fun d ->
-           match cur d with
-           | ' ' ->
-               junkc d;
-               `Body (p_body d)
-           | _ ->
-               let s = p_section d in
-               let orig =
-                 match cur d with
-                 | '<' ->
-                     junkc d;
-                     let n = p_uint d in
-                     p_ch '>' d;
-                     Some n
-                 | _ ->
-                     None
-               in
-               p_sp d;
-               let x = p_nstring d in
-               `Body_section (s, orig, x)
+           let body d = BODY (body d) in
+           let section d =
+             let s = section d in
+             let r =
+               let number d = Uint32.to_int (number d) in
+               option (delimited '<' number '>') d
+             in
+             let x = sp nstring d in
+             BODY_SECTION (s, r, x)
+           in
+           (sp body ||| section) d
         );
         "UID", (fun d -> UID (sp uniqueid d));
         "X-GM-MSGID", (fun d -> X_GM_MSGID (sp mod_sequence_value d));
@@ -2070,7 +2076,7 @@ module Decoder = struct
     push "msg-att-static" (switch cases stop)
 
   let msg_att =
-    push "msg-att" (delimited '(' (list1 (msg_att_static ||| msg_att_dynamic)) ')')
+    push "msg-att" (plist1 (msg_att_static ||| msg_att_dynamic))
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -2103,10 +2109,10 @@ module Decoder = struct
 *)
 
   let flag_list =
-    push "flag-list" (delimited '(' (list flag) ')')
+    push "flag-list" (plist flag)
 
   let status_att_list =
-    push "status-att-list" (delimited '(' (list status_att) ')')
+    push "status-att-list" (list status_att)
 
   let search_sort_mod_seq =
     push "search-sort-mod-seq"
@@ -2121,7 +2127,7 @@ module Decoder = struct
         "SEARCH",
         (fun d ->
            let acc, n =
-             pair (list ~sep:empty (sp nz_number)) (option (sp search_sort_mod_seq)) d
+             pair ~sep:empty (list ~sep:empty (sp nz_number)) (option (sp search_sort_mod_seq)) d
            in
            SEARCH (acc, n)
         );
@@ -2243,7 +2249,7 @@ module Decoder = struct
     push "tag" (while1 is_tag_char)
 
   let response_tagged =
-    push "response-tagged" (terminated (pair ~sep:(char ' ') tag resp_cond_state) crlf)
+    push "response-tagged" (terminated (pair tag resp_cond_state) crlf)
 
   let continue_req =
     push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| base64))) crlf)
@@ -2832,22 +2838,22 @@ end
 open Response
 
 type error =
-  [ `Incorrect_tag of string * string
-  | `Decode_error of Decoder.error * string * int
-  | `Unexpected_cont
-  | `Bad_greeting
-  | `Auth_error of string
-  | `Bad of code * string
-  | `No of code * string ]
+  | Incorrect_tag of string * string
+  | Decode_error of Decoder.error * string * int
+  | Unexpected_cont
+  | Bad_greeting
+  | Auth_error of string
+  | Bad of code * string
+  | No of code * string
 
 let pp_error ppf : error -> _ = function
-  | `Incorrect_tag (exp, tag) -> pp ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
-  | `Decode_error e -> pp ppf "@[Decode@ error:@ %a@]" Decoder.pp_error e
-  | `Unexpected_cont -> pp ppf "@[Unexpected continuation request@]"
-  | `Bad_greeting -> pp ppf "@[Bad greeting@]"
-  | `Auth_error s -> pp ppf "@[Authentication error: %s@]" s
-  | `Bad (c, t) -> pp ppf "@[BAD:@ %a@ %S@]" pp_code c t
-  | `No (c, t) -> pp ppf "@[NO:@ %a@ %S@]" pp_code c t
+  | Incorrect_tag (exp, tag) -> fprintf ppf "@[Incorrect@ tag@ %S,@ should@ be@ %S@]" tag exp
+  | Decode_error e -> fprintf ppf "@[Decode@ error:@ %a@]" Decoder.pp_error e
+  | Unexpected_cont -> fprintf ppf "@[Unexpected continuation request@]"
+  | Bad_greeting -> fprintf ppf "@[Bad greeting@]"
+  | Auth_error s -> fprintf ppf "@[Authentication error: %s@]" s
+  | Bad (c, t) -> fprintf ppf "@[BAD:@ %a@ %S@]" pp_code c t
+  | No (c, t) -> fprintf ppf "@[NO:@ %a@ %S@]" pp_code c t
 
 type state =
   {

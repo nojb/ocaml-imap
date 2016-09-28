@@ -398,20 +398,20 @@ module Mailbox : sig
       status {{!code}codes}. *)
 
   type mbx_flag =
-    [ `Noselect
-    | `Marked
-    | `Unmarked
-    | `Noinferiors
-    | `HasChildren
-    | `HasNoChildren
-    | `All
-    | `Archive
-    | `Drafts
-    | `Flagged
-    | `Junk
-    | `Sent
-    | `Trash
-    | `Extension of string ]
+    | Noselect
+    | Marked
+    | Unmarked
+    | Noinferiors
+    | HasChildren
+    | HasNoChildren
+    | All
+    | Archive
+    | Drafts
+    | Flagged
+    | Junk
+    | Sent
+    | Trash
+    | Extension of string
 
   (** {3 Mailbox status responses}
 
@@ -933,11 +933,11 @@ val idle: unit -> unit command * (unit -> unit)
 (** {1 Running commands and receiving responses} *)
 
 type error =
-  [ `Incorrect_tag of string * string
+  | Incorrect_tag of string * string
   (** The server response tag does not have a matching message tag.  The
       connection should be closed. *)
 
-  | `Decode_error of
+  | Decode_error of
       [ `Expected_char of char
       | `Expected_string of string
       | `Unexpected_char of char
@@ -949,29 +949,29 @@ type error =
       cases it might be possible to continue fater a decoding error, but this is
       not yet implemented. *)
 
-  | `Unexpected_cont
+  | Unexpected_cont
   (** A continuation request '+' is received from the server at an unexpected
       time.  The connection should be closed after seeing this error, as there is no
       safe way to continue. *)
 
-  | `Bad_greeting
+  | Bad_greeting
   (** The server did not send a valid greeting message.  The connection should
       be closed. *)
 
-  | `Auth_error of string
+  | Auth_error of string
   (** An client-side SASL authentication error ocurred.  This error can only
       appear when using the SASL-based {!authenticate} command.  The error is
       communicated to the server and the server responds with a [BAD] response.
       Thus, after receiving this error the client should pass [`Await] to {!run}
       until [`Error `Bad] is received, and then take appropiate action. *)
 
-  | `Bad of Code.code * string
+  | Bad of Code.code * string
   (** The server could not parse the request. *)
 
-  | `No of Code.code * string
-  (** The server could not perform the requested action. *) ]
+  | No of Code.code * string
+  (** The server could not perform the requested action. *)
 
-val pp_error : Format.formatter -> error -> unit
+val pp_error: Format.formatter -> error -> unit
 
 (** {3 Connections}
 
