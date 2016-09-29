@@ -664,10 +664,13 @@ module Auth : sig
       scope of this library and should be provided independently. Only [PLAIN] and
       [XOAUTH2] are provided as way of example. *)
 
+  type step_fun =
+    string -> [ `Ok of string * step_fun | `Error of string ]
+
   type authenticator =
     {
       name: string;
-      step: string -> [ `Ok of string * authenticator | `Error of string ];
+      step: step_fun;
     }
 
   val plain: string -> string -> authenticator

@@ -2575,28 +2575,27 @@ module Search = struct
 end
 
 module Auth = struct
-  (* Authenticator *)
+  type step_fun =
+    string -> [ `Ok of string * step_fun | `Error of string ]
 
   type authenticator =
     {
       name: string;
-      step: string -> [ `Ok of string * authenticator | `Error of string ];
+      step: step_fun;
     }
 
-  let fail name =
-    {name; step = fun _ -> `Error "should have worked already!"}
+  let fail_fun _ =
+    `Error "should have worked already!"
 
   let plain user pass =
-    let name = "PLAIN" in
-    let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass, fail name) in
-    {name; step}
+    let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass, fail_fun) in
+    {name = "PLAIN"; step}
 
   let xoauth2 user token =
-    let name = "XOAUTH2" in
     let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-    let step _ = `Ok ("", fail name) in (* CHECK *)
-    let step _ = `Ok (s, {name; step}) in
-    {name; step}
+    let step _ = `Ok ("", fail_fun) in (* CHECK *)
+    let step _ = `Ok (s, step) in
+    {name = "XOAUTH2"; step}
 end
 
 (* Running commands *)
@@ -2995,23 +2994,23 @@ type 'a action =
   | Send of string * 'a progress
   | Refill of 'a progress
 
-let rec wait_for_auth auth = function
+let rec wait_for_auth step = function
   | Cont data ->
-      begin match auth.Auth.step (B64.decode data) with
-      | `Ok (data, auth) ->
+      begin match step (B64.decode data) with
+      | `Ok (data, step) ->
           let data = B64.encode ~pad:true data in
-          Next (Sending (E.(Cat (raw data, raw "\r\n")), WaitForResp (wait_for_auth auth)))
+          Next (Sending (E.(Cat (raw data, raw "\r\n")), WaitForResp (wait_for_auth step)))
       | `Error _ ->
-          Next (Sending (E.(raw "*\r\n"), WaitForResp (wait_for_auth auth)))
+          Next (Sending (E.(raw "*\r\n"), WaitForResp (wait_for_auth step)))
       end
   | Untagged _ ->
-      Next (WaitForResp (wait_for_auth auth))
+      Next (WaitForResp (wait_for_auth step))
   | Tagged _ ->
       Done ()
 
 let wait_for_greeting auth = function
   | Untagged (State (OK _)) ->
-      Next (Sending (E.(raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth)))
+      Next (Sending (E.(raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth.Auth.step)))
   | _ ->
       assert false
 
