@@ -667,7 +667,7 @@ module Auth : sig
   type authenticator =
     {
       name: string;
-      step: string -> [ `Ok of string | `Error of string ];
+      step: string -> [ `Ok of string * authenticator | `Error of string ];
     }
 
   val plain: string -> string -> authenticator
@@ -878,14 +878,14 @@ val uid_remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string
 
 val enable: Capability.capability list -> Capability.capability list command
 
-val authenticate: Auth.authenticator -> unit command
+(* val authenticate: Auth.authenticator -> unit command *)
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
     If the server supports the requested authentication mechanism, it performs
     an authentication protocol exchange to authenticate and identify the client.
     See {!authenticator} for details on the interface with particular [SASL]
     mechanisms. *)
 
-val idle: unit -> unit command * (unit -> unit)
+(* val idle: unit -> unit command * (unit -> unit) *)
 (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
     command is executing the client will receive a stream of incoming untagged
     {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
@@ -939,13 +939,13 @@ end
     {{!connection}Connections} manage the encoder and decoder states and keeps
     track of message tags. *)
 
-type state
+type session
 (** The type for connections. *)
 
 type 'a progress
 
 type 'a action =
-  | Ok of 'a * state
+  | Ok of 'a * session
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
@@ -953,7 +953,7 @@ type 'a action =
 val continue: 'a progress -> 'a action
 val feed: 'a progress -> string -> int -> int -> 'a action
 
-val initiate: unit action
+val initiate: Auth.authenticator -> unit action
 
 (** [connection ()] creates a new connection object.  The connection should be
     supplied with input and output buffers as necessary using {!src} and {!dst}.
@@ -988,7 +988,7 @@ val initiate: unit action
 
     See the {{!ex}examples.} *)
 
-val run: state -> 'a command -> 'a action
+val run: session -> 'a command -> 'a action
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul

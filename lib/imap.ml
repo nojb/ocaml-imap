@@ -502,8 +502,7 @@ module E = struct
         out b empty k
 
   let out k =
-    let k = Cat (k, Cat (Raw "\r\n", Flush)) in
-    out (Buffer.create 32) empty k
+    out (Buffer.create 32) empty (Cat (k, Flush))
 end
 
 module Msg = struct
@@ -2503,6 +2502,25 @@ module Decoder = struct
   let decode i =
     let d = {i; p = ref 0; c = []} in
     response d
+
+  type result =
+    | Refill of Readline.state
+    | Next of Readline.state * response
+    | Error
+
+  let adapt = function
+    | Readline.Refill buf ->
+        Refill buf
+    | Readline.Next (buf, x) ->
+        Next (buf, decode x)
+    | Readline.Error ->
+        Error
+
+  let feed state buf off len =
+    adapt (Readline.feed state buf off len)
+
+  let next state =
+    adapt (Readline.next state)
 end
 
 (* Commands *)
@@ -2560,21 +2578,25 @@ module Auth = struct
   (* Authenticator *)
 
   type authenticator =
-    { name : string;
-      step : string -> [ `Ok of string | `Error of string ] }
+    {
+      name: string;
+      step: string -> [ `Ok of string * authenticator | `Error of string ];
+    }
+
+  let fail name =
+    {name; step = fun _ -> `Error "should have worked already!"}
 
   let plain user pass =
-    let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass) in
-    { name = "PLAIN"; step }
+    let name = "PLAIN" in
+    let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass, fail name) in
+    {name; step}
 
   let xoauth2 user token =
+    let name = "XOAUTH2" in
     let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-    let stage = ref `Begin in
-    let step _ = match !stage with
-      | `Begin -> stage := `Error; `Ok s
-      | `Error -> `Ok "" (* CHECK *)
-    in
-    { name = "XOAUTH2"; step }
+    let step _ = `Ok ("", fail name) in (* CHECK *)
+    let step _ = `Ok (s, {name; step}) in
+    {name; step}
 end
 
 (* Running commands *)
@@ -2603,42 +2625,12 @@ module Error = struct
     | No (c, t) -> fprintf ppf "@[NO:@ %a@ %S@]" Code.pp c t
 end
 
-type state =
-  {
-    tag: int;
-  }
-
 type 'a command =
   {
     format: E.rope;
     default: 'a;
     process: untagged -> 'a -> 'a;
   }
-
-type 'a progress_state =
-  | Sending : 'a command -> 'a progress_state
-  | WaitingForCont : Readline.state * E.rope -> 'a progress_state
-  | Receiving : Readline.state * 'a * (untagged -> 'a -> 'a) -> 'a progress_state
-  | ReceivingGreeting : Readline.state -> unit progress_state
-
-type 'a progress =
-  {
-    state: state;
-    progress_state: 'a progress_state;
-  }
-
-type 'a action =
-  | Ok of 'a * state
-  | Error of Error.error
-  | Send of string * 'a progress
-  | Refill of 'a progress
-
-let initiate =
-  Refill
-    {
-      state = {tag = 1};
-      progress_state = ReceivingGreeting Readline.empty;
-    }
 
 let login username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
@@ -2931,6 +2923,7 @@ let authenticate {Auth.name; _} =
 
 let idle () =
   assert false
+
   (* let stop = ref false in *)
   (* let stop_l = Lazy.from_fun (fun () -> stop := true) in *)
   (* `Idle stop, (fun () -> Lazy.force stop_l) *)
@@ -2945,15 +2938,6 @@ let idle () =
 (*     | Ok (code, s) -> `Ok (code, s) *)
 (*     | Bad (code, s) -> `Error (`Bad (code, s)) *)
 (*     | No (code, s) -> `Error (`No (code, s)) *)
-
-(* and h_response r c = *)
-(*   match r with *)
-(*   | Untagged r -> *)
-(*       `Untagged (r, fun () -> decode h_response c) *)
-(*   | Cont _ -> *)
-(*       `Error `Unexpected_cont (\* FIXME ignore and continue ? *\) *)
-(*   | Tagged (g, r) -> *)
-(*       h_tagged g r c *)
 
 (* and h_idle_response r c = *)
 (*   match r with *)
@@ -2982,79 +2966,101 @@ let idle () =
 (*           encode `Auth_error (fun _ -> `Error (`Auth_error s)) c (\* (await (decode (h_authenticate auth)))) c *\) *)
 (*       end *)
 
-let continue : type a. a progress -> a action = fun progress ->
-  let {state; progress_state} = progress in
-  match progress_state with
-  | Sending {format; default; process} ->
-      let n = state.tag in
-      let state = {tag = n + 1} in
-      begin match E.out E.(tag n ++ format) with
-      | E.Done s ->
-          let progress_state = Receiving (Readline.empty, default, process) in
-          Send (s, {state; progress_state})
-      | E.WaitForCont (s, format) ->
-          Send (s, {state; progress_state = WaitingForCont (Readline.empty, format)})
+type session =
+  {
+    tag: int;
+    buf: Readline.state;
+  }
+
+let initial_session =
+  {
+    tag = 1;
+    buf = Readline.empty;
+  }
+
+type 'a state =
+  | Sending : E.rope * 'a state -> 'a state
+  | WaitForResp : (Response.response -> 'a transition) -> 'a state
+
+and 'a transition =
+  | Done of 'a
+  | Next of 'a state
+
+type 'a progress =
+  session * 'a state
+
+type 'a action =
+  | Ok of 'a * session
+  | Error of Error.error
+  | Send of string * 'a progress
+  | Refill of 'a progress
+
+let rec wait_for_auth auth = function
+  | Cont data ->
+      begin match auth.Auth.step (B64.decode data) with
+      | `Ok (data, auth) ->
+          let data = B64.encode ~pad:true data in
+          Next (Sending (E.(Cat (raw data, raw "\r\n")), WaitForResp (wait_for_auth auth)))
+      | `Error _ ->
+          Next (Sending (E.(raw "*\r\n"), WaitForResp (wait_for_auth auth)))
       end
-  | WaitingForCont _ ->
-      Refill progress
-  | Receiving _ ->
-      Refill progress
-  | ReceivingGreeting _ ->
-      Refill progress
+  | Untagged _ ->
+      Next (WaitForResp (wait_for_auth auth))
+  | Tagged _ ->
+      Done ()
 
-let feed : type a. a progress -> _ -> _ -> _ -> a action = fun progress s off len ->
-  let {state; progress_state} = progress in
-  match progress_state with
-  | WaitingForCont (buf, _) ->
+let wait_for_greeting auth = function
+  | Untagged (State (OK _)) ->
+      Next (Sending (E.(raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth)))
+  | _ ->
       assert false
-  | ReceivingGreeting buf ->
-      let rec loop = function
-        | Readline.Refill buf ->
-            Refill {state; progress_state = ReceivingGreeting buf}
-        | Readline.Next (buf, x) ->
-            begin match Decoder.decode x with
-            | Untagged (State (OK (code, s))) ->
-                Ok ((), state)
-            | _ ->
-                Error Error.Bad_greeting
-            end
-        | Readline.Error ->
-            Error Error.Bad_greeting
-      in
-      loop (Readline.feed buf s off len)
-  | Receiving (buf, acc, process) ->
-      let rec loop acc = function
-        | Readline.Refill buf ->
-            Refill {state; progress_state = Receiving (buf, acc, process)}
-        | Readline.Next (buf, x) ->
-            begin match Decoder.decode x with
-            | Untagged u ->
-                loop (process u acc) (Readline.next buf)
-            | _ ->
-                assert false
-            end
-        | Readline.Error ->
-            Error Error.Bad_greeting (* FIXME *)
-      in
-      loop acc (Readline.feed buf s off len)
-  | Sending _ ->
-      invalid_arg "feed"
 
-let run state cmd =
-  continue
-    {
-      state;
-      progress_state = Sending cmd;
-    }
+let wait_for_cont k = function
+  | Cont _ ->
+      Next k
+  | _ ->
+      assert false
 
-  (* match cmd with *)
-  (* | `Authenticate a -> *)
-  (*     encode (`Cmd (string_of_int c.tag, `Authenticate a.name)) *)
-  (*       (decode (h_authenticate a)) c *)
-  (* | `Idle stop -> *)
-  (*     c.idle_stop <- stop; *)
-  (*     encode (`Cmd (string_of_int c.tag, `Idle)) *)
-  (*       (decode h_idle_response) c *)
-  (* | #command_ordinary as cmd -> *)
-  (*     encode (`Cmd (string_of_int c.tag, cmd)) *)
-  (*       (decode h_response) c *)
+let rec wait_for_resp init f = function
+  | Cont _ ->
+      assert false
+  | Untagged r ->
+      Next (WaitForResp (wait_for_resp (f r init) f))
+  | Tagged _ ->
+      Done init
+
+let initiate a =
+  Refill (initial_session, WaitForResp (wait_for_greeting a))
+
+let continue : type a. a progress -> a action = fun (session, state) ->
+  match state with
+  | Sending (format, k) ->
+      begin match E.out format with
+      | E.Done s ->
+          Send (s, (session, k))
+      | E.WaitForCont (s, format) ->
+          Send (s, (session, WaitForResp (wait_for_cont k)))
+      end
+  | WaitForResp _ ->
+      Refill (session, state)
+
+let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) s off len ->
+  let rec loop rl state =
+    match rl, state with
+    | _, Done x ->
+        Ok (x, session) (* buf ? *)
+    | Decoder.Refill buf, Next state ->
+        Refill ({session with buf}, state)
+    | Decoder.Next (buf, r), Next (WaitForResp k) ->
+        loop (Decoder.next buf) (k r)
+    | _, Next (Sending _) ->
+        assert false
+    | Decoder.Error, _ ->
+        Error Error.Bad_greeting (* FIXME *)
+  in
+  loop (Decoder.feed session.buf s off len) (Next state)
+
+let run session cmd =
+  let format = E.(tag session.tag ++ Cat (cmd.format, raw "\r\n")) in
+  let state = Sending (format, WaitForResp (wait_for_resp cmd.default cmd.process)) in
+  continue (session, state)
