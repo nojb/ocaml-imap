@@ -6,7 +6,7 @@ open Lwt.Infix
 
 type connection =
   {
-    mutable state: Imap.state;
+    mutable session: Imap.session;
     mutex: Lwt_mutex.t;
     sock: Lwt_ssl.socket;
     buf: bytes;
@@ -40,12 +40,12 @@ let rec perform sock buf = function
 let run c cmd =
   Lwt_mutex.with_lock c.mutex
     (fun () ->
-       perform c.sock c.buf (Imap.run c.state cmd) >>= fun (res, state) ->
-       c.state <- state;
+       perform c.sock c.buf (Imap.run c.session cmd) >>= fun (res, session) ->
+       c.session <- session;
        Lwt.return res
     )
 
-let connect port host =
+let connect port host username password =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname host >>= fun he ->
   Printf.eprintf "gethostbyname: %s => %s\n%!" host (Unix.string_of_inet_addr he.Unix.h_addr_list.(0));
@@ -53,8 +53,8 @@ let connect port host =
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
   let buf = Bytes.create 512 in
-  perform sock buf Imap.initiate >>= fun ((), state) ->
-  Lwt.return {state; mutex = Lwt_mutex.create (); sock; buf}
+  perform sock buf Imap.(initiate (Auth.plain username password)) >>= fun ((), session) ->
+  Lwt.return {session; mutex = Lwt_mutex.create (); sock; buf}
 
 let username = ref ""
 let password = ref ""
@@ -76,8 +76,8 @@ let usage_msg =
 let main () =
   Arg.(parse (align spec) ignore usage_msg);
   if !username = "" || !password = "" then raise (Arg.Bad "Missing username or password");
-  connect !port !host >>= fun c ->
-  run c (Imap.authenticate (Imap.Auth.plain !username !password))
+  connect !port !host !username !password  >>= fun _ ->
+  Lwt.return_unit
 
 let () =
   Ssl.init ();
