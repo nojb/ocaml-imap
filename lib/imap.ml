@@ -980,15 +980,6 @@ module Parser = struct
     if i0 = !i then raise Stop;
     String.sub d.i i0 (!i - i0)
 
-  let rep f d =
-    let i0 = !(d.p) in
-    let i = ref i0 in
-    while !i < String.length d.i && f d.i.[!i] do
-      incr i
-    done;
-    d.p := !i;
-    String.sub d.i i0 (!i - i0)
-
   let capture p d =
     let i0 = !(d.p) in
     ignore (p d);
@@ -1004,14 +995,9 @@ module Parser = struct
     let p0 = !(d.p) in
     try p d with e -> d.p := p0; raise e
 
-  let list ?sep p d =
-    let sep =
-      match sep with
-      | None -> (fun d -> ignore (char ' ' d))
-      | Some sep -> (fun d -> ignore (sep d))
-    in
+  let list ?(sep = ' ') p d =
     let rec loop acc =
-      match protect sep d with
+      match protect (char sep) d with
       | _ ->
           loop (p d :: acc)
       | exception Stop ->
@@ -1023,16 +1009,35 @@ module Parser = struct
     | exception Stop ->
         []
 
-  let list1 ?sep p d =
-    let sep =
-      match sep with
-      | None -> (fun d -> ignore (char ' ' d))
-      | Some sep -> (fun d -> ignore (sep d))
-    in
+  let list1 ?(sep = ' ') p d =
     let rec loop acc =
-      match protect sep d with
+      match protect (char sep) d with
       | _ ->
           loop (p d :: acc)
+      | exception Stop ->
+          List.rev acc
+    in
+    loop [p d]
+
+  let rep p d =
+    let rec loop acc =
+      match protect p d with
+      | x ->
+          loop (x :: acc)
+      | exception Stop ->
+          List.rev acc
+    in
+    match protect p d with
+    | x ->
+        loop [x]
+    | exception Stop ->
+        []
+
+  let rep1 p d =
+    let rec loop acc =
+      match protect p d with
+      | x ->
+          loop (x :: acc)
       | exception Stop ->
           List.rev acc
     in
@@ -1061,6 +1066,11 @@ module Parser = struct
     let c = d.i.[!(d.p)] in
     d.p := !(d.p) + 1;
     c
+
+  let chars_pred f d =
+    while !(d.p) < String.length d.i && f d.i.[!(d.p)] do
+      incr d.p
+    done
 
   let preceded p1 p2 d =
     ignore (p1 d);
@@ -1131,7 +1141,7 @@ module Parser = struct
     delimited '(' (list1 ?sep p) ')'
 
   let push s p d =
-    (* Printf.eprintf "+ [%s]\n%!" s; *)
+    (* Printf.eprintf "+ %d %d [%s]\n%!" (List.length d.c) !(d.p) s; *)
     p {d with c = s :: d.c}
     (* | x -> *)
     (*     Printf.eprintf "- [%s]\n%!" s; *)
@@ -1216,8 +1226,15 @@ module Decoder = struct
   let number d =
     Scanf.sscanf (while1 is_digit d) "%lu" (fun n -> n)
 
+  let number =
+    push "number" number
+
   let nz_number d =
-    Scanf.sscanf (capture (preceded (char_pred is_nz_digit) (rep is_digit)) d) "%lu" (fun n -> n)
+    let s = capture (preceded (char_pred is_nz_digit) (chars_pred is_digit)) d in
+    Scanf.sscanf s "%lu" (fun n -> n)
+
+  let nz_number =
+    push "nz-number" nz_number
 
   let uniqueid =
     nz_number
@@ -1407,7 +1424,7 @@ module Decoder = struct
 
   let uid_set =
     let uniqueid d = let n = uniqueid d in n, n in
-    push "uid-set" (list1 ~sep:(char ',') (uniqueid ||| uid_range))
+    push "uid-set" (list1 ~sep:',' (uniqueid ||| uid_range))
 
   (* We never parse '*' since it does not seem to show up in responses *)
   let sequence_set =
@@ -1510,7 +1527,7 @@ module Decoder = struct
     let cases =
       [
         "ALERT", const ALERT;
-        "BADCHARSET", (fun d -> BADCHARSET (list ~sep:empty (sp astring) d));
+        "BADCHARSET", (fun d -> BADCHARSET (rep (sp astring) d));
         "CAPABILITY", (fun d -> CAPABILITY (sp (list1 capability) d));
         "PARSE", const PARSE;
         "PERMANENTFLAGS",
@@ -1759,7 +1776,7 @@ module Decoder = struct
 *)
 
   let envelope d =
-    let address_list = plist1 ~sep:empty address ||| nil [] in
+    let address_list = delimited '(' (rep1 address) ')' ||| nil [] in
     ignore (char '(' d);
     let env_date = nstring' d in
     let env_subject = sp nstring' d in
@@ -1885,7 +1902,7 @@ module Decoder = struct
     let ext_ext =
       match ext_loc with
       | None -> []
-      | Some _ -> list ~sep:empty (sp body_extension) d
+      | Some _ -> rep (sp body_extension) d
     in
     let ext_dsp = match ext_dsp with None -> None | Some x -> x in
     let ext_lang = match ext_lang with None -> [] | Some l -> l in
@@ -1944,7 +1961,7 @@ module Decoder = struct
 
   let rec body_type_mpart d = (* TODO Return the extension data *)
     let aux d =
-      let bodies = list1 ~sep:empty body d in
+      let bodies = rep1 body d in
       let media_subtype = sp imap_string d in
       ignore (option (sp body_ext_mpart) d);
       MIME.Multipart (bodies, media_subtype)
@@ -2127,7 +2144,7 @@ module Decoder = struct
     push "section-text" (section_msgtext ||| switch [ "MIME", const Msg.MIME ] stop)
 
   let section_part =
-    push "section-part" (list1 ~sep:(char '.') nz_number)
+    push "section-part" (list1 ~sep:'.' nz_number)
 
   let rec section_spec =
     let open Msg in
@@ -2274,7 +2291,7 @@ module Decoder = struct
         "SEARCH",
         (fun d ->
            let acc, n =
-             pair ~sep:empty (list ~sep:empty (sp nz_number)) (option (sp search_sort_mod_seq)) d
+             pair ~sep:empty (rep (sp nz_number)) (option (sp search_sort_mod_seq)) d
            in
            SEARCH (acc, n)
         );
@@ -2308,7 +2325,7 @@ module Decoder = struct
   let enable_data =
     let cases =
       [
-        "ENABLED", (fun d -> ENABLED (list ~sep:empty (sp capability) d));
+        "ENABLED", (fun d -> ENABLED (rep (sp capability) d));
       ]
     in
     push "enable-data" (switch cases stop)

@@ -29,7 +29,7 @@ let rec perform sock buf = function
       Printf.eprintf "<<< %d\n%s<<<\n%!" (String.length s) s;
       perform sock buf (Imap.continue p)
   | Imap.Refill p ->
-      Printf.eprintf "Refill\n%!";
+      (* Printf.eprintf "Refill\n%!"; *)
       let n = Ssl.read sock buf 0 (String.length buf) in
       Printf.eprintf ">>> %d\n%s>>>\n%!" n (String.sub buf 0 n);
       perform sock buf Imap.(continue (feed p buf 0 n))
