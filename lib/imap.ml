@@ -2895,31 +2895,6 @@ let enable caps =
   in
   {format; default; process}
 
-let authenticate {Auth.name; _} =
-  let format = E.(str "AUTHENTICATE" ++ raw name) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let idle () =
-  assert false
-
-  (* let stop = ref false in *)
-  (* let stop_l = Lazy.from_fun (fun () -> stop := true) in *)
-  (* `Idle stop, (fun () -> Lazy.force stop_l) *)
-
-(* and h_idle_response r c = *)
-(*   match r with *)
-(*   | Untagged r -> *)
-(*       `Untagged (r, fun () -> decode h_idle_response c) *)
-(*   | Cont _ when not c.idling -> *)
-(*       c.idling <- true; decode h_idle_response c *)
-(*   | Cont _ -> *)
-(*       `Error `Unexpected_cont *)
-(*   | Tagged (g, r) -> *)
-(*       c.idling <- false; *)
-(*       h_tagged g r c *)
-
 type session =
   {
     tag: int;
