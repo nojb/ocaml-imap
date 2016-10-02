@@ -37,7 +37,7 @@ let rec perform sock buf = function
       Printf.eprintf "Refill\n%!";
       Lwt_ssl.read sock buf 0 (String.length buf) >>= fun n ->
       Printf.eprintf ">>> %d\n%s>>>\n%!" n (String.sub buf 0 n);
-      perform sock buf (Imap.feed p buf 0 n)
+      perform sock buf Imap.(continue (feed p buf 0 n))
 
 let run c cmd =
   Lwt_mutex.with_lock c.mutex

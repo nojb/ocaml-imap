@@ -954,7 +954,7 @@ type 'a action =
   | Refill of 'a progress
 
 val continue: 'a progress -> 'a action
-val feed: 'a progress -> string -> int -> int -> 'a action
+val feed: 'a progress -> string -> int -> int -> 'a progress
 
 val initiate: Auth.authenticator -> unit action
 

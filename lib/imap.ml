@@ -2990,7 +2990,7 @@ let rec wait_for_resp init f = function
 let initiate a =
   Refill (initial_session, WaitForResp (wait_for_greeting a))
 
-let process session trans =
+let continue (session, state) =
   let rec loop buf = function
     | Done x ->
         Ok (x, {session with buf})
@@ -3011,15 +3011,11 @@ let process session trans =
             assert false
         end
   in
-  loop session.buf trans
+  loop session.buf (Next state)
 
-let continue : type a. a progress -> a action = fun (session, state) ->
-  (* Printf.eprintf "continue\n%!"; *)
-  process session (Next state)
-
-let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) s off len ->
+let feed (session, state) s off len =
   (* Printf.eprintf "feed\n%!"; *)
-  process {session with buf = Readline.feed session.buf s off len} (Next state)
+  {session with buf = Readline.feed session.buf s off len}, state
 
 let run session cmd =
   let format = E.(tag session.tag ++ cmd.format) in
