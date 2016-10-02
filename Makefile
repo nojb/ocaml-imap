@@ -1,7 +1,9 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
 OCAMLFLAGS := -bin-annot -g -w -3
 
-all:
+all: imap imap_lwt imap_unix
+
+imap:
 	$(OCAMLBUILD) lib/imap.cma
 
 imap_shell:
@@ -12,6 +14,9 @@ wait_mail:
 
 imap_lwt:
 	$(OCAMLBUILD) lwt/imap_lwt.byte
+
+imap_unix:
+	$(OCAMLBUILD) unix/imap_unix.cma
 
 # all: lib imap_shell wait_mail
 

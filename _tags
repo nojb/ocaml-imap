@@ -14,6 +14,9 @@ true: package(uutf), package(base64)
 
 <test/wait_mail.*>: package(ssl), package(cmdliner)
 
+# imap_unix
+<unix/imap_unix.*>: package(ssl), package(unix)
+
 # imap_lwt
 <lwt/imap_lwt.*>: package(ssl), package(lwt.ssl)
 <lwt/example/*>: package(lwt.ssl)
