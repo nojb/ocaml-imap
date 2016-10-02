@@ -1091,7 +1091,7 @@ module Parser = struct
     let len = String.length s in
     if !(d.p) + len > String.length d.i then raise Stop;
     for i = 0 to len - 1 do
-      if s.[i] != d.i.[!(d.p) + i] then raise Stop
+      if Char.lowercase_ascii s.[i] != Char.lowercase_ascii d.i.[!(d.p) + i] then raise Stop
     done;
     d.p := !(d.p) + len
 
@@ -1100,6 +1100,7 @@ module Parser = struct
       | (s, case) :: cases ->
           begin match protect (str_ci s) d with
           | () ->
+              (* Printf.eprintf "--> [%S]\n%!" s; *)
               case d
           | exception Stop ->
               loop cases
@@ -1130,7 +1131,14 @@ module Parser = struct
     delimited '(' (list1 ?sep p) ')'
 
   let push s p d =
+    (* Printf.eprintf "+ [%s]\n%!" s; *)
     p {d with c = s :: d.c}
+    (* | x -> *)
+    (*     Printf.eprintf "- [%s]\n%!" s; *)
+    (*     x *)
+    (* | exception e -> *)
+    (*     Printf.eprintf "- [%s] FAIL\n%!" s; *)
+    (*     raise e *)
 end
 
 module Decoder = struct
@@ -1222,8 +1230,11 @@ module Decoder = struct
 *)
 
   let quoted_char =
-    char_pred (function '\x01'..'\x7f' -> true | _ -> false) |||
+    char_pred (function '"' | '\\' -> false | '\x01'..'\x7f' -> true | _ -> false) |||
     preceded (char '\\') (char_pred (function '"' | '\\' -> true | _ -> false))
+
+  let quoted_char =
+    push "quoted-char" quoted_char
 
   let rec quoted =
     push "quoted" (delimited '"' (accumulate quoted_char) '"')
@@ -1596,19 +1607,19 @@ module Decoder = struct
     let open Mailbox in
     let cases =
       [
-        "Noselect", const Noselect;
-        "Marked", const Marked;
-        "Unmarked", const Unmarked;
-        "Noinferiors", const Noinferiors;
-        "HasChildren", const HasChildren;
-        "HasNoChildren", const HasNoChildren;
-        "All", const All;
-        "Archive", const Archive;
-        "Drafts", const Drafts;
-        "Flagged", const Flagged;
-        "Junk", const Junk;
-        "Sent", const Sent;
-        "Trash", const Trash;
+        "\\Noselect", const Noselect;
+        "\\Marked", const Marked;
+        "\\Unmarked", const Unmarked;
+        "\\Noinferiors", const Noinferiors;
+        "\\HasChildren", const HasChildren;
+        "\\HasNoChildren", const HasNoChildren;
+        "\\All", const All;
+        "\\Archive", const Archive;
+        "\\Drafts", const Drafts;
+        "\\Flagged", const Flagged;
+        "\\Junk", const Junk;
+        "\\Sent", const Sent;
+        "\\Trash", const Trash;
       ]
     in
     let extension d = Extension (atom d) in
@@ -1633,16 +1644,13 @@ module Decoder = struct
     push "mailbox" mailbox
 
 (*
-   QUOTED-CHAR     = <any TEXT-CHAR except quoted-specials> /
-                     '\\' quoted-specials
-
    mailbox-list    = "(" [mbx-list-flags] ")" SP
                       (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
 *)
 
   let delim =
     let quoted_char d = Some (quoted_char d) in
-    delimited '"' quoted_char '"' ||| (switch [ "NIL" , const None ] stop)
+    delimited '"' quoted_char '"' ||| nil None
 
   let mailbox_list d =
     let x = plist mbx_flag d in
@@ -2341,7 +2349,7 @@ module Decoder = struct
         "PREAUTH", (fun d -> let c, t = sp resp_text d in PREAUTH (c, t));
       ]
     in
-    switch cases stop
+    push "resp-cond-auth" (switch cases stop)
 
   let response_data =
     let resp_cond_state d = State (resp_cond_state d) in
@@ -2390,7 +2398,7 @@ module Decoder = struct
     push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| resp_text))) crlf)
   (* space is optional CHECKME ! base64 *)
 
-  let rec response =
+  let response =
     let response_data d = Untagged (response_data d) in
     push "response" (continue_req ||| response_data ||| response_tagged)
 

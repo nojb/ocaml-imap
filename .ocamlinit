@@ -1,11 +1,15 @@
 #use "topfind"
 
-#require "uint"
-#install_printer Uint32.printer
-#install_printer Uint64.printer
 #require "uutf"
 #require "base64"
 #require "ssl"
+#require "lwt.ssl"
+#require "unix"
 
 #directory "_build/lib"
+#directory "_build/unix"
+#directory "_build/lwt"
+
 #load "imap.cma"
+#load "imap_unix.cma"
+#load "imap_lwt.cma"

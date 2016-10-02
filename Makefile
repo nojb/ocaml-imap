@@ -13,7 +13,7 @@ wait_mail:
 	$(OCAMLBUILD) test/wait_mail.byte
 
 imap_lwt:
-	$(OCAMLBUILD) lwt/imap_lwt.byte
+	$(OCAMLBUILD) lwt/imap_lwt.cma
 
 imap_unix:
 	$(OCAMLBUILD) unix/imap_unix.cma
