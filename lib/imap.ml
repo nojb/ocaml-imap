@@ -446,9 +446,6 @@ module E = struct
   let int n =
     raw (string_of_int n)
 
-  let tag n =
-    Printf.ksprintf raw "%04d" n
-
   let uint32 m =
     raw (Printf.sprintf "%lu" m)
 
@@ -2952,24 +2949,27 @@ type 'a action =
   | Send of string * 'a progress
   | Refill of 'a progress
 
-let rec wait_for_auth step = function
+let tag session =
+  Printf.sprintf "%04d" session.tag
+
+let rec wait_for_auth tag step = function
   | Cont data ->
       begin match step (B64.decode data) with
       | `Ok (data, step) ->
           let data = B64.encode ~pad:true data in
-          Next (Sending (E.raw data, WaitForResp (wait_for_auth step)))
+          Next (Sending (E.raw data, WaitForResp (wait_for_auth tag step)))
       | `Error _ ->
-          Next (Sending (E.raw "*", WaitForResp (wait_for_auth step)))
+          Next (Sending (E.raw "*", WaitForResp (wait_for_auth tag step)))
       end
   | Untagged _ ->
-      Next (WaitForResp (wait_for_auth step))
-  | Tagged _ ->
+      Next (WaitForResp (wait_for_auth tag step))
+  | Tagged (tag1, _) ->
+      assert (tag = tag1);
       Done ()
 
 let wait_for_greeting auth = function
   | Untagged (State (OK _)) ->
-      prerr_endline "X";
-      Next (Sending (E.(tag 0 ++ raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth.Auth.step)))
+      Next (Sending (E.(raw "AUTH" ++ raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth "AUTH" auth.Auth.step)))
   | _ ->
       assert false
 
@@ -2979,12 +2979,13 @@ let wait_for_cont k = function
   | _ ->
       assert false
 
-let rec wait_for_resp init f = function
+let rec wait_for_resp tag init f = function
   | Cont _ ->
       assert false
   | Untagged r ->
-      Next (WaitForResp (wait_for_resp (f r init) f))
-  | Tagged _ ->
+      Next (WaitForResp (wait_for_resp tag (f r init) f))
+  | Tagged (tag1, _) ->
+      assert (tag = tag1);
       Done init
 
 let initiate a =
@@ -3014,10 +3015,25 @@ let continue (session, state) =
   loop session.buf (Next state)
 
 let feed (session, state) s off len =
-  (* Printf.eprintf "feed\n%!"; *)
   {session with buf = Readline.feed session.buf s off len}, state
 
 let run session cmd =
-  let format = E.(tag session.tag ++ cmd.format) in
-  let state = Sending (format, WaitForResp (wait_for_resp cmd.default cmd.process)) in
+  let tag = tag session in
+  let format = E.(raw tag ++ cmd.format) in
+  let state = Sending (format, WaitForResp (wait_for_resp tag cmd.default cmd.process)) in
+  continue (session, state)
+
+let rec wait_for_idle tag = function
+  | Cont _ ->
+      Next (WaitForResp (wait_for_idle tag))
+  | Untagged _ ->
+      Next (Sending (E.(raw "DONE"), WaitForResp (wait_for_idle tag)))
+  | Tagged (tag1, _) ->
+      assert (tag = tag1);
+      Done ()
+
+let idle session =
+  let tag = tag session in
+  let format = E.(raw tag ++ raw "IDLE") in
+  let state = Sending (format, WaitForResp (wait_for_idle tag)) in
   continue (session, state)
