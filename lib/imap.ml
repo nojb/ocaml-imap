@@ -2911,17 +2911,6 @@ let idle () =
   (* let stop_l = Lazy.from_fun (fun () -> stop := true) in *)
   (* `Idle stop, (fun () -> Lazy.force stop_l) *)
 
-(* let rec h_tagged tag r c = *)
-(*   let cur = string_of_int c.tag in *)
-(*   c.tag <- c.tag + 1; *)
-(*   if tag <> cur then *)
-(*     `Error (`Incorrect_tag (cur, tag)) *)
-(*   else (\* FIXME alert the user and continue ? *\) *)
-(*     match r with *)
-(*     | Ok (code, s) -> `Ok (code, s) *)
-(*     | Bad (code, s) -> `Error (`Bad (code, s)) *)
-(*     | No (code, s) -> `Error (`No (code, s)) *)
-
 (* and h_idle_response r c = *)
 (*   match r with *)
 (*   | Untagged r -> *)
@@ -2933,21 +2922,6 @@ let idle () =
 (*   | Tagged (g, r) -> *)
 (*       c.idling <- false; *)
 (*       h_tagged g r c *)
-
-(* and h_authenticate auth r c = *)
-(*   match r with *)
-(*   | Untagged r -> *)
-(*       `Untagged (r, fun () -> decode (h_authenticate auth) c) *)
-(*   | Tagged (g, r) -> *)
-(*       h_tagged g r c *)
-(*   | Cont data -> *)
-(*       begin match auth.step (B64.decode data) with *)
-(*       | `Ok data -> *)
-(*           let data = B64.encode ~pad:true data in *)
-(*           encode (`Auth_step data) (decode (h_authenticate auth)) c *)
-(*       | `Error s -> *)
-(*           encode `Auth_error (fun _ -> `Error (`Auth_error s)) c (\* (await (decode (h_authenticate auth)))) c *\) *)
-(*       end *)
 
 type session =
   {
@@ -3016,37 +2990,17 @@ let rec wait_for_resp init f = function
 let initiate a =
   Refill (initial_session, WaitForResp (wait_for_greeting a))
 
-let continue : type a. a progress -> a action = fun (session, state) ->
-  Printf.eprintf "continue\n%!";
-  let rec loop buf state =
-    let session = {session with buf} in
-    match state with
-    | Done x ->
-        Ok (x, session)
-    | Next (Sending (format, k)) ->
-        begin match E.out format with
-        | E.Done s ->
-            Send (s, (session, k))
-        | E.WaitForCont (s, format) ->
-            Send (s, (session, WaitForResp (wait_for_cont k)))
-        end
-    | Next (WaitForResp k as state) ->
-        begin match Readline.next buf with
-        | Readline.Next (buf, r) ->
-            loop buf (k r)
-        | Readline.Refill buf ->
-            Refill ({session with buf}, state)
-        | Readline.Error ->
-            assert false
-        end
-  in
-  loop session.buf (Next state)
-
-let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) s off len ->
-  Printf.eprintf "feed\n%!";
+let process session trans =
   let rec loop buf = function
     | Done x ->
         Ok (x, {session with buf})
+    | Next (Sending (format, k)) ->
+        begin match E.out format with
+        | E.Done s ->
+            Send (s, ({session with buf}, k))
+        | E.WaitForCont (s, format) ->
+            Send (s, ({session with buf}, WaitForResp (wait_for_cont k)))
+        end
     | Next (WaitForResp k as state) ->
         begin match Readline.next buf with
         | Readline.Next (buf, r) ->
@@ -3056,31 +3010,16 @@ let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) 
         | Readline.Error ->
             assert false
         end
-    | Next (Sending (format, state)) ->
-        let session = {session with buf} in
-        begin match E.out format with
-        | E.Done s ->
-            Send (s, (session, state))
-        | E.WaitForCont (s, format) ->
-            Send (s, (session, WaitForResp (wait_for_cont state)))
-        end
   in
-  loop (Readline.feed session.buf s off len) (Next state)
+  loop session.buf trans
 
-  (* match Decoder.feed session.buf s off len, state with *)
-  (* | _, Done x -> *)
-  (*     prerr_endline "A"; *)
-  (* | Decoder.Refill buf, Next state -> *)
-  (*     prerr_endline "B"; *)
-  (*     Refill ({session with buf}, state) *)
-  (* | Decoder.Next (buf, r), Next (WaitForResp k) -> *)
-  (*     prerr_endline "C"; *)
-  (*     k r *)
-  (*       loop (Decoder.next buf) (k r) *)
-  (* | _, Next (Sending _) -> *)
-  (*     assert false *)
-  (* | Decoder.Error, _ -> *)
-  (*     Error Error.Bad_greeting (\* FIXME *\) *)
+let continue : type a. a progress -> a action = fun (session, state) ->
+  (* Printf.eprintf "continue\n%!"; *)
+  process session (Next state)
+
+let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) s off len ->
+  (* Printf.eprintf "feed\n%!"; *)
+  process {session with buf = Readline.feed session.buf s off len} (Next state)
 
 let run session cmd =
   let format = E.(tag session.tag ++ cmd.format) in
