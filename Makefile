@@ -11,7 +11,7 @@ wait_mail:
 	$(OCAMLBUILD) test/wait_mail.byte
 
 imap_lwt:
-	$(OCAMLBUILD) test/imap_lwt.byte
+	$(OCAMLBUILD) lwt/imap_lwt.byte
 
 # all: lib imap_shell wait_mail
 
