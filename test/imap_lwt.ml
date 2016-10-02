@@ -27,12 +27,14 @@ let rec perform sock buf = function
   | Imap.Ok (res, state) ->
       Lwt.return (res, state)
   | Imap.Error _ ->
+      Printf.eprintf "Error\n%!";
       Lwt.fail (Failure "error")
   | Imap.Send (s, p) ->
       complete (Lwt_ssl.write sock) s 0 (String.length s) >>= fun () ->
       Printf.eprintf "<<< %d\n%s<<<\n%!" (String.length s) s;
       perform sock buf (Imap.continue p)
   | Imap.Refill p ->
+      Printf.eprintf "Refill\n%!";
       Lwt_ssl.read sock buf 0 (String.length buf) >>= fun n ->
       Printf.eprintf ">>> %d\n%s>>>\n%!" n (String.sub buf 0 n);
       perform sock buf (Imap.feed p buf 0 n)

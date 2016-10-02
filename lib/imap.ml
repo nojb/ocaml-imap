@@ -502,7 +502,7 @@ module E = struct
         out b empty k
 
   let out k =
-    out (Buffer.create 32) empty (Cat (k, Flush))
+    out (Buffer.create 32) empty (Cat (k, Cat (Raw "\r\n", Flush)))
 end
 
 module Msg = struct
@@ -950,108 +950,6 @@ module Response = struct
         fprintf ppf "@[<2>(cont@ %S)@]" s
     | Tagged (t, s) ->
         fprintf ppf "@[<2>(tagged@ %S@ %a)@]" t pp_state s
-end
-
-module Readline = struct
-  type step =
-    | Reading
-    | LF
-    | Lit of int
-
-  type state =
-    {
-      src: string;
-      off: int;
-      len: int;
-      step: step;
-      eof: bool;
-      buf: string;
-    }
-
-  type 'a res =
-    | Refill of state
-    | Next of state * 'a
-    | Error
-
-  let string_of_step = function
-    | Reading -> "Reading"
-    | LF -> "LF"
-    | Lit n -> Printf.sprintf "Lit %d" n
-
-  let print_state {src; off; len; step; eof; buf} =
-    Printf.eprintf "src=%S off=%d len=%d step=%s eof=%B buf=%S\n%!" src off len (string_of_step step) eof buf
-
-  let empty =
-    {
-      src = "";
-      off = 0;
-      len = 0;
-      step = Reading;
-      eof = false;
-      buf = "";
-    }
-
-  let next state =
-    if false then print_state state;
-    let {src; off; len; step; eof; buf} = state in
-    let rec go step i off len buf =
-      if i >= off + len then
-        let buf = buf ^ String.sub src off len in
-        if eof then
-          Error
-        else
-          let state = {state with step; buf; src = ""; off = 0; len = 0} in
-          Refill state
-      else begin
-        match step, src.[i] with
-        | Reading, '\r'
-        | LF, '\r' ->
-            go LF (i+1) off len buf
-        | Lit n, _ ->
-            let m = min n len in
-            go (if m < n then Lit (n-m) else Reading) (i+m) off len buf
-        | LF, '\n' ->
-            let buf = buf ^ String.sub src off (i-off+1) in
-            let off = i+1 and len = len-i+off-1 in
-            let ai = String.length buf + i - off in
-            let complete () =
-              let state = {state with off; len; buf = ""; step = Reading} in
-              Next (state, buf)
-            in
-            let module S = struct type t = Start | Acc end in
-            let open S in
-            let rec scan step acc i =
-              if i < 0 then
-                complete ()
-              else begin
-                match step, buf.[i] with
-                | Start, '}' ->
-                    scan Acc false (i - 1)
-                | Acc, '0' .. '9' ->
-                    scan Acc true (i - 1)
-                | Acc, '{' when acc ->
-                    let n =
-                      let acc = ref 0 in
-                      for j = i+1 to ai-3 do
-                        acc := 10 * !acc + (Char.code buf.[j] - Char.code '0')
-                      done;
-                      !acc
-                    in
-                    go (Lit n) (ai+1) off len buf
-                | Start, _ | Acc, _ ->
-                    complete ()
-              end
-            in
-            scan Start false (ai-2)
-        | Reading, _ | LF, _ ->
-            go Reading (i+1) off len buf
-      end
-    in
-    go step off off len buf
-
-  let feed state src off len =
-    if false then Printf.eprintf "feed: src=%S off=%d len=%d\n%!" src off len;
-    next {state with src; off; len; eof = len = 0}
 end
 
 module Parser = struct
@@ -2502,25 +2400,111 @@ module Decoder = struct
   let decode i =
     let d = {i; p = ref 0; c = []} in
     response d
+end
 
-  type result =
-    | Refill of Readline.state
-    | Next of Readline.state * response
+module Readline = struct
+  type step =
+    | Reading
+    | LF
+    | Lit of int
+
+  type state =
+    {
+      src: string;
+      off: int;
+      len: int;
+      step: step;
+      eof: bool;
+      buf: string;
+    }
+
+  type 'a res =
+    | Refill of state
+    | Next of state * 'a
     | Error
 
-  let adapt = function
-    | Readline.Refill buf ->
-        Refill buf
-    | Readline.Next (buf, x) ->
-        Next (buf, decode x)
-    | Readline.Error ->
-        Error
+  let string_of_step = function
+    | Reading -> "Reading"
+    | LF -> "LF"
+    | Lit n -> Printf.sprintf "Lit %d" n
 
-  let feed state buf off len =
-    adapt (Readline.feed state buf off len)
+  let print_state {src; off; len; step; eof; buf} =
+    Printf.eprintf "src=%S off=%d len=%d step=%s eof=%B buf=%S\n%!" src off len (string_of_step step) eof buf
+
+  let empty =
+    {
+      src = "";
+      off = 0;
+      len = 0;
+      step = Reading;
+      eof = false;
+      buf = "";
+    }
 
   let next state =
-    adapt (Readline.next state)
+    if false then print_state state;
+    let {src; off; len; step; eof; buf} = state in
+    let rec go step i off len buf =
+      if i >= off + len then
+        let buf = buf ^ String.sub src off len in
+        if eof then
+          Error
+        else
+          let state = {state with step; buf; src = ""; off = 0; len = 0} in
+          Refill state
+      else begin
+        match step, src.[i] with
+        | Reading, '\r'
+        | LF, '\r' ->
+            go LF (i+1) off len buf
+        | Lit n, _ ->
+            let m = min n len in
+            go (if m < n then Lit (n-m) else Reading) (i+m) off len buf
+        | LF, '\n' ->
+            let buf = buf ^ String.sub src off (i-off+1) in
+            let off = i+1 and len = len-i+off-1 in
+            let ai = String.length buf + i - off in
+            let complete () =
+              let state = {state with off; len; buf = ""; step = Reading} in
+              Next (state, Decoder.decode buf)
+            in
+            let module S = struct type t = Start | Acc end in
+            let open S in
+            let rec scan step acc i =
+              if i < 0 then
+                complete ()
+              else begin
+                match step, buf.[i] with
+                | Start, '}' ->
+                    scan Acc false (i - 1)
+                | Acc, '0' .. '9' ->
+                    scan Acc true (i - 1)
+                | Acc, '{' when acc ->
+                    let n =
+                      let acc = ref 0 in
+                      for j = i+1 to ai-3 do
+                        acc := 10 * !acc + (Char.code buf.[j] - Char.code '0')
+                      done;
+                      !acc
+                    in
+                    go (Lit n) (ai+1) off len buf
+                | Start, _ | Acc, _ ->
+                    complete ()
+              end
+            in
+            scan Start false (ai-2)
+        | Reading, _ | LF, _ ->
+            go Reading (i+1) off len buf
+      end
+    in
+    go step off off len buf
+
+  let feed state src off len =
+    if false then Printf.eprintf "feed: src=%S off=%d len=%d\n%!" src off len;
+    let src = if state.src <> "" then state.src ^ src else src in
+    let off = if state.src <> "" then state.off + off else off in
+    let len = if state.src <> "" then state.len + len else len in
+    {state with src; off; len; eof = len = 0}
 end
 
 (* Commands *)
@@ -2999,9 +2983,9 @@ let rec wait_for_auth step = function
       begin match step (B64.decode data) with
       | `Ok (data, step) ->
           let data = B64.encode ~pad:true data in
-          Next (Sending (E.(Cat (raw data, raw "\r\n")), WaitForResp (wait_for_auth step)))
+          Next (Sending (E.raw data, WaitForResp (wait_for_auth step)))
       | `Error _ ->
-          Next (Sending (E.(raw "*\r\n"), WaitForResp (wait_for_auth step)))
+          Next (Sending (E.raw "*", WaitForResp (wait_for_auth step)))
       end
   | Untagged _ ->
       Next (WaitForResp (wait_for_auth step))
@@ -3010,7 +2994,8 @@ let rec wait_for_auth step = function
 
 let wait_for_greeting auth = function
   | Untagged (State (OK _)) ->
-      Next (Sending (E.(raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth.Auth.step)))
+      prerr_endline "X";
+      Next (Sending (E.(tag 0 ++ raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth auth.Auth.step)))
   | _ ->
       assert false
 
@@ -3032,34 +3017,72 @@ let initiate a =
   Refill (initial_session, WaitForResp (wait_for_greeting a))
 
 let continue : type a. a progress -> a action = fun (session, state) ->
-  match state with
-  | Sending (format, k) ->
-      begin match E.out format with
-      | E.Done s ->
-          Send (s, (session, k))
-      | E.WaitForCont (s, format) ->
-          Send (s, (session, WaitForResp (wait_for_cont k)))
-      end
-  | WaitForResp _ ->
-      Refill (session, state)
+  Printf.eprintf "continue\n%!";
+  let rec loop buf state =
+    let session = {session with buf} in
+    match state with
+    | Done x ->
+        Ok (x, session)
+    | Next (Sending (format, k)) ->
+        begin match E.out format with
+        | E.Done s ->
+            Send (s, (session, k))
+        | E.WaitForCont (s, format) ->
+            Send (s, (session, WaitForResp (wait_for_cont k)))
+        end
+    | Next (WaitForResp k as state) ->
+        begin match Readline.next buf with
+        | Readline.Next (buf, r) ->
+            loop buf (k r)
+        | Readline.Refill buf ->
+            Refill ({session with buf}, state)
+        | Readline.Error ->
+            assert false
+        end
+  in
+  loop session.buf (Next state)
 
 let feed : type a. a progress -> _ -> _ -> _ -> a action = fun (session, state) s off len ->
-  let rec loop rl state =
-    match rl, state with
-    | _, Done x ->
-        Ok (x, session) (* buf ? *)
-    | Decoder.Refill buf, Next state ->
-        Refill ({session with buf}, state)
-    | Decoder.Next (buf, r), Next (WaitForResp k) ->
-        loop (Decoder.next buf) (k r)
-    | _, Next (Sending _) ->
-        assert false
-    | Decoder.Error, _ ->
-        Error Error.Bad_greeting (* FIXME *)
+  Printf.eprintf "feed\n%!";
+  let rec loop buf = function
+    | Done x ->
+        Ok (x, {session with buf})
+    | Next (WaitForResp k as state) ->
+        begin match Readline.next buf with
+        | Readline.Next (buf, r) ->
+            loop buf (k r)
+        | Readline.Refill buf ->
+            Refill ({session with buf}, state)
+        | Readline.Error ->
+            assert false
+        end
+    | Next (Sending (format, state)) ->
+        let session = {session with buf} in
+        begin match E.out format with
+        | E.Done s ->
+            Send (s, (session, state))
+        | E.WaitForCont (s, format) ->
+            Send (s, (session, WaitForResp (wait_for_cont state)))
+        end
   in
-  loop (Decoder.feed session.buf s off len) (Next state)
+  loop (Readline.feed session.buf s off len) (Next state)
+
+  (* match Decoder.feed session.buf s off len, state with *)
+  (* | _, Done x -> *)
+  (*     prerr_endline "A"; *)
+  (* | Decoder.Refill buf, Next state -> *)
+  (*     prerr_endline "B"; *)
+  (*     Refill ({session with buf}, state) *)
+  (* | Decoder.Next (buf, r), Next (WaitForResp k) -> *)
+  (*     prerr_endline "C"; *)
+  (*     k r *)
+  (*       loop (Decoder.next buf) (k r) *)
+  (* | _, Next (Sending _) -> *)
+  (*     assert false *)
+  (* | Decoder.Error, _ -> *)
+  (*     Error Error.Bad_greeting (\* FIXME *\) *)
 
 let run session cmd =
-  let format = E.(tag session.tag ++ Cat (cmd.format, raw "\r\n")) in
+  let format = E.(tag session.tag ++ cmd.format) in
   let state = Sending (format, WaitForResp (wait_for_resp cmd.default cmd.process)) in
   continue (session, state)
