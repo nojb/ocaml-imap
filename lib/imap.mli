@@ -292,8 +292,8 @@ module Msg : sig
     val body: t
     (** Non-extensible form of [`Body_structure]. *)
 
-    val body_section: [ `Peek | `Look ] -> section -> (int * int) option -> t
-    (** The text of a particular body section.  The [`Peek] flag is an alternate
+    val body_section: peek:bool -> section -> (int * int) option -> t
+    (** The text of a particular body section.  The [peek] flag is an alternate
         form that does not implicitly set the [`Seen] {!flag}. *)
 
     val bodystructure: t

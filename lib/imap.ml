@@ -594,8 +594,8 @@ module Msg = struct
     let rfc822_size = raw "RFC822.SIZE"
     let rfc822 = raw "RFC822"
     let body = raw "BODY"
-    let body_section peek s partial =
-      let cmd = match peek with `Peek -> "BODY.PEEK" | `Look -> "BODY" in
+    let body_section ~peek s partial =
+      let cmd = if peek then "BODY.PEEK" else "BODY" in
       let partial =
         match partial with
         | None -> empty
