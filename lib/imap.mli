@@ -205,7 +205,7 @@ module MIME : sig
     | Basic of string * string * fields
     | Multipart of mime list * string
 
-  val pp_mime : Format.formatter -> mime -> unit
+  val pp_mime: Format.formatter -> mime -> unit
 end
 
 module Msg : sig
@@ -238,7 +238,7 @@ module Msg : sig
     | Part of int * section              (* Subpart *)
     | All                              (* The whole message *)
 
-  val pp_section : Format.formatter -> section -> unit
+  val pp_section: Format.formatter -> section -> unit
 
   type att =
     {
