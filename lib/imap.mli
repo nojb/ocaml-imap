@@ -46,7 +46,9 @@
 module type NUMBER = sig
   type t
   val zero: t
+  val of_int: int -> t
   val compare: t -> t -> int
+  val print: Format.formatter -> t -> unit
 end
 
 module Modseq : NUMBER

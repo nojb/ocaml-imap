@@ -13,3 +13,7 @@
 #load "imap.cma"
 #load "imap_unix.cma"
 #load "imap_lwt.cma"
+
+#install_printer Imap.Uid.print
+#install_printer Imap.Seq.print
+#install_printer Imap.Modseq.print

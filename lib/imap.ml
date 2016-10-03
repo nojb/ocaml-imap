@@ -31,12 +31,16 @@ let pp_list ?(pp_sep = Format.pp_print_space) =
 module type NUMBER = sig
   type t
   val zero: t
+  val of_int: int -> t
   val compare: t -> t -> int
+  val print: Format.formatter -> t -> unit
 end
 
 module Uint32 = struct
   type t = int32
   let zero = 0l
+  let of_int n =
+    Scanf.sscanf (Printf.sprintf "%u" n) "%lu" (fun n -> n)
   let msb n = Int32.(logand n (shift_left 1l 31)) <> 0l
   let compare n1 n2 =
     match msb n1, msb n2 with
@@ -44,9 +48,15 @@ module Uint32 = struct
     | true, false -> 1
     | false, true -> -1
     | false, false -> Int32.compare n1 n2
+  let print ppf n =
+    Format.fprintf ppf "%lu" n
 end
 
-module Modseq = Int64
+module Modseq = struct
+  include Int64
+  let print ppf n =
+    Format.fprintf ppf "%Lu" n
+end
 module Uid = Uint32
 module Seq = Uint32
 
