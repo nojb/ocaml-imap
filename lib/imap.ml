@@ -433,6 +433,9 @@ module E = struct
     in
     loop l
 
+  let plist ?sep f l =
+    Cat (Raw "(", Cat (list ?sep f l, Raw ")"))
+
   let date {day; month; year} =
     let months =
       [|
@@ -580,8 +583,8 @@ module Msg = struct
 
     let rec section = function
       | HEADER -> raw "HEADER"
-      | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ list str l
-      | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ list str l
+      | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l
+      | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l
       | TEXT -> raw "TEXT"
       | MIME -> raw "MIME"
       | Part (n, s) -> Cat (int n, Cat (str ".", section s))
@@ -2107,9 +2110,9 @@ module Decoder = struct
     let open Msg in
     let cases =
       [
-        "HEADER", const HEADER;
         "HEADER.FIELDS.NOT", (fun d -> HEADER_FIELDS_NOT (sp header_list d));
         "HEADER.FIELDS", (fun d -> HEADER_FIELDS (sp header_list d));
+        "HEADER", const HEADER;
         "TEXT", const TEXT;
       ]
     in

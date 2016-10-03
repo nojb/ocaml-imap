@@ -41,6 +41,11 @@ let run c cmd =
   c.session <- session;
   res
 
+let idle c =
+  let res, session = perform c.sock c.buf (Imap.idle c.session) in
+  c.session <- session;
+  res
+
 let connect port host username password =
   let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let he = Unix.gethostbyname host in
