@@ -240,23 +240,28 @@ module Msg : sig
 
   val pp_section: Format.formatter -> section -> unit
 
-  type att =
-    {
-      flags: [ flag | `Recent ] list;
-      envelope: Envelope.envelope option;
-      internaldate: (date * time) option;
-      rfc822: string;
-      rfc822_header: string;
-      rfc822_text: string;
-      rfc822_size: int option;
-      body: MIME.mime option;
-      body_section: (section * int option * string option) option;
-      uid: Uid.t;
-      modseq: Modseq.t;
-      x_gm_msgid: Modseq.t;
-      x_gm_thrid: Modseq.t;
-      x_gm_labels: string list;
-    }
+  module FetchData : sig
+    type 'a attr
+    val flags: [ flag | `Recent ] list attr
+    val envelope: Envelope.envelope attr
+    val internal_date: (date * time) attr
+    val rfc822: string attr
+    val rfc822_headers: string attr
+    val rfc822_text: string attr
+    val rfc822_size: int attr
+    val body: MIME.mime attr
+    val body_structure: MIME.mime attr
+    val body_section: ?range:(int * int) -> section -> string attr
+    val uid: Uid.t attr
+    val modseq: Modseq.t attr
+    val gmail_msgid: Modseq.t attr
+    val gmail_thrid: Modseq.t attr
+    val gmail_labels: string list attr
+
+    type t
+    val seq: t -> Seq.t
+    val attr: t -> 'a attr -> 'a
+  end
 
   module Request : sig
     (** Message attributes that can be requested using the {!fetch} command. *)
@@ -734,8 +739,8 @@ val append: string -> ?flags:Msg.flag list -> string -> unit command
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Msg.Request.t list -> (Seq.t * Msg.att) list command
-val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> (Seq.t * Msg.att) list command
+val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Msg.Request.t list -> Msg.FetchData.t list command
+val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> Msg.FetchData.t list command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
@@ -747,12 +752,12 @@ val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t 
 
 (** {2 Store commands} *)
 
-val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.att) list command
-val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.att) list command
-val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> (Seq.t * Msg.att) list command
-val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.att) list command
-val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.att) list command
-val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> (Uid.t * Msg.att) list command
+val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -766,12 +771,12 @@ val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.fla
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
-val add_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.att) list command
-val set_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.att) list command
-val remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> (Seq.t * Msg.att) list command
-val uid_add_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.att) list command
-val uid_set_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.att) list command
-val uid_remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> (Uid.t * Msg.att) list command
+val add_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Msg.FetchData.t list command
+val set_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Msg.FetchData.t list command
+val remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Msg.FetchData.t list command
+val uid_add_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Msg.FetchData.t list command
+val uid_set_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Msg.FetchData.t list command
+val uid_remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Msg.FetchData.t list command
 (** [store_add_labels] is like {!store_add_flags} but adds
     {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
     instead of regular flags. *)

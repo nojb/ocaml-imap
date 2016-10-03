@@ -520,61 +520,82 @@ module Msg = struct
     | X_GM_THRID of int64
     | X_GM_LABELS of string list
 
-  type att =
-    {
-      flags: [ flag | `Recent ] list;
-      envelope: Envelope.envelope option;
-      internaldate: (date * time) option;
-      rfc822: string;
-      rfc822_header: string;
-      rfc822_text: string;
-      rfc822_size: int option;
-      body: MIME.mime option;
-      body_section: (section * int option * string option) option;
-      uid: int32;
-      modseq: int64;
-      x_gm_msgid: int64;
-      x_gm_thrid: int64;
-      x_gm_labels: string list;
-    }
+  module FetchData = struct
+    module A = struct
+      type 'a attr =
+        | FLAGS : [ flag | `Recent ] list attr
+        | ENVELOPE : Envelope.envelope attr
+        | INTERNALDATE : (date * time) attr
+        | RFC822 : string attr
+        | RFC822_HEADER : string attr
+        | RFC822_TEXT : string attr
+        | RFC822_SIZE : int attr
+        | BODY : MIME.mime attr
+        | BODYSTRUCTURE : MIME.mime attr
+        | BODY_SECTION : section * (int * int) option -> string attr
+        | UID : Uid.t attr
+        | MODSEQ : Modseq.t attr
+        | X_GM_MSGID : Modseq.t attr
+        | X_GM_THRID : Modseq.t attr
+        | X_GM_LABELS : string list attr
+    end
 
-  let empty_att =
-    {
-      flags = [];
-      envelope = None;
-      internaldate = None;
-      rfc822 = "";
-      rfc822_header = "";
-      rfc822_text = "";
-      rfc822_size = None;
-      body = None;
-      body_section = None;
-      uid = 0l;
-      modseq = 0L;
-      x_gm_msgid = 0L;
-      x_gm_thrid = 0L;
-      x_gm_labels = [];
-    }
+    type 'a attr = 'a A.attr
 
-  let merge_att att = function
-    | FLAGS flags -> {att with flags}
-    | ENVELOPE envelope -> {att with envelope = Some envelope}
-    | INTERNALDATE (d, t) -> {att with internaldate = Some (d, t)}
-    | RFC822 None -> {att with rfc822 = ""}
-    | RFC822 (Some rfc822) -> {att with rfc822}
-    | RFC822_HEADER None -> {att with rfc822_header = ""}
-    | RFC822_HEADER (Some rfc822_header) -> {att with rfc822_header}
-    | RFC822_TEXT None -> {att with rfc822_text = ""}
-    | RFC822_TEXT (Some rfc822_text) -> {att with rfc822_text}
-    | RFC822_SIZE n -> {att with rfc822_size = Some n}
-    | BODY mime
-    | BODYSTRUCTURE mime -> {att with body = Some mime}
-    | BODY_SECTION (sec, o, s) -> {att with body_section = Some (sec, o, s)}
-    | UID uid -> {att with uid}
-    | MODSEQ modseq -> {att with modseq}
-    | X_GM_MSGID x_gm_msgid -> {att with x_gm_msgid}
-    | X_GM_THRID x_gm_thrid -> {att with x_gm_thrid}
-    | X_GM_LABELS x_gm_labels -> {att with x_gm_labels}
+    let flags = A.FLAGS
+    let envelope = A.ENVELOPE
+    let internal_date = A.INTERNALDATE
+    let rfc822 = A.RFC822
+    let rfc822_headers = A.RFC822_HEADER
+    let rfc822_text = A.RFC822_TEXT
+    let rfc822_size = A.RFC822_SIZE
+    let body = A.BODY
+    let body_structure = A.BODYSTRUCTURE
+    let body_section ?range sec = A.BODY_SECTION (sec, range)
+    let uid = A.UID
+    let modseq = A.MODSEQ
+    let gmail_msgid = A.X_GM_MSGID
+    let gmail_thrid = A.X_GM_THRID
+    let gmail_labels = A.X_GM_LABELS
+
+    type t = Seq.t * msg_att list
+
+    let seq (n, _) =
+      n
+
+    let attr (_, l) a =
+      let rec loop: type a. a A.attr -> msg_att list -> a = fun a l ->
+        match l with
+        | att :: rest ->
+            begin match a, att with
+            | A.FLAGS, FLAGS flags -> flags
+            | A.ENVELOPE, ENVELOPE envelope -> envelope
+            | A.INTERNALDATE, INTERNALDATE (date, time) -> (date, time)
+            | A.RFC822, RFC822 (Some s) -> s
+            | A.RFC822, RFC822 None -> ""
+            | A.RFC822_HEADER, RFC822_HEADER (Some s) -> s
+            | A.RFC822_HEADER, RFC822_HEADER None -> ""
+            | A.RFC822_TEXT, RFC822_TEXT (Some s) -> s
+            | A.RFC822_TEXT, RFC822_TEXT None -> ""
+            | A.RFC822_SIZE, RFC822_SIZE n -> n
+            | A.BODY, BODY mime -> mime
+            | A.BODYSTRUCTURE, BODYSTRUCTURE mime -> mime
+            | A.BODY_SECTION (sec, Some (_, len)), BODY_SECTION (sec1, Some len1, s)
+              when sec = sec1 && len = len1 -> begin match s with None -> "" | Some s -> s end
+            | A.BODY_SECTION (sec, None), BODY_SECTION (sec1, None, s) ->
+                begin match s with Some s -> s | None -> "" end
+            | A.UID, UID uid -> uid
+            | A.MODSEQ, MODSEQ modseq -> modseq
+            | A.X_GM_MSGID, X_GM_MSGID msgid -> msgid
+            | A.X_GM_THRID, X_GM_THRID thrid -> thrid
+            | A.X_GM_LABELS, X_GM_LABELS labels -> labels
+            | _ -> loop a rest
+            end
+        | [] ->
+            raise Not_found
+      in
+      loop a l
+  end
 
   module Request = struct
     open E
@@ -2809,18 +2830,17 @@ let fetch_gen cmd ?changed ?(vanished = false) set att =
   let process u atts =
     match u with
     | FETCH (id, infos) ->
-        let att = List.fold_left Msg.merge_att Msg.empty_att infos in
-        (id, att) :: atts
+        (id, infos) :: atts
     | _ ->
         atts
   in
   {format; default; process}
 
-let fetch =
-  fetch_gen E.(raw "FETCH")
+let fetch ?changed ?vanished set att =
+  fetch_gen E.(raw "FETCH") ?changed ?vanished set att
 
-let uid_fetch =
-  fetch_gen E.(raw "UID" ++ raw "FETCH")
+let uid_fetch ?changed ?vanished set att =
+  fetch_gen E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
 
 let store_gen cmd ~silent ~unchanged mode set att =
   let open E in
