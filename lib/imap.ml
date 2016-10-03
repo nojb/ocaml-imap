@@ -786,41 +786,13 @@ module Mailbox = struct
     | Trash
     | Extension of string
 
-  type status_response =
+  type mbx_att =
     | MESSAGES of int
     | RECENT of int
     | UIDNEXT of int32
     | UIDVALIDITY of int32
     | UNSEEN of int32
     | HIGHESTMODSEQ of int64
-
-  type att =
-    {
-      messages: int;
-      recent: int;
-      uidnext: int32;
-      uidvalidity: int32;
-      unseen: int32;
-      highestmodseq: int64;
-    }
-
-  let empty_att =
-    {
-      messages = -1;
-      recent = -1;
-      uidnext = 0l;
-      uidvalidity = 0l;
-      unseen = 0l;
-      highestmodseq = 0L;
-    }
-
-  let merge_att att = function
-    | MESSAGES messages -> {att with messages}
-    | RECENT recent -> {att with recent}
-    | UIDNEXT uidnext -> {att with uidnext}
-    | UIDVALIDITY uidvalidity -> {att with uidvalidity}
-    | UNSEEN unseen -> {att with unseen}
-    | HIGHESTMODSEQ highestmodseq -> {att with highestmodseq}
 
   module Request = struct
     open E
@@ -862,6 +834,49 @@ module Mailbox = struct
     | HIGHESTMODSEQ m -> fprintf ppf "(highest-modseq %Lu)" m
 end
 
+(** {3 Mailbox status responses}
+
+    Mailbox status items returned in the untagged [`Status]
+    {{!untagged}response} to the {!status} command. *)
+
+module StatusData = struct
+  type _ attr =
+    | MESSAGES : int attr
+    | RECENT : int attr
+    | UIDNEXT : int32 attr
+    | UIDVALIDITY : int32 attr
+    | UNSEEN : int32 attr
+    | HIGHESTMODSEQ : int64 attr
+
+  let messages = MESSAGES
+  let recent = RECENT
+  let uidnext = UIDNEXT
+  let uidvalidity = UIDVALIDITY
+  let unseen = UNSEEN
+  let highestmodseq = HIGHESTMODSEQ
+
+  type t =
+    Mailbox.mbx_att list
+
+  let attr t a =
+    let rec loop: type a. Mailbox.mbx_att list -> a attr -> a = fun l a ->
+      match l with
+      | att :: l ->
+          begin match a, att with
+          | MESSAGES, Mailbox.MESSAGES n -> n
+          | RECENT, Mailbox.RECENT n -> n
+          | UIDNEXT, Mailbox.UIDNEXT uid -> uid
+          | UIDVALIDITY, Mailbox.UIDVALIDITY uid -> uid
+          | UNSEEN, Mailbox.UNSEEN n -> n
+          | HIGHESTMODSEQ, Mailbox.HIGHESTMODSEQ modseq -> modseq
+          | _ -> loop l a
+          end
+      | [] ->
+          raise Not_found
+    in
+    loop t a
+end
+
 module Response = struct
   type state =
     | OK of Code.code option * string
@@ -876,7 +891,7 @@ module Response = struct
     | LIST of Mailbox.mbx_flag list * char option * string
     | LSUB of Mailbox.mbx_flag list * char option * string
     | SEARCH of int32 list * int64 option
-    | STATUS of string * Mailbox.status_response list
+    | STATUS of string * Mailbox.mbx_att list
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of int32
@@ -2712,11 +2727,11 @@ let lsub ?(ref = "") s =
 
 let status m att =
   let format = E.(str "STATUS" ++ mailbox m ++ p (list (fun x -> x) att)) in
-  let default = Mailbox.empty_att in
+  let default = [] in
   let process u att =
     match u with
     | STATUS (mbox, items) when m = mbox ->
-        List.fold_left Mailbox.merge_att att items
+        items
     | _ ->
         att
   in

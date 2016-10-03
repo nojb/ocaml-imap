@@ -350,22 +350,6 @@ module Mailbox : sig
     | Trash
     | Extension of string
 
-  (** {3 Mailbox status responses}
-
-      Mailbox status items returned in the untagged [`Status]
-      {{!untagged}response} to the {!status} command. *)
-
-  type att =
-    {
-      messages: int;     (** Number of messages in the mailbox. *)
-      recent: int;     (** Number of messages in the mailbox with the [`Recent] flag. *)
-      uidnext: Uid.t;    (** The expected UID of the next message to be added to this mailbox. *)
-      uidvalidity: Uid.t;     (** The UID VALIDITY value of this mailbox. *)
-      unseen: Seq.t;     (** The Sequence number of the first message in the mailbox that has not been seen. *)
-      highestmodseq: Modseq.t;       (** The highest modification sequence number of all the messages in the mailbox.
-                                         This is only sent back if [CONDSTORE] is enabled. *)
-    }
-
   module Request : sig
     (** Mailbox attibutes that can be requested with the {!status} command. *)
 
@@ -390,6 +374,39 @@ module Mailbox : sig
     val highestmodseq: t
     (** TODO *)
   end
+end
+
+(** {3 Mailbox status responses}
+
+    Mailbox status items returned in the untagged [`Status]
+    {{!untagged}response} to the {!status} command. *)
+
+module StatusData : sig
+  type _ attr
+
+  val messages: int attr
+  (** Number of messages in the mailbox. *)
+
+  val recent: int attr
+  (** Number of messages in the mailbox with the [`Recent] flag. *)
+
+  val uidnext: Uid.t attr
+  (** The expected UID of the next message to be added to this mailbox. *)
+
+  val uidvalidity: Uid.t attr
+  (** The UID VALIDITY value of this mailbox. *)
+
+  val unseen: Seq.t attr
+  (** The Sequence number of the first message in the mailbox that has not
+      been seen. *)
+
+  val highestmodseq: Modseq.t attr
+  (** The highest modification sequence number of all the messages in the
+      mailbox.  This is only sent back if [CONDSTORE] is enabled. *)
+
+  type t
+
+  val attr: t -> 'a attr -> 'a
 end
 
 (** {e Extended} message numbers sets, as a union of intervals.  The second
@@ -668,7 +685,7 @@ val lsub: ?ref:string -> string -> (Mailbox.mbx_flag list * char option * string
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status: string -> Mailbox.Request.t list -> Mailbox.att command
+val status: string -> Mailbox.Request.t list -> StatusData.t command
 (** [status] requests {{!status_query}status information} of the indicated
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
