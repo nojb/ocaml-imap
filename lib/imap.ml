@@ -2578,8 +2578,6 @@ module Error = struct
     | Unexpected_cont
     | Bad_greeting
     | Auth_error of string
-    | Bad of Code.code * string
-    | No of Code.code * string
 
   open Format
 
@@ -2589,8 +2587,6 @@ module Error = struct
     | Unexpected_cont -> fprintf ppf "@[Unexpected continuation request@]"
     | Bad_greeting -> fprintf ppf "@[Bad greeting@]"
     | Auth_error s -> fprintf ppf "@[Authentication error: %s@]" s
-    | Bad (c, t) -> fprintf ppf "@[BAD:@ %a@ %S@]" Code.pp c t
-    | No (c, t) -> fprintf ppf "@[NO:@ %a@ %S@]" Code.pp c t
 end
 
 type 'a command =
@@ -2908,6 +2904,8 @@ type 'a progress =
 
 type 'a action =
   | Ok of 'a * session
+  | No of string * session
+  | Bad of string * session
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress

@@ -21,6 +21,8 @@ let complete f b o l =
 let rec perform sock buf = function
   | Imap.Ok (res, state) ->
       (res, state)
+  | Imap.No (s, _) | Imap.Bad (s, _) ->
+      failwith s
   | Imap.Error _ ->
       Printf.eprintf "Error\n%!";
       failwith "error"

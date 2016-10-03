@@ -930,12 +930,6 @@ module Error : sig
         Thus, after receiving this error the client should pass [`Await] to {!run}
         until [`Error `Bad] is received, and then take appropiate action. *)
 
-    | Bad of Code.code * string
-    (** The server could not parse the request. *)
-
-    | No of Code.code * string
-    (** The server could not perform the requested action. *)
-
   val pp: Format.formatter -> error -> unit
 end
 
@@ -951,6 +945,8 @@ type 'a progress
 
 type 'a action =
   | Ok of 'a * session
+  | No of string * session
+  | Bad of string * session
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
