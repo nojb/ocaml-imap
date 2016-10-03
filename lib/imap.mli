@@ -735,7 +735,7 @@ val append: string -> ?flags:Msg.flag list -> string -> unit command
     [?changed]. *)
 
 val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Msg.Request.t list -> (Seq.t * Msg.att) list command
-val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> (Uid.t * Msg.att) list command
+val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> (Seq.t * Msg.att) list command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
