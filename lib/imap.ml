@@ -609,6 +609,8 @@ module Msg = struct
     let all = [flags; internaldate; rfc822_size; envelope]
     let fast = [flags; internaldate; rfc822_size]
     let full = [flags; internaldate; rfc822_size; envelope; body]
+
+    let x_gm_labels = raw "X-GM-LABELS"
   end
 
   open Format

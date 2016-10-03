@@ -310,6 +310,8 @@ module Msg : sig
     val all: t list
     val fast: t list
     val full: t list
+
+    val x_gm_labels: t
 (** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
     [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
 
