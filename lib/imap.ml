@@ -190,6 +190,9 @@ module Capability = struct
     | IDLE
     | ID
     | LITERALPLUS
+    | LITERALMINUS
+    | UTF8_ACCEPT
+    | UTF8_ONLY
     | MULTIAPPEND
     | NAMESPACE
     | QRESYNC
@@ -217,6 +220,9 @@ module Capability = struct
     | IDLE -> "IDLE"
     | ID -> "ID"
     | LITERALPLUS -> "LITERAL+"
+    | LITERALMINUS -> "LITERAL-"
+    | UTF8_ACCEPT -> "UTF8=ACCEPT"
+    | UTF8_ONLY -> "UTF8=ONLY"
     | MULTIAPPEND -> "MULTIAPPEND"
     | NAMESPACE -> "NAMESPACE"
     | QRESYNC -> "QRESYNC"
@@ -235,54 +241,8 @@ module Capability = struct
 
   open Format
 
-  let pp ppf = function
-    | ACL ->
-        fprintf ppf "acl"
-    | BINARY ->
-        fprintf ppf "binary"
-    | CATENATE ->
-        fprintf ppf "catenate"
-    | CHILDREN ->
-        fprintf ppf "children"
-    | COMPRESS_DEFLATE ->
-        fprintf ppf "compress-deflate"
-    | CONDSTORE ->
-        fprintf ppf "condstore"
-    | ENABLE -> fprintf ppf "enable"
-    | IDLE -> fprintf ppf "idle"
-    | ID -> fprintf ppf "id"
-    | LITERALPLUS ->
-        fprintf ppf "literal+"
-    | MULTIAPPEND ->
-        fprintf ppf "multi-append"
-    | NAMESPACE ->
-        fprintf ppf "namespace"
-    | QRESYNC ->
-        fprintf ppf "qresync"
-    | QUOTE ->
-        fprintf ppf "quote"
-    | SORT ->
-        fprintf ppf "sort"
-    | STARTTLS ->
-        fprintf ppf "start-tls"
-    | UIDPLUS ->
-        fprintf ppf "uid-plus"
-    | UNSELECT ->
-        fprintf ppf "unselect"
-    | XLIST ->
-        fprintf ppf "xlist"
-    | AUTH_ANONYMOUS ->
-        fprintf ppf "auth-anonymous"
-    | AUTH_LOGIN ->
-        fprintf ppf "auth-login"
-    | AUTH_PLAIN ->
-        fprintf ppf "auth-plain"
-    | XOAUTH2 ->
-        fprintf ppf "xoauth2"
-    | X_GM_EXT_1 ->
-        fprintf ppf "gmail"
-    | OTHER s ->
-        fprintf ppf "(other %S)" s
+  let pp ppf c =
+    pp_print_string ppf (String.lowercase_ascii (string_of_capability c))
 end
 
 module Envelope = struct
@@ -1499,6 +1459,9 @@ module Decoder = struct
         "ENABLE", const ENABLE;
         "IDLE", const IDLE;
         "LITERAL+", const LITERALPLUS;
+        "LITERAL-", const LITERALMINUS;
+        "UTF8=ACCEPT", const UTF8_ACCEPT;
+        "UTF8=ONLY", const UTF8_ONLY;
         "NAMESPACE", const NAMESPACE;
         "ID", const ID;
         "QRESYNC", const QRESYNC;

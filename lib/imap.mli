@@ -87,6 +87,9 @@ module Capability : sig
     | IDLE
     | ID
     | LITERALPLUS
+    | LITERALMINUS
+    | UTF8_ACCEPT
+    | UTF8_ONLY
     | MULTIAPPEND
     | NAMESPACE
     | QRESYNC
