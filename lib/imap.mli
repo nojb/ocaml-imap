@@ -223,7 +223,7 @@ module Flag : sig
     | Any
 end
 
-module Msg : sig
+module FetchRequest : sig
   (** The [section] type is used to specify which part(s) of a message should be
       retrieved when using {!fetch} with [`Body_section].  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
@@ -242,71 +242,69 @@ module Msg : sig
     | Part of int * section              (* Subpart *)
     | All                              (* The whole message *)
 
-  val pp_section: Format.formatter -> section -> unit
+  (** Message attributes that can be requested using the {!fetch} command. *)
 
-  module Request : sig
-    (** Message attributes that can be requested using the {!fetch} command. *)
+  type t
 
-    type t
+  val envelope: t
+  (** The envelope structure of the message.  This is computed by the server
+      by parsing the header into the component parts, defaulting various
+      fields as necessary. *)
 
-    val envelope: t
-    (** The envelope structure of the message.  This is computed by the server
-        by parsing the header into the component parts, defaulting various
-        fields as necessary. *)
+  val internaldate: t
+  (** The internal date of the message. *)
 
-    val internaldate: t
-    (** The internal date of the message. *)
+  val rfc822_header: t
+  (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
+      differing in the syntax of the resulting untagged [`Fetch]
+      {{!untagged}data} ([`Rfc822_header] is returned). *)
 
-    val rfc822_header: t
-    (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
-        differing in the syntax of the resulting untagged [`Fetch]
-        {{!untagged}data} ([`Rfc822_header] is returned). *)
+  val rfc822_text: t
+  (** Functionally equivalent to [`Body_section (`Look, `Text, None)],
+      differing in the syntax of the resulting untagged [`Fetch]
+      {{!untagged}data} ([`Rfc822_text] is returned). *)
 
-    val rfc822_text: t
-    (** Functionally equivalent to [`Body_section (`Look, `Text, None)],
-        differing in the syntax of the resulting untagged [`Fetch]
-        {{!untagged}data} ([`Rfc822_text] is returned). *)
+  val rfc822_size: t
+  (** The size of the message. *)
 
-    val rfc822_size: t
-    (** The size of the message. *)
+  val rfc822: t
+  (** Functionally equivalent to [`Body_section (`Look, `All, None)],
+      differing in the syntax of the resulting untagged [`Fetch]
+      {{!untagged}data} ([`Rfc822] is returned). *)
 
-    val rfc822: t
-    (** Functionally equivalent to [`Body_section (`Look, `All, None)],
-        differing in the syntax of the resulting untagged [`Fetch]
-        {{!untagged}data} ([`Rfc822] is returned). *)
+  val body: t
+  (** Non-extensible form of [`Body_structure]. *)
 
-    val body: t
-    (** Non-extensible form of [`Body_structure]. *)
+  val body_section: peek:bool -> section -> (int * int) option -> t
+  (** The text of a particular body section.  The [peek] flag is an alternate
+      form that does not implicitly set the [`Seen] {!flag}. *)
 
-    val body_section: peek:bool -> section -> (int * int) option -> t
-    (** The text of a particular body section.  The [peek] flag is an alternate
-        form that does not implicitly set the [`Seen] {!flag}. *)
+  val bodystructure: t
+  (** The MIME body structure of the message.  This is computed by the server
+      by parsing the MIME header fields in the [RFC-2822] header and MIME
+      headers. *)
 
-    val bodystructure: t
-    (** The MIME body structure of the message.  This is computed by the server
-        by parsing the MIME header fields in the [RFC-2822] header and MIME
-        headers. *)
+  val uid: t
+  (** The unique identifier for the message. *)
 
-    val uid: t
-    (** The unique identifier for the message. *)
+  val flags: t
+  (** The {{!flag}flags} that are set for this message. *)
 
-    val flags: t
-    (** The {{!flag}flags} that are set for this message. *)
+  val all: t list
+  val fast: t list
+  val full: t list
 
-    val all: t list
-    val fast: t list
-    val full: t list
+  val x_gm_msgid: t
+  val x_gm_thrid: t
+  val x_gm_labels: t
+  (** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+      [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
 
-    val x_gm_labels: t
-(** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
+  (** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
+      [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
 
-(** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-    [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
-
-(** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
-    [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
-  end
+  (** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
+      [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
 end
 
 module FetchData : sig
@@ -320,7 +318,7 @@ module FetchData : sig
   val rfc822_size: int attr
   val body: MIME.mime attr
   val body_structure: MIME.mime attr
-  val body_section: ?range:(int * int) -> Msg.section -> string attr
+  val body_section: ?range:(int * int) -> FetchRequest.section -> string attr
   val uid: Uid.t attr
   val modseq: Modseq.t attr
   val gmail_msgid: Modseq.t attr
@@ -755,8 +753,8 @@ val append: string -> ?flags:Flag.flag list -> string -> unit command
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Msg.Request.t list -> FetchData.t list command
-val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t list -> FetchData.t list command
+val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> FetchRequest.t list -> FetchData.t list command
+val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> FetchRequest.t list -> FetchData.t list command
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the

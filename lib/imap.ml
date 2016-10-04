@@ -533,7 +533,7 @@ module Flag = struct
     | Any       -> fprintf ppf "any"
 end
 
-module Msg = struct
+module FetchRequest = struct
   type section =
     | HEADER
     | HEADER_FIELDS of string list
@@ -560,45 +560,45 @@ module Msg = struct
     | X_GM_THRID of int64
     | X_GM_LABELS of string list
 
-  module Request = struct
-    open E
+  open E
 
-    type t = rope
+  type t = rope
 
-    let rec section = function
-      | HEADER -> raw "HEADER"
-      | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l
-      | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l
-      | TEXT -> raw "TEXT"
-      | MIME -> raw "MIME"
-      | Part (n, s) -> Cat (int n, Cat (str ".", section s))
-      | All -> empty
+  let rec section = function
+    | HEADER -> raw "HEADER"
+    | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l
+    | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l
+    | TEXT -> raw "TEXT"
+    | MIME -> raw "MIME"
+    | Part (n, s) -> Cat (int n, Cat (str ".", section s))
+    | All -> empty
 
-    let envelope = raw "ENVELOPE"
-    let internaldate = raw "INTERNALDATE"
-    let rfc822_header = raw "RFC822.HEADER"
-    let rfc822_text = raw "RFC822.TEXT"
-    let rfc822_size = raw "RFC822.SIZE"
-    let rfc822 = raw "RFC822"
-    let body = raw "BODY"
-    let body_section ~peek s partial =
-      let cmd = if peek then "BODY.PEEK" else "BODY" in
-      let partial =
-        match partial with
-        | None -> empty
-        | Some (n, l) -> raw (Printf.sprintf "<%d.%d>" n l)
-      in
-      Cat (raw cmd, Cat (raw "[", Cat (section s, Cat (raw "]", partial))))
-    let bodystructure = raw "BODYSTRUCTURE"
-    let uid = raw "UID"
-    let flags = raw "FLAGS"
+  let envelope = raw "ENVELOPE"
+  let internaldate = raw "INTERNALDATE"
+  let rfc822_header = raw "RFC822.HEADER"
+  let rfc822_text = raw "RFC822.TEXT"
+  let rfc822_size = raw "RFC822.SIZE"
+  let rfc822 = raw "RFC822"
+  let body = raw "BODY"
+  let body_section ~peek s partial =
+    let cmd = if peek then "BODY.PEEK" else "BODY" in
+    let partial =
+      match partial with
+      | None -> empty
+      | Some (n, l) -> raw (Printf.sprintf "<%d.%d>" n l)
+    in
+    Cat (raw cmd, Cat (raw "[", Cat (section s, Cat (raw "]", partial))))
+  let bodystructure = raw "BODYSTRUCTURE"
+  let uid = raw "UID"
+  let flags = raw "FLAGS"
 
-    let all = [flags; internaldate; rfc822_size; envelope]
-    let fast = [flags; internaldate; rfc822_size]
-    let full = [flags; internaldate; rfc822_size; envelope; body]
+  let all = [flags; internaldate; rfc822_size; envelope]
+  let fast = [flags; internaldate; rfc822_size]
+  let full = [flags; internaldate; rfc822_size; envelope; body]
 
-    let x_gm_labels = raw "X-GM-LABELS"
-  end
+  let x_gm_msgid = raw "X-GM-MSGID"
+  let x_gm_thrid = raw "X-GM-THRID"
+  let x_gm_labels = raw "X-GM-LABELS"
 
   open Format
 
@@ -656,7 +656,7 @@ module FetchData = struct
       | RFC822_SIZE : int attr
       | BODY : MIME.mime attr
       | BODYSTRUCTURE : MIME.mime attr
-      | BODY_SECTION : Msg.section * (int * int) option -> string attr
+      | BODY_SECTION : FetchRequest.section * (int * int) option -> string attr
       | UID : Uid.t attr
       | MODSEQ : Modseq.t attr
       | X_GM_MSGID : Modseq.t attr
@@ -682,37 +682,38 @@ module FetchData = struct
   let gmail_thrid = A.X_GM_THRID
   let gmail_labels = A.X_GM_LABELS
 
-  type t = Seq.t * Msg.msg_att list
+  type t = Seq.t * FetchRequest.msg_att list
 
   let seq (n, _) =
     n
 
   let attr (_, l) a =
-    let rec loop: type a. a A.attr -> Msg.msg_att list -> a = fun a l ->
+    let open FetchRequest in
+    let rec loop: type a. a A.attr -> FetchRequest.msg_att list -> a = fun a l ->
       match l with
       | att :: rest ->
           begin match a, att with
-          | A.FLAGS, Msg.FLAGS flags -> flags
-          | A.ENVELOPE, Msg.ENVELOPE envelope -> envelope
-          | A.INTERNALDATE, Msg.INTERNALDATE (date, time) -> (date, time)
-          | A.RFC822, Msg.RFC822 (Some s) -> s
-          | A.RFC822, Msg.RFC822 None -> ""
-          | A.RFC822_HEADER, Msg.RFC822_HEADER (Some s) -> s
-          | A.RFC822_HEADER, Msg.RFC822_HEADER None -> ""
-          | A.RFC822_TEXT, Msg.RFC822_TEXT (Some s) -> s
-          | A.RFC822_TEXT, Msg.RFC822_TEXT None -> ""
-          | A.RFC822_SIZE, Msg.RFC822_SIZE n -> n
-          | A.BODY, Msg.BODY mime -> mime
-          | A.BODYSTRUCTURE, Msg.BODYSTRUCTURE mime -> mime
-          | A.BODY_SECTION (sec, Some (_, len)), Msg.BODY_SECTION (sec1, Some len1, s)
+          | A.FLAGS, FLAGS flags -> flags
+          | A.ENVELOPE, ENVELOPE envelope -> envelope
+          | A.INTERNALDATE, INTERNALDATE (date, time) -> (date, time)
+          | A.RFC822, RFC822 (Some s) -> s
+          | A.RFC822, RFC822 None -> ""
+          | A.RFC822_HEADER, RFC822_HEADER (Some s) -> s
+          | A.RFC822_HEADER, RFC822_HEADER None -> ""
+          | A.RFC822_TEXT, RFC822_TEXT (Some s) -> s
+          | A.RFC822_TEXT, RFC822_TEXT None -> ""
+          | A.RFC822_SIZE, RFC822_SIZE n -> n
+          | A.BODY, BODY mime -> mime
+          | A.BODYSTRUCTURE, BODYSTRUCTURE mime -> mime
+          | A.BODY_SECTION (sec, Some (_, len)), BODY_SECTION (sec1, Some len1, s)
             when sec = sec1 && len = len1 -> begin match s with None -> "" | Some s -> s end
-          | A.BODY_SECTION (sec, None), Msg.BODY_SECTION (sec1, None, s) ->
+          | A.BODY_SECTION (sec, None), BODY_SECTION (sec1, None, s) ->
               begin match s with Some s -> s | None -> "" end
-          | A.UID, Msg.UID uid -> uid
-          | A.MODSEQ, Msg.MODSEQ modseq -> modseq
-          | A.X_GM_MSGID, Msg.X_GM_MSGID msgid -> msgid
-          | A.X_GM_THRID, Msg.X_GM_THRID thrid -> thrid
-          | A.X_GM_LABELS, Msg.X_GM_LABELS labels -> labels
+          | A.UID, UID uid -> uid
+          | A.MODSEQ, MODSEQ modseq -> modseq
+          | A.X_GM_MSGID, X_GM_MSGID msgid -> msgid
+          | A.X_GM_THRID, X_GM_THRID thrid -> thrid
+          | A.X_GM_LABELS, X_GM_LABELS labels -> labels
           | _ -> loop a rest
           end
       | [] ->
@@ -779,11 +780,11 @@ module Code = struct
     | NOMODSEQ ->
         fprintf ppf "no-modseq"
     | MODIFIED s ->
-        fprintf ppf "(modified@ %a)" Msg.pp_set s
+        fprintf ppf "(modified@ %a)" FetchRequest.pp_set s
     | APPENDUID (n, m) ->
         fprintf ppf "(append-uid %lu@ %lu)" n m
     | COPYUID (n, s1, s2) ->
-        fprintf ppf "(copy-uid %lu@ %a@ %a)" n Msg.pp_set s1 Msg.pp_set s2
+        fprintf ppf "(copy-uid %lu@ %a@ %a)" n FetchRequest.pp_set s1 FetchRequest.pp_set s2
     | UIDNOTSTICKY ->
         fprintf ppf "uid-not-sticky"
     | COMPRESSIONACTIVE ->
@@ -920,7 +921,7 @@ module Response = struct
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of int32
-    | FETCH of int32 * Msg.msg_att list
+    | FETCH of int32 * FetchRequest.msg_att list
     | CAPABILITY of Capability.capability list
     | VANISHED of Uint32Set.t
     | VANISHED_EARLIER of Uint32Set.t
@@ -964,15 +965,15 @@ module Response = struct
     | EXPUNGE n ->
         fprintf ppf "(expunge %lu)" n
     | FETCH (n, atts) ->
-        fprintf ppf "@[<2>(fetch %lu@ %a)@]" n (pp_list Msg.pp) atts
+        fprintf ppf "@[<2>(fetch %lu@ %a)@]" n (pp_list FetchRequest.pp) atts
     | CAPABILITY r ->
         fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) r
     | PREAUTH (c, t) ->
         fprintf ppf "@[<2>(preauth@ %a@ %S)@]" (pp_opt Code.pp) c t
     | VANISHED s ->
-        fprintf ppf "@[<2>(vanished@ %a)@]" Msg.pp_set s
+        fprintf ppf "@[<2>(vanished@ %a)@]" FetchRequest.pp_set s
     | VANISHED_EARLIER s ->
-        fprintf ppf "@[<2>(vanished-earlier@ %a)@]" Msg.pp_set s
+        fprintf ppf "@[<2>(vanished-earlier@ %a)@]" FetchRequest.pp_set s
     | ENABLED s ->
         fprintf ppf "@[<2>(enabled@ %a)@]" (pp_list Capability.pp) s
 
@@ -2169,7 +2170,7 @@ module Decoder = struct
     push "header-list" (plist1 header_fld_name)
 
   let section_msgtext =
-    let open Msg in
+    let open FetchRequest in
     let cases =
       [
         "HEADER.FIELDS.NOT", (fun d -> HEADER_FIELDS_NOT (sp header_list d));
@@ -2181,13 +2182,13 @@ module Decoder = struct
     push "section-msgtext" (switch cases stop)
 
   let section_text =
-    push "section-text" (section_msgtext ||| switch [ "MIME", const Msg.MIME ] stop)
+    push "section-text" (section_msgtext ||| switch [ "MIME", const FetchRequest.MIME ] stop)
 
   let section_part =
     push "section-part" (list1 ~sep:'.' nz_number)
 
   let rec section_spec =
-    let open Msg in
+    let open FetchRequest in
     let aux d =
       let l = section_part d in
       let p = (section_text ||| const All) d in
@@ -2196,7 +2197,7 @@ module Decoder = struct
     push "section-spec" (section_msgtext ||| aux)
 
   let section =
-    push "section" (delimited '[' (section_spec ||| const Msg.All) ']')
+    push "section" (delimited '[' (section_spec ||| const FetchRequest.All) ']')
 
 (*
    msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -2237,7 +2238,7 @@ module Decoder = struct
     push "permsg-modsequence" mod_sequence_value
 
   let msg_att_dynamic =
-    let open Msg in
+    let open FetchRequest in
     let cases =
       [
         "FLAGS", (fun d -> FLAGS (sp (plist flag_fetch) d));
@@ -2248,19 +2249,19 @@ module Decoder = struct
     push "msg-att-dynamic" (switch cases stop)
 
   let msg_att_static =
-    let open Msg in
+    let module F = FetchRequest in
     let cases =
       [
-        "ENVELOPE", (fun d -> ENVELOPE (sp envelope d));
-        "INTERNALDATE", (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
-        "RFC822.HEADER", (fun d -> RFC822_HEADER (sp nstring d));
-        "RFC822.TEXT", (fun d -> RFC822_TEXT (sp nstring d));
-        "RFC822.SIZE", (fun d -> RFC822_SIZE (Int32.to_int (sp number d)));
-        "RFC822", (fun d -> RFC822 (sp nstring d));
-        "BODYSTRUCTURE", (fun d -> BODYSTRUCTURE (sp body d));
+        "ENVELOPE", (fun d -> F.ENVELOPE (sp envelope d));
+        "INTERNALDATE", (fun d -> let t1, t2 = sp date_time d in F.INTERNALDATE (t1, t2));
+        "RFC822.HEADER", (fun d -> F.RFC822_HEADER (sp nstring d));
+        "RFC822.TEXT", (fun d -> F.RFC822_TEXT (sp nstring d));
+        "RFC822.SIZE", (fun d -> F.RFC822_SIZE (Int32.to_int (sp number d)));
+        "RFC822", (fun d -> F.RFC822 (sp nstring d));
+        "BODYSTRUCTURE", (fun d -> F.BODYSTRUCTURE (sp body d));
         "BODY",
         (fun d ->
-           let body d = BODY (body d) in
+           let body d = F.BODY (body d) in
            let section d =
              let s = section d in
              let r =
@@ -2268,13 +2269,13 @@ module Decoder = struct
                option (delimited '<' number '>') d
              in
              let x = sp nstring d in
-             BODY_SECTION (s, r, x)
+             F.BODY_SECTION (s, r, x)
            in
            (sp body ||| section) d
         );
-        "UID", (fun d -> UID (sp uniqueid d));
-        "X-GM-MSGID", (fun d -> X_GM_MSGID (sp mod_sequence_value d));
-        "X-GM-THRID", (fun d -> X_GM_THRID (sp mod_sequence_value d));
+        "UID", (fun d -> F.UID (sp uniqueid d));
+        "X-GM-MSGID", (fun d -> F.X_GM_MSGID (sp mod_sequence_value d));
+        "X-GM-THRID", (fun d -> F.X_GM_THRID (sp mod_sequence_value d));
       ]
     in
     push "msg-att-static" (switch cases stop)
