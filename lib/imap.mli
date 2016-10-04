@@ -406,13 +406,6 @@ module StatusData : sig
   val attr: t -> 'a attr -> 'a
 end
 
-(** {e Extended} message numbers sets, as a union of intervals.  The second
-    component of an interval being [None] means that it should take the largest
-    possible value appearing in the mailbox (this is denoted ['*'] in the IMAP
-    protocol).
-
-    For example, the IMAP extended set [1,2:3,4:*] will be represented by
-    [[(1, Some 1); (2, Some 3); (4, None)]]. *)
 module Search : sig
   (** Search keys. See {!search} command. *)
   type key
