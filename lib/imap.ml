@@ -688,32 +688,32 @@ module FetchData = struct
     n
 
   let attr (_, l) a =
-    let open FetchRequest in
-    let rec loop: type a. a A.attr -> FetchRequest.msg_att list -> a = fun a l ->
+    let module F = FetchRequest in
+    let rec loop: type a. a A.attr -> F.msg_att list -> a = fun a l ->
       match l with
       | att :: rest ->
           begin match a, att with
-          | A.FLAGS, FLAGS flags -> flags
-          | A.ENVELOPE, ENVELOPE envelope -> envelope
-          | A.INTERNALDATE, INTERNALDATE (date, time) -> (date, time)
-          | A.RFC822, RFC822 (Some s) -> s
-          | A.RFC822, RFC822 None -> ""
-          | A.RFC822_HEADER, RFC822_HEADER (Some s) -> s
-          | A.RFC822_HEADER, RFC822_HEADER None -> ""
-          | A.RFC822_TEXT, RFC822_TEXT (Some s) -> s
-          | A.RFC822_TEXT, RFC822_TEXT None -> ""
-          | A.RFC822_SIZE, RFC822_SIZE n -> n
-          | A.BODY, BODY mime -> mime
-          | A.BODYSTRUCTURE, BODYSTRUCTURE mime -> mime
-          | A.BODY_SECTION (sec, Some (_, len)), BODY_SECTION (sec1, Some len1, s)
+          | A.FLAGS, F.FLAGS flags -> flags
+          | A.ENVELOPE, F.ENVELOPE envelope -> envelope
+          | A.INTERNALDATE, F.INTERNALDATE (date, time) -> (date, time)
+          | A.RFC822, F.RFC822 (Some s) -> s
+          | A.RFC822, F.RFC822 None -> ""
+          | A.RFC822_HEADER, F.RFC822_HEADER (Some s) -> s
+          | A.RFC822_HEADER, F.RFC822_HEADER None -> ""
+          | A.RFC822_TEXT, F.RFC822_TEXT (Some s) -> s
+          | A.RFC822_TEXT, F.RFC822_TEXT None -> ""
+          | A.RFC822_SIZE, F.RFC822_SIZE n -> n
+          | A.BODY, F.BODY mime -> mime
+          | A.BODYSTRUCTURE, F.BODYSTRUCTURE mime -> mime
+          | A.BODY_SECTION (sec, Some (_, len)), F.BODY_SECTION (sec1, Some len1, s)
             when sec = sec1 && len = len1 -> begin match s with None -> "" | Some s -> s end
-          | A.BODY_SECTION (sec, None), BODY_SECTION (sec1, None, s) ->
+          | A.BODY_SECTION (sec, None), F.BODY_SECTION (sec1, None, s) ->
               begin match s with Some s -> s | None -> "" end
-          | A.UID, UID uid -> uid
-          | A.MODSEQ, MODSEQ modseq -> modseq
-          | A.X_GM_MSGID, X_GM_MSGID msgid -> msgid
-          | A.X_GM_THRID, X_GM_THRID thrid -> thrid
-          | A.X_GM_LABELS, X_GM_LABELS labels -> labels
+          | A.UID, F.UID uid -> uid
+          | A.MODSEQ, F.MODSEQ modseq -> modseq
+          | A.X_GM_MSGID, F.X_GM_MSGID msgid -> msgid
+          | A.X_GM_THRID, F.X_GM_THRID thrid -> thrid
+          | A.X_GM_LABELS, F.X_GM_LABELS labels -> labels
           | _ -> loop a rest
           end
       | [] ->
