@@ -210,18 +210,20 @@ module MIME : sig
   val pp_mime: Format.formatter -> mime -> unit
 end
 
-module Msg : sig
-  (** Message flags.  The underlying string of [`Extension s] is ['\\' ^ s], while
-      [`Keyword s] is [s]. *)
+module Flag : sig
   type flag =
-    [ `Answered
-    | `Flagged
-    | `Deleted
-    | `Seen
-    | `Draft
-    | `Keyword of string
-    | `Extension of string ]
+    | Answered
+    | Flagged
+    | Deleted
+    | Seen
+    | Draft
+    | Keyword of string
+    | Extension of string
+    | Recent
+    | Any
+end
 
+module Msg : sig
   (** The [section] type is used to specify which part(s) of a message should be
       retrieved when using {!fetch} with [`Body_section].  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
@@ -244,7 +246,7 @@ module Msg : sig
 
   module FetchData : sig
     type 'a attr
-    val flags: [ flag | `Recent ] list attr
+    val flags: Flag.flag list attr
     val envelope: Envelope.envelope attr
     val internal_date: (date * time) attr
     val rfc822: string attr
@@ -735,7 +737,7 @@ val condstore_examine: string -> Modseq.t command
 (** [examine condstore m] is identical to [select condstore m] and returns the
     same output; however, the selected mailbox is identified as read-only. *)
 
-val append: string -> ?flags:Msg.flag list -> string -> unit command
+val append: string -> ?flags:Flag.flag list -> string -> unit command
 (** [append m flags id data] appends [data] as a new message to the end of the
     mailbox [m].  This argument should be in the format of an [RFC-2822]
     message.
@@ -771,12 +773,12 @@ val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Msg.Request.t 
 
 (** {2 Store commands} *)
 
-val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
-val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
-val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Msg.flag list -> Msg.FetchData.t list command
-val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
-val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
-val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Msg.flag list -> Msg.FetchData.t list command
+val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Msg.FetchData.t list command
+val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Msg.FetchData.t list command
+val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Msg.FetchData.t list command
+val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Msg.FetchData.t list command
+val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Msg.FetchData.t list command
+val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Msg.FetchData.t list command
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The

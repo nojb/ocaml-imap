@@ -496,25 +496,44 @@ module E = struct
     out (Buffer.create 32) empty (Cat (k, Cat (Raw "\r\n", Flush)))
 end
 
-module Msg = struct
+module Flag = struct
   type flag =
-    [ `Answered
-    | `Flagged
-    | `Deleted
-    | `Seen
-    | `Draft
-    | `Keyword of string
-    | `Extension of string ]
+    | Answered
+    | Flagged
+    | Deleted
+    | Seen
+    | Draft
+    | Keyword of string
+    | Extension of string
+    | Recent
+    | Any
 
   let flag = function
-    | `Answered -> E.raw "\\Answered"
-    | `Flagged -> E.raw "\\Flagged"
-    | `Deleted -> E.raw "\\Deleted"
-    | `Seen -> E.raw "\\Seen"
-    | `Draft -> E.raw "\\Draft"
-    | `Keyword s -> E.raw s
-    | `Extension s -> E.raw ("\\" ^ s)
+    | Answered -> E.raw "\\Answered"
+    | Flagged -> E.raw "\\Flagged"
+    | Deleted -> E.raw "\\Deleted"
+    | Seen -> E.raw "\\Seen"
+    | Draft -> E.raw "\\Draft"
+    | Keyword s -> E.raw s
+    | Extension s -> E.raw ("\\" ^ s)
+    | Recent -> E.raw "\\Recent"
+    | Any -> E.raw "\\*"
 
+  open Format
+
+  let pp_flag ppf = function
+    | Answered    -> fprintf ppf "answered"
+    | Flagged     -> fprintf ppf "flagged"
+    | Deleted     -> fprintf ppf "deleted"
+    | Seen        -> fprintf ppf "seen"
+    | Draft       -> fprintf ppf "draft"
+    | Keyword k   -> fprintf ppf "(keyword %S)" k
+    | Extension k -> fprintf ppf "(extension %S)" k
+    | Recent    -> fprintf ppf "recent"
+    | Any       -> fprintf ppf "any"
+end
+
+module Msg = struct
   type section =
     | HEADER
     | HEADER_FIELDS of string list
@@ -525,7 +544,7 @@ module Msg = struct
     | All
 
   type msg_att =
-    | FLAGS of [ flag | `Recent ] list
+    | FLAGS of Flag.flag list
     | ENVELOPE of Envelope.envelope
     | INTERNALDATE of date * time
     | RFC822 of string option
@@ -544,7 +563,7 @@ module Msg = struct
   module FetchData = struct
     module A = struct
       type 'a attr =
-        | FLAGS : [ flag | `Recent ] list attr
+        | FLAGS : Flag.flag list attr
         | ENVELOPE : Envelope.envelope attr
         | INTERNALDATE : (date * time) attr
         | RFC822 : string attr
@@ -668,23 +687,6 @@ module Msg = struct
     fprintf ppf "@[(date %02d %02d %04d)@ (time %02d %02d %02d %04d)@]"
       d.day d.month d.year t.hours t.minutes t.seconds t.zone
 
-  let pp_flag ppf = function
-    | `Answered    -> fprintf ppf "answered"
-    | `Flagged     -> fprintf ppf "flagged"
-    | `Deleted     -> fprintf ppf "deleted"
-    | `Seen        -> fprintf ppf "seen"
-    | `Draft       -> fprintf ppf "draft"
-    | `Keyword k   -> fprintf ppf "(keyword %S)" k
-    | `Extension k -> fprintf ppf "(extension %S)" k
-
-  let pp_flag_perm ppf = function
-    | `All       -> fprintf ppf "all"
-    | #flag as f -> pp_flag ppf f
-
-  let pp_flag_fetch ppf = function
-    | `Recent    -> fprintf ppf "recent"
-    | #flag as f -> pp_flag ppf f
-
   let rec pp_section ppf = function
     | HEADER -> fprintf ppf "header"
     | HEADER_FIELDS l ->
@@ -698,7 +700,7 @@ module Msg = struct
 
   let pp ppf = function
     | FLAGS r ->
-        fprintf ppf "@[<2>(flags %a)@]" (pp_list pp_flag_fetch) r
+        fprintf ppf "@[<2>(flags %a)@]" (pp_list Flag.pp_flag) r
     | ENVELOPE e -> Envelope.pp_envelope ppf e
     | INTERNALDATE (d, t) ->
         fprintf ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
@@ -725,7 +727,7 @@ module Code = struct
     | BADCHARSET of string list
     | CAPABILITY of Capability.capability list
     | PARSE
-    | PERMANENTFLAGS of [ Msg.flag | `All ] list
+    | PERMANENTFLAGS of Flag.flag list
     | READ_ONLY
     | READ_WRITE
     | TRYCREATE
@@ -755,7 +757,7 @@ module Code = struct
     | PARSE ->
         fprintf ppf "parse"
     | PERMANENTFLAGS fl ->
-        fprintf ppf "@[<2>(permanent-flags %a)@]" (pp_list Msg.pp_flag_perm) fl
+        fprintf ppf "@[<2>(permanent-flags %a)@]" (pp_list Flag.pp_flag) fl
     | READ_ONLY ->
         fprintf ppf "read-only"
     | READ_WRITE ->
@@ -908,7 +910,7 @@ module Response = struct
     | State of state
     | BYE of Code.code option * string
     | PREAUTH of Code.code option * string
-    | FLAGS of Msg.flag list
+    | FLAGS of Flag.flag list
     | LIST of Mailbox.mbx_flag list * char option * string
     | LSUB of Mailbox.mbx_flag list * char option * string
     | SEARCH of int32 list * int64 option
@@ -943,7 +945,7 @@ module Response = struct
     | BYE (c, t) ->
         fprintf ppf "@[<2>(bye@ %a@ %S)@]" (pp_opt Code.pp) c t
     | FLAGS flags ->
-        fprintf ppf "@[<2>(flags@ %a)@]" (pp_list Msg.pp_flag) flags
+        fprintf ppf "@[<2>(flags@ %a)@]" (pp_list Flag.pp_flag) flags
     | LIST (f, s, m) ->
         fprintf ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
     | LSUB (f, s, m) ->
@@ -1367,25 +1369,26 @@ module Decoder = struct
 *)
 
   let flag_keyword d =
-    `Keyword (atom d)
+    Flag.Keyword (atom d)
 
   let flag_keyword =
     push "flag-keyword" flag_keyword
 
   let flag_extension d =
-    `Extension (preceded (char '\\') atom d)
+    Flag.Extension (preceded (char '\\') atom d)
 
   let flag_extension =
     push "flag-extension" flag_extension
 
   let flag =
+    let open Flag in
     let cases =
       [
-        "\\Answered", const `Answered;
-        "\\Flagged", const `Flagged;
-        "\\Deleted", const `Deleted;
-        "\\Seen", const `Seen;
-        "\\Draft", const `Draft;
+        "\\Answered", const Answered;
+        "\\Flagged", const Flagged;
+        "\\Deleted", const Deleted;
+        "\\Seen", const Seen;
+        "\\Draft", const Draft;
       ]
     in
     push "flag" (switch cases (flag_keyword ||| flag_extension))
@@ -1395,14 +1398,14 @@ module Decoder = struct
 *)
 
   let flag_fetch =
-    push "flag-fetch" (switch [ "\\Recent", const `Recent ] flag)
+    push "flag-fetch" (switch [ "\\Recent", const Flag.Recent ] flag)
 
 (*
    flag-perm       = flag / "\*"
 *)
 
   let flag_perm =
-    push "flag-perm" (switch [ "\\*", const `All ] flag)
+    push "flag-perm" (switch [ "\\*", const Flag.Any ] flag)
 
 (*
    seq-number      = nz-number / "*"
@@ -2839,7 +2842,7 @@ let condstore_examine =
   condstore_select_gen E.(raw "EXAMINE")
 
 let append m ?(flags = []) data =
-  let format = E.(raw "APPEND" ++ mailbox m ++ p (list Msg.flag flags) ++ literal data) in
+  let format = E.(raw "APPEND" ++ mailbox m ++ p (list Flag.flag flags) ++ literal data) in
   let default = () in
   let process _ () = () in
   {format; default; process}
@@ -2891,7 +2894,7 @@ let store_gen cmd ~silent ~unchanged mode set att =
   in
   let att =
     match att with
-    | `Flags flags -> list Msg.flag flags
+    | `Flags flags -> list Flag.flag flags
     | `Labels labels -> list label labels
   in
   let unchanged_since =
