@@ -609,208 +609,10 @@ end
     the variant of the command that uses UIDs (instead of sequence numbers).
     See for example {!copy}, {!search}, {!fetch} and {!store_add_flags}. *)
 
-type 'a command
-(** The type of client commands.  They are executed using {!run}. *)
+(** {3 Connections}
 
-val login: string -> string -> unit command
-(** [login user pass] identifies the client to the server and carries the
-    plaintext password authenticating this [user] with password [pass].  A
-    server MAY include a [`Capability] response {{!code}code} in the tagged
-    [`Ok] response to a successful [login] command in order to send capabilities
-    automatically. *)
-
-val capability: Capability.capability list command
-(** [capability] returns the list of capabilities supported by the server.  The
-    server must send a single untagged [`Capability] {{!untagged}response}
-    with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
-    response.  See the type describing the possible
-    {{!capability}capabilities}. *)
-
-val create: string -> unit command
-(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
-    if a new mailbox with that name has been created.  It is an error to attempt
-    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
-    Any error in creation will return a tagged [`No] response. *)
-
-val delete: string -> unit command
-(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-    if the mailbox with that name has been deleted.
-    Any error in deletion will return a tagged [`No] response. *)
-
-val rename: string -> string -> unit command
-(** [rename oldname newname] command changes the name of a mailbox from
-    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
-    mailbox has been renamed.  It is an error to attempt to rename from a
-    mailbox name that does not exist or to a mailbox name that already exists.
-    Any error in renaming will return a tagged [`No] response. *)
-
-val logout: unit command
-(** [logout] gracefully terminates a session.  The server MUST send an untagged
-    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
-
-val noop: unit command
-(** [noop] does nothing.  Since any command can return a status update as
-    untagged data, the [noop] command can be used as a periodic poll for new
-    messages or message status updates during a period of inactivity (this is
-    the preferred method to do this). *)
-
-val subscribe: string -> unit command
-(** [subscribe m] adds the mailbox [m] to the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
-
-val unsubscribe: string -> unit command
-(** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
-
-val list: ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list command
-(** [list ref m] returns a subset of names from the complete set of all names
-    available to the client.  Zero or more untagged [`List]
-    {{!untagged}replies} are returned, containing the name attributes,
-    hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
-    or a level of mailbox hierarchy, and indicates the context in which the
-    mailbox name is interpreted.*)
-
-val lsub: ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list command
-(** [lsub ref m] is identical to {!list}, except that it returns a subset of
-    names from the set of names that the user has declared as being "active" or
-    "subscribed". *)
-
-val status: string -> StatusRequest.t list -> StatusData.t command
-(** [status] requests {{!status_query}status information} of the indicated
-    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
-    the requested information. *)
-
-val copy: SeqSet.t -> string -> unit command
-val uid_copy: UidSet.t -> string -> unit command
-(** [copy uid set m] copies the messages in [set] to the end of the specified
-    mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
-    [true] (the default) or sequence numbers if [uid] is [false]. *)
-
-val check: unit command
-(** [check] requests a checkpoint of the currently selected mailbox.  A
-    checkpoint refers to any implementation-dependent housekeeping associated
-    with the mailbox. *)
-
-val close: unit command
-(** [close] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox, and returns to
-    the authenticated state from the selected state. *)
-
-val expunge: Seq.t list command
-(** [expunge] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox.  Before
-    returning an [`Ok] to the client, an untagged [`Expunge]
-    {{!untagged}response} is sent for each message that is removed. *)
-
-val uid_search: Search.key -> (Uid.t list * Modseq.t option) command
-val search: Search.key -> (Seq.t list * Modseq.t option) command
-(** [search uid sk] searches the mailbox for messages that match the given
-    searching criteria.  If [uid] is [true] (the default), then the matching
-    messages' unique identification numbers are returned.  Otherwise, their
-    sequence numbers are.  The untagged [`Search] {{!untagged}response}
-    from the server contains a listing of message numbers corresponding to those
-    messages that match the searching criteria. *)
-
-val select: string -> unit command
-val condstore_select: string -> Modseq.t command
-(** [select condstore m] selects the mailbox [m] so that its messages can be
-    accessed.  If [condstore] (default value [false]) is [true], then the server
-    will return the [`Modseq] data item in all subsequent untagged [`Fetch]
-    {{!untagged}responses}. *)
-
-val examine: string -> unit command
-val condstore_examine: string -> Modseq.t command
-(** [examine condstore m] is identical to [select condstore m] and returns the
-    same output; however, the selected mailbox is identified as read-only. *)
-
-val append: string -> ?flags:Flag.flag list -> string -> unit command
-(** [append m flags id data] appends [data] as a new message to the end of the
-    mailbox [m].  This argument should be in the format of an [RFC-2822]
-    message.
-
-    If a flag list is specified, the flags should be set in the resulting
-    message; otherwise, the flag list of the resulting message is set to empty
-    by default.  In either case, the [`Recent] flag is also set. *)
-
-(** {2 Fetch commands}
-
-    The IMAP [FETCH] command is used to retrieve the data associated to a
-    message (or a set of messages).  Messages are identified either by their
-    sequence number (i.e., their position in the mailbox), or by their unique
-    identification number (UID).
-
-    For those servers that support the [CONDSTORE] extension, one can pass a
-    mod-sequence value [?changed] to restrict the set of affected messages to
-    those that are not yet known by the client.  One can further use the
-    [?vanished] argument to learn of recently expunged messages.  It is a
-    programmer error to set [?vanished] to [true] but not to pass a value for
-    [?changed]. *)
-
-val fetch: ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> FetchRequest.t list -> FetchData.t list command
-val uid_fetch: ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> FetchRequest.t list -> FetchData.t list command
-(** [fetch uid changed vanished set att] retrieves data associated with the
-    message set [set] in the current mailbox.  [set] is interpeted as being a
-    set of UIDs or sequence numbers depending on whether [uid] is [true] (the
-    default) or [false].  Specifying a [?changed] argument will further reduce
-    the set of returned messages to those whose [CHANGEDSINCE] mod-sequence
-    value is at least the passed value (requires the [CONDSTORE] extension).
-    The [vanished] optional parameter specifies whether one wants to receive
-    [`Vanished] responses as well. *)
-
-(** {2 Store commands} *)
-
-val add_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list command
-val set_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list command
-val remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list command
-val uid_add_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list command
-val uid_set_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list command
-val uid_remove_flags: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list command
-(** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
-    message set [set].  [set] is interpreter as being a set of UIDs or sequence
-    numbers depending on whether [uid] is [true] (the default) or [false].  The
-    server will return the updated flags for the affected messages in untagged
-    [`Fetch] {{!untagged}responses} depending on whether [silent] is [true] (the
-    default) or [false].  Specifying a [?unchanged] argument will further reduce
-    the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
-    value is at least the passed value (requires the [CONDSTORE] extension). *)
-(** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
-    instead of adding to it. *)
-(** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
-    adding them. *)
-
-val add_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list command
-val set_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list command
-val remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list command
-val uid_add_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list command
-val uid_set_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list command
-val uid_remove_labels: ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list command
-(** [store_add_labels] is like {!store_add_flags} but adds
-    {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
-    instead of regular flags. *)
-(** [store_set_labels] is like {!store_add_labels} but replaces the set of
-    labels instead of adding to it. *)
-(** [store_remove_labels] is like {!store_add_labels} but removes labels instead
-    of adding them. *)
-
-val enable: Capability.capability list -> Capability.capability list command
-
-(* val authenticate: Auth.authenticator -> unit command *)
-(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
-    If the server supports the requested authentication mechanism, it performs
-    an authentication protocol exchange to authenticate and identify the client.
-    See {!authenticator} for details on the interface with particular [SASL]
-    mechanisms. *)
-
-(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
-    command is executing the client will receive a stream of incoming untagged
-    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
-    of can be stopped by the client by forcing [stop].  If [stop] is forced
-    after [IDLE] ended, then it is a no-op.
-
-    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
-    {{!ex}examples} for more details. *)
-
-(** {1 Running commands and receiving responses} *)
+    {{!connection}Connections} manage the encoder and decoder states and keeps
+    track of message tags. *)
 
 module Error : sig
   type error =
@@ -843,11 +645,6 @@ module Error : sig
   val pp: Format.formatter -> error -> unit
 end
 
-(** {3 Connections}
-
-    {{!connection}Connections} manage the encoder and decoder states and keeps
-    track of message tags. *)
-
 type session
 (** The type for connections. *)
 
@@ -867,6 +664,206 @@ val feed: 'a progress -> string -> int -> int -> 'a progress
 val idle: session -> unit action
 
 val initiate: Auth.authenticator -> unit action
+
+val login: session -> string -> string -> unit action
+(** [login user pass] identifies the client to the server and carries the
+    plaintext password authenticating this [user] with password [pass].  A
+    server MAY include a [`Capability] response {{!code}code} in the tagged
+    [`Ok] response to a successful [login] command in order to send capabilities
+    automatically. *)
+
+val capability: session -> Capability.capability list action
+(** [capability] returns the list of capabilities supported by the server.  The
+    server must send a single untagged [`Capability] {{!untagged}response}
+    with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
+    response.  See the type describing the possible
+    {{!capability}capabilities}. *)
+
+val create: session -> string -> unit action
+(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
+    if a new mailbox with that name has been created.  It is an error to attempt
+    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
+    Any error in creation will return a tagged [`No] response. *)
+
+val delete: session -> string -> unit action
+(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
+    if the mailbox with that name has been deleted.
+    Any error in deletion will return a tagged [`No] response. *)
+
+val rename: session -> string -> string -> unit action
+(** [rename oldname newname] command changes the name of a mailbox from
+    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
+    mailbox has been renamed.  It is an error to attempt to rename from a
+    mailbox name that does not exist or to a mailbox name that already exists.
+    Any error in renaming will return a tagged [`No] response. *)
+
+val logout: session -> unit action
+(** [logout] gracefully terminates a session.  The server MUST send an untagged
+    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
+
+val noop: session -> unit action
+(** [noop] does nothing.  Since any command can return a status update as
+    untagged data, the [noop] command can be used as a periodic poll for new
+    messages or message status updates during a period of inactivity (this is
+    the preferred method to do this). *)
+
+val subscribe: session -> string -> unit action
+(** [subscribe m] adds the mailbox [m] to the server's set of "active" or
+    "subscribed" mailboxes as returned by the {!lsub} command. *)
+
+val unsubscribe: session -> string -> unit action
+(** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
+    "subscribed" mailboxes as returned by the {!lsub} command. *)
+
+val list: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list action
+(** [list ref m] returns a subset of names from the complete set of all names
+    available to the client.  Zero or more untagged [`List]
+    {{!untagged}replies} are returned, containing the name attributes,
+    hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
+    or a level of mailbox hierarchy, and indicates the context in which the
+    mailbox name is interpreted.*)
+
+val lsub: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list action
+(** [lsub ref m] is identical to {!list}, except that it returns a subset of
+    names from the set of names that the user has declared as being "active" or
+    "subscribed". *)
+
+val status: session -> string -> StatusRequest.t list -> StatusData.t action
+(** [status] requests {{!status_query}status information} of the indicated
+    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
+    the requested information. *)
+
+val copy: session -> SeqSet.t -> string -> unit action
+val uid_copy: session -> UidSet.t -> string -> unit action
+(** [copy uid set m] copies the messages in [set] to the end of the specified
+    mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
+    [true] (the default) or sequence numbers if [uid] is [false]. *)
+
+val check: session -> unit action
+(** [check] requests a checkpoint of the currently selected mailbox.  A
+    checkpoint refers to any implementation-dependent housekeeping associated
+    with the mailbox. *)
+
+val close: session -> unit action
+(** [close] permanently removes all messages that have the [`Deleted]
+    {!flag} set from the currently selected mailbox, and returns to
+    the authenticated state from the selected state. *)
+
+val expunge: session -> Seq.t list action
+(** [expunge] permanently removes all messages that have the [`Deleted]
+    {!flag} set from the currently selected mailbox.  Before
+    returning an [`Ok] to the client, an untagged [`Expunge]
+    {{!untagged}response} is sent for each message that is removed. *)
+
+val uid_search: session -> Search.key -> (Uid.t list * Modseq.t option) action
+val search: session -> Search.key -> (Seq.t list * Modseq.t option) action
+(** [search uid sk] searches the mailbox for messages that match the given
+    searching criteria.  If [uid] is [true] (the default), then the matching
+    messages' unique identification numbers are returned.  Otherwise, their
+    sequence numbers are.  The untagged [`Search] {{!untagged}response}
+    from the server contains a listing of message numbers corresponding to those
+    messages that match the searching criteria. *)
+
+val select: session -> string -> unit action
+val condstore_select: session -> string -> Modseq.t action
+(** [select condstore m] selects the mailbox [m] so that its messages can be
+    accessed.  If [condstore] (default value [false]) is [true], then the server
+    will return the [`Modseq] data item in all subsequent untagged [`Fetch]
+    {{!untagged}responses}. *)
+
+val examine: session -> string -> unit action
+val condstore_examine: session -> string -> Modseq.t action
+(** [examine condstore m] is identical to [select condstore m] and returns the
+    same output; however, the selected mailbox is identified as read-only. *)
+
+val append: session -> string -> ?flags:Flag.flag list -> string -> unit action
+(** [append m flags id data] appends [data] as a new message to the end of the
+    mailbox [m].  This argument should be in the format of an [RFC-2822]
+    message.
+
+    If a flag list is specified, the flags should be set in the resulting
+    message; otherwise, the flag list of the resulting message is set to empty
+    by default.  In either case, the [`Recent] flag is also set. *)
+
+(** {2 Fetch commands}
+
+    The IMAP [FETCH] command is used to retrieve the data associated to a
+    message (or a set of messages).  Messages are identified either by their
+    sequence number (i.e., their position in the mailbox), or by their unique
+    identification number (UID).
+
+    For those servers that support the [CONDSTORE] extension, one can pass a
+    mod-sequence value [?changed] to restrict the set of affected messages to
+    those that are not yet known by the client.  One can further use the
+    [?vanished] argument to learn of recently expunged messages.  It is a
+    programmer error to set [?vanished] to [true] but not to pass a value for
+    [?changed]. *)
+
+val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> FetchRequest.t list -> FetchData.t list action
+val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> FetchRequest.t list -> FetchData.t list action
+(** [fetch uid changed vanished set att] retrieves data associated with the
+    message set [set] in the current mailbox.  [set] is interpeted as being a
+    set of UIDs or sequence numbers depending on whether [uid] is [true] (the
+    default) or [false].  Specifying a [?changed] argument will further reduce
+    the set of returned messages to those whose [CHANGEDSINCE] mod-sequence
+    value is at least the passed value (requires the [CONDSTORE] extension).
+    The [vanished] optional parameter specifies whether one wants to receive
+    [`Vanished] responses as well. *)
+
+(** {2 Store commands} *)
+
+val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
+val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
+val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
+val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
+val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
+val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
+(** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
+    message set [set].  [set] is interpreter as being a set of UIDs or sequence
+    numbers depending on whether [uid] is [true] (the default) or [false].  The
+    server will return the updated flags for the affected messages in untagged
+    [`Fetch] {{!untagged}responses} depending on whether [silent] is [true] (the
+    default) or [false].  Specifying a [?unchanged] argument will further reduce
+    the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
+    value is at least the passed value (requires the [CONDSTORE] extension). *)
+(** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
+    instead of adding to it. *)
+(** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
+    adding them. *)
+
+val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
+val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
+val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
+val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
+val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
+val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
+(** [store_add_labels] is like {!store_add_flags} but adds
+    {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
+    instead of regular flags. *)
+(** [store_set_labels] is like {!store_add_labels} but replaces the set of
+    labels instead of adding to it. *)
+(** [store_remove_labels] is like {!store_add_labels} but removes labels instead
+    of adding them. *)
+
+val enable: session -> Capability.capability list -> Capability.capability list action
+
+(* val authenticate: Auth.authenticator -> unit command *)
+(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
+    If the server supports the requested authentication mechanism, it performs
+    an authentication protocol exchange to authenticate and identify the client.
+    See {!authenticator} for details on the interface with particular [SASL]
+    mechanisms. *)
+
+(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
+    command is executing the client will receive a stream of incoming untagged
+    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
+    of can be stopped by the client by forcing [stop].  If [stop] is forced
+    after [IDLE] ended, then it is a no-op.
+
+    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
+    {{!ex}examples} for more details. *)
+
+(** {1 Running commands and receiving responses} *)
 
 (** [connection ()] creates a new connection object.  The connection should be
     supplied with input and output buffers as necessary using {!src} and {!dst}.
@@ -901,7 +898,6 @@ val initiate: Auth.authenticator -> unit action
 
     See the {{!ex}examples.} *)
 
-val run: session -> 'a command -> 'a action
 (** [run c v] performs [v] on the connection [c].  The meaning of the different values
     of [v] is:
     {ul

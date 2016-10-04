@@ -2667,295 +2667,6 @@ module Error = struct
     | Auth_error s -> fprintf ppf "@[Authentication error: %s@]" s
 end
 
-type 'a command =
-  {
-    format: E.rope;
-    default: 'a;
-    process: untagged -> 'a -> 'a;
-  }
-
-let login username password =
-  let format = E.(str "LOGIN" ++ str username ++ str password) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let capability =
-  let format = E.(str "CAPABILITY") in
-  let default = [] in
-  let process u caps =
-    match u with
-    | CAPABILITY caps1 -> caps @ caps1
-    | _ -> caps
-  in
-  {format; default; process}
-
-let create m =
-  let format = E.(str "CREATE" ++ mailbox m) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let delete m =
-  let format = E.(str "DELETE" ++ mailbox m) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let rename m1 m2 =
-  let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let logout =
-  let format = E.(str "LOGOUT") in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let noop =
-  let format = E.(str "NOOP") in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let subscribe m =
-  let format = E.(str "SUBSCRIBE" ++ mailbox m) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let unsubscribe m =
-  let format = E.(str "UNSUBSCRIBE" ++ mailbox m) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let list ?(ref = "") s =
-  let format = E.(str "LIST" ++ mailbox ref ++ str s) in
-  let default = [] in
-  let process u res =
-    match u with
-    | LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
-    | _ -> res
-  in
-  {format; default; process}
-
-let lsub ?(ref = "") s =
-  let format = E.(str "LSUB" ++ mailbox ref ++ str s) in
-  let default = [] in
-  let process u res =
-    match u with
-    | LSUB (flags, delim, mbox) -> res @ [flags, delim, mbox]
-    | _ -> res
-  in
-  {format; default; process}
-
-let status m att =
-  let format = E.(str "STATUS" ++ mailbox m ++ p (list (fun x -> x) att)) in
-  let default = [] in
-  let process u att =
-    match u with
-    | STATUS (mbox, items) when m = mbox ->
-        items
-    | _ ->
-        att
-  in
-  {format; default; process}
-
-let copy_gen cmd s m =
-  let format = E.(cmd ++ eset s ++ mailbox m) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let copy s m =
-  copy_gen E.(raw "COPY") s m
-
-let uid_copy s m =
-  copy_gen E.(raw "UID" ++ raw "COPY") s m
-
-let check =
-  let format = E.(str "CHECK") in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let close =
-  let format = E.(str "CLOSE") in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let expunge =
-  let format = E.(str "EXPUNGE") in
-  let default = [] in
-  let process u info =
-    match u with
-    | EXPUNGE n -> n :: info
-    | _ -> info
-  in
-  {format; default; process}
-
-let search_gen cmd sk =
-  let format = E.(cmd ++ sk) in
-  let default = ([], None) in
-  let process u (res, m) =
-    match u with
-    | SEARCH (ids, m1) -> ids @ res, m1
-    | _ -> (res, m)
-  in
-  {format; default; process}
-
-let search =
-  search_gen E.(raw "SEARCH")
-
-let uid_search =
-  search_gen E.(raw "UID" ++ raw "SEARCH")
-
-let select_gen cmd m =
-  let open E in
-  let format = cmd ++ mailbox m in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let condstore_select_gen cmd m =
-  let open E in
-  let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in
-  let default = Int64.zero in
-  let process u m =
-    match u with
-    | State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
-    | _ -> m
-  in
-  {format; default; process}
-
-let select =
-  select_gen E.(raw "SELECT")
-
-let examine =
-  select_gen E.(raw "EXAMINE")
-
-let condstore_select =
-  condstore_select_gen E.(raw "SELECT")
-
-let condstore_examine =
-  condstore_select_gen E.(raw "EXAMINE")
-
-let append m ?(flags = []) data =
-  let format = E.(raw "APPEND" ++ mailbox m ++ p (list Flag.flag flags) ++ literal data) in
-  let default = () in
-  let process _ () = () in
-  {format; default; process}
-
-let fetch_gen cmd ?changed ?(vanished = false) set att =
-  let open E in
-  let att =
-    match att with
-    (* | `Fast -> raw "FAST" *)
-    (* | `Full -> raw "FULL" *)
-    (* | `All -> raw "ALL" *)
-    | [x] -> x
-    | xs -> p (list (fun x -> x) xs)
-  in
-  let changed_since =
-    match changed, vanished with
-    | None, true -> invalid_arg "fetch_gen"
-    | None, false -> empty
-    | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
-    | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
-  in
-  let format = cmd ++ eset set ++ att ++ changed_since in
-  let default = [] in
-  let process u atts =
-    match u with
-    | FETCH (id, infos) ->
-        (id, infos) :: atts
-    | _ ->
-        atts
-  in
-  {format; default; process}
-
-let fetch ?changed ?vanished set att =
-  fetch_gen E.(raw "FETCH") ?changed ?vanished set att
-
-let uid_fetch ?changed ?vanished set att =
-  fetch_gen E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
-
-let store_gen cmd ~silent ~unchanged mode set att =
-  let open E in
-  let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
-  let silent = if silent then ".SILENT" else "" in
-  let base =
-    match att with
-    | `Flags _ ->
-        Printf.sprintf "%sFLAGS%s" mode silent
-    | `Labels _ ->
-        Printf.sprintf "%sX-GM-LABELS%s" mode silent
-  in
-  let att =
-    match att with
-    | `Flags flags -> list Flag.flag flags
-    | `Labels labels -> list label labels
-  in
-  let unchanged_since =
-    match unchanged with
-    | None -> str ""
-    | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
-  in
-  let format = cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
-  let default = [] in
-  let process u m = m in
-  {format; default; process}
-
-let add_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
-
-let set_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
-
-let remove_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
-
-let add_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
-
-let set_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
-
-let remove_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
-
-let uid_add_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
-
-let uid_set_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
-
-let uid_remove_flags ?(silent = false) ?unchanged set flags =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
-
-let uid_add_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
-
-let uid_set_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
-
-let uid_remove_labels ?(silent = false) ?unchanged set labels =
-  store_gen E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
-
-let enable caps =
-  let format = E.(str "ENABLE" ++ list capability caps) in
-  let default = [] in
-  let process u caps =
-    match u with
-    | ENABLED caps1 -> caps1 @ caps
-    | _ -> caps
-  in
-  {format; default; process}
-
 type session =
   {
     tag: int;
@@ -2986,6 +2697,13 @@ type 'a action =
   | Error of Error.error
   | Send of string * 'a progress
   | Refill of 'a progress
+
+type 'a command =
+  {
+    format: E.rope;
+    default: 'a;
+    process: untagged -> 'a -> 'a;
+  }
 
 let tag session =
   Printf.sprintf "%04d" session.tag
@@ -3075,3 +2793,285 @@ let idle session =
   let format = E.(raw tag ++ raw "IDLE") in
   let state = Sending (format, WaitForResp (wait_for_idle tag)) in
   continue (session, state)
+
+let login ss username password =
+  let format = E.(str "LOGIN" ++ str username ++ str password) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let capability ss =
+  let format = E.(str "CAPABILITY") in
+  let default = [] in
+  let process u caps =
+    match u with
+    | CAPABILITY caps1 -> caps @ caps1
+    | _ -> caps
+  in
+  run ss {format; default; process}
+
+let create ss m =
+  let format = E.(str "CREATE" ++ mailbox m) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let delete ss m =
+  let format = E.(str "DELETE" ++ mailbox m) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let rename ss m1 m2 =
+  let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let logout ss =
+  let format = E.(str "LOGOUT") in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let noop ss =
+  let format = E.(str "NOOP") in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let subscribe ss m =
+  let format = E.(str "SUBSCRIBE" ++ mailbox m) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let unsubscribe ss m =
+  let format = E.(str "UNSUBSCRIBE" ++ mailbox m) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let list ss ?(ref = "") s =
+  let format = E.(str "LIST" ++ mailbox ref ++ str s) in
+  let default = [] in
+  let process u res =
+    match u with
+    | LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
+    | _ -> res
+  in
+  run ss {format; default; process}
+
+let lsub ss ?(ref = "") s =
+  let format = E.(str "LSUB" ++ mailbox ref ++ str s) in
+  let default = [] in
+  let process u res =
+    match u with
+    | LSUB (flags, delim, mbox) -> res @ [flags, delim, mbox]
+    | _ -> res
+  in
+  run ss {format; default; process}
+
+let status ss m att =
+  let format = E.(str "STATUS" ++ mailbox m ++ p (list (fun x -> x) att)) in
+  let default = [] in
+  let process u att =
+    match u with
+    | STATUS (mbox, items) when m = mbox ->
+        items
+    | _ ->
+        att
+  in
+  run ss {format; default; process}
+
+let copy_gen ss cmd s m =
+  let format = E.(cmd ++ eset s ++ mailbox m) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let copy ss s m =
+  copy_gen ss E.(raw "COPY") s m
+
+let uid_copy ss s m =
+  copy_gen ss E.(raw "UID" ++ raw "COPY") s m
+
+let check ss =
+  let format = E.(str "CHECK") in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let close ss =
+  let format = E.(str "CLOSE") in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let expunge ss =
+  let format = E.(str "EXPUNGE") in
+  let default = [] in
+  let process u info =
+    match u with
+    | EXPUNGE n -> n :: info
+    | _ -> info
+  in
+  run ss {format; default; process}
+
+let search_gen ss cmd sk =
+  let format = E.(cmd ++ sk) in
+  let default = ([], None) in
+  let process u (res, m) =
+    match u with
+    | SEARCH (ids, m1) -> ids @ res, m1
+    | _ -> (res, m)
+  in
+  run ss {format; default; process}
+
+let search ss =
+  search_gen ss E.(raw "SEARCH")
+
+let uid_search ss =
+  search_gen ss E.(raw "UID" ++ raw "SEARCH")
+
+let select_gen ss cmd m =
+  let open E in
+  let format = cmd ++ mailbox m in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let condstore_select_gen ss cmd m =
+  let open E in
+  let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in
+  let default = Int64.zero in
+  let process u m =
+    match u with
+    | State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
+    | _ -> m
+  in
+  run ss {format; default; process}
+
+let select ss =
+  select_gen ss E.(raw "SELECT")
+
+let examine ss =
+  select_gen ss E.(raw "EXAMINE")
+
+let condstore_select ss =
+  condstore_select_gen ss E.(raw "SELECT")
+
+let condstore_examine ss =
+  condstore_select_gen ss E.(raw "EXAMINE")
+
+let append ss m ?(flags = []) data =
+  let format = E.(raw "APPEND" ++ mailbox m ++ p (list Flag.flag flags) ++ literal data) in
+  let default = () in
+  let process _ () = () in
+  run ss {format; default; process}
+
+let fetch_gen ss cmd ?changed ?(vanished = false) set att =
+  let open E in
+  let att =
+    match att with
+    (* | `Fast -> raw "FAST" *)
+    (* | `Full -> raw "FULL" *)
+    (* | `All -> raw "ALL" *)
+    | [x] -> x
+    | xs -> p (list (fun x -> x) xs)
+  in
+  let changed_since =
+    match changed, vanished with
+    | None, true -> invalid_arg "fetch_gen"
+    | None, false -> empty
+    | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
+    | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
+  in
+  let format = cmd ++ eset set ++ att ++ changed_since in
+  let default = [] in
+  let process u atts =
+    match u with
+    | FETCH (id, infos) ->
+        (id, infos) :: atts
+    | _ ->
+        atts
+  in
+  run ss {format; default; process}
+
+let fetch ss ?changed ?vanished set att =
+  fetch_gen ss E.(raw "FETCH") ?changed ?vanished set att
+
+let uid_fetch ss ?changed ?vanished set att =
+  fetch_gen ss E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
+
+let store_gen ss cmd ~silent ~unchanged mode set att =
+  let open E in
+  let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
+  let silent = if silent then ".SILENT" else "" in
+  let base =
+    match att with
+    | `Flags _ ->
+        Printf.sprintf "%sFLAGS%s" mode silent
+    | `Labels _ ->
+        Printf.sprintf "%sX-GM-LABELS%s" mode silent
+  in
+  let att =
+    match att with
+    | `Flags flags -> list Flag.flag flags
+    | `Labels labels -> list label labels
+  in
+  let unchanged_since =
+    match unchanged with
+    | None -> str ""
+    | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
+  in
+  let format = cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
+  let default = [] in
+  let process u m = m in
+  run ss {format; default; process}
+
+let add_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
+
+let set_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
+
+let remove_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
+
+let add_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
+
+let set_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
+
+let remove_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
+
+let uid_add_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Flags flags)
+
+let uid_set_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Flags flags)
+
+let uid_remove_flags ss ?(silent = false) ?unchanged set flags =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Flags flags)
+
+let uid_add_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Labels labels)
+
+let uid_set_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Labels labels)
+
+let uid_remove_labels ss ?(silent = false) ?unchanged set labels =
+  store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Labels labels)
+
+let enable ss caps =
+  let format = E.(str "ENABLE" ++ list capability caps) in
+  let default = [] in
+  let process u caps =
+    match u with
+    | ENABLED caps1 -> caps1 @ caps
+    | _ -> caps
+  in
+  run ss {format; default; process}
