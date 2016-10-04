@@ -6,7 +6,7 @@ open Imap
 
 type connection
 
-val connect: int -> string -> string -> string -> connection
+val connect: int -> string -> connection
 
 val login: connection -> string -> string -> unit
 (** [login user pass] identifies the client to the server and carries the
@@ -14,6 +14,8 @@ val login: connection -> string -> string -> unit
     server MAY include a [`Capability] response {{!code}code} in the tagged
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
+
+val authenticate: connection -> Auth.authenticator -> unit
 
 val capability: connection -> Capability.capability list
 (** [capability] returns the list of capabilities supported by the server.  The

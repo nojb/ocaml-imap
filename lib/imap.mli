@@ -663,7 +663,7 @@ val feed: 'a progress -> string -> int -> int -> 'a progress
 
 val idle: session -> unit action
 
-val initiate: Auth.authenticator -> unit action
+val initiate: unit action
 
 val login: session -> string -> string -> unit action
 (** [login user pass] identifies the client to the server and carries the
@@ -671,6 +671,8 @@ val login: session -> string -> string -> unit action
     server MAY include a [`Capability] response {{!code}code} in the tagged
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
+
+val authenticate: session -> Auth.authenticator -> unit action
 
 val capability: session -> Capability.capability list action
 (** [capability] returns the list of capabilities supported by the server.  The

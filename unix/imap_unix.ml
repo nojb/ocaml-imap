@@ -46,7 +46,7 @@ let idle c =
   c.session <- session;
   res
 
-let connect port host username password =
+let connect port host =
   let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   let he = Unix.gethostbyname host in
   Printf.eprintf "gethostbyname: %s => %s\n%!" host (Unix.string_of_inet_addr he.Unix.h_addr_list.(0));
@@ -55,9 +55,7 @@ let connect port host username password =
   let sock = Ssl.embed_socket fd ctx in
   Ssl.connect sock;
   let buf = Bytes.create 512 in
-  let (), session =
-    perform sock buf Imap.(initiate (Auth.plain username password))
-  in
+  let (), session = perform sock buf Imap.initiate in
   {session; sock; buf}
 
 let () =
@@ -78,6 +76,7 @@ let run2 f c a b =
   run (fun ss -> f ss a b) c
 
 let login = run2 Imap.login
+let authenticate = run1 Imap.authenticate
 let capability = run0 Imap.capability
 let create = run1 Imap.create
 let delete = run1 Imap.delete

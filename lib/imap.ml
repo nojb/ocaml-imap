@@ -2723,9 +2723,9 @@ let rec wait_for_auth tag step = function
       assert (tag = tag1);
       Done ()
 
-let wait_for_greeting auth = function
+let wait_for_greeting = function
   | Untagged (State (OK _)) ->
-      Next (Sending (E.(raw "AUTH" ++ raw "AUTHENTICATE" ++ raw auth.Auth.name), WaitForResp (wait_for_auth "AUTH" auth.Auth.step)))
+      Done ()
   | _ ->
       assert false
 
@@ -2744,8 +2744,8 @@ let rec wait_for_resp tag init f = function
       assert (tag = tag1);
       Done init
 
-let initiate a =
-  Refill (initial_session, WaitForResp (wait_for_greeting a))
+let initiate =
+  Refill (initial_session, WaitForResp wait_for_greeting)
 
 let continue (session, state) =
   let rec loop buf = function
@@ -2799,6 +2799,12 @@ let login ss username password =
   let default = () in
   let process _ () = () in
   run ss {format; default; process}
+
+let authenticate session {Auth.name; step} =
+  let tag = tag session in
+  let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw name) in
+  let state = Sending (format, WaitForResp (wait_for_auth tag step)) in
+  continue (session, state)
 
 let capability ss =
   let format = E.(str "CAPABILITY") in

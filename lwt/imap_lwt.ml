@@ -58,7 +58,7 @@ let run1 f c a =
 let run2 f c a b =
   run (fun ss -> f ss a b) c
 
-let connect port host username password =
+let connect port host =
   let fd = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname host >>= fun he ->
   Printf.eprintf "gethostbyname: %s => %s\n%!" host (Unix.string_of_inet_addr he.Unix.h_addr_list.(0));
@@ -66,13 +66,14 @@ let connect port host username password =
   let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
   Lwt_ssl.ssl_connect fd ctx >>= fun sock ->
   let buf = Bytes.create 512 in
-  perform sock buf Imap.(initiate (Auth.plain username password)) >>= fun ((), session) ->
+  perform sock buf Imap.initiate >>= fun ((), session) ->
   Lwt.return {session; mutex = Lwt_mutex.create (); sock; buf}
 
 let () =
   Ssl.init ()
 
 let login = run2 Imap.login
+let authenticate = run1 Imap.authenticate
 let capability = run0 Imap.capability
 let create = run1 Imap.create
 let delete = run1 Imap.delete
