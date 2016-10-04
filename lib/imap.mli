@@ -63,10 +63,12 @@ module Seq : NUMBER
 module type NUMBER_SET = sig
   type elt
   type t
+  val empty: t
   val singleton: elt -> t
   val union: t -> t -> t
   val add: elt -> t -> t
   val interval: elt -> elt -> t
+  val of_list: elt list -> t
 end
 
 module SeqSet : NUMBER_SET with type elt := Seq.t

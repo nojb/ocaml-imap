@@ -63,14 +63,17 @@ module Seq = Uint32
 module type NUMBER_SET = sig
   type elt
   type t
+  val empty: t
   val singleton: elt -> t
   val union: t -> t -> t
   val add: elt -> t -> t
   val interval: elt -> elt -> t
+  val of_list: elt list -> t
 end
 
 module Uint32Set = struct
   type t = (int32 * int32) list (* disjoint, sorted intervals *)
+  let empty = []
   let singleton n = [(n, n)]
   let union s1 s2 =
     assert false
@@ -78,6 +81,8 @@ module Uint32Set = struct
     assert false
   let interval n m =
     [(n, m)]
+  let of_list l =
+    List.fold_left (fun s n -> add n s) empty l
 end
 
 module UidSet = Uint32Set
