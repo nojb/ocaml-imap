@@ -50,6 +50,12 @@ module Uint32 = struct
     | false, false -> Int32.compare n1 n2
   let print ppf n =
     Format.fprintf ppf "%lu" n
+
+  let succ n = Int32.succ n
+  let (<) n m = compare n m < 0
+  let (<=) n m = compare n m <= 0
+  let min n m = if n <= m then n else m
+  let max n m = if n <= m then m else n
 end
 
 module Modseq = struct
@@ -76,12 +82,7 @@ module Uint32Set = struct
   let empty = []
   let singleton n = [(n, n)]
   let rec union s1 s2 =
-    let succ n = Int32.succ n in
-    let cmp n m = Uint32.compare n m in
-    let (<) n m = cmp n m < 0 in
-    let (<=) n m = cmp n m <= 0 in
-    let min n m = if n <= m then n else m in
-    let max n m = if n <= m then m else n in
+    let open Int32 in
     let rec loop s1 s2 =
       match s1, s2 with
       | [], s2 -> s2
