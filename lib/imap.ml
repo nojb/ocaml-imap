@@ -792,7 +792,7 @@ module Code = struct
         fprintf ppf "use-attr"
 end
 
-module Mailbox = struct
+module MbxFlag = struct
   type mbx_flag =
     | Noselect
     | Marked
@@ -808,27 +808,6 @@ module Mailbox = struct
     | Sent
     | Trash
     | Extension of string
-
-  type mbx_att =
-    | MESSAGES of int
-    | RECENT of int
-    | UIDNEXT of int32
-    | UIDVALIDITY of int32
-    | UNSEEN of int32
-    | HIGHESTMODSEQ of int64
-
-  module Request = struct
-    open E
-
-    type t = rope
-
-    let messages = raw "MESSAGES"
-    let recent = raw "RECENT"
-    let uidnext = raw "UIDNEXT"
-    let uidvalidity = raw "UIDVALIDITY"
-    let unseen = raw "UNSEEN"
-    let highestmodseq = raw "HIGHESTMODSEQ"
-  end
 
   open Format
 
@@ -847,6 +826,29 @@ module Mailbox = struct
     | Sent -> fprintf ppf "sent"
     | Trash -> fprintf ppf "trash"
     | Extension s -> fprintf ppf "(extension %s)" s
+end
+
+module StatusRequest = struct
+  type mbx_att =
+    | MESSAGES of int
+    | RECENT of int
+    | UIDNEXT of int32
+    | UIDVALIDITY of int32
+    | UNSEEN of int32
+    | HIGHESTMODSEQ of int64
+
+  open E
+
+  type t = rope
+
+  let messages = raw "MESSAGES"
+  let recent = raw "RECENT"
+  let uidnext = raw "UIDNEXT"
+  let uidvalidity = raw "UIDVALIDITY"
+  let unseen = raw "UNSEEN"
+  let highestmodseq = raw "HIGHESTMODSEQ"
+
+  open Format
 
   let pp_mbx_status ppf = function
     | MESSAGES n -> fprintf ppf "(messages %i)" n
@@ -879,19 +881,19 @@ module StatusData = struct
   let highestmodseq = HIGHESTMODSEQ
 
   type t =
-    Mailbox.mbx_att list
+    StatusRequest.mbx_att list
 
   let attr t a =
-    let rec loop: type a. Mailbox.mbx_att list -> a attr -> a = fun l a ->
+    let rec loop: type a. StatusRequest.mbx_att list -> a attr -> a = fun l a ->
       match l with
       | att :: l ->
           begin match a, att with
-          | MESSAGES, Mailbox.MESSAGES n -> n
-          | RECENT, Mailbox.RECENT n -> n
-          | UIDNEXT, Mailbox.UIDNEXT uid -> uid
-          | UIDVALIDITY, Mailbox.UIDVALIDITY uid -> uid
-          | UNSEEN, Mailbox.UNSEEN n -> n
-          | HIGHESTMODSEQ, Mailbox.HIGHESTMODSEQ modseq -> modseq
+          | MESSAGES, StatusRequest.MESSAGES n -> n
+          | RECENT, StatusRequest.RECENT n -> n
+          | UIDNEXT, StatusRequest.UIDNEXT uid -> uid
+          | UIDVALIDITY, StatusRequest.UIDVALIDITY uid -> uid
+          | UNSEEN, StatusRequest.UNSEEN n -> n
+          | HIGHESTMODSEQ, StatusRequest.HIGHESTMODSEQ modseq -> modseq
           | _ -> loop l a
           end
       | [] ->
@@ -911,10 +913,10 @@ module Response = struct
     | BYE of Code.code option * string
     | PREAUTH of Code.code option * string
     | FLAGS of Flag.flag list
-    | LIST of Mailbox.mbx_flag list * char option * string
-    | LSUB of Mailbox.mbx_flag list * char option * string
+    | LIST of MbxFlag.mbx_flag list * char option * string
+    | LSUB of MbxFlag.mbx_flag list * char option * string
     | SEARCH of int32 list * int64 option
-    | STATUS of string * Mailbox.mbx_att list
+    | STATUS of string * StatusRequest.mbx_att list
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of int32
@@ -947,14 +949,14 @@ module Response = struct
     | FLAGS flags ->
         fprintf ppf "@[<2>(flags@ %a)@]" (pp_list Flag.pp_flag) flags
     | LIST (f, s, m) ->
-        fprintf ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
+        fprintf ppf "@[<2>(list@ (flags@ %a)@ %a@ %S)@]" (pp_list MbxFlag.pp_mbx_flag) f (pp_opt pp_char) s m
     | LSUB (f, s, m) ->
-        fprintf ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list Mailbox.pp_mbx_flag) f (pp_opt pp_char) s m
+        fprintf ppf "@[<2>(lsub@ (flags@ %a)@ %a@ %S)@]" (pp_list MbxFlag.pp_mbx_flag) f (pp_opt pp_char) s m
     | SEARCH (ns, m) ->
         fprintf ppf "@[<2>(search@ %a@ %a)@]"
           (pp_list (fun ppf -> fprintf ppf "%lu")) ns (pp_opt (fun ppf -> fprintf ppf "%Lu")) m
     | STATUS (m, s) ->
-        fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list Mailbox.pp_mbx_status) s
+        fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list StatusRequest.pp_mbx_status) s
     | EXISTS n ->
         fprintf ppf "(exists %i)" n
     | RECENT n ->
@@ -1659,7 +1661,7 @@ module Decoder = struct
 *)
 
   let mbx_flag =
-    let open Mailbox in
+    let open MbxFlag in
     let cases =
       [
         "\\Noselect", const Noselect;
@@ -1738,7 +1740,7 @@ module Decoder = struct
     Modseq.of_string (while1 is_digit d)
 
   let status_att =
-    let open Mailbox in
+    let open StatusRequest in
     let cases =
       [
         "MESSAGES", (fun d -> MESSAGES (Int32.to_int (sp number d)));

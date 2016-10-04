@@ -332,12 +332,7 @@ module FetchData : sig
   val attr: t -> 'a attr -> 'a
 end
 
-module Mailbox : sig
-  (** {3 Mailbox flags}
-
-      Returned by the {!list} or {!lsub} commands and also in some
-      status {{!code}codes}. *)
-
+module MbxFlag : sig
   type mbx_flag =
     | Noselect
     | Marked
@@ -353,31 +348,31 @@ module Mailbox : sig
     | Sent
     | Trash
     | Extension of string
+end
 
-  module Request : sig
-    (** Mailbox attibutes that can be requested with the {!status} command. *)
+module StatusRequest : sig
+  (** Mailbox attibutes that can be requested with the {!status} command. *)
 
-    type t
+  type t
 
-    val messages: t
-    (** The number of messages in the mailbox. *)
+  val messages: t
+  (** The number of messages in the mailbox. *)
 
-    val recent: t
-    (** The number of messages with the [`Recent] {!flag} set. *)
+  val recent: t
+  (** The number of messages with the [`Recent] {!flag} set. *)
 
-    val uidnext: t
-    (** The next unique identifier value of the mailbox. *)
+  val uidnext: t
+  (** The next unique identifier value of the mailbox. *)
 
-    val uidvalidity: t
-    (** The unique identifier validity value of the mailbox. *)
+  val uidvalidity: t
+  (** The unique identifier validity value of the mailbox. *)
 
-    val unseen: t
-    (** The number of messages which do not have the [`Seen] {!flag}
-        set. *)
+  val unseen: t
+  (** The number of messages which do not have the [`Seen] {!flag}
+      set. *)
 
-    val highestmodseq: t
-    (** TODO *)
-  end
+  val highestmodseq: t
+  (** TODO *)
 end
 
 (** {3 Mailbox status responses}
@@ -676,7 +671,7 @@ val unsubscribe: string -> unit command
 (** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
     "subscribed" mailboxes as returned by the {!lsub} command. *)
 
-val list: ?ref:string -> string -> (Mailbox.mbx_flag list * char option * string) list command
+val list: ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list command
 (** [list ref m] returns a subset of names from the complete set of all names
     available to the client.  Zero or more untagged [`List]
     {{!untagged}replies} are returned, containing the name attributes,
@@ -684,12 +679,12 @@ val list: ?ref:string -> string -> (Mailbox.mbx_flag list * char option * string
     or a level of mailbox hierarchy, and indicates the context in which the
     mailbox name is interpreted.*)
 
-val lsub: ?ref:string -> string -> (Mailbox.mbx_flag list * char option * string) list command
+val lsub: ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list command
 (** [lsub ref m] is identical to {!list}, except that it returns a subset of
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status: string -> Mailbox.Request.t list -> StatusData.t command
+val status: string -> StatusRequest.t list -> StatusData.t command
 (** [status] requests {{!status_query}status information} of the indicated
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)
