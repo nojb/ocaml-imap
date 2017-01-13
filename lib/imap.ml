@@ -1025,7 +1025,7 @@ module Parser = struct
   let const c _ =
     c
 
-  let empty =
+  let empty : state -> _ =
     const ()
 
   let protect p d =
