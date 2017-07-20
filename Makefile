@@ -1,40 +1,22 @@
-OCAMLBUILD := ocamlbuild -use-ocamlfind -classic-display
-OCAMLFLAGS := -bin-annot -g -w -3
+all:
+	jbuilder build @install @DEFAULT
 
-all: imap imap_lwt imap_unix
-
-imap:
-	$(OCAMLBUILD) lib/imap.cma
-
-imap_shell:
-	$(OCAMLBUILD) test/imap_shell.byte
-
-wait_mail:
-	$(OCAMLBUILD) test/wait_mail.byte
-
-imap_lwt:
-	$(OCAMLBUILD) lwt/imap_lwt.cma
-
-imap_unix:
-	$(OCAMLBUILD) unix/imap_unix.cma
-
-# all: lib imap_shell wait_mail
+test:
+	jbuilder runtest
 
 clean:
-	$(OCAMLBUILD) -clean
-	rm -rf lib/*.cm* lib/*.o lib/*.a lib/*.lib
+	jbuilder clean
 
-doc:
-	$(OCAMLBUILD) -docflags -colorize-code,-css-style,style.css doc/api.docdir/index.html
-	cp doc/style.css api.docdir/
-
-install: lib
-	opam-installer --prefix=`opam config var prefix` imap.install
+install:
+	jbuilder install
 
 uninstall:
-	opam-installer --prefix=`opam config var prefix` -u imap.install
+	jbuilder uninstall
 
 reinstall: uninstall install
+
+doc:
+	jbuilder build @doc
 
 gh-pages: doc
 	git clone `git config --get remote.origin.url` .gh-pages --reference .
@@ -47,19 +29,7 @@ gh-pages: doc
 	git -C .gh-pages push origin gh-pages -f
 	rm -rf .gh-pages
 
-prepare: lib doc
-ifdef VERSION
-	git diff --quiet && git diff --cached --quiet # make sure there are no uncommited changes
-	git tag -f "v$(VERSION)"
-	git push origin master
-	git push --force origin "v$(VERSION)"
-	opam-publish prepare "imap.$(VERSION)" \
-		"https://github.com/nojb/ocaml-imap/archive/v$(VERSION).tar.gz"
-else
-	$(error VERSION is undefined)
-endif
-
 publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
 
-.PHONY: all lib clean doc imap_shell wait_mail install uninstall
+.PHONY: all lib clean doc install uninstall test
