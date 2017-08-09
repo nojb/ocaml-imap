@@ -1,13 +1,18 @@
 lib: [
-  "lib/META" {"META"}
-  "_build/lib/imap.mli" {"imap.mli"}
-  "_build/lib/imap.cmi" {"imap.cmi"}
-  "_build/lib/imap.cmti" {"imap.cmti"}
-  "_build/lib/imap.cma" {"imap.cma"}
-  "?_build/lib/imap.cmxa" {"imap.cmxa"}
-  "?_build/lib/imap.a" {"imap.a"}
-  "?_build/lib/imap.cmxs" {"imap.cmxs"}
+  "_build/install/default/lib/imap/META" {"META"}
+  "_build/install/default/lib/imap/opam" {"opam"}
+  "_build/install/default/lib/imap/imap.cmi"
+  "_build/install/default/lib/imap/imap.cmx"
+  "_build/install/default/lib/imap/imap.cmt"
+  "_build/install/default/lib/imap/imap.cmti"
+  "_build/install/default/lib/imap/imap.mli"
+  "_build/install/default/lib/imap/imap.cma"
+  "_build/install/default/lib/imap/imap.cmxa"
+  "_build/install/default/lib/imap/imap.a"
+  "_build/install/default/lib/imap/imap.cmxs"
 ]
 doc: [
-  "README.md" {"README.md"}
+  "_build/install/default/doc/imap/README.md"
+  "_build/install/default/doc/imap/LICENSE"
+  "_build/install/default/doc/imap/CHANGES"
 ]

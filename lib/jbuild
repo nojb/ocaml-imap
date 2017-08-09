@@ -1,0 +1,7 @@
+(jbuild_version 1)
+
+(library
+ ((name imap)
+  (public_name imap)
+  (wrapped false)
+  (libraries (uutf base64))))
