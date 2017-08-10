@@ -4,4 +4,5 @@
  ((name imap)
   (public_name imap)
   (wrapped false)
-  (libraries (uutf base64 angstrom))))
+  (preprocess (pps (ppx_sexp_conv)))
+  (libraries (uutf base64 sexplib angstrom))))

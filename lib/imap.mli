@@ -45,10 +45,10 @@
 
 module type NUMBER = sig
   type t
+
   val zero: t
   val of_int: int -> t
   val compare: t -> t -> int
-  val print: Format.formatter -> t -> unit
 end
 
 module Modseq : NUMBER
@@ -62,7 +62,7 @@ module Seq : NUMBER
 
 module type NUMBER_SET = sig
   type elt
-  type t
+  type t [@@deriving sexp]
   val empty: t
   val singleton: elt -> t
   val union: t -> t -> t
@@ -74,8 +74,20 @@ end
 module SeqSet : NUMBER_SET with type elt := Seq.t
 module UidSet : NUMBER_SET with type elt := Uid.t
 
-type date = { day : int; month : int ; year : int }
-type time = { hours : int; minutes : int; seconds : int; zone : int }
+type date =
+  {
+    day: int;
+    month: int;
+    year: int;
+  } [@@deriving sexp]
+
+type time =
+  {
+    hours: int;
+    minutes: int;
+    seconds: int;
+    zone: int;
+  } [@@deriving sexp]
 
 (** List of standard capabilites.  These are returned by the {!capability}
     command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
@@ -107,7 +119,7 @@ type capability =
   | AUTH_PLAIN
   | XOAUTH2
   | X_GM_EXT_1
-  | OTHER of string
+  | OTHER of string [@@deriving sexp]
 
 (** {3 Envelope information}
 
@@ -126,7 +138,7 @@ type address =
     ad_adl: string;
     ad_mailbox: string;
     ad_host: string;
-  }
+  } [@@deriving sexp]
 
 type envelope =
   {
@@ -140,7 +152,7 @@ type envelope =
     env_bcc: address list;
     env_in_reply_to: string;
     env_message_id: string;
-  }
+  } [@@deriving sexp]
 
 module MIME : sig
   (** {3 MIME message structure}
@@ -162,10 +174,8 @@ module MIME : sig
       fld_id: string option;                   (* Optional part ID *)
       fld_desc: string option;                 (* Optional content description *)
       fld_enc: string;                         (* Content transfer encoding *)
-      fld_octets: int;
-    }                        (* Size in bytes *)
-
-  val pp_fields : Format.formatter -> fields -> unit
+      fld_octets: int;           (* Size in bytes *)
+    } [@@deriving sexp]
 
   (** MIME content types
 
@@ -197,9 +207,7 @@ module MIME : sig
     | Text of string * fields * int
     | Message of fields * envelope * mime * int
     | Basic of string * string * fields
-    | Multipart of mime list * string
-
-  val pp_mime: Format.formatter -> mime -> unit
+    | Multipart of mime list * string [@@deriving sexp]
 end
 
 module Flag : sig
@@ -212,7 +220,7 @@ module Flag : sig
     | Keyword of string
     | Extension of string
     | Recent
-    | Any
+    | Any [@@deriving sexp]
 end
 
 module Fetch : sig
@@ -232,7 +240,7 @@ module Fetch : sig
     | TEXT                               (* The text body of this part, omitting RFC2822 headers *)
     | MIME                               (* The MIME headers of this part *)
     | Part of int * section              (* Subpart *)
-    | All                              (* The whole message *)
+    | All [@@deriving sexp]              (* The whole message *)
 
   (** Message attributes that can be requested using the {!fetch} command. *)
 
@@ -315,31 +323,8 @@ module Fetch : sig
       x_gm_msgid: Modseq.t option;
       x_gm_thrid: Modseq.t option;
       x_gm_labels: string list option;
-    }
+    } [@@deriving sexp]
 end
-
-(* module FetchData : sig *)
-(*   type 'a attr *)
-(*   val flags: Flag.flag list attr *)
-(*   val envelope: envelope attr *)
-(*   val internal_date: (date * time) attr *)
-(*   val rfc822: string attr *)
-(*   val rfc822_headers: string attr *)
-(*   val rfc822_text: string attr *)
-(*   val rfc822_size: int attr *)
-(*   val body: MIME.mime attr *)
-(*   val body_structure: MIME.mime attr *)
-(*   val body_section: ?range:(int * int) -> FetchRequest.section -> string attr *)
-(*   val uid: Uid.t attr *)
-(*   val modseq: Modseq.t attr *)
-(*   val gmail_msgid: Modseq.t attr *)
-(*   val gmail_thrid: Modseq.t attr *)
-(*   val gmail_labels: string list attr *)
-
-(*   type t *)
-(*   val seq: t -> Seq.t *)
-(*   val attr: t -> 'a attr -> 'a *)
-(* end *)
 
 module MbxFlag : sig
   type mbx_flag =
@@ -356,7 +341,7 @@ module MbxFlag : sig
     | Junk
     | Sent
     | Trash
-    | Extension of string
+    | Extension of string [@@deriving sexp]
 end
 
 (** {3 Mailbox status} *)
@@ -374,7 +359,7 @@ module Status : sig
     (** The unique identifier validity value of the mailbox. *)
     | UNSEEN
     (** The number of messages which do not have the [`Seen] {!flag} set. *)
-    | HIGHESTMODSEQ
+    | HIGHESTMODSEQ [@@deriving sexp]
     (** TODO *)
 
   (** Mailbox status items returned in the untagged [`Status] {{!untagged}response}
@@ -387,14 +372,14 @@ module Status : sig
       uidvalidity: Uid.t option;
       unseen: Seq.t option;
       highestmodseq: Modseq.t option;
-    }
+    } [@@deriving sexp]
 end
 
 (** Message search *)
 
 module Search : sig
   (** Search keys. See {!search} command. *)
-  type key
+  type key [@@deriving sexp]
 
   val all: key
   (** All messages in the mailbox; the default initial key for ANDing. *)
@@ -595,254 +580,250 @@ val xoauth2: string -> string -> authenticator
     {{!connection}Connections} manage the encoder and decoder states and keeps
     track of message tags. *)
 
-module Error : sig
-  type error =
-    | Incorrect_tag of string * string
-    (** The server response tag does not have a matching message tag.  The
-        connection should be closed. *)
-
-    | Decode_error of string * int
-    (** Decoding error. It contains the reason, the curren tinput buffer and the
-        current position.  The connection should be closed after this.  In some
-        cases it might be possible to continue fater a decoding error, but this is
-        not yet implemented. *)
-
-    | Unexpected_cont
-    (** A continuation request '+' is received from the server at an unexpected
-        time.  The connection should be closed after seeing this error, as there is no
-        safe way to continue. *)
-
-    | Bad_greeting
-    (** The server did not send a valid greeting message.  The connection should
-        be closed. *)
-
-    | Auth_error of string
-    (** An client-side SASL authentication error ocurred.  This error can only
-        appear when using the SASL-based {!authenticate} command.  The error is
-        communicated to the server and the server responds with a [BAD] response.
-        Thus, after receiving this error the client should pass [`Await] to {!run}
-        until [`Error `Bad] is received, and then take appropiate action. *)
-
-  val pp: Format.formatter -> error -> unit
-end
-
 type session
 (** The type for connections. *)
 
-type 'a progress
+type error =
+  | Incorrect_tag of string * string
+  (** The server response tag does not have a matching message tag.  The
+      connection should be closed. *)
 
-type 'a action =
-  | Ok of 'a * session
+  | Decode_error of string * int
+  (** Decoding error. It contains the reason, the curren tinput buffer and the
+      current position.  The connection should be closed after this.  In some
+      cases it might be possible to continue fater a decoding error, but this is
+      not yet implemented. *)
+
+  | Unexpected_cont
+  (** A continuation request '+' is received from the server at an unexpected
+      time.  The connection should be closed after seeing this error, as there is no
+      safe way to continue. *)
+
+  | Bad_greeting
+  (** The server did not send a valid greeting message.  The connection should
+      be closed. *)
+
+  | Auth_error of string
+  (** An client-side SASL authentication error ocurred.  This error can only
+      appear when using the SASL-based {!authenticate} command.  The error is
+      communicated to the server and the server responds with a [BAD] response.
+      Thus, after receiving this error the client should pass [`Await] to {!run}
+      until [`Error `Bad] is received, and then take appropiate action. *)
   | No of string * session
+
   | Bad of string * session
-  | Error of Error.error
-  | Send of string * 'a progress
-  | Refill of 'a progress
 
-val continue: 'a progress -> 'a action
-val feed: 'a progress -> string -> int -> int -> 'a progress
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
-val idle: session -> unit action
+type 'a state =
+  | Ok of 'a * session
+  | Error of error
+  | Write of string * 'a state
+  | Flush of 'a state
+  | Read of ([`String of string | `Bigstring of bigstring | `Eof] -> 'a state)
 
-val initiate: unit action
+val init: unit state
 
-val login: session -> string -> string -> unit action
+(* val idle: session -> unit state *)
+
+val login: session -> string -> string -> unit state
 (** [login user pass] identifies the client to the server and carries the
     plaintext password authenticating this [user] with password [pass].  A
     server MAY include a [`Capability] response {{!code}code} in the tagged
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
 
-val authenticate: session -> authenticator -> unit action
+(* val authenticate: session -> authenticator -> unit state *)
 
-val capability: session -> capability list action
-(** [capability] returns the list of capabilities supported by the server.  The
-    server must send a single untagged [`Capability] {{!untagged}response}
-    with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
-    response.  See the type describing the possible
-    {{!capability}capabilities}. *)
+(* val capability: session -> capability list state *)
+(* (\** [capability] returns the list of capabilities supported by the server.  The *)
+(*     server must send a single untagged [`Capability] {{!untagged}response} *)
+(*     with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok] *)
+(*     response.  See the type describing the possible *)
+(*     {{!capability}capabilities}. *\) *)
 
-val create: session -> string -> unit action
-(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
-    if a new mailbox with that name has been created.  It is an error to attempt
-    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
-    Any error in creation will return a tagged [`No] response. *)
+(* val create: session -> string -> unit state *)
+(* (\** [create m] creates a mailbox named [m].  An [`Ok] response is returned only *)
+(*     if a new mailbox with that name has been created.  It is an error to attempt *)
+(*     to create "INBOX" or a mailbox with a name that refers to an existent mailbox. *)
+(*     Any error in creation will return a tagged [`No] response. *\) *)
 
-val delete: session -> string -> unit action
-(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-    if the mailbox with that name has been deleted.
-    Any error in deletion will return a tagged [`No] response. *)
+(* val delete: session -> string -> unit state *)
+(* (\** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only *)
+(*     if the mailbox with that name has been deleted. *)
+(*     Any error in deletion will return a tagged [`No] response. *\) *)
 
-val rename: session -> string -> string -> unit action
-(** [rename oldname newname] command changes the name of a mailbox from
-    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
-    mailbox has been renamed.  It is an error to attempt to rename from a
-    mailbox name that does not exist or to a mailbox name that already exists.
-    Any error in renaming will return a tagged [`No] response. *)
+(* val rename: session -> string -> string -> unit state *)
+(* (\** [rename oldname newname] command changes the name of a mailbox from *)
+(*     [oldname] to [newname].  A tagged [`Ok] response is returned only if the *)
+(*     mailbox has been renamed.  It is an error to attempt to rename from a *)
+(*     mailbox name that does not exist or to a mailbox name that already exists. *)
+(*     Any error in renaming will return a tagged [`No] response. *\) *)
 
-val logout: session -> unit action
-(** [logout] gracefully terminates a session.  The server MUST send an untagged
-    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
+(* val logout: session -> unit state *)
+(* (\** [logout] gracefully terminates a session.  The server MUST send an untagged *)
+(*     [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *\) *)
 
-val noop: session -> unit action
-(** [noop] does nothing.  Since any command can return a status update as
-    untagged data, the [noop] command can be used as a periodic poll for new
-    messages or message status updates during a period of inactivity (this is
-    the preferred method to do this). *)
+(* val noop: session -> unit state *)
+(* (\** [noop] does nothing.  Since any command can return a status update as *)
+(*     untagged data, the [noop] command can be used as a periodic poll for new *)
+(*     messages or message status updates during a period of inactivity (this is *)
+(*     the preferred method to do this). *\) *)
 
-val subscribe: session -> string -> unit action
-(** [subscribe m] adds the mailbox [m] to the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
+(* val subscribe: session -> string -> unit state *)
+(* (\** [subscribe m] adds the mailbox [m] to the server's set of "active" or *)
+(*     "subscribed" mailboxes as returned by the {!lsub} command. *\) *)
 
-val unsubscribe: session -> string -> unit action
-(** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
+(* val unsubscribe: session -> string -> unit state *)
+(* (\** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or *)
+(*     "subscribed" mailboxes as returned by the {!lsub} command. *\) *)
 
-val list: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list action
-(** [list ref m] returns a subset of names from the complete set of all names
-    available to the client.  Zero or more untagged [`List]
-    {{!untagged}replies} are returned, containing the name attributes,
-    hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
-    or a level of mailbox hierarchy, and indicates the context in which the
-    mailbox name is interpreted.*)
+(* val list: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list state *)
+(* (\** [list ref m] returns a subset of names from the complete set of all names *)
+(*     available to the client.  Zero or more untagged [`List] *)
+(*     {{!untagged}replies} are returned, containing the name attributes, *)
+(*     hierarchy delimiter.  The optional argument [ref] is the name of a mailbox *)
+(*     or a level of mailbox hierarchy, and indicates the context in which the *)
+(*     mailbox name is interpreted.*\) *)
 
-val lsub: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list action
-(** [lsub ref m] is identical to {!list}, except that it returns a subset of
-    names from the set of names that the user has declared as being "active" or
-    "subscribed". *)
+(* val lsub: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list state *)
+(* (\** [lsub ref m] is identical to {!list}, except that it returns a subset of *)
+(*     names from the set of names that the user has declared as being "active" or *)
+(*     "subscribed". *\) *)
 
-val status: session -> string -> Status.mbx_att_request list -> Status.response action
-(** [status] requests {{!status_query}status information} of the indicated
-    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
-    the requested information. *)
+(* val status: session -> string -> Status.mbx_att_request list -> Status.response state *)
+(* (\** [status] requests {{!status_query}status information} of the indicated *)
+(*     mailbox.  An untagged [`Status] {{!untagged}response} is returned with *)
+(*     the requested information. *\) *)
 
-val copy: session -> SeqSet.t -> string -> unit action
-val uid_copy: session -> UidSet.t -> string -> unit action
-(** [copy uid set m] copies the messages in [set] to the end of the specified
-    mailbox [m].  [set] is understood as a set of message UIDs if [uid] is
-    [true] (the default) or sequence numbers if [uid] is [false]. *)
+(* val copy: session -> SeqSet.t -> string -> unit state *)
+(* val uid_copy: session -> UidSet.t -> string -> unit state *)
+(* (\** [copy uid set m] copies the messages in [set] to the end of the specified *)
+(*     mailbox [m].  [set] is understood as a set of message UIDs if [uid] is *)
+(*     [true] (the default) or sequence numbers if [uid] is [false]. *\) *)
 
-val check: session -> unit action
-(** [check] requests a checkpoint of the currently selected mailbox.  A
-    checkpoint refers to any implementation-dependent housekeeping associated
-    with the mailbox. *)
+(* val check: session -> unit state *)
+(* (\** [check] requests a checkpoint of the currently selected mailbox.  A *)
+(*     checkpoint refers to any implementation-dependent housekeeping associated *)
+(*     with the mailbox. *\) *)
 
-val close: session -> unit action
-(** [close] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox, and returns to
-    the authenticated state from the selected state. *)
+(* val close: session -> unit state *)
+(* (\** [close] permanently removes all messages that have the [`Deleted] *)
+(*     {!flag} set from the currently selected mailbox, and returns to *)
+(*     the authenticated state from the selected state. *\) *)
 
-val expunge: session -> Seq.t list action
-(** [expunge] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox.  Before
-    returning an [`Ok] to the client, an untagged [`Expunge]
-    {{!untagged}response} is sent for each message that is removed. *)
+(* val expunge: session -> Seq.t list state *)
+(* (\** [expunge] permanently removes all messages that have the [`Deleted] *)
+(*     {!flag} set from the currently selected mailbox.  Before *)
+(*     returning an [`Ok] to the client, an untagged [`Expunge] *)
+(*     {{!untagged}response} is sent for each message that is removed. *\) *)
 
-val uid_search: session -> Search.key -> (Uid.t list * Modseq.t option) action
-val search: session -> Search.key -> (Seq.t list * Modseq.t option) action
-(** [search uid sk] searches the mailbox for messages that match the given
-    searching criteria.  If [uid] is [true] (the default), then the matching
-    messages' unique identification numbers are returned.  Otherwise, their
-    sequence numbers are.  The untagged [`Search] {{!untagged}response}
-    from the server contains a listing of message numbers corresponding to those
-    messages that match the searching criteria. *)
+(* val uid_search: session -> Search.key -> (Uid.t list * Modseq.t option) state *)
+(* val search: session -> Search.key -> (Seq.t list * Modseq.t option) state *)
+(* (\** [search uid sk] searches the mailbox for messages that match the given *)
+(*     searching criteria.  If [uid] is [true] (the default), then the matching *)
+(*     messages' unique identification numbers are returned.  Otherwise, their *)
+(*     sequence numbers are.  The untagged [`Search] {{!untagged}response} *)
+(*     from the server contains a listing of message numbers corresponding to those *)
+(*     messages that match the searching criteria. *\) *)
 
-val select: session -> string -> unit action
-val condstore_select: session -> string -> Modseq.t action
-(** [select condstore m] selects the mailbox [m] so that its messages can be
-    accessed.  If [condstore] (default value [false]) is [true], then the server
-    will return the [`Modseq] data item in all subsequent untagged [`Fetch]
-    {{!untagged}responses}. *)
+(* val select: session -> string -> unit state *)
+(* val condstore_select: session -> string -> Modseq.t state *)
+(* (\** [select condstore m] selects the mailbox [m] so that its messages can be *)
+(*     accessed.  If [condstore] (default value [false]) is [true], then the server *)
+(*     will return the [`Modseq] data item in all subsequent untagged [`Fetch] *)
+(*     {{!untagged}responses}. *\) *)
 
-val examine: session -> string -> unit action
-val condstore_examine: session -> string -> Modseq.t action
-(** [examine condstore m] is identical to [select condstore m] and returns the
-    same output; however, the selected mailbox is identified as read-only. *)
+(* val examine: session -> string -> unit state *)
+(* val condstore_examine: session -> string -> Modseq.t state *)
+(* (\** [examine condstore m] is identical to [select condstore m] and returns the *)
+(*     same output; however, the selected mailbox is identified as read-only. *\) *)
 
-val append: session -> string -> ?flags:Flag.flag list -> string -> unit action
-(** [append m flags id data] appends [data] as a new message to the end of the
-    mailbox [m].  This argument should be in the format of an [RFC-2822]
-    message.
+(* val append: session -> string -> ?flags:Flag.flag list -> string -> unit state *)
+(* (\** [append m flags id data] appends [data] as a new message to the end of the *)
+(*     mailbox [m].  This argument should be in the format of an [RFC-2822] *)
+(*     message. *)
 
-    If a flag list is specified, the flags should be set in the resulting
-    message; otherwise, the flag list of the resulting message is set to empty
-    by default.  In either case, the [`Recent] flag is also set. *)
+(*     If a flag list is specified, the flags should be set in the resulting *)
+(*     message; otherwise, the flag list of the resulting message is set to empty *)
+(*     by default.  In either case, the [`Recent] flag is also set. *\) *)
 
-(** {2 Fetch commands}
+(* (\** {2 Fetch commands} *)
 
-    The IMAP [FETCH] command is used to retrieve the data associated to a
-    message (or a set of messages).  Messages are identified either by their
-    sequence number (i.e., their position in the mailbox), or by their unique
-    identification number (UID).
+(*     The IMAP [FETCH] command is used to retrieve the data associated to a *)
+(*     message (or a set of messages).  Messages are identified either by their *)
+(*     sequence number (i.e., their position in the mailbox), or by their unique *)
+(*     identification number (UID). *)
 
-    For those servers that support the [CONDSTORE] extension, one can pass a
-    mod-sequence value [?changed] to restrict the set of affected messages to
-    those that are not yet known by the client.  One can further use the
-    [?vanished] argument to learn of recently expunged messages.  It is a
-    programmer error to set [?vanished] to [true] but not to pass a value for
-    [?changed]. *)
+(*     For those servers that support the [CONDSTORE] extension, one can pass a *)
+(*     mod-sequence value [?changed] to restrict the set of affected messages to *)
+(*     those that are not yet known by the client.  One can further use the *)
+(*     [?vanished] argument to learn of recently expunged messages.  It is a *)
+(*     programmer error to set [?vanished] to [true] but not to pass a value for *)
+(*     [?changed]. *\) *)
 
-val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response action
-(** [fetch uid ?changed ?vanished set att] retrieves data associated with
-    messages with sequence number in [set].
+(* val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response state *)
+(* (\** [fetch uid ?changed ?vanished set att] retrieves data associated with *)
+(*     messages with sequence number in [set]. *)
 
-    If the [?changed] argument is passed, only those messages with
-    [CHANGEDSINCE] mod-sequence value at least the passed value are affected
-    (requires the [CONDSTORE] extension).
+(*     If the [?changed] argument is passed, only those messages with *)
+(*     [CHANGEDSINCE] mod-sequence value at least the passed value are affected *)
+(*     (requires the [CONDSTORE] extension). *)
 
-    The [vanished] optional parameter specifies whether one wants to receive
-    [`Vanished] responses as well. *)
+(*     The [vanished] optional parameter specifies whether one wants to receive *)
+(*     [`Vanished] responses as well. *\) *)
 
-val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response action
-(** Like {!fetch}, but identifies messages by UID. *)
+(* val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response state *)
+(* (\** Like {!fetch}, but identifies messages by UID. *\) *)
 
-(** {2 Store commands} *)
+(* (\** {2 Store commands} *\) *)
 
-val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
-(** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
-    messages with sequence number in [set].
+(* val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the *)
+(*     messages with sequence number in [set]. *)
 
-    If [?silent] is present, the updated flags for the affected messages is
-    returned.
+(*     If [?silent] is present, the updated flags for the affected messages is *)
+(*     returned. *)
 
-    If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
-    mod-sequence value at least the passed value are affected. *)
+(*     If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE] *)
+(*     mod-sequence value at least the passed value are affected. *\) *)
 
-val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
-(** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
+(* val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** Like {!store_add_flags}, but replaces all flags instead of adding to it. *\) *)
 
-val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
-(** Like {!add_flags} but removes all flags instead of adding to them. *)
+(* val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** Like {!add_flags} but removes all flags instead of adding to them. *\) *)
 
-val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
-(** Like {!add_flags}, but identifies messages by UID. *)
+(* val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** Like {!add_flags}, but identifies messages by UID. *\) *)
 
-val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
-(** Like {!set_flags}, but identifies messages by UID. *)
+(* val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** Like {!set_flags}, but identifies messages by UID. *\) *)
 
-val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
-(** Like {!remove_flags}, but identifies messages by UID. *)
+(* val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
+(* (\** Like {!remove_flags}, but identifies messages by UID. *\) *)
 
-val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
-(** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
+(* val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *\) *)
 
-val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
-(** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
+(* val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *\) *)
 
-val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
-(** Like {!remove_flags}, but acts on the set of Gmail labels instead of
-    flags. *)
+(* val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!remove_flags}, but acts on the set of Gmail labels instead of *)
+(*     flags. *\) *)
 
-val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
-(** Like {!add_labels}, but identfies messages by UID. *)
+(* val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!add_labels}, but identfies messages by UID. *\) *)
 
-val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
-(** Like {!set_labels}, but identifies messages by UID. *)
+(* val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!set_labels}, but identifies messages by UID. *\) *)
 
-val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
-(** Like {!remove_labels}, but identifies messages by UID. *)
+(* val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
+(* (\** Like {!remove_labels}, but identifies messages by UID. *\) *)
 
-val enable: session -> capability list -> capability list action
+(* val enable: session -> capability list -> capability list state *)
 
 (* val authenticate: Auth.authenticator -> unit command *)
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
