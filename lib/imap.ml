@@ -926,211 +926,9 @@ module Status = struct
     }
 end
 
-module Parser = struct
-  exception Stop
-
-  type state =
-    {
-      i: string;
-      p: int ref;
-      c: string list;
-    }
-
-  type 'a t = state -> 'a
-
-  let char c d =
-    if !(d.p) >= String.length d.i || d.i.[!(d.p)] != c then raise Stop;
-    d.p := !(d.p) + 1;
-    c
-
-  let sp f d =
-    ignore (char ' ' d);
-    f d
-
-  let while1 f d =
-    let i0 = !(d.p) in
-    let i = ref i0 in
-    while !i < String.length d.i && f d.i.[!i] do
-      incr i
-    done;
-    d.p := !i;
-    if i0 = !i then raise Stop;
-    String.sub d.i i0 (!i - i0)
-
-  let capture p d =
-    let i0 = !(d.p) in
-    ignore (p d);
-    String.sub d.i i0 (!(d.p) - i0)
-
-  let const c _ =
-    c
-
-  let empty : state -> _ =
-    const ()
-
-  let protect p d =
-    let p0 = !(d.p) in
-    try p d with e -> d.p := p0; raise e
-
-  let list ?(sep = ' ') p d =
-    let rec loop acc =
-      match protect (char sep) d with
-      | _ ->
-          loop (p d :: acc)
-      | exception Stop ->
-          List.rev acc
-    in
-    match protect p d with
-    | x ->
-        loop [x]
-    | exception Stop ->
-        []
-
-  let list1 ?(sep = ' ') p d =
-    let rec loop acc =
-      match protect (char sep) d with
-      | _ ->
-          loop (p d :: acc)
-      | exception Stop ->
-          List.rev acc
-    in
-    loop [p d]
-
-  let rep p d =
-    let rec loop acc =
-      match protect p d with
-      | x ->
-          loop (x :: acc)
-      | exception Stop ->
-          List.rev acc
-    in
-    match protect p d with
-    | x ->
-        loop [x]
-    | exception Stop ->
-        []
-
-  let rep1 p d =
-    let rec loop acc =
-      match protect p d with
-      | x ->
-          loop (x :: acc)
-      | exception Stop ->
-          List.rev acc
-    in
-    loop [p d]
-
-  let accumulate p d =
-    let b = Buffer.create 0 in
-    let rec loop () =
-      match protect p d with
-      | c ->
-          Buffer.add_char b c;
-          loop ()
-      | exception Stop ->
-          Buffer.contents b
-    in
-    loop ()
-
-  let delimited l p r d =
-    ignore (char l d);
-    let x = p d in
-    ignore (char r d);
-    x
-
-  let char_pred f d =
-    if !(d.p) >= String.length d.i || not (f d.i.[!(d.p)]) then raise Stop;
-    let c = d.i.[!(d.p)] in
-    d.p := !(d.p) + 1;
-    c
-
-  let chars_pred f d =
-    while !(d.p) < String.length d.i && f d.i.[!(d.p)] do
-      incr d.p
-    done
-
-  let preceded p1 p2 d =
-    ignore (p1 d);
-    p2 d
-
-  let terminated p1 p2 d =
-    let x = p1 d in
-    ignore (p2 d);
-    x
-
-  let option p d =
-    match protect p d with
-    | x -> Some x
-    | exception Stop -> None
-
-  let (|||) p1 p2 d =
-    match protect p1 d with
-    | x -> x
-    | exception Stop -> p2 d
-
-  let str_length n d =
-    if !(d.p) + n > String.length d.i then raise Stop;
-    let s = String.sub d.i !(d.p) n in
-    d.p := !(d.p) + n;
-    s
-
-  let str_ci s d =
-    let len = String.length s in
-    if !(d.p) + len > String.length d.i then raise Stop;
-    for i = 0 to len - 1 do
-      if Char.lowercase_ascii s.[i] != Char.lowercase_ascii d.i.[!(d.p) + i] then raise Stop
-    done;
-    d.p := !(d.p) + len
-
-  let switch cases otherwise d =
-    let rec loop = function
-      | (s, case) :: cases ->
-          begin match protect (str_ci s) d with
-          | () ->
-              (* Printf.eprintf "--> [%S]\n%!" s; *)
-              case d
-          | exception Stop ->
-              loop cases
-          end
-      | [] ->
-          otherwise d
-    in
-    loop cases
-
-  let pair ?sep p1 p2 d =
-    let sep =
-      match sep with
-      | None -> (fun d -> ignore (char ' ' d))
-      | Some sep -> (fun d -> ignore (sep d))
-    in
-    let x = p1 d in
-    sep d;
-    let y = p2 d in
-    (x, y)
-
-  let stop _ =
-    raise Stop
-
-  let plist ?sep p =
-    delimited '(' (list ?sep p) ')'
-
-  let plist1 ?sep p =
-    delimited '(' (list1 ?sep p) ')'
-
-  let push s p d =
-    (* Printf.eprintf "+ %d %d [%s]\n%!" (List.length d.c) !(d.p) s; *)
-    p {d with c = s :: d.c}
-    (* | x -> *)
-    (*     Printf.eprintf "- [%s]\n%!" s; *)
-    (*     x *)
-    (* | exception e -> *)
-    (*     Printf.eprintf "- [%s] FAIL\n%!" s; *)
-    (*     raise e *)
-end
-
 module Decoder = struct
   open Response
-  open Parser
+  open Angstrom
 
 (*
    CHAR           =  %x01-7F
@@ -1162,7 +960,7 @@ module Decoder = struct
     | _ -> false
 
   let atom =
-    while1 is_atom_char
+    take_while1 is_atom_char
 
 (*
    CR             =  %x0D
@@ -1175,9 +973,8 @@ module Decoder = struct
                           ; Internet standard newline
 *)
 
-  let crlf d =
-    ignore (char '\r' d);
-    ignore (char '\n' d)
+  let crlf =
+    char '\r' *> char '\n' *> return ()
 
 (*
    number          = 1*DIGIT
@@ -1200,18 +997,17 @@ module Decoder = struct
     | '1'..'9' -> true
     | _ -> false
 
-  let number d =
-    Scanf.sscanf (while1 is_digit d) "%lu" (fun n -> n)
+  let number =
+    Int32.of_string <$> take_while1 is_digit
 
   let number =
-    push "number" number
-
-  let nz_number d =
-    let s = capture (preceded (char_pred is_nz_digit) (chars_pred is_digit)) d in
-    Scanf.sscanf s "%lu" (fun n -> n)
+    number <?> "number"
 
   let nz_number =
-    push "nz-number" nz_number
+    Int32.of_string <$> take_while1 is_digit (* FIXME != 0 *)
+
+  let nz_number =
+    nz_number <?> "nz-number"
 
   let uniqueid =
     nz_number
@@ -1224,14 +1020,29 @@ module Decoder = struct
 *)
 
   let quoted_char =
-    char_pred (function '"' | '\\' -> false | '\x01'..'\x7f' -> true | _ -> false) |||
-    preceded (char '\\') (char_pred (function '"' | '\\' -> true | _ -> false))
+    choice
+      [
+        satisfy (function '"' | '\\' -> false | '\x01'..'\x7f' -> true | _ -> false);
+        char '\\' *> satisfy (function '"' | '\\' -> true | _ -> false);
+      ]
 
   let quoted_char =
-    push "quoted-char" quoted_char
+    quoted_char <?> "quoted-char"
 
-  let rec quoted =
-    push "quoted" (delimited '"' (accumulate quoted_char) '"')
+  let accumulate p =
+    let b = Buffer.create 0 in
+    let rec loop () =
+      choice [p >>| (fun c -> `Add c); return `Stop] >>= function
+      | `Add c ->
+          Buffer.add_char b c;
+          loop ()
+      | `Stop ->
+          return (Buffer.contents b)
+    in
+    (Buffer.add_char b <$> p) >>= loop
+
+  let quoted =
+    (char '"' *> accumulate quoted_char <* char '"') <?> "quoted"
 
 (*
    literal         = "{" number "}" CRLF *CHAR8
@@ -1240,16 +1051,14 @@ module Decoder = struct
    string          = quoted / literal
 *)
 
-  let literal d =
-    let n = Int32.to_int (delimited '{' number '}' d) in
-    ignore (crlf d);
-    str_length n d
+  let literal =
+    Int32.to_int <$> (char '{' *> number <* char '}' <* crlf) >>= take
 
   let literal =
-    push "literal" literal
+    literal <?> "literal"
 
   let imap_string =
-    push "string" (quoted ||| literal)
+    choice [quoted; literal] <?> "string"
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -1261,7 +1070,7 @@ module Decoder = struct
     is_atom_char c || c = ']'
 
   let astring =
-    while1 is_astring_char ||| imap_string
+    choice [take_while1 is_astring_char; imap_string]
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -1275,7 +1084,7 @@ module Decoder = struct
     | _ -> false
 
   let text =
-    while1 is_text_char ||| const "" (* allow empty texts for greater tolerance *)
+    choice [take_while1 is_text_char; return ""] (* allow empty texts for greater tolerance *)
 
 (*
    nil             = "NIL"
@@ -1283,17 +1092,17 @@ module Decoder = struct
    nstring         = string / nil
 *)
 
-  let nil c =
-    push "nil" (switch [ "NIL", const c ] stop)
+  let nil =
+    string_ci "NIL"
+
+  let some p =
+    p >>| fun x -> Some x
 
   let nstring =
-    let imap_string d = Some (imap_string d) in
-    nil None ||| imap_string
+    choice [nil *> return None; some imap_string]
 
-  let nstring' d =
-    match nstring d with
-    | Some s -> s
-    | None -> ""
+  let nstring' =
+    nstring >>| function Some s -> s | None -> ""
 
 (*
    flag-extension  = "\\" atom
@@ -1311,44 +1120,47 @@ module Decoder = struct
                        ; Does not include "\Recent"
 *)
 
-  let flag_keyword d =
-    Flag.Keyword (atom d)
+  let flag_keyword =
+    atom >>| fun s -> Flag.Keyword s
 
   let flag_keyword =
-    push "flag-keyword" flag_keyword
-
-  let flag_extension d =
-    Flag.Extension (preceded (char '\\') atom d)
+    flag_keyword <?> "flag-keyword"
 
   let flag_extension =
-    push "flag-extension" flag_extension
+    char '\\' *> atom >>| fun s -> Flag.Extension s
+
+  let flag_extension =
+    flag_extension <?> "flag-extension"
+
+  let switch cases =
+    choice (List.map (fun (s, p) -> string_ci s *> commit *> p) cases)
 
   let flag =
     let open Flag in
     let cases =
       [
-        "\\Answered", const Answered;
-        "\\Flagged", const Flagged;
-        "\\Deleted", const Deleted;
-        "\\Seen", const Seen;
-        "\\Draft", const Draft;
+        "\\Answered", return Answered;
+        "\\Flagged", return Flagged;
+        "\\Deleted", return Deleted;
+        "\\Seen", return Seen;
+        "\\Draft", return Draft;
       ]
     in
-    push "flag" (switch cases (flag_keyword ||| flag_extension))
+    choice [switch cases; flag_keyword; flag_extension] <?> "flag"
 
 (*
    flag-fetch      = flag / "\Recent"
 *)
 
   let flag_fetch =
-    push "flag-fetch" (switch [ "\\Recent", const Flag.Recent ] flag)
+    choice [switch ["\\Recent", return Flag.Recent]; flag] <?> "flag-fetch"
 
 (*
    flag-perm       = flag / "\*"
 *)
 
   let flag_perm =
-    push "flag-perm" (switch [ "\\*", const Flag.Any ] flag)
+    choice [switch ["\\*", return Flag.Any]; flag] <?> "flag-perm"
 
 (*
    seq-number      = nz-number / "*"
@@ -1397,12 +1209,26 @@ module Decoder = struct
                      ; Example: 2:4 and 4:2 are equivalent.
 *)
 
+  let sp = char ' '
+
+  let pair sep p1 p2 =
+    p1 >>= fun a1 -> sep *> p2 >>| fun a2 -> (a1, a2)
+
+  let triple sep p1 p2 p3 =
+    p1 >>= fun a1 -> sep *> p2 >>= fun a2 -> sep *> p3 >>| fun a3 -> (a1, a2, a3)
+
+  let psep_by1 sep p =
+    char '(' *> sep_by1 sep p <* char ')'
+
+  let psep_by sep p =
+    char '(' *> sep_by sep p <* char ')'
+
   let uid_range =
-    push "uid-range" (pair ~sep:(char ':') uniqueid uniqueid)
+    (pair (char ':') uniqueid uniqueid) <?> "uid-range"
 
   let uid_set =
-    let uniqueid d = let n = uniqueid d in n, n in
-    push "uid-set" (list1 ~sep:',' (uniqueid ||| uid_range))
+    let uniqueid = uniqueid >>| fun n -> n, n in
+    sep_by1 (char ',') (choice [uniqueid; uid_range]) <?> "uid-set"
 
   (* We never parse '*' since it does not seem to show up in responses *)
   let sequence_set =
@@ -1466,39 +1292,38 @@ module Decoder = struct
     is_text_char c && (c <> ']')
 
   let text_1 =
-    while1 is_text_other_char ||| const "" (* We allow empty text_1 *)
+    choice [take_while1 is_text_other_char; return ""] (* We allow empty text_1 *)
 
   let capability =
     let cases =
       [
-        "COMPRESS=DEFLATE", const COMPRESS_DEFLATE;
-        "CONDSTORE", const CONDSTORE;
-        "ENABLE", const ENABLE;
-        "IDLE", const IDLE;
-        "LITERAL+", const LITERALPLUS;
-        "LITERAL-", const LITERALMINUS;
-        "UTF8=ACCEPT", const UTF8_ACCEPT;
-        "UTF8=ONLY", const UTF8_ONLY;
-        "NAMESPACE", const NAMESPACE;
-        "ID", const ID;
-        "QRESYNC", const QRESYNC;
-        "UIDPLUS", const UIDPLUS;
-        "UNSELECT", const UNSELECT;
-        "XLIST", const XLIST;
-        "AUTH=PLAIN", const AUTH_PLAIN;
-        "AUTH=LOGIN", const AUTH_LOGIN;
-        "XOAUTH2", const XOAUTH2;
-        "X-GM-EXT-1", const X_GM_EXT_1;
+        "COMPRESS=DEFLATE", return COMPRESS_DEFLATE;
+        "CONDSTORE", return CONDSTORE;
+        "ENABLE", return ENABLE;
+        "IDLE", return IDLE;
+        "LITERAL+", return LITERALPLUS;
+        "LITERAL-", return LITERALMINUS;
+        "UTF8=ACCEPT", return UTF8_ACCEPT;
+        "UTF8=ONLY", return UTF8_ONLY;
+        "NAMESPACE", return NAMESPACE;
+        "ID", return ID;
+        "QRESYNC", return QRESYNC;
+        "UIDPLUS", return UIDPLUS;
+        "UNSELECT", return UNSELECT;
+        "XLIST", return XLIST;
+        "AUTH=PLAIN", return AUTH_PLAIN;
+        "AUTH=LOGIN", return AUTH_LOGIN;
+        "XOAUTH2", return XOAUTH2;
+        "X-GM-EXT-1", return X_GM_EXT_1;
       ]
     in
-    let otherwise d = OTHER (atom d) in
-    push "capability" (switch cases otherwise)
-
-  let mod_sequence_value d =
-    Modseq.of_string (capture (preceded (char_pred is_nz_digit) (while1 is_digit)) d)
+    choice [switch cases; atom >>| (fun s -> OTHER s)] <?> "capability"
 
   let mod_sequence_value =
-    push "mod-sequence-value" mod_sequence_value
+    Modseq.of_string <$> take_while1 is_digit (* FIXME non zero *)
+
+  let mod_sequence_value =
+    mod_sequence_value <?> "mod-sequence-value"
 
   let append_uid = uniqueid
 
@@ -1506,54 +1331,41 @@ module Decoder = struct
     let open Code in
     let cases =
       [
-        "ALERT", const ALERT;
-        "BADCHARSET", (fun d -> BADCHARSET (rep (sp astring) d));
-        "CAPABILITY", (fun d -> CAPABILITY (sp (list1 capability) d));
-        "PARSE", const PARSE;
-        "PERMANENTFLAGS",
-        (fun d -> PERMANENTFLAGS (sp (plist flag_perm) d));
-        "READ-ONLY", const READ_ONLY;
-        "READ-WRITE", const READ_WRITE;
-        "TRYCREATE", const TRYCREATE;
-        "UIDNEXT", (fun d -> UIDNEXT (sp nz_number d));
-        "UIDVALIDITY", (fun d -> UIDVALIDITY (sp nz_number d));
-        "UNSEEN", (fun d -> UNSEEN (sp nz_number d));
-        "CLOSED", const CLOSED;
-        "HIGHESTMODSEQ", (fun d -> HIGHESTMODSEQ (sp mod_sequence_value d));
-        "NOMODSEQ", const NOMODSEQ;
-        "MODIFIED", (fun d -> MODIFIED (sp set d));
-        "APPENDUID",
-        (fun d ->
-           let n = sp nz_number d in
-           let uid = append_uid d in
-           APPENDUID (n, uid)
-        );
-        "COPYUID",
-        (fun d ->
-           let n = sp nz_number d in
-           let s1 = sp set d in
-           let s2 = sp set d in
-           COPYUID (n, s1, s2)
-        );
-        "UIDNOTSTICKY", const UIDNOTSTICKY;
-        "COMPRESSIONACTIVE", const COMPRESSIONACTIVE;
-        "USEATTR", const USEATTR;
+        "ALERT", return ALERT;
+        "BADCHARSET", many (sp *> astring) >>| (fun l -> BADCHARSET l);
+        "CAPABILITY", many (sp *> capability) >>| (fun l -> CAPABILITY l);
+        "PARSE", return PARSE;
+        "PERMANENTFLAGS", sp *> psep_by sp flag_perm >>| (fun l -> PERMANENTFLAGS l);
+        "READ-ONLY", return READ_ONLY;
+        "READ-WRITE", return READ_WRITE;
+        "TRYCREATE", return TRYCREATE;
+        "UIDNEXT", sp *> nz_number >>| (fun n -> UIDNEXT n);
+        "UIDVALIDITY", sp *> nz_number >>| (fun n -> UIDVALIDITY n);
+        "UNSEEN", sp *> nz_number >>| (fun n -> UNSEEN n);
+        "CLOSED", return CLOSED;
+        "HIGHESTMODSEQ", sp *> mod_sequence_value >>| (fun n -> HIGHESTMODSEQ n);
+        "NOMODSEQ", return NOMODSEQ;
+        "MODIFIED", sp *> set >>| (fun l -> MODIFIED l);
+        "APPENDUID", sp *> pair sp nz_number append_uid >>| (fun (n, uid) -> APPENDUID (n, uid));
+        "COPYUID", sp *> triple sp nz_number set set >>| (fun (n, s1, s2) -> COPYUID (n, s1, s2));
+        "UIDNOTSTICKY", return UIDNOTSTICKY;
+        "COMPRESSIONACTIVE", return COMPRESSIONACTIVE;
+        "USEATTR", return USEATTR;
       ]
     in
-    let other d =
-      let a = atom d in
-      let text d = Some (sp text_1 d) in
-      OTHER (a, (text ||| const None) d)
+    let other =
+      atom >>= fun a -> option None (sp *> some text_1) >>| fun x ->
+      OTHER (a, x)
     in
-    push "resp-text-code" (switch cases other)
+    choice [switch cases; other] <?> "resp-text-code"
 
 (*
    resp-text       = ["[" resp-text-code "]" SP] text
 *)
 
   let resp_text =
-    push "resp-text"
-      (pair ~sep:empty (option (terminated (delimited '[' resp_text_code ']') (char ' '))) text)
+    let resp_text_code = char '[' *> some resp_text_code <* char ']' <* char ' ' in
+    pair (return ()) resp_text_code text <?> "resp-text"
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
@@ -1563,12 +1375,12 @@ module Decoder = struct
   let resp_cond_state =
     let cases =
       [
-        "OK", (fun d -> let c, t = sp resp_text d in OK (c, t));
-        "NO", (fun d -> let c, t = sp resp_text d in NO (c, t));
-        "BAD", (fun d -> let c, t = sp resp_text d in BAD (c, t));
+        "OK", sp *> resp_text >>| (fun (c, t) -> OK (c, t));
+        "NO", sp *> resp_text >>| (fun (c, t) -> NO (c, t));
+        "BAD", sp *> resp_text >>| (fun (c, t) -> BAD (c, t));
       ]
     in
-    push "resp-cond-state" (switch cases stop)
+    switch cases <?> "resp-cond-state"
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -1604,23 +1416,23 @@ module Decoder = struct
     let open MbxFlag in
     let cases =
       [
-        "\\Noselect", const Noselect;
-        "\\Marked", const Marked;
-        "\\Unmarked", const Unmarked;
-        "\\Noinferiors", const Noinferiors;
-        "\\HasChildren", const HasChildren;
-        "\\HasNoChildren", const HasNoChildren;
-        "\\All", const All;
-        "\\Archive", const Archive;
-        "\\Drafts", const Drafts;
-        "\\Flagged", const Flagged;
-        "\\Junk", const Junk;
-        "\\Sent", const Sent;
-        "\\Trash", const Trash;
+        "\\Noselect", return Noselect;
+        "\\Marked", return Marked;
+        "\\Unmarked", return Unmarked;
+        "\\Noinferiors", return Noinferiors;
+        "\\HasChildren", return HasChildren;
+        "\\HasNoChildren", return HasNoChildren;
+        "\\All", return All;
+        "\\Archive", return Archive;
+        "\\Drafts", return Drafts;
+        "\\Flagged", return Flagged;
+        "\\Junk", return Junk;
+        "\\Sent", return Sent;
+        "\\Trash", return Trash;
       ]
     in
-    let extension d = Extension (atom d) in
-    push "mbx-flag" (switch cases extension)
+    let extension = atom >>| fun s -> Extension s in
+    choice [switch cases; extension] <?> "mbx-flag"
 
 (*
    mailbox         = "INBOX" / astring
@@ -1633,12 +1445,11 @@ module Decoder = struct
                        ; semantic details of mailbox names.
 *)
 
-  let mailbox d =
-    let s = astring d in
-    try Mutf7.decode s with _ -> s
+  let mailbox =
+    astring >>| fun s -> try Mutf7.decode s with _ -> s
 
   let mailbox =
-    push "mailbox" mailbox
+    mailbox <?> "mailbox"
 
 (*
    mailbox-list    = "(" [mbx-list-flags] ")" SP
@@ -1646,17 +1457,10 @@ module Decoder = struct
 *)
 
   let delim =
-    let quoted_char d = Some (quoted_char d) in
-    delimited '"' quoted_char '"' ||| nil None
-
-  let mailbox_list d =
-    let x = plist mbx_flag d in
-    let y = sp delim d in
-    let m = sp mailbox d in
-    x, y, m
+    choice [char '"' *> some quoted_char <* char '"'; nil *> return None]
 
   let mailbox_list =
-    push "mailbox-list" mailbox_list
+    triple sp (psep_by sp mbx_flag) delim mailbox <?> "mailbox-list"
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1676,21 +1480,21 @@ module Decoder = struct
                           ;; as described in Section 3.1.2
 *)
 
-  let mod_sequence_valzer d =
-    Modseq.of_string (while1 is_digit d)
+  let mod_sequence_valzer =
+    Modseq.of_string <$> take_while1 is_digit
 
   let status_att =
     let cases =
       [
-        "MESSAGES", (fun d -> Response.MESSAGES (Int32.to_int (sp number d)));
-        "RECENT", (fun d -> RECENT (Int32.to_int (sp number d)));
-        "UIDNEXT", (fun d -> UIDNEXT (sp number d));
-        "UIDVALIDITY", (fun d -> UIDVALIDITY (sp number d));
-        "UNSEEN", (fun d -> UNSEEN (sp number d));
-        "HIGHESTMODSEQ", (fun d -> HIGHESTMODSEQ (mod_sequence_valzer d));
+        "MESSAGES", sp *> number >>| (fun n -> (MESSAGES (Int32.to_int n) : mbx_att));
+        "RECENT", sp *> number >>| (fun n -> (RECENT (Int32.to_int n) : mbx_att));
+        "UIDNEXT", sp *> number >>| (fun n -> UIDNEXT n);
+        "UIDVALIDITY", sp *> number >>| (fun n -> UIDVALIDITY n);
+        "UNSEEN", sp *> number >>| (fun n -> UNSEEN n);
+        "HIGHESTMODSEQ", sp *> mod_sequence_valzer >>| (fun n -> HIGHESTMODSEQ n);
       ]
     in
-    push "status-att" (switch cases stop)
+    switch cases <?> "status-att"
 
 (*
    address         = "(" addr-name SP addr-adl SP addr-mailbox SP
@@ -1716,17 +1520,17 @@ module Decoder = struct
                        ; mailbox after removing [RFC-2822] quoting
 *)
 
-  let address d =
-    ignore (char '(' d);
-    let ad_name = nstring' d in
-    let ad_adl = sp nstring' d in
-    let ad_mailbox = sp nstring' d in
-    let ad_host = sp nstring' d in
-    ignore (char ')' d);
-    {ad_name; ad_adl; ad_mailbox; ad_host}
+  let address =
+    char '(' *>
+    nstring' >>= fun ad_name ->
+    sp *> nstring' >>= fun ad_adl ->
+    sp *> nstring' >>= fun ad_mailbox ->
+    sp *> nstring' >>= fun ad_host ->
+    char ')' *>
+    return {ad_name; ad_adl; ad_mailbox; ad_host}
 
   let address =
-    push "address" address
+    address <?> "address"
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -1754,35 +1558,38 @@ module Decoder = struct
    env-to          = "(" 1*address ")" / nil
 *)
 
-  let envelope d =
-    let address_list = delimited '(' (rep1 address) ')' ||| nil [] in
-    ignore (char '(' d);
-    let env_date = nstring' d in
-    let env_subject = sp nstring' d in
-    let env_from = sp address_list d in
-    let env_sender = sp address_list d in
-    let env_reply_to = sp address_list d in
-    let env_to = sp address_list d in
-    let env_cc = sp address_list d in
-    let env_bcc = sp address_list d in
-    let env_in_reply_to = sp nstring' d in
-    let env_message_id = sp nstring' d in
-    ignore (char ')' d);
-    {
-      env_date;
-      env_subject;
-      env_from;
-      env_sender;
-      env_reply_to;
-      env_to;
-      env_cc;
-      env_bcc;
-      env_in_reply_to;
-      env_message_id
-    }
+  let envelope =
+    let address_list =
+      choice [char '(' *> commit *> many1 address <* char ')'; nil *> return []]
+    in
+    char '(' *>
+    nstring' >>= fun env_date ->
+    sp *> nstring' >>= fun env_subject ->
+    sp *> address_list >>= fun env_from ->
+    sp *> address_list >>= fun env_sender ->
+    sp *> address_list >>= fun env_reply_to ->
+    sp *> address_list >>= fun env_to ->
+    sp *> address_list >>= fun env_cc ->
+    sp *> address_list >>= fun env_bcc ->
+    sp *> nstring' >>= fun env_in_reply_to ->
+    sp *> nstring' >>= fun env_message_id ->
+    char ')' *>
+    return
+      {
+        env_date;
+        env_subject;
+        env_from;
+        env_sender;
+        env_reply_to;
+        env_to;
+        env_cc;
+        env_bcc;
+        env_in_reply_to;
+        env_message_id
+      }
 
   let envelope =
-    push "envelope" envelope
+    envelope <?> "envelope"
 
 (*
    body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
@@ -1801,21 +1608,21 @@ module Decoder = struct
 *)
 
   let body_fld_param =
-    push "body-fld-param" (plist1 (pair imap_string imap_string) ||| nil [])
+    choice [psep_by1 sp (pair sp imap_string imap_string); nil *> return []] <?> "body-fld-param"
 
   let body_fld_octets =
-    push "body-fld-octets" number
+    number <?> "body-fld-octets"
 
-  let body_fields d =
-    let fld_params = body_fld_param d in
-    let fld_id = sp nstring d in
-    let fld_desc = sp nstring d in
-    let fld_enc = sp imap_string d in
-    let fld_octets = Int32.to_int (sp body_fld_octets d) in
+  let body_fields =
+    body_fld_param >>= fun fld_params ->
+    sp *> nstring >>= fun fld_id ->
+    sp *> nstring >>= fun fld_desc ->
+    sp *> imap_string >>= fun fld_enc ->
+    sp *> body_fld_octets >>| Int32.to_int >>| fun fld_octets ->
     {MIME.fld_params; fld_id; fld_desc; fld_enc; fld_octets}
 
   let body_fields =
-    push "body-fields" body_fields
+    body_fields <?> "body-fields"
 
 (*
    body-extension  = nstring / number /
@@ -1828,12 +1635,15 @@ module Decoder = struct
                        ; revisions of this specification.
 *)
 
-  let rec body_extension d =
+  let body_extension body_extension =
     let open MIME in
-    let nstring d = String (nstring' d) in
-    let number d = Number (number d) in
-    let list d = List (plist1 body_extension d) in
-    push "body-extension" (nstring ||| number ||| list) d
+    let nstring = nstring' >>| fun s -> String s in
+    let number = number >>| fun n -> Number n in
+    let list = psep_by1 sp body_extension >>| fun l -> List l in
+    choice [nstring; number; list]
+
+  let body_extension =
+    fix body_extension <?> "body-extension"
 
 (*
    body-fld-md5    = nstring
@@ -1856,43 +1666,34 @@ module Decoder = struct
 *)
 
   let body_fld_dsp =
-    let dsp d = Some (pair imap_string body_fld_param d) in
-    push "body-fld-dsp" (delimited '(' dsp ')' ||| nil None)
+    let dsp = some (pair sp imap_string body_fld_param) in
+    choice [char '(' *> dsp <* char ')'; nil *> return None] <?> "body-fld-dsp"
 
   let body_fld_lang =
-    let nstring d = [nstring' d] in
-    push "body-fld-lang" (nstring ||| plist1 imap_string)
+    let nstring = nstring' >>| fun s -> [s] in
+    choice [nstring; psep_by1 sp imap_string] <?> "body-fld-lang"
 
   let body_fld_loc =
-    push "body-fld-loc" nstring
+    nstring <?> "body-fld-loc"
 
-  let body_ext_gen d =
-    let ext_dsp = option (sp body_fld_dsp) d in
-    let ext_lang =
-      match ext_dsp with
-      | None -> None
-      | Some _ -> option (sp body_fld_lang) d
-    in
-    let ext_loc =
-      match ext_lang with
-      | None -> None
-      | Some _ -> option (sp body_fld_loc) d
-    in
-    let ext_ext =
-      match ext_loc with
-      | None -> []
-      | Some _ -> rep (sp body_extension) d
-    in
-    let ext_dsp = match ext_dsp with None -> None | Some x -> x in
-    let ext_lang = match ext_lang with None -> [] | Some l -> l in
-    let ext_loc = match ext_loc with None -> None | Some s -> s in
-    {MIME.ext_dsp; ext_lang; ext_loc; ext_ext}
+  let body_ext_gen =
+    option None (sp *> some body_fld_dsp) >>= function
+    | None -> return {MIME.ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
+    | Some ext_dsp ->
+        option None (sp *> some body_fld_lang) >>= function
+        | None -> return {MIME.ext_dsp; ext_lang = []; ext_loc = None; ext_ext = []}
+        | Some ext_lang ->
+            option None (sp *> some body_fld_loc) >>= function
+            | None -> return {MIME.ext_dsp; ext_lang; ext_loc = None; ext_ext = []}
+            | Some ext_loc ->
+                many (sp *> body_extension) >>| fun ext_ext ->
+                {MIME.ext_dsp; ext_lang; ext_loc; ext_ext}
 
   let body_ext_1part =
-    push "body-ext-1part" (pair ~sep:empty nstring body_ext_gen) (* FIXME *)
+    pair (return ()) nstring body_ext_gen <?> "body-ext-1part" (* FIXME *)
 
   let body_ext_mpart =
-    push "body-ext-mpart" (pair ~sep:empty body_fld_param body_ext_gen) (* FIXME *)
+    pair (return ()) body_fld_param body_ext_gen <?> "body-ext-mpart" (* FIXME *)
 
 (*
    body-fld-lines  = number
@@ -1929,65 +1730,63 @@ module Decoder = struct
 *)
 
   let body_fld_lines =
-    let number d = Int32.to_int (number d) in
-    push "body-fld-lines" number
+    (Int32.to_int <$> number) <?> "body-fld-lines"
 
   let media_subtype =
-    push "media-subtype" imap_string
+    imap_string <?> "media-subtype"
 
   let media_basic =
-    push "media-basic" (pair imap_string media_subtype) (* FIXME *)
+    pair sp imap_string media_subtype <?> "media-basic" (* FIXME *)
 
-  let rec body_type_mpart d = (* TODO Return the extension data *)
-    let aux d =
-      let bodies = rep1 body d in
-      let media_subtype = sp imap_string d in
-      ignore (option (sp body_ext_mpart) d);
-      MIME.Multipart (bodies, media_subtype)
-    in
-    push "body-type-mpart" aux d
+  let body_type_mpart body body_type_mpart = (* TODO Return the extension data *)
+    many1 body >>= fun bodies ->
+    sp *> imap_string >>= fun media_subtype ->
+    option None (sp *> some body_ext_mpart) >>| fun _ ->
+    MIME.Multipart (bodies, media_subtype)
 
-  and body_type_basic media_type media_subtype d =
-    let aux d =
-      let body_fields = sp body_fields d in
+  let body_type_mpart body =
+    fix (body_type_mpart body) <?> "body-type-mpart"
+
+  let body_type_basic media_type media_subtype =
+    let aux =
+      sp *> body_fields >>| fun body_fields ->
       MIME.Basic (media_type, media_subtype, body_fields)
     in
-    push "body-type-basic" aux d
+    aux <?> "body-type-basic"
 
-  and body_type_msg d =
-    let aux d =
-      let body_fields = sp body_fields d in
-      let envelope = sp envelope d in
-      let body = sp body d in
-      let body_fld_lines = sp body_fld_lines d in
+  let body_type_msg body =
+    let aux =
+      sp *> body_fields >>= fun body_fields ->
+      sp *> envelope >>= fun envelope ->
+      sp *> body >>= fun body ->
+      sp *> body_fld_lines >>| fun body_fld_lines ->
       MIME.Message (body_fields, envelope, body, body_fld_lines)
     in
-    push "body-type-msg" aux d
+    aux <?> "body-type-msg"
 
-  and body_type_text media_subtype d =
-    let aux d =
-      let body_fields = sp body_fields d in
-      let body_fld_lines = sp body_fld_lines d in
+  let body_type_text media_subtype =
+    let aux =
+      sp *> body_fields >>= fun body_fields ->
+      sp *> body_fld_lines >>| fun body_fld_lines ->
       MIME.Text (media_subtype, body_fields, body_fld_lines)
     in
-    push "body-type-text" aux d
+    aux <?> "body-type-text"
 
-  and body_type_1part d = (* TODO Return the extension data *)
-    let aux d =
-      let media_type, media_subtype = media_basic d in
+  let body_type_1part body = (* TODO Return the extension data *)
+    let aux =
+      media_basic >>= fun (media_type, media_subtype) ->
       let body =
         match media_type, media_subtype with
-        | "MESSAGE", "RFC822" -> body_type_msg d
-        | "TEXT", _ -> body_type_text media_subtype d
-        | _ -> body_type_basic media_type media_subtype d
+        | "MESSAGE", "RFC822" -> body_type_msg body
+        | "TEXT", _ -> body_type_text media_subtype
+        | _ -> body_type_basic media_type media_subtype
       in
-      ignore (option (sp body_ext_1part) d);
-      body
+      option None (sp *> some body_ext_1part) >>= fun _ -> body
     in
-    push "body-type-1part" aux d
+    aux <?> "body-type-1part"
 
-  and body d =
-    push "body" (delimited '(' (body_type_1part ||| body_type_mpart) ')') d
+  let body =
+    fix (fun body -> char '(' *> choice [body_type_1part body; body_type_mpart body] <* char ')') <?> "body"
 
 (*
    DIGIT           =  %x30-39
@@ -2016,20 +1815,18 @@ module Decoder = struct
                      SP time SP zone DQUOTE
 *)
 
-  let digit d =
-    Char.code (char_pred is_digit d) - Char.code '0'
+  let digit =
+    satisfy is_digit >>| fun c -> Char.code c - Char.code '0'
 
-  let digits n d =
-    let rec loop acc i =
-      if i >= n then
-        acc
-      else
-        loop (10 * acc + digit d) (i+1)
-    in
-    loop 0 0
+  let digits2 =
+    digit >>= fun n -> digit >>| fun m -> n*10 + m
+
+  let digits4 =
+    digit >>= fun n -> digit >>= fun m -> digit >>= fun p -> digit >>| fun q ->
+    n*1000 + m*100 + p*10 + q
 
   let date_day_fixed =
-    push "date-day-fixed" (preceded (char ' ') digit ||| digits 2)
+    choice [sp *> digit; digits2] <?> "date-day-fixed"
 
   let date_month =
     let months =
@@ -2038,48 +1835,37 @@ module Decoder = struct
         "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec";
       ]
     in
-    push "date-month" (switch (List.mapi (fun i m -> m, const i) months) stop)
+    switch (List.mapi (fun i m -> m, return i) months) <?> "date-month"
 
   let date_year =
-    push "date-year" (digits 4)
-
-  let time d =
-    let hours = digits 2 d in
-    ignore (char ':' d);
-    let minutes = digits 2 d in
-    ignore (char ':' d);
-    let seconds = digits 2 d in
-    (hours, minutes, seconds)
+    digits4 <?> "date-year"
 
   let time =
-    push "time" time
+    triple (char ':') digits2 digits2 digits2
 
-  let zone d =
-    match char_pred (function '-' | '+' -> true | _ -> false) d with
-    | '+' ->
-        digits 4 d
-    | '-' ->
-        - (digits 4 d)
-    | _ ->
-        assert false
+  let time =
+    time <?> "time"
 
   let zone =
-    push "zone" zone
+    switch
+      [
+        "+", digits4;
+        "-", digits4 >>| (fun n -> -n);
+      ]
+
+  let zone =
+    zone <?> "zone"
 
   let date_time =
-    let aux d =
-      let day = date_day_fixed d in
-      ignore (char '-' d);
-      let month = date_month d in
-      ignore (char '-' d);
-      let year = date_year d in
-      ignore (char ' ' d);
-      let hours, minutes, seconds = time d in
-      ignore (char ' ' d);
-      let zone = zone d in
+    let aux =
+      date_day_fixed >>= fun day ->
+      char '-' *> date_month >>= fun month ->
+      char '-' *> date_year >>= fun year ->
+      char ' ' *> time >>= fun (hours, minutes, seconds) ->
+      char ' ' *> zone >>| fun zone ->
       {day; month; year}, {hours; minutes; seconds; zone}
     in
-    push "date-time" (delimited '"' aux '"')
+    (char '"' *> aux <* char '"') <?> "date-time"
 
 (*
    header-fld-name = astring
@@ -2102,38 +1888,38 @@ module Decoder = struct
 *)
 
   let header_fld_name =
-    push "header-fld-name" astring
+    astring <?> "header-fld-name"
 
   let header_list =
-    push "header-list" (plist1 header_fld_name)
+    psep_by1 sp header_fld_name <?> "header-list"
 
   let section_msgtext =
     let cases =
       [
-        "HEADER.FIELDS.NOT", (fun d -> HEADER_FIELDS_NOT (sp header_list d));
-        "HEADER.FIELDS", (fun d -> HEADER_FIELDS (sp header_list d));
-        "HEADER", const HEADER;
-        "TEXT", const TEXT;
+        "HEADER.FIELDS.NOT", sp *> header_list >>| (fun l -> HEADER_FIELDS_NOT l);
+        "HEADER.FIELDS", sp *> header_list >>| (fun l -> HEADER_FIELDS l);
+        "HEADER", return HEADER;
+        "TEXT", return TEXT;
       ]
     in
-    push "section-msgtext" (switch cases stop)
+    switch cases <?> "section-msgtext"
 
   let section_text =
-    push "section-text" (section_msgtext ||| switch ["MIME", const MIME] stop)
+    choice [section_msgtext; switch ["MIME", return MIME]] <?> "section-text"
 
   let section_part =
-    push "section-part" (list1 ~sep:'.' nz_number)
+    sep_by1 (char '.') nz_number <?> "section-part"
 
-  let rec section_spec =
-    let aux d =
-      let l = section_part d in
-      let p = (section_text ||| const All) d in
+  let section_spec =
+    let aux =
+      section_part >>= fun l ->
+      choice [section_text; return All] >>| fun p ->
       List.fold_right (fun i x -> Part (Int32.to_int i, x)) l p
     in
-    push "section-spec" (section_msgtext ||| aux)
+    choice [section_msgtext; aux] <?> "section-spec"
 
   let section =
-    push "section" (delimited '[' (section_spec ||| const All) ']')
+    (char '[' *> choice [section_spec; return All] <* char ']') <?> "section"
 
 (*
    msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -2171,51 +1957,44 @@ module Decoder = struct
 *)
 
   let permsg_modsequence =
-    push "permsg-modsequence" mod_sequence_value
+    mod_sequence_value <?> "permsg-modsequence"
 
   let msg_att_dynamic =
     let cases =
       [
-        "FLAGS", (fun d -> (FLAGS (sp (plist flag_fetch) d) : msg_att));
-        "MODSEQ", (fun d -> MODSEQ (sp permsg_modsequence d));
-        "X-GM-LABELS", (fun d -> X_GM_LABELS (sp (plist astring ||| nil []) d));
+        "FLAGS", sp *> psep_by sp flag_fetch >>| (fun l -> (FLAGS l : msg_att));
+        "MODSEQ", sp *> permsg_modsequence >>| (fun n -> MODSEQ n);
+        "X-GM-LABELS", sp *> choice [psep_by sp astring; nil *> return []] >>| (fun l -> X_GM_LABELS l);
       ]
     in
-    push "msg-att-dynamic" (switch cases stop)
+    switch cases <?> "msg-att-dynamic"
 
   let msg_att_static =
+    let section =
+      section >>= fun s ->
+      option None (char '<' *> some (Int32.to_int <$> number) <* char '>') >>= fun r ->
+      sp *> nstring >>| fun x ->
+      BODY_SECTION (s, r, x)
+    in
     let cases =
       [
-        "ENVELOPE", (fun d -> ENVELOPE (sp envelope d));
-        "INTERNALDATE", (fun d -> let t1, t2 = sp date_time d in INTERNALDATE (t1, t2));
-        "RFC822.HEADER", (fun d -> RFC822_HEADER (sp nstring d));
-        "RFC822.TEXT", (fun d -> RFC822_TEXT (sp nstring d));
-        "RFC822.SIZE", (fun d -> RFC822_SIZE (Int32.to_int (sp number d)));
-        "RFC822", (fun d -> RFC822 (sp nstring d));
-        "BODYSTRUCTURE", (fun d -> BODYSTRUCTURE (sp body d));
-        "BODY",
-        (fun d ->
-           let body d = BODY (body d) in
-           let section d =
-             let s = section d in
-             let r =
-               let number d = Int32.to_int (number d) in
-               option (delimited '<' number '>') d
-             in
-             let x = sp nstring d in
-             BODY_SECTION (s, r, x)
-           in
-           (sp body ||| section) d
-        );
-        "UID", (fun d -> UID (sp uniqueid d));
-        "X-GM-MSGID", (fun d -> X_GM_MSGID (sp mod_sequence_value d));
-        "X-GM-THRID", (fun d -> X_GM_THRID (sp mod_sequence_value d));
+        "ENVELOPE", sp *> envelope >>| (fun e -> ENVELOPE e);
+        "INTERNALDATE", sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t));
+        "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s);
+        "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s);
+        "RFC822.SIZE", sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n));
+        "RFC822", sp *> nstring >>| (fun s -> RFC822 s);
+        "BODYSTRUCTURE", sp *> body >>| (fun b -> BODYSTRUCTURE b);
+        "BODY", choice [sp *> body >>| (fun b -> BODY b); section];
+        "UID", sp *> uniqueid >>| (fun n -> UID n);
+        "X-GM-MSGID", sp *> mod_sequence_value >>| (fun n -> X_GM_MSGID n);
+        "X-GM-THRID", sp *> mod_sequence_value >>| (fun n -> X_GM_THRID n);
       ]
     in
-    push "msg-att-static" (switch cases stop)
+    switch cases <?> "msg-att-static"
 
   let msg_att =
-    push "msg-att" (plist1 (msg_att_static ||| msg_att_dynamic))
+    psep_by1 sp (msg_att_static <|> msg_att_dynamic) <?> "msg-att"
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -2248,70 +2027,60 @@ module Decoder = struct
 *)
 
   let flag_list =
-    push "flag-list" (plist flag)
+    psep_by sp flag <?> "flag-list"
 
   let status_att_list =
-    push "status-att-list" (list status_att)
+    sep_by sp status_att <?> "status-att-list"
 
   let search_sort_mod_seq =
-    push "search-sort-mod-seq"
-      (delimited '(' (switch [ "MODSEQ", sp mod_sequence_value ] stop) ')')
+    (char '(' *> switch ["MODSEQ", sp *> mod_sequence_value] <* char ')') <?> "search-sort-mod-seq"
 
   let mailbox_data =
     let cases =
       [
-        "FLAGS", (fun d -> FLAGS (sp flag_list d));
-        "LIST", (fun d -> let xs, c, m = sp mailbox_list d in LIST (xs, c, m));
-        "LSUB", (fun d -> let xs, c, m = sp mailbox_list d in LSUB (xs, c, m));
-        "SEARCH",
-        (fun d ->
-           let acc, n =
-             pair ~sep:empty (rep (sp nz_number)) (option (sp search_sort_mod_seq)) d
-           in
-           SEARCH (acc, n)
-        );
-        "STATUS",
-        (fun d ->
-           let m = sp mailbox d in
-           STATUS (m, sp (delimited '(' status_att_list ')') d)
-        )
+        "FLAGS", sp *> flag_list >>| (fun l -> FLAGS l);
+        "LIST", sp *> mailbox_list >>| (fun (xs, c, m) -> LIST (xs, c, m));
+        "LSUB", sp *> mailbox_list >>| (fun (xs, c, m) -> LSUB (xs, c, m));
+        "SEARCH", pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n));
+        "STATUS", sp *> pair sp mailbox (char '(' *> status_att_list <* char ')') >>| (fun (m, l) ->
+            STATUS (m, l));
       ]
     in
-    let otherwise d =
-      let n = number d in
+    let otherwise =
+      number >>| Int32.to_int >>= fun n ->
       let cases =
         [
-          "EXISTS", const (EXISTS (Int32.to_int n));
-          "RECENT", const (RECENT (Int32.to_int n));
+          "EXISTS", return (EXISTS n);
+          "RECENT", return (RECENT n);
         ]
       in
-      sp (switch cases stop) d
+      sp *> switch cases
     in
-    push "mailbox-data" (switch cases otherwise)
+    choice [switch cases; otherwise] <?> "mailbox-data"
 
   let capability_data =
     let cases =
       [
-        "CAPABILITY", (fun d -> CAPABILITY (sp (list1 capability) d));
+        "CAPABILITY", many (sp *> capability) >>| (fun l -> CAPABILITY l);
       ]
     in
-    push "capability-data" (switch cases stop)
+    switch cases <?> "capability-date"
 
   let enable_data =
     let cases =
       [
-        "ENABLED", (fun d -> ENABLED (rep (sp capability) d));
+        "ENABLED", many (sp *> capability) >>| (fun l -> ENABLED l);
       ]
     in
-    push "enable-data" (switch cases stop)
+    switch cases <?> "enable-data"
 
   let resp_cond_bye =
     let cases =
       [
-        "BYE", (fun d -> let c, t = sp resp_text d in BYE (c, t));
+        "BYE", sp *> resp_text >>| (fun (c, t) -> BYE (c, t));
       ]
     in
-    push "resp-cond-bye" (switch cases stop)
+    switch cases <?> "resp-cond-bye"
 
   let known_ids =
     uid_set
@@ -2319,38 +2088,44 @@ module Decoder = struct
   let expunged_resp =
     let cases =
       [
-        "VANISHED (EARLIER)", (fun d -> VANISHED_EARLIER (known_ids d));
-        "VANISHED", (fun d -> VANISHED (known_ids d));
+        "VANISHED (EARLIER)", sp *> known_ids >>| (fun l -> VANISHED_EARLIER l);
+        "VANISHED", sp *> known_ids >>| (fun l -> VANISHED l);
       ]
     in
-    push "expunged-resp" (switch cases stop)
+    switch cases <?> "expunged-resp"
 
-  let message_data d =
-    let n = nz_number d in
-    let cases =
+  let message_data =
+    let cases n =
       [
-        "EXPUNGE", const (EXPUNGE n);
-        "FETCH", (fun d -> FETCH (n, sp msg_att d));
+        "EXPUNGE", return (EXPUNGE n);
+        "FETCH", sp *> msg_att >>| (fun x -> FETCH (n, x));
       ]
     in
-    push "message-data" (sp (switch cases expunged_resp)) d
+    (nz_number >>= fun n -> sp *> choice [switch (cases n); expunged_resp]) <?> "message-data"
 
   let resp_cond_auth =
     let cases =
       [
-        "PREAUTH", (fun d -> let c, t = sp resp_text d in PREAUTH (c, t));
+        "PREAUTH", sp *> resp_text >>| (fun (c, t) -> PREAUTH (c, t));
       ]
     in
-    push "resp-cond-auth" (switch cases stop)
+    switch cases <?> "resp-cond-auth"
 
   let response_data =
-    let resp_cond_state d = State (resp_cond_state d) in
+    let resp_cond_state = resp_cond_state >>| fun st -> State st in
     let data =
-      resp_cond_state ||| resp_cond_bye ||| mailbox_data |||
-      message_data ||| capability_data ||| enable_data |||
-      resp_cond_auth (* CHECK *)
+      choice
+        [
+          resp_cond_state;
+          resp_cond_bye;
+          mailbox_data;
+          message_data;
+          capability_data;
+          enable_data;
+          resp_cond_auth; (* CHECK *)
+        ]
     in
-    preceded (char '*') (terminated (sp data) crlf)
+    char '*' *> sp *> data <* crlf
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -2376,27 +2151,27 @@ module Decoder = struct
     is_astring_char c && c != '+'
 
   let tag =
-    push "tag" (while1 is_tag_char)
+    take_while1 is_tag_char <?> "tag"
 
   let response_tagged =
-    let aux d =
-      let tag, state = pair tag resp_cond_state d in
-      Tagged (tag, state)
+    let aux =
+      pair sp tag resp_cond_state >>| fun (tag, state) -> Tagged (tag, state)
     in
-    push "response-tagged" (terminated aux crlf)
+    (aux <* crlf) <?> "response-tagged"
 
   let continue_req =
-    let resp_text d = Cont (snd (resp_text d)) in
-    push "continue-req" (terminated (preceded (char '+') (sp (resp_text ||| resp_text))) crlf)
+    let resp_text = resp_text >>| fun (_, x) -> Cont x in
+    (char '+' *> choice [sp *> resp_text; resp_text] <* crlf) <?> "continue-req"
   (* space is optional CHECKME ! base64 *)
 
   let response =
-    let response_data d = Untagged (response_data d) in
-    push "response" (continue_req ||| response_data ||| response_tagged)
+    let response_data = response_data >>| fun x -> Untagged x in
+    choice [continue_req; response_data; response_tagged] <?> "response"
 
-  let decode i =
-    let d = {i; p = ref 0; c = []} in
-    response d
+  let decode s =
+    match parse_only response (`String s) with
+    | Ok x -> x
+    | Error s -> failwith s
 end
 
 module Readline = struct
