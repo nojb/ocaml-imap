@@ -77,39 +77,37 @@ module UidSet : NUMBER_SET with type elt := Uid.t
 type date = { day : int; month : int ; year : int }
 type time = { hours : int; minutes : int; seconds : int; zone : int }
 
-module Capability : sig
-  (** List of standard capabilites.  These are returned by the {!capability}
-      command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
-  type capability =
-    | ACL
-    | BINARY
-    | CATENATE
-    | CHILDREN
-    | COMPRESS_DEFLATE
-    | CONDSTORE
-    | ENABLE
-    | IDLE
-    | ID
-    | LITERALPLUS
-    | LITERALMINUS
-    | UTF8_ACCEPT
-    | UTF8_ONLY
-    | MULTIAPPEND
-    | NAMESPACE
-    | QRESYNC
-    | QUOTE
-    | SORT
-    | STARTTLS
-    | UIDPLUS
-    | UNSELECT
-    | XLIST
-    | AUTH_ANONYMOUS
-    | AUTH_LOGIN
-    | AUTH_PLAIN
-    | XOAUTH2
-    | X_GM_EXT_1
-    | OTHER of string
-end
+(** List of standard capabilites.  These are returned by the {!capability}
+    command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
+type capability =
+  | ACL
+  | BINARY
+  | CATENATE
+  | CHILDREN
+  | COMPRESS_DEFLATE
+  | CONDSTORE
+  | ENABLE
+  | IDLE
+  | ID
+  | LITERALPLUS
+  | LITERALMINUS
+  | UTF8_ACCEPT
+  | UTF8_ONLY
+  | MULTIAPPEND
+  | NAMESPACE
+  | QRESYNC
+  | QUOTE
+  | SORT
+  | STARTTLS
+  | UIDPLUS
+  | UNSELECT
+  | XLIST
+  | AUTH_ANONYMOUS
+  | AUTH_LOGIN
+  | AUTH_PLAIN
+  | XOAUTH2
+  | X_GM_EXT_1
+  | OTHER of string
 
 module Envelope : sig
   (** {3 Envelope information}
@@ -674,7 +672,7 @@ val login: session -> string -> string -> unit action
 
 val authenticate: session -> Auth.authenticator -> unit action
 
-val capability: session -> Capability.capability list action
+val capability: session -> capability list action
 (** [capability] returns the list of capabilities supported by the server.  The
     server must send a single untagged [`Capability] {{!untagged}response}
     with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok]
@@ -847,7 +845,7 @@ val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.
 (** [store_remove_labels] is like {!store_add_labels} but removes labels instead
     of adding them. *)
 
-val enable: session -> Capability.capability list -> Capability.capability list action
+val enable: session -> capability list -> capability list action
 
 (* val authenticate: Auth.authenticator -> unit command *)
 (** [authenticate a] indicates a [SASL] authentication mechanism to the server.

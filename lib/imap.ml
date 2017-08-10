@@ -209,72 +209,65 @@ type time =
     zone: int;
   }
 
-module Capability = struct
-  type capability =
-    | ACL
-    | BINARY
-    | CATENATE
-    | CHILDREN
-    | COMPRESS_DEFLATE
-    | CONDSTORE
-    | ENABLE
-    | IDLE
-    | ID
-    | LITERALPLUS
-    | LITERALMINUS
-    | UTF8_ACCEPT
-    | UTF8_ONLY
-    | MULTIAPPEND
-    | NAMESPACE
-    | QRESYNC
-    | QUOTE
-    | SORT
-    | STARTTLS
-    | UIDPLUS
-    | UNSELECT
-    | XLIST
-    | AUTH_ANONYMOUS
-    | AUTH_LOGIN
-    | AUTH_PLAIN
-    | XOAUTH2
-    | X_GM_EXT_1
-    | OTHER of string
+type capability =
+  | ACL
+  | BINARY
+  | CATENATE
+  | CHILDREN
+  | COMPRESS_DEFLATE
+  | CONDSTORE
+  | ENABLE
+  | IDLE
+  | ID
+  | LITERALPLUS
+  | LITERALMINUS
+  | UTF8_ACCEPT
+  | UTF8_ONLY
+  | MULTIAPPEND
+  | NAMESPACE
+  | QRESYNC
+  | QUOTE
+  | SORT
+  | STARTTLS
+  | UIDPLUS
+  | UNSELECT
+  | XLIST
+  | AUTH_ANONYMOUS
+  | AUTH_LOGIN
+  | AUTH_PLAIN
+  | XOAUTH2
+  | X_GM_EXT_1
+  | OTHER of string
 
-  let string_of_capability = function
-    | ACL -> "ACL"
-    | BINARY -> "BINARY"
-    | CATENATE -> "CATENATE"
-    | CHILDREN -> "CHILDREN"
-    | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
-    | CONDSTORE -> "CONDSTORE"
-    | ENABLE -> "ENABLE"
-    | IDLE -> "IDLE"
-    | ID -> "ID"
-    | LITERALPLUS -> "LITERAL+"
-    | LITERALMINUS -> "LITERAL-"
-    | UTF8_ACCEPT -> "UTF8=ACCEPT"
-    | UTF8_ONLY -> "UTF8=ONLY"
-    | MULTIAPPEND -> "MULTIAPPEND"
-    | NAMESPACE -> "NAMESPACE"
-    | QRESYNC -> "QRESYNC"
-    | QUOTE -> "QUOTE"
-    | SORT -> "SORT"
-    | STARTTLS -> "STARTTLS"
-    | UIDPLUS -> "UIDPLUS"
-    | UNSELECT -> "UNSELECT"
-    | XLIST -> "XLIST"
-    | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
-    | AUTH_LOGIN -> "AUTH=LOGIN"
-    | AUTH_PLAIN -> "AUTH=PLAIN"
-    | XOAUTH2 -> "XOAUTH2"
-    | X_GM_EXT_1 -> "X-GM-EXT-1"
-    | OTHER s -> s
-
-  open Format
-
-  let pp ppf c =
-    pp_print_string ppf (String.lowercase_ascii (string_of_capability c))
-end
+let string_of_capability = function
+  | ACL -> "ACL"
+  | BINARY -> "BINARY"
+  | CATENATE -> "CATENATE"
+  | CHILDREN -> "CHILDREN"
+  | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
+  | CONDSTORE -> "CONDSTORE"
+  | ENABLE -> "ENABLE"
+  | IDLE -> "IDLE"
+  | ID -> "ID"
+  | LITERALPLUS -> "LITERAL+"
+  | LITERALMINUS -> "LITERAL-"
+  | UTF8_ACCEPT -> "UTF8=ACCEPT"
+  | UTF8_ONLY -> "UTF8=ONLY"
+  | MULTIAPPEND -> "MULTIAPPEND"
+  | NAMESPACE -> "NAMESPACE"
+  | QRESYNC -> "QRESYNC"
+  | QUOTE -> "QUOTE"
+  | SORT -> "SORT"
+  | STARTTLS -> "STARTTLS"
+  | UIDPLUS -> "UIDPLUS"
+  | UNSELECT -> "UNSELECT"
+  | XLIST -> "XLIST"
+  | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
+  | AUTH_LOGIN -> "AUTH=LOGIN"
+  | AUTH_PLAIN -> "AUTH=PLAIN"
+  | XOAUTH2 -> "XOAUTH2"
+  | X_GM_EXT_1 -> "X-GM-EXT-1"
+  | OTHER s -> s
 
 module Envelope = struct
   type address =
@@ -475,7 +468,7 @@ module E = struct
     list ~sep:',' f s
 
   let capability s =
-    raw (Capability.string_of_capability s)
+    raw (string_of_capability s)
 
   type result =
     | WaitForCont of string * rope
@@ -726,7 +719,7 @@ module Code = struct
   type code =
     | ALERT
     | BADCHARSET of string list
-    | CAPABILITY of Capability.capability list
+    | CAPABILITY of capability list
     | PARSE
     | PERMANENTFLAGS of Flag.flag list
     | READ_ONLY
@@ -754,7 +747,7 @@ module Code = struct
     | BADCHARSET cs ->
         fprintf ppf "@[<2>(badcharset %a)@]" (pp_list pp_print_string) cs
     | CAPABILITY caps ->
-        fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) caps
+        fprintf ppf "@[<2>(capability %a)@]" (pp_list (fun ppf cap -> pp_print_string ppf (string_of_capability cap))) caps
     | PARSE ->
         fprintf ppf "parse"
     | PERMANENTFLAGS fl ->
@@ -922,10 +915,10 @@ module Response = struct
     | RECENT of int
     | EXPUNGE of int32
     | FETCH of int32 * FetchRequest.msg_att list
-    | CAPABILITY of Capability.capability list
+    | CAPABILITY of capability list
     | VANISHED of Uint32Set.t
     | VANISHED_EARLIER of Uint32Set.t
-    | ENABLED of Capability.capability list
+    | ENABLED of capability list
 
   type response =
     | Untagged of untagged
@@ -967,7 +960,7 @@ module Response = struct
     | FETCH (n, atts) ->
         fprintf ppf "@[<2>(fetch %lu@ %a)@]" n (pp_list FetchRequest.pp) atts
     | CAPABILITY r ->
-        fprintf ppf "@[<2>(capability %a)@]" (pp_list Capability.pp) r
+        fprintf ppf "@[<2>(capability %a)@]" (pp_list (fun ppf cap -> pp_print_string ppf (string_of_capability cap))) r
     | PREAUTH (c, t) ->
         fprintf ppf "@[<2>(preauth@ %a@ %S)@]" (pp_opt Code.pp) c t
     | VANISHED s ->
@@ -975,7 +968,7 @@ module Response = struct
     | VANISHED_EARLIER s ->
         fprintf ppf "@[<2>(vanished-earlier@ %a)@]" FetchRequest.pp_set s
     | ENABLED s ->
-        fprintf ppf "@[<2>(enabled@ %a)@]" (pp_list Capability.pp) s
+        fprintf ppf "@[<2>(enabled@ %a)@]" (pp_list (fun ppf cap -> pp_print_string ppf (string_of_capability cap))) s
 
   let pp_response ppf = function
     | Untagged u ->
@@ -1529,7 +1522,6 @@ module Decoder = struct
     while1 is_text_other_char ||| const "" (* We allow empty text_1 *)
 
   let capability =
-    let open Capability in
     let cases =
       [
         "COMPRESS=DEFLATE", const COMPRESS_DEFLATE;
