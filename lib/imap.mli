@@ -109,44 +109,38 @@ type capability =
   | X_GM_EXT_1
   | OTHER of string
 
-module Envelope : sig
-  (** {3 Envelope information}
+(** {3 Envelope information}
 
-      It is returned when fetching the [`Envelope] message
-      {{!fetch_query}attribute} using the {!fetch} command.
+    It is returned when fetching the [`Envelope] message
+    {{!fetch_query}attribute} using the {!fetch} command.
 
-      If [val a : address], then the expression
-      {[
-        Printf.printf "\"%s\" <%s@%s>" a.ad_name a.ad_mailbox a.ad_host
-      ]}
-      will output [a] in the usual format ["name" <user\@host.com>]. *)
+    If [val a : address], then the expression
+    {[
+      Printf.printf "\"%s\" <%s@%s>" a.ad_name a.ad_mailbox a.ad_host
+    ]}
+    will output [a] in the usual format ["name" <user\@host.com>]. *)
 
-  type address =
-    {
-      ad_name: string;
-      ad_adl: string;
-      ad_mailbox: string;
-      ad_host: string;
-    }
+type address =
+  {
+    ad_name: string;
+    ad_adl: string;
+    ad_mailbox: string;
+    ad_host: string;
+  }
 
-  val pp_address: Format.formatter -> address -> unit
-
-  type envelope =
-    {
-      env_date: string;
-      env_subject: string;
-      env_from: address list;
-      env_sender: address list;
-      env_reply_to: address list;
-      env_to: address list;
-      env_cc: address list;
-      env_bcc: address list;
-      env_in_reply_to: string;
-      env_message_id: string;
-    }
-
-  val pp_envelope: Format.formatter -> envelope -> unit
-end
+type envelope =
+  {
+    env_date: string;
+    env_subject: string;
+    env_from: address list;
+    env_sender: address list;
+    env_reply_to: address list;
+    env_to: address list;
+    env_cc: address list;
+    env_bcc: address list;
+    env_in_reply_to: string;
+    env_message_id: string;
+  }
 
 module MIME : sig
   (** {3 MIME message structure}
@@ -201,7 +195,7 @@ module MIME : sig
         is the lists of MIME subparts. *)
   type mime =
     | Text of string * fields * int
-    | Message of fields * Envelope.envelope * mime * int
+    | Message of fields * envelope * mime * int
     | Basic of string * string * fields
     | Multipart of mime list * string
 
@@ -308,7 +302,7 @@ end
 module FetchData : sig
   type 'a attr
   val flags: Flag.flag list attr
-  val envelope: Envelope.envelope attr
+  val envelope: envelope attr
   val internal_date: (date * time) attr
   val rfc822: string attr
   val rfc822_headers: string attr

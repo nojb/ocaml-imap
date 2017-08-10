@@ -269,55 +269,51 @@ let string_of_capability = function
   | X_GM_EXT_1 -> "X-GM-EXT-1"
   | OTHER s -> s
 
-module Envelope = struct
-  type address =
-    {
-      ad_name: string;
-      ad_adl: string;
-      ad_mailbox: string;
-      ad_host: string;
-    }
+type address =
+  {
+    ad_name: string;
+    ad_adl: string;
+    ad_mailbox: string;
+    ad_host: string;
+  }
 
-  type envelope =
-    {
-      env_date: string;
-      env_subject: string;
-      env_from: address list;
-      env_sender: address list;
-      env_reply_to: address list;
-      env_to: address list;
-      env_cc: address list;
-      env_bcc: address list;
-      env_in_reply_to: string;
-      env_message_id: string;
-    }
+type envelope =
+  {
+    env_date: string;
+    env_subject: string;
+    env_from: address list;
+    env_sender: address list;
+    env_reply_to: address list;
+    env_to: address list;
+    env_cc: address list;
+    env_bcc: address list;
+    env_in_reply_to: string;
+    env_message_id: string;
+  }
 
-  open Format
+let pp_address ppf x =
+  Format.fprintf ppf "@[<hv 2>(address@ (name %S)@ (addr %S)@ (mailbox %S)@ (host %S))@]"
+    x.ad_name x.ad_adl x.ad_mailbox x.ad_host
 
-  let pp_address ppf x =
-    fprintf ppf "@[<hv 2>(address@ (name %S)@ (addr %S)@ (mailbox %S)@ (host %S))@]"
-      x.ad_name x.ad_adl x.ad_mailbox x.ad_host
+let pp_address_list =
+  pp_list pp_address
 
-  let pp_address_list =
-    pp_list pp_address
-
-  let pp_envelope ppf env =
-    fprintf ppf
-      "@[<hv 2>(envelope@ (date %S)@ (subject %S)@ \
-       (from %a)@ (sender %a)@ (reply-to %a)@ \
-       (to %a)@ (cc %a)@ (bcc %a)@ (in-reply-to %S)@ \
-       (message-id %S))@]"
-      env.env_date
-      env.env_subject
-      pp_address_list env.env_from
-      pp_address_list env.env_sender
-      pp_address_list env.env_reply_to
-      pp_address_list env.env_to
-      pp_address_list env.env_cc
-      pp_address_list env.env_bcc
-      env.env_in_reply_to
-      env.env_message_id
-end
+let pp_envelope ppf env =
+  Format.fprintf ppf
+    "@[<hv 2>(envelope@ (date %S)@ (subject %S)@ \
+     (from %a)@ (sender %a)@ (reply-to %a)@ \
+     (to %a)@ (cc %a)@ (bcc %a)@ (in-reply-to %S)@ \
+     (message-id %S))@]"
+    env.env_date
+    env.env_subject
+    pp_address_list env.env_from
+    pp_address_list env.env_sender
+    pp_address_list env.env_reply_to
+    pp_address_list env.env_to
+    pp_address_list env.env_cc
+    pp_address_list env.env_bcc
+    env.env_in_reply_to
+    env.env_message_id
 
 module MIME = struct
   type fields =
@@ -344,7 +340,7 @@ module MIME = struct
 
   type mime =
     | Text of string * fields * int
-    | Message of fields * Envelope.envelope * mime * int
+    | Message of fields * envelope * mime * int
     | Basic of string * string * fields
     | Multipart of mime list * string
 
@@ -364,7 +360,7 @@ module MIME = struct
         fprintf ppf "@[<2>(text@ %S@ %a@ %d)@]" m pp_fields f i
     | Message (f, e, b, i) ->
         fprintf ppf "@[<2>(message@ %a@ %a@ %a@ %d)@]"
-          pp_fields f Envelope.pp_envelope e pp_mime b i
+          pp_fields f pp_envelope e pp_mime b i
     | Basic (m, t, f) ->
         fprintf ppf "@[<2>(basic@ %S@ %S@ %a)@]" m t pp_fields f
     | Multipart (b, m) ->
@@ -538,7 +534,7 @@ module FetchRequest = struct
 
   type msg_att =
     | FLAGS of Flag.flag list
-    | ENVELOPE of Envelope.envelope
+    | ENVELOPE of envelope
     | INTERNALDATE of date * time
     | RFC822 of string option
     | RFC822_HEADER of string option
@@ -617,7 +613,7 @@ module FetchRequest = struct
   let pp ppf = function
     | FLAGS r ->
         fprintf ppf "@[<2>(flags %a)@]" (pp_list Flag.pp_flag) r
-    | ENVELOPE e -> Envelope.pp_envelope ppf e
+    | ENVELOPE e -> pp_envelope ppf e
     | INTERNALDATE (d, t) ->
         fprintf ppf "@[<2>(internal-date@ %a)@]" pp_date_time (d, t)
     | RFC822 s -> fprintf ppf "(rfc822 %a)" (pp_opt pp_qstr) s
@@ -641,7 +637,7 @@ module FetchData = struct
   module A = struct
     type 'a attr =
       | FLAGS : Flag.flag list attr
-      | ENVELOPE : Envelope.envelope attr
+      | ENVELOPE : envelope attr
       | INTERNALDATE : (date * time) attr
       | RFC822 : string attr
       | RFC822_HEADER : string attr
@@ -1777,7 +1773,7 @@ module Decoder = struct
     let ad_mailbox = sp nstring' d in
     let ad_host = sp nstring' d in
     ignore (char ')' d);
-    {Envelope.ad_name; ad_adl; ad_mailbox; ad_host}
+    {ad_name; ad_adl; ad_mailbox; ad_host}
 
   let address =
     push "address" address
@@ -1823,7 +1819,7 @@ module Decoder = struct
     let env_message_id = sp nstring' d in
     ignore (char ')' d);
     {
-      Envelope.env_date;
+      env_date;
       env_subject;
       env_from;
       env_sender;
