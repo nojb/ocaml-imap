@@ -783,50 +783,64 @@ val append: session -> string -> ?flags:Flag.flag list -> string -> unit action
     [?changed]. *)
 
 val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response action
-val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response action
-(** [fetch uid changed vanished set att] retrieves data associated with the
-    message set [set] in the current mailbox.  [set] is interpeted as being a
-    set of UIDs or sequence numbers depending on whether [uid] is [true] (the
-    default) or [false].  Specifying a [?changed] argument will further reduce
-    the set of returned messages to those whose [CHANGEDSINCE] mod-sequence
-    value is at least the passed value (requires the [CONDSTORE] extension).
+(** [fetch uid ?changed ?vanished set att] retrieves data associated with
+    messages with sequence number in [set].
+
+    If the [?changed] argument is passed, only those messages with
+    [CHANGEDSINCE] mod-sequence value at least the passed value are affected
+    (requires the [CONDSTORE] extension).
+
     The [vanished] optional parameter specifies whether one wants to receive
     [`Vanished] responses as well. *)
+
+val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response action
+(** Like {!fetch}, but identifies messages by UID. *)
 
 (** {2 Store commands} *)
 
 val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+(** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
+    messages with sequence number in [set].
+
+    If [?silent] is present, the updated flags for the affected messages is
+    returned.
+
+    If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
+    mod-sequence value at least the passed value are affected. *)
+
 val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+(** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
+
 val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+(** Like {!add_flags} but removes all flags instead of adding to them. *)
+
 val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
+(** Like {!add_flags}, but identifies messages by UID. *)
+
 val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
+(** Like {!set_flags}, but identifies messages by UID. *)
+
 val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
-(** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
-    message set [set].  [set] is interpreter as being a set of UIDs or sequence
-    numbers depending on whether [uid] is [true] (the default) or [false].  The
-    server will return the updated flags for the affected messages in untagged
-    [`Fetch] {{!untagged}responses} depending on whether [silent] is [true] (the
-    default) or [false].  Specifying a [?unchanged] argument will further reduce
-    the set of affected messages to those whose [UNCHANGEDSINCE] mod-sequence
-    value is at least the passed value (requires the [CONDSTORE] extension). *)
-(** [store_set_flags] is like {!store_add_flags} but replaces the set of flags
-    instead of adding to it. *)
-(** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
-    adding them. *)
+(** Like {!remove_flags}, but identifies messages by UID. *)
 
 val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+(** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
+
 val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+(** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
+
 val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+(** Like {!remove_flags}, but acts on the set of Gmail labels instead of
+    flags. *)
+
 val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
+(** Like {!add_labels}, but identfies messages by UID. *)
+
 val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
+(** Like {!set_labels}, but identifies messages by UID. *)
+
 val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
-(** [store_add_labels] is like {!store_add_flags} but adds
-    {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
-    instead of regular flags. *)
-(** [store_set_labels] is like {!store_add_labels} but replaces the set of
-    labels instead of adding to it. *)
-(** [store_remove_labels] is like {!store_add_labels} but removes labels instead
-    of adding them. *)
+(** Like {!remove_labels}, but identifies messages by UID. *)
 
 val enable: session -> capability list -> capability list action
 
