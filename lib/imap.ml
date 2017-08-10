@@ -2609,29 +2609,33 @@ module Search = struct
   let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
 end
 
-module Auth = struct
-  type step_fun =
-    string -> [ `Ok of string * step_fun | `Error of string ]
+type authenticator =
+  <
+    name: string;
+    step: string -> (string, string) result;
+  >
 
-  type authenticator =
-    {
-      name: string;
-      step: step_fun;
-    }
+let plain user pass =
+  object
+    val mutable step = 0
+    method name = "PLAIN"
+    method step _ =
+      match step with
+      | 0 -> step <- 1; Ok (Printf.sprintf "\000%s\000%s" user pass)
+      | _ -> Error "should have worked already"
+  end
 
-  let fail_fun _ =
-    `Error "should have worked already!"
-
-  let plain user pass =
-    let step _ = `Ok (Printf.sprintf "\000%s\000%s" user pass, fail_fun) in
-    {name = "PLAIN"; step}
-
-  let xoauth2 user token =
-    let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-    let step _ = `Ok ("", fail_fun) in (* CHECK *)
-    let step _ = `Ok (s, step) in
-    {name = "XOAUTH2"; step}
-end
+let xoauth2 user token =
+  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
+  object
+    val mutable step = 0
+    method name = "XOAUTH2"
+    method step _ =
+      match step with
+      | 0 -> step <- 1; Ok s
+      | 1 -> step <- 2; Ok ""
+      | _ -> Error "should have worked already!"
+  end
 
 (* Running commands *)
 
@@ -2696,17 +2700,17 @@ type 'a command =
 let tag session =
   Printf.sprintf "%04d" session.tag
 
-let rec wait_for_auth tag step = function
+let rec wait_for_auth tag a = function
   | Cont data ->
-      begin match step (B64.decode data) with
-      | `Ok (data, step) ->
+      begin match a#step (B64.decode data) with
+      | (Ok data : (_, _) result) ->
           let data = B64.encode ~pad:true data in
-          Next (Sending (E.raw data, WaitForResp (wait_for_auth tag step)))
-      | `Error _ ->
-          Next (Sending (E.raw "*", WaitForResp (wait_for_auth tag step)))
+          Next (Sending (E.raw data, WaitForResp (wait_for_auth tag a)))
+      | Error _ ->
+          Next (Sending (E.raw "*", WaitForResp (wait_for_auth tag a)))
       end
   | Untagged _ ->
-      Next (WaitForResp (wait_for_auth tag step))
+      Next (WaitForResp (wait_for_auth tag a))
   | Tagged (tag1, _) ->
       assert (tag = tag1);
       Done ()
@@ -2788,10 +2792,10 @@ let login ss username password =
   let process _ () = () in
   run ss {format; default; process}
 
-let authenticate session {Auth.name; step} =
+let authenticate session a =
   let tag = tag session in
-  let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw name) in
-  let state = Sending (format, WaitForResp (wait_for_auth tag step)) in
+  let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw a#name) in
+  let state = Sending (format, WaitForResp (wait_for_auth tag a)) in
   continue (session, state)
 
 let capability ss =

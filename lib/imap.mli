@@ -549,44 +549,39 @@ module Search : sig
   (** Messages with given Gmail labels. *)
 end
 
-module Auth : sig
-  (** {1 Authenticators}
+(** {1 Authenticators}
 
-      These are used to implement SASL authentication. SASL authentication is
-      initiated by the {!authenticate} command and typically would occur right
-      after receiving the server greeting.
+    These are used to implement SASL authentication. SASL authentication is
+    initiated by the {!authenticate} command and typically would occur right
+    after receiving the server greeting.
 
-      The authentication protocol exchange consists of a series of server
-      challenges and client responses that are specific to the authentication
-      mechanism.  If [a] is the authenticator being used, [a.step] will be called
-      with each of the server's challenges.  The return value of [a.step] can
-      signal an error or give the corresponding response.
+    The authentication protocol exchange consists of a series of server
+    challenges and client responses that are specific to the authentication
+    mechanism.  If [a] is the authenticator being used, [a.step] will be called
+    with each of the server's challenges.  The return value of [a.step] can
+    signal an error or give the corresponding response.
 
-      [step] functions do {e not} have to perform base64-encoding and decoding, as
-      this is handled automatically by the library.
+    [step] functions do {e not} have to perform base64-encoding and decoding, as
+    this is handled automatically by the library.
 
-      The implementation of particular SASL authenticaton methods is outside the
-      scope of this library and should be provided independently. Only [PLAIN] and
-      [XOAUTH2] are provided as way of example. *)
+    The implementation of particular SASL authenticaton methods is outside the
+    scope of this library and should be provided independently. Only [PLAIN] and
+    [XOAUTH2] are provided as way of example. *)
 
-  type step_fun =
-    string -> [ `Ok of string * step_fun | `Error of string ]
+type authenticator =
+  <
+    name: string;
+    step: string -> (string, string) result;
+  >
 
-  type authenticator =
-    {
-      name: string;
-      step: step_fun;
-    }
+val plain: string -> string -> authenticator
+(** [plain user pass] authenticates via [PLAIN] mechanism using username
+    [user] and password [pass]. *)
 
-  val plain: string -> string -> authenticator
-  (** [plain user pass] authenticates via [PLAIN] mechanism using username
-      [user] and password [pass]. *)
-
-  val xoauth2: string -> string -> authenticator
-  (** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
-      [user] and access token [token].  The access token should be obtained
-      independently. *)
-end
+val xoauth2: string -> string -> authenticator
+(** [xoauth2 user token] authenticates via [XOAUTH2] mechanishm user username
+    [user] and access token [token].  The access token should be obtained
+    independently. *)
 
 (** {1:commands Commands}
 
@@ -664,7 +659,7 @@ val login: session -> string -> string -> unit action
     [`Ok] response to a successful [login] command in order to send capabilities
     automatically. *)
 
-val authenticate: session -> Auth.authenticator -> unit action
+val authenticate: session -> authenticator -> unit action
 
 val capability: session -> capability list action
 (** [capability] returns the list of capabilities supported by the server.  The
