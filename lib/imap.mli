@@ -215,7 +215,7 @@ module Flag : sig
     | Any
 end
 
-module FetchRequest : sig
+module Fetch : sig
   (** The [section] type is used to specify which part(s) of a message should be
       retrieved when using {!fetch} with [`Body_section].  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
@@ -297,30 +297,49 @@ module FetchRequest : sig
 
   (** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
       [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
+
+  type response =
+    {
+      flags: Flag.flag list option;
+      envelope: envelope option;
+      internaldate: (date * time) option;
+      rfc822: string option;
+      rfc822_header: string option;
+      rfc822_text: string option;
+      rfc822_size: int option;
+      body: MIME.mime option;
+      bodystructure: MIME.mime option;
+      body_section: (section * int option * string option) option;
+      uid: Uid.t option;
+      modseq: Modseq.t option;
+      x_gm_msgid: Modseq.t option;
+      x_gm_thrid: Modseq.t option;
+      x_gm_labels: string list option;
+    }
 end
 
-module FetchData : sig
-  type 'a attr
-  val flags: Flag.flag list attr
-  val envelope: envelope attr
-  val internal_date: (date * time) attr
-  val rfc822: string attr
-  val rfc822_headers: string attr
-  val rfc822_text: string attr
-  val rfc822_size: int attr
-  val body: MIME.mime attr
-  val body_structure: MIME.mime attr
-  val body_section: ?range:(int * int) -> FetchRequest.section -> string attr
-  val uid: Uid.t attr
-  val modseq: Modseq.t attr
-  val gmail_msgid: Modseq.t attr
-  val gmail_thrid: Modseq.t attr
-  val gmail_labels: string list attr
+(* module FetchData : sig *)
+(*   type 'a attr *)
+(*   val flags: Flag.flag list attr *)
+(*   val envelope: envelope attr *)
+(*   val internal_date: (date * time) attr *)
+(*   val rfc822: string attr *)
+(*   val rfc822_headers: string attr *)
+(*   val rfc822_text: string attr *)
+(*   val rfc822_size: int attr *)
+(*   val body: MIME.mime attr *)
+(*   val body_structure: MIME.mime attr *)
+(*   val body_section: ?range:(int * int) -> FetchRequest.section -> string attr *)
+(*   val uid: Uid.t attr *)
+(*   val modseq: Modseq.t attr *)
+(*   val gmail_msgid: Modseq.t attr *)
+(*   val gmail_thrid: Modseq.t attr *)
+(*   val gmail_labels: string list attr *)
 
-  type t
-  val seq: t -> Seq.t
-  val attr: t -> 'a attr -> 'a
-end
+(*   type t *)
+(*   val seq: t -> Seq.t *)
+(*   val attr: t -> 'a attr -> 'a *)
+(* end *)
 
 module MbxFlag : sig
   type mbx_flag =
@@ -763,8 +782,8 @@ val append: session -> string -> ?flags:Flag.flag list -> string -> unit action
     programmer error to set [?vanished] to [true] but not to pass a value for
     [?changed]. *)
 
-val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> FetchRequest.t list -> FetchData.t list action
-val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> FetchRequest.t list -> FetchData.t list action
+val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response action
+val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response action
 (** [fetch uid changed vanished set att] retrieves data associated with the
     message set [set] in the current mailbox.  [set] is interpeted as being a
     set of UIDs or sequence numbers depending on whether [uid] is [true] (the
@@ -776,12 +795,12 @@ val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fet
 
 (** {2 Store commands} *)
 
-val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
-val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
-val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> FetchData.t list action
-val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
-val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
-val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> FetchData.t list action
+val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response action
+val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
+val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
+val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response action
 (** [store_add_flags uid silent unchanged set flags] adds flags [flags] to the
     message set [set].  [set] is interpreter as being a set of UIDs or sequence
     numbers depending on whether [uid] is [true] (the default) or [false].  The
@@ -795,12 +814,12 @@ val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t
 (** [store_remove_flags] is like {!store_add_flags} but removes flags instead of
     adding them. *)
 
-val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
-val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
-val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> FetchData.t list action
-val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
-val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
-val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> FetchData.t list action
+val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response action
+val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
+val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
+val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response action
 (** [store_add_labels] is like {!store_add_flags} but adds
     {{:https://developers.google.com/gmail/imap_extensions}Gmail} {e labels}
     instead of regular flags. *)
