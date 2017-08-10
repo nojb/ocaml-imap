@@ -340,63 +340,38 @@ module MbxFlag : sig
     | Extension of string
 end
 
-module StatusRequest : sig
+(** {3 Mailbox status} *)
+
+module Status : sig
   (** Mailbox attibutes that can be requested with the {!status} command. *)
+  type mbx_att_request =
+    | MESSAGES
+    (** The number of messages in the mailbox. *)
+    | RECENT
+    (** The number of messages with the [`Recent] {!flag} set. *)
+    | UIDNEXT
+    (** The next unique identifier value of the mailbox. *)
+    | UIDVALIDITY
+    (** The unique identifier validity value of the mailbox. *)
+    | UNSEEN
+    (** The number of messages which do not have the [`Seen] {!flag} set. *)
+    | HIGHESTMODSEQ
+    (** TODO *)
 
-  type t
-
-  val messages: t
-  (** The number of messages in the mailbox. *)
-
-  val recent: t
-  (** The number of messages with the [`Recent] {!flag} set. *)
-
-  val uidnext: t
-  (** The next unique identifier value of the mailbox. *)
-
-  val uidvalidity: t
-  (** The unique identifier validity value of the mailbox. *)
-
-  val unseen: t
-  (** The number of messages which do not have the [`Seen] {!flag}
-      set. *)
-
-  val highestmodseq: t
-  (** TODO *)
+  (** Mailbox status items returned in the untagged [`Status] {{!untagged}response}
+      to the {!status} command. *)
+  type response =
+    {
+      messages: int option;
+      recent: int option;
+      uidnext: Uid.t option;
+      uidvalidity: Uid.t option;
+      unseen: Seq.t option;
+      highestmodseq: Modseq.t option;
+    }
 end
 
-(** {3 Mailbox status responses}
-
-    Mailbox status items returned in the untagged [`Status]
-    {{!untagged}response} to the {!status} command. *)
-
-module StatusData : sig
-  type _ attr
-
-  val messages: int attr
-  (** Number of messages in the mailbox. *)
-
-  val recent: int attr
-  (** Number of messages in the mailbox with the [`Recent] flag. *)
-
-  val uidnext: Uid.t attr
-  (** The expected UID of the next message to be added to this mailbox. *)
-
-  val uidvalidity: Uid.t attr
-  (** The UID VALIDITY value of this mailbox. *)
-
-  val unseen: Seq.t attr
-  (** The Sequence number of the first message in the mailbox that has not
-      been seen. *)
-
-  val highestmodseq: Modseq.t attr
-  (** The highest modification sequence number of all the messages in the
-      mailbox.  This is only sent back if [CONDSTORE] is enabled. *)
-
-  type t
-
-  val attr: t -> 'a attr -> 'a
-end
+(** Message search *)
 
 module Search : sig
   (** Search keys. See {!search} command. *)
@@ -717,7 +692,7 @@ val lsub: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char opti
     names from the set of names that the user has declared as being "active" or
     "subscribed". *)
 
-val status: session -> string -> StatusRequest.t list -> StatusData.t action
+val status: session -> string -> Status.mbx_att_request list -> Status.response action
 (** [status] requests {{!status_query}status information} of the indicated
     mailbox.  An untagged [`Status] {{!untagged}response} is returned with
     the requested information. *)

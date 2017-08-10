@@ -818,7 +818,15 @@ module MbxFlag = struct
     | Extension s -> fprintf ppf "(extension %s)" s
 end
 
-module StatusRequest = struct
+module Status = struct
+  type mbx_att_request =
+    | MESSAGES
+    | RECENT
+    | UIDNEXT
+    | UIDVALIDITY
+    | UNSEEN
+    | HIGHESTMODSEQ
+
   type mbx_att =
     | MESSAGES of int
     | RECENT of int
@@ -831,12 +839,13 @@ module StatusRequest = struct
 
   type t = rope
 
-  let messages = raw "MESSAGES"
-  let recent = raw "RECENT"
-  let uidnext = raw "UIDNEXT"
-  let uidvalidity = raw "UIDVALIDITY"
-  let unseen = raw "UNSEEN"
-  let highestmodseq = raw "HIGHESTMODSEQ"
+  let enc = function
+    | (MESSAGES : mbx_att_request) -> raw "MESSAGES"
+    | RECENT -> raw "RECENT"
+    | UIDNEXT -> raw "UIDNEXT"
+    | UIDVALIDITY -> raw "UIDVALIDITY"
+    | UNSEEN -> raw "UNSEEN"
+    | HIGHESTMODSEQ -> raw "HIGHESTMODSEQ"
 
   open Format
 
@@ -847,49 +856,26 @@ module StatusRequest = struct
     | UIDVALIDITY uid -> fprintf ppf "(uid-validity %lu)" uid
     | UNSEEN n -> fprintf ppf "(unseen %lu)" n
     | HIGHESTMODSEQ m -> fprintf ppf "(highest-modseq %Lu)" m
-end
 
-(** {3 Mailbox status responses}
+  type response =
+    {
+      messages: int option;
+      recent: int option;
+      uidnext: Uid.t option;
+      uidvalidity: Uid.t option;
+      unseen: Seq.t option;
+      highestmodseq: Modseq.t option;
+    }
 
-    Mailbox status items returned in the untagged [`Status]
-    {{!untagged}response} to the {!status} command. *)
-
-module StatusData = struct
-  type _ attr =
-    | MESSAGES : int attr
-    | RECENT : int attr
-    | UIDNEXT : int32 attr
-    | UIDVALIDITY : int32 attr
-    | UNSEEN : int32 attr
-    | HIGHESTMODSEQ : int64 attr
-
-  let messages = MESSAGES
-  let recent = RECENT
-  let uidnext = UIDNEXT
-  let uidvalidity = UIDVALIDITY
-  let unseen = UNSEEN
-  let highestmodseq = HIGHESTMODSEQ
-
-  type t =
-    StatusRequest.mbx_att list
-
-  let attr t a =
-    let rec loop: type a. StatusRequest.mbx_att list -> a attr -> a = fun l a ->
-      match l with
-      | att :: l ->
-          begin match a, att with
-          | MESSAGES, StatusRequest.MESSAGES n -> n
-          | RECENT, StatusRequest.RECENT n -> n
-          | UIDNEXT, StatusRequest.UIDNEXT uid -> uid
-          | UIDVALIDITY, StatusRequest.UIDVALIDITY uid -> uid
-          | UNSEEN, StatusRequest.UNSEEN n -> n
-          | HIGHESTMODSEQ, StatusRequest.HIGHESTMODSEQ modseq -> modseq
-          | _ -> loop l a
-          end
-      | [] ->
-          raise Not_found
-    in
-    loop t a
+  let default =
+    {
+      messages = None;
+      recent = None;
+      uidnext = None;
+      uidvalidity = None;
+      unseen = None;
+      highestmodseq = None;
+    }
 end
 
 module Response = struct
@@ -906,7 +892,7 @@ module Response = struct
     | LIST of MbxFlag.mbx_flag list * char option * string
     | LSUB of MbxFlag.mbx_flag list * char option * string
     | SEARCH of int32 list * int64 option
-    | STATUS of string * StatusRequest.mbx_att list
+    | STATUS of string * Status.mbx_att list
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of int32
@@ -946,7 +932,7 @@ module Response = struct
         fprintf ppf "@[<2>(search@ %a@ %a)@]"
           (pp_list (fun ppf -> fprintf ppf "%lu")) ns (pp_opt (fun ppf -> fprintf ppf "%Lu")) m
     | STATUS (m, s) ->
-        fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list StatusRequest.pp_mbx_status) s
+        fprintf ppf "@[<2>(status@ %S@ %a)@]" m (pp_list Status.pp_mbx_status) s
     | EXISTS n ->
         fprintf ppf "(exists %i)" n
     | RECENT n ->
@@ -1729,7 +1715,7 @@ module Decoder = struct
     Modseq.of_string (while1 is_digit d)
 
   let status_att =
-    let open StatusRequest in
+    let open Status in
     let cases =
       [
         "MESSAGES", (fun d -> MESSAGES (Int32.to_int (sp number d)));
@@ -2871,14 +2857,22 @@ let lsub ss ?(ref = "") s =
   run ss {format; default; process}
 
 let status ss m att =
-  let format = E.(str "STATUS" ++ mailbox m ++ p (list (fun x -> x) att)) in
-  let default = [] in
-  let process u att =
+  let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
+  let default = Status.default in
+  let process u resp =
     match u with
     | STATUS (mbox, items) when m = mbox ->
-        items
+        let aux resp = function
+          | (MESSAGES n : Status.mbx_att) -> {resp with Status.messages = Some n}
+          | RECENT n -> {resp with recent = Some n}
+          | UIDNEXT n -> {resp with uidnext = Some n}
+          | UIDVALIDITY n -> {resp with uidvalidity = Some n}
+          | UNSEEN n -> {resp with unseen = Some n}
+          | HIGHESTMODSEQ n -> {resp with highestmodseq = Some n}
+        in
+        List.fold_left aux resp items
     | _ ->
-        att
+        resp
   in
   run ss {format; default; process}
 
