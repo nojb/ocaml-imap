@@ -1,6 +1,6 @@
 (* The MIT License (MIT)
 
-   Copyright (c) 2015 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
+   Copyright (c) 2015-2017 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -39,7 +39,17 @@
     {ul
     {- M. Crispin
     {e {{:https://tools.ietf.org/html/rfc3501}INTERNET MESSAGE ACCESS PROTOCOL - VERSION 4rev1}, 2003}}}
-*)
+
+    {1:limitations Supported extensions and limitations}
+
+    The following extensions are supported:
+    - {{:https://tools.ietf.org/html/rfc4551}CONDSTORE}
+    - {{:https://tools.ietf.org/html/rfc5162}QRESYNC}
+    - {{:http://tools.ietf.org/html/rfc5161}ENABLE}
+    - {{:https://tools.ietf.org/html/rfc4315}UIDPLUS}
+    - {{:https://tools.ietf.org/html/rfc6154}SPECIAL-USE}
+    - {{:https://tools.ietf.org/html/rfc2177}IDLE}
+    - {{:https://developers.google.com/gmail/imap_extensions}X-GM-EXT-1} *)
 
 (** {1 Common types for IMAP} *)
 
@@ -580,463 +590,235 @@ val xoauth2: string -> string -> authenticator
     {{!connection}Connections} manage the encoder and decoder states and keeps
     track of message tags. *)
 
-type session
-(** The type for connections. *)
-
 type error =
-  | Incorrect_tag of string * string
-  (** The server response tag does not have a matching message tag.  The
-      connection should be closed. *)
-
+  | Incorrect_tag of string * string (** An unknown response tag was received. *)
   | Decode_error of string * int
   (** Decoding error. It contains the reason, the curren tinput buffer and the
       current position.  The connection should be closed after this.  In some
       cases it might be possible to continue fater a decoding error, but this is
       not yet implemented. *)
+  | Unexpected_cont (** A continuation request '+' is received at an unexpected time. *)
+  | Bad_greeting (** The server did not send a valid greeting message. *)
+  | Auth_error of string (** A SASL authentication error ocurred. *)
+  | No of string
+  | Bad of string
+
+module type MONAD = sig
+  type 'a t
+
+  val bind: 'a t -> ('a -> 'b t) -> 'b t
+  val return: 'a -> 'a t
+  val fail: exn -> 'a t
+
+  type ic
+  type oc
+
+  val read: ic -> string t
+  val write: oc -> string -> unit t
+  val flush: oc -> unit t
+end
+
+module Make (M : MONAD) : sig
+  type t
+  (** The type for connections. *)
+
+  val connect: M.ic -> M.oc -> t M.t
+
+  (* val idle: t -> unit state *)
+
+  val login: t -> string -> string -> unit M.t
+  (** [login user pass] identifies the client to the server and carries the
+      plaintext password authenticating this [user] with password [pass].  A
+      server MAY include a [`Capability] response {{!code}code} in the tagged
+      [`Ok] response to a successful [login] command in order to send capabilities
+      automatically. *)
+
+  val authenticate: t -> authenticator -> unit M.t
+
+  val capability: t -> capability list M.t
+  (** [capability] returns the list of {{!capability}capabilities} supported by
+      the server. *)
+
+
+  val create: t -> string -> unit M.t
+  (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
+      if a new mailbox with that name has been created.  It is an error to attempt
+      to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
+      Any error in creation will return a tagged [`No] response. *)
+
+  val delete: t -> string -> unit M.t
+  (** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
+      if the mailbox with that name has been deleted.
+      Any error in deletion will return a tagged [`No] response. *)
+
+  val rename: t -> string -> string -> unit M.t
+  (** [rename oldname newname] command changes the name of a mailbox from
+      [oldname] to [newname].  A tagged [`Ok] response is returned only if the
+      mailbox has been renamed.  It is an error to attempt to rename from a
+      mailbox name that does not exist or to a mailbox name that already exists.
+      Any error in renaming will return a tagged [`No] response. *)
+
+  val logout: t -> unit M.t
+  (** [logout] gracefully terminates a session.  The server MUST send an untagged
+      [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
+
+  val noop: t -> unit M.t
+  (** [noop] does nothing.  Since any command can return a status update as
+      untagged data, the [noop] command can be used as a periodic poll for new
+      messages or message status updates during a period of inactivity. *)
+
+  val subscribe: t -> string -> unit M.t
+  (** [subscribe m] adds the mailbox [m] to the server's set of "active" or
+      "subscribed" mailboxes as returned by the {!lsub} command. *)
+
+  val unsubscribe: t -> string -> unit M.t
+  (** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
+      "subscribed" mailboxes as returned by the {!lsub} command. *)
+
+  val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list M.t
+  (** [list ref m] returns a subset of names from the complete set of all names
+      available to the client.  Zero or more untagged [`List]
+      {{!untagged}replies} are returned, containing the name attributes,
+      hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
+      or a level of mailbox hierarchy, and indicates the context in which the
+      mailbox name is interpreted.*)
+
+  val lsub: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list M.t
+  (** [lsub ref m] is identical to {!list}, except that it returns a subset of
+      names from the set of names that the user has declared as being "active" or
+      "subscribed". *)
+
+  val status: t -> string -> Status.mbx_att_request list -> Status.response M.t
+  (** [status] requests {{!status_query}status information} of the indicated
+      mailbox.  An untagged [`Status] {{!untagged}response} is returned with
+      the requested information. *)
 
-  | Unexpected_cont
-  (** A continuation request '+' is received from the server at an unexpected
-      time.  The connection should be closed after seeing this error, as there is no
-      safe way to continue. *)
-
-  | Bad_greeting
-  (** The server did not send a valid greeting message.  The connection should
-      be closed. *)
-
-  | Auth_error of string
-  (** An client-side SASL authentication error ocurred.  This error can only
-      appear when using the SASL-based {!authenticate} command.  The error is
-      communicated to the server and the server responds with a [BAD] response.
-      Thus, after receiving this error the client should pass [`Await] to {!run}
-      until [`Error `Bad] is received, and then take appropiate action. *)
-  | No of string * session
-
-  | Bad of string * session
-
-type bigstring =
-  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-
-type 'a state =
-  | Ok of 'a * session
-  | Error of error
-  | Write of string * 'a state
-  | Flush of 'a state
-  | Read of ([`String of string | `Bigstring of bigstring | `Eof] -> 'a state)
-
-val init: unit state
-
-(* val idle: session -> unit state *)
-
-val login: session -> string -> string -> unit state
-(** [login user pass] identifies the client to the server and carries the
-    plaintext password authenticating this [user] with password [pass].  A
-    server MAY include a [`Capability] response {{!code}code} in the tagged
-    [`Ok] response to a successful [login] command in order to send capabilities
-    automatically. *)
-
-(* val authenticate: session -> authenticator -> unit state *)
-
-(* val capability: session -> capability list state *)
-(* (\** [capability] returns the list of capabilities supported by the server.  The *)
-(*     server must send a single untagged [`Capability] {{!untagged}response} *)
-(*     with "IMAP4rev1" as one of the listed capabilities before the (tagged) [`Ok] *)
-(*     response.  See the type describing the possible *)
-(*     {{!capability}capabilities}. *\) *)
-
-(* val create: session -> string -> unit state *)
-(* (\** [create m] creates a mailbox named [m].  An [`Ok] response is returned only *)
-(*     if a new mailbox with that name has been created.  It is an error to attempt *)
-(*     to create "INBOX" or a mailbox with a name that refers to an existent mailbox. *)
-(*     Any error in creation will return a tagged [`No] response. *\) *)
-
-(* val delete: session -> string -> unit state *)
-(* (\** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only *)
-(*     if the mailbox with that name has been deleted. *)
-(*     Any error in deletion will return a tagged [`No] response. *\) *)
-
-(* val rename: session -> string -> string -> unit state *)
-(* (\** [rename oldname newname] command changes the name of a mailbox from *)
-(*     [oldname] to [newname].  A tagged [`Ok] response is returned only if the *)
-(*     mailbox has been renamed.  It is an error to attempt to rename from a *)
-(*     mailbox name that does not exist or to a mailbox name that already exists. *)
-(*     Any error in renaming will return a tagged [`No] response. *\) *)
-
-(* val logout: session -> unit state *)
-(* (\** [logout] gracefully terminates a session.  The server MUST send an untagged *)
-(*     [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *\) *)
-
-(* val noop: session -> unit state *)
-(* (\** [noop] does nothing.  Since any command can return a status update as *)
-(*     untagged data, the [noop] command can be used as a periodic poll for new *)
-(*     messages or message status updates during a period of inactivity (this is *)
-(*     the preferred method to do this). *\) *)
-
-(* val subscribe: session -> string -> unit state *)
-(* (\** [subscribe m] adds the mailbox [m] to the server's set of "active" or *)
-(*     "subscribed" mailboxes as returned by the {!lsub} command. *\) *)
-
-(* val unsubscribe: session -> string -> unit state *)
-(* (\** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or *)
-(*     "subscribed" mailboxes as returned by the {!lsub} command. *\) *)
-
-(* val list: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list state *)
-(* (\** [list ref m] returns a subset of names from the complete set of all names *)
-(*     available to the client.  Zero or more untagged [`List] *)
-(*     {{!untagged}replies} are returned, containing the name attributes, *)
-(*     hierarchy delimiter.  The optional argument [ref] is the name of a mailbox *)
-(*     or a level of mailbox hierarchy, and indicates the context in which the *)
-(*     mailbox name is interpreted.*\) *)
-
-(* val lsub: session -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list state *)
-(* (\** [lsub ref m] is identical to {!list}, except that it returns a subset of *)
-(*     names from the set of names that the user has declared as being "active" or *)
-(*     "subscribed". *\) *)
-
-(* val status: session -> string -> Status.mbx_att_request list -> Status.response state *)
-(* (\** [status] requests {{!status_query}status information} of the indicated *)
-(*     mailbox.  An untagged [`Status] {{!untagged}response} is returned with *)
-(*     the requested information. *\) *)
-
-(* val copy: session -> SeqSet.t -> string -> unit state *)
-(* val uid_copy: session -> UidSet.t -> string -> unit state *)
-(* (\** [copy uid set m] copies the messages in [set] to the end of the specified *)
-(*     mailbox [m].  [set] is understood as a set of message UIDs if [uid] is *)
-(*     [true] (the default) or sequence numbers if [uid] is [false]. *\) *)
-
-(* val check: session -> unit state *)
-(* (\** [check] requests a checkpoint of the currently selected mailbox.  A *)
-(*     checkpoint refers to any implementation-dependent housekeeping associated *)
-(*     with the mailbox. *\) *)
-
-(* val close: session -> unit state *)
-(* (\** [close] permanently removes all messages that have the [`Deleted] *)
-(*     {!flag} set from the currently selected mailbox, and returns to *)
-(*     the authenticated state from the selected state. *\) *)
-
-(* val expunge: session -> Seq.t list state *)
-(* (\** [expunge] permanently removes all messages that have the [`Deleted] *)
-(*     {!flag} set from the currently selected mailbox.  Before *)
-(*     returning an [`Ok] to the client, an untagged [`Expunge] *)
-(*     {{!untagged}response} is sent for each message that is removed. *\) *)
-
-(* val uid_search: session -> Search.key -> (Uid.t list * Modseq.t option) state *)
-(* val search: session -> Search.key -> (Seq.t list * Modseq.t option) state *)
-(* (\** [search uid sk] searches the mailbox for messages that match the given *)
-(*     searching criteria.  If [uid] is [true] (the default), then the matching *)
-(*     messages' unique identification numbers are returned.  Otherwise, their *)
-(*     sequence numbers are.  The untagged [`Search] {{!untagged}response} *)
-(*     from the server contains a listing of message numbers corresponding to those *)
-(*     messages that match the searching criteria. *\) *)
-
-(* val select: session -> string -> unit state *)
-(* val condstore_select: session -> string -> Modseq.t state *)
-(* (\** [select condstore m] selects the mailbox [m] so that its messages can be *)
-(*     accessed.  If [condstore] (default value [false]) is [true], then the server *)
-(*     will return the [`Modseq] data item in all subsequent untagged [`Fetch] *)
-(*     {{!untagged}responses}. *\) *)
-
-(* val examine: session -> string -> unit state *)
-(* val condstore_examine: session -> string -> Modseq.t state *)
-(* (\** [examine condstore m] is identical to [select condstore m] and returns the *)
-(*     same output; however, the selected mailbox is identified as read-only. *\) *)
-
-(* val append: session -> string -> ?flags:Flag.flag list -> string -> unit state *)
-(* (\** [append m flags id data] appends [data] as a new message to the end of the *)
-(*     mailbox [m].  This argument should be in the format of an [RFC-2822] *)
-(*     message. *)
-
-(*     If a flag list is specified, the flags should be set in the resulting *)
-(*     message; otherwise, the flag list of the resulting message is set to empty *)
-(*     by default.  In either case, the [`Recent] flag is also set. *\) *)
-
-(* (\** {2 Fetch commands} *)
-
-(*     The IMAP [FETCH] command is used to retrieve the data associated to a *)
-(*     message (or a set of messages).  Messages are identified either by their *)
-(*     sequence number (i.e., their position in the mailbox), or by their unique *)
-(*     identification number (UID). *)
+  val copy: t -> SeqSet.t -> string -> unit M.t
+  (** [copy uid set m] copies the messages with sequence number in [set] to the
+      mailbox [m].  *)
 
-(*     For those servers that support the [CONDSTORE] extension, one can pass a *)
-(*     mod-sequence value [?changed] to restrict the set of affected messages to *)
-(*     those that are not yet known by the client.  One can further use the *)
-(*     [?vanished] argument to learn of recently expunged messages.  It is a *)
-(*     programmer error to set [?vanished] to [true] but not to pass a value for *)
-(*     [?changed]. *\) *)
-
-(* val fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response state *)
-(* (\** [fetch uid ?changed ?vanished set att] retrieves data associated with *)
-(*     messages with sequence number in [set]. *)
-
-(*     If the [?changed] argument is passed, only those messages with *)
-(*     [CHANGEDSINCE] mod-sequence value at least the passed value are affected *)
-(*     (requires the [CONDSTORE] extension). *)
-
-(*     The [vanished] optional parameter specifies whether one wants to receive *)
-(*     [`Vanished] responses as well. *\) *)
-
-(* val uid_fetch: session -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response state *)
-(* (\** Like {!fetch}, but identifies messages by UID. *\) *)
+  val uid_copy: t -> UidSet.t -> string -> unit M.t
+  (** Like {!copy}, but identifies messages by UID. *)
 
-(* (\** {2 Store commands} *\) *)
-
-(* val add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the *)
-(*     messages with sequence number in [set]. *)
-
-(*     If [?silent] is present, the updated flags for the affected messages is *)
-(*     returned. *)
-
-(*     If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE] *)
-(*     mod-sequence value at least the passed value are affected. *\) *)
-
-(* val set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** Like {!store_add_flags}, but replaces all flags instead of adding to it. *\) *)
-
-(* val remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** Like {!add_flags} but removes all flags instead of adding to them. *\) *)
-
-(* val uid_add_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** Like {!add_flags}, but identifies messages by UID. *\) *)
-
-(* val uid_set_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** Like {!set_flags}, but identifies messages by UID. *\) *)
-
-(* val uid_remove_flags: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response state *)
-(* (\** Like {!remove_flags}, but identifies messages by UID. *\) *)
-
-(* val add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *\) *)
-
-(* val set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *\) *)
-
-(* val remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!remove_flags}, but acts on the set of Gmail labels instead of *)
-(*     flags. *\) *)
-
-(* val uid_add_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!add_labels}, but identfies messages by UID. *\) *)
-
-(* val uid_set_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!set_labels}, but identifies messages by UID. *\) *)
-
-(* val uid_remove_labels: session -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response state *)
-(* (\** Like {!remove_labels}, but identifies messages by UID. *\) *)
-
-(* val enable: session -> capability list -> capability list state *)
-
-(* val authenticate: Auth.authenticator -> unit command *)
-(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
-    If the server supports the requested authentication mechanism, it performs
-    an authentication protocol exchange to authenticate and identify the client.
-    See {!authenticator} for details on the interface with particular [SASL]
-    mechanisms. *)
-
-(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
-    command is executing the client will receive a stream of incoming untagged
-    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
-    of can be stopped by the client by forcing [stop].  If [stop] is forced
-    after [IDLE] ended, then it is a no-op.
-
-    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
-    {{!ex}examples} for more details. *)
-
-(** {1 Running commands and receiving responses} *)
-
-(** [connection ()] creates a new connection object.  The connection should be
-    supplied with input and output buffers as necessary using {!src} and {!dst}.
-    Other that that, it is completely independent of any particular connection
-    and/or IO mechanism.
-
-    After creation, the connection should be run with [`Await] until [`Ok] to
-    process the server greeting and start issuing commands.
-
-    See the {{!ex}examples}. *)
-
-(** {3 Executing commands}
-
-    The {!run} function encodes the connection state machine.  A connection [c]
-    can be in three states: {e awaiting the server greeting}, {e executing a
-    command}, or {e awaiting commands}.
-
-    After {{!val:connection}creation}, [c] is {e awaiting the server greeting.}
-    {!run} must be passed [`Await] until getting back [`Ok] which signals that
-    the greeting has been received and [c] is now {e awaiting commands.}  A
-    command can then be initiated by passing [`Cmd].  After a command is
-    initiated, [c] will be {e executing a command} and {!run} will return a
-    sequence of [`Await_src] and/or [`Await_dst] values interspaced with
-    [`Untagged] values, and finally ending with [`Ok].  The client should call
-    {!run} with [`Await] to step through this process (possibly after providing
-    more input and output storage using {!src} and {!dst}).
-
-    After returning [`Ok], [c] is again {e awaiting commands} and the process can be
-    reinitiated.
-
-    It is an error to execute a command if [c] is not {e awaiting commands.}
-
-    See the {{!ex}examples.} *)
-
-(** [run c v] performs [v] on the connection [c].  The meaning of the different values
-    of [v] is:
-    {ul
-    {- [`Cmd c]: execute the {!command} [c].}
-    {- [`Await]: perform periodic IO processing to complete the execution of currently
-       executing command.}}
-
-    The value of [run c v] is:
-    {ul
-    {- [`Untagged u] if an untagged {{!untagged}response} has been received from the
-       server.}
-    {- [`Ok] if no command is in progress and the server is ready to receive a new
-       command from the client.}
-    {- [`Error e] if an error ocurred during the processing of the current command.
-       If the {!error} is not fatal, then the client can continue using this connection.
-       Otherwise, the connection should be discarded immediately.}
-    {- [`Await_src] if the connection is awaiting for more input.  The client must use
-       {!src} to provide a new buffer and then call {!run} with [`Await].}
-    {- [`Await_dst] if the connection needs more output storage.  The client must use
-       {!dst} to provide a new buffer and then call {!run} with [`Await].}} *)
-
-(** {1:limitations Supported extensions and limitations}
-
-    The following extensions are supported:
-    - {{:https://tools.ietf.org/html/rfc4551}CONDSTORE}
-    - {{:https://tools.ietf.org/html/rfc5162}QRESYNC}
-    - {{:http://tools.ietf.org/html/rfc5161}ENABLE}
-    - {{:https://tools.ietf.org/html/rfc4315}UIDPLUS}
-    - {{:https://tools.ietf.org/html/rfc6154}SPECIAL-USE}
-    - {{:https://tools.ietf.org/html/rfc2177}IDLE}
-    - {{:https://developers.google.com/gmail/imap_extensions}X-GM-EXT-1}
-
-    {3 Limitations}
-
-    Error handling is very simplistic.  In particular there is no error recovery
-    from simple parsing errors.  Some form of this could be added if
-    required. *)
-
-(** {1:ex Example: checking for new mail}
-
-    [wait_mail host port user pass mbox] logs into the IMAP server
-    [host] on port [port] over {{:https://github.com/savonet/ocaml-ssl}SSL},
-    authenticates user [user] with password [pass] and watches mailbox [mbox] until a
-    new message arrives.  When a new message arrives, it outputs the sender's name
-    and address and stops.
-
-    See the
-    {{:https://github.com/nojb/ocaml-imap/blob/master/test/wait_mail.ml}wait_mail.ml}
-    file for a more complete version of this example.
-
-    Setting [debug_flag := true] will output all the data exchanged with the
-    server which can be quite instructive.
-
-{[
-let debug_flag = ref false
-]}
-
-    The function [run] takes care of managing I/O.
-
-{[
-  let run sock i o c v : [ `Untagged of Imap.untagged | `Ok ] =
-    let rec write_fully s off len =
-      if len > 0 then
-        let rc = Ssl.write sock s off len in
-        write_fully s (off + rc) (len - rc)
-    in
-    let rec loop = function
-      | `Await_src ->
-          let rc = Ssl.read sock i 0 (Bytes.length i) in
-          if !debug_flag then Format.eprintf ">>> %d\n%s>>>\n%!" rc (String.sub i 0 rc);
-          Imap.src c i 0 rc;
-          loop (Imap.run c `Await)
-      | `Await_dst ->
-          let rc = Bytes.length o - Imap.dst_rem c in
-          write_fully o 0 rc;
-          if !debug_flag then Format.eprintf "<<< %d\n%s<<<\n%!" rc (String.sub o 0 rc);
-          Imap.dst c o 0 (Bytes.length o);
-          loop (Imap.run c `Await)
-      | `Untagged _ as r -> r
-      | `Ok _ -> `Ok
-      | `Error e ->
-          Format.eprintf "@[IMAP Error: %a@]@." Imap.pp_error e;
-          failwith "imap error"
-    in
-    loop (Imap.run c v)
-]}
-
-    In order to detect new messages, we record the next UID value of the
-    [INBOX] mailbox as soon as we open it.  Then we wait for the server to
-    alert us of activity in this mailbox using the {{!run}idle} command.  And we look
-    for messages with UIDs larger than this one using the {!search} command.
-
-{[
-  let () = Ssl.init ()
-
-  let wait_mail host port user pass mbox =
-    let fd = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-    let he = Unix.gethostbyname host in
-    Unix.connect fd (Unix.ADDR_INET (he.Unix.h_addr_list.(0), port));
-    let ctx = Ssl.create_context Ssl.TLSv1 Ssl.Client_context in
-    let sock = Ssl.embed_socket fd ctx in
-    Ssl.connect sock;
-    let c = Imap.connection () in
-    let i = Bytes.create io_buffer_size in
-    let o = Bytes.create io_buffer_size in
-    Imap.dst c o 0 (Bytes.length o);
-    match run sock i o c `Await with
-    | `Ok ->
-        let rec logout = function
-          | `Untagged _ -> logout (run sock i o c `Await)
-          | `Ok -> ()
-        in
-        let rec idle stop uidn = function
-          | `Untagged (`Exists _) -> Lazy.force stop; idle stop uidn (run sock i o c `Await)
-          | `Untagged _ -> idle stop uidn (run sock i o c `Await)
-          | `Ok ->
-              search uidn Uint32.zero
-                (run sock i o c (`Cmd (Imap.search ~uid:true (`Uid [uidn, None]))))
-        and search uidn n = function
-          | `Untagged (`Search (n :: _, _)) -> search uidn n (run sock i o c `Await)
-          | `Untagged _ -> search uidn n (run sock i o c `Await)
-          | `Ok ->
-              if n = Uint32.zero then
-                let cmd, stop = Imap.idle () in
-                idle stop uidn (run sock i o c (`Cmd cmd))
-              else
-              let cmd = Imap.fetch ~uid:true ~changed:Uint64.one [n, Some n] [`Envelope] in
-              fetch uidn n None (run sock i o c (`Cmd cmd))
-        and fetch uidn n name = function
-          | `Untagged (`Fetch (_, att)) ->
-              let name =
-                List.fold_left
-                  (fun name att -> match att with
-                     | `Envelope e ->
-                         begin match e.Imap.env_from with
-                         | [] -> name
-                         | ad :: _ ->
-                             Some (Printf.sprintf "\"%s\" <%s@%s>"
-                                     ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host)
-                         end
-                     | _ -> name) name att
-              in
-              fetch uidn n name (run sock i o c `Await)
-          | `Untagged _ -> fetch uidn n name (run sock i o c `Await)
-          | `Ok ->
-              let name = match name with None -> "<unnamed>" | Some name -> name in
-              Format.printf "New mail from %s, better go and check it out!\n%!" name;
-              logout (run sock i o c (`Cmd Imap.logout))
-        in
-        let rec select uidn = function
-          | `Untagged (`Ok (`Uid_next uidn, _)) -> select uidn (run sock i o c `Await)
-          | `Untagged _ -> select uidn (run sock i o c `Await)
-          | `Ok ->
-              let cmd, stop = Imap.idle () in
-              idle stop uidn (run sock i o c (`Cmd cmd))
-        in
-        let rec login = function
-          | `Untagged _ -> login (run sock i o c `Await)
-          | `Ok -> select Uint32.zero (run sock i o c (`Cmd (Imap.examine mbox)))
-        in
-        login (run sock i o c (`Cmd (Imap.login user pass)))
-    | `Untagged _ -> assert false
-]}
-*)
+  val check: t -> unit M.t
+  (** [check] requests a checkpoint of the currently selected mailbox.  A
+      checkpoint refers to any implementation-dependent housekeeping associated
+      with the mailbox. *)
+
+  val close: t -> unit M.t
+  (** [close] permanently removes all messages that have the [`Deleted]
+      {!flag} set from the currently selected mailbox, and returns to
+      the authenticated state from the selected state. *)
+
+  val expunge: t -> Seq.t list M.t
+  (** [expunge] permanently removes all messages that have the [`Deleted]
+      {!flag} set from the currently selected mailbox.  Before
+      returning an [`Ok] to the client, an untagged [`Expunge]
+      {{!untagged}response} is sent for each message that is removed. *)
+
+  val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) M.t
+  (** [uid_search conn key] returns the set of UIDs of messages satisfying the
+      criteria [key]. *)
+
+  val search: t -> Search.key -> (Seq.t list * Modseq.t option) M.t
+  (** Like {!uid_search}, but the sequence numbers of matching messages is
+      returned instead. *)
+
+  val select: t -> string -> unit M.t
+  (** [select conn m] selects the mailbox [m] for access. *)
+
+  val condstore_select: t -> string -> Modseq.t M.t
+  (** Like {!select}, but retruns the modification sequence number in all
+      subsequent fetch requests. *)
+
+  val examine: t -> string -> unit M.t
+  (** Like {!select}, but in read-only mode. *)
+
+  val condstore_examine: t -> string -> Modseq.t M.t
+  (** Like {!condstore_select}, but in read-only mode. *)
+
+  val append: t -> string -> ?flags:Flag.flag list -> string -> unit M.t
+  (** [append m flags id data] appends [data] as a new message to the end of the
+      mailbox [m].  This argument should be in the format of an [RFC-2822]
+      message.
+
+      If a flag list is specified, the flags should be set in the resulting
+      message; otherwise, the flag list of the resulting message is set to empty
+      by default.  In either case, the [`Recent] flag is also set. *)
+
+  val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response M.t
+  (** [fetch uid ?changed ?vanished set att] retrieves data associated with
+      messages with sequence number in [set].
+
+      If the [?changed] argument is passed, only those messages with
+      [CHANGEDSINCE] mod-sequence value at least the passed value are affected
+      (requires the [CONDSTORE] extension).
+
+      The [vanished] optional parameter specifies whether one wants to receive
+      [`Vanished] responses as well. *)
+
+  val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response M.t
+  (** Like {!fetch}, but identifies messages by UID. *)
+
+  val add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
+  (** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
+      messages with sequence number in [set].
+
+      If [?silent] is present, the updated flags for the affected messages is
+      returned.
+
+      If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
+      mod-sequence value at least the passed value are affected. *)
+
+  val set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
+  (** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
+
+  val remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
+  (** Like {!add_flags} but removes all flags instead of adding to them. *)
+
+  val uid_add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
+  (** Like {!add_flags}, but identifies messages by UID. *)
+
+  val uid_set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
+  (** Like {!set_flags}, but identifies messages by UID. *)
+
+  val uid_remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
+  (** Like {!remove_flags}, but identifies messages by UID. *)
+
+  val add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
+  (** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
+
+  val set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
+  (** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
+
+  val remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
+  (** Like {!remove_flags}, but acts on the set of Gmail labels instead of
+      flags. *)
+
+  val uid_add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
+  (** Like {!add_labels}, but identfies messages by UID. *)
+
+  val uid_set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
+  (** Like {!set_labels}, but identifies messages by UID. *)
+
+  val uid_remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
+  (** Like {!remove_labels}, but identifies messages by UID. *)
+
+  val enable: t -> capability list -> capability list M.t
+
+  (* val authenticate: Auth.authenticator -> unit command *)
+  (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
+      If the server supports the requested authentication mechanism, it performs
+      an authentication protocol exchange to authenticate and identify the client.
+      See {!authenticator} for details on the interface with particular [SASL]
+      mechanisms. *)
+
+  (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
+      command is executing the client will receive a stream of incoming untagged
+      {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
+      of can be stopped by the client by forcing [stop].  If [stop] is forced
+      after [IDLE] ended, then it is a no-op.
+
+      See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
+      {{!ex}examples} for more details. *)
+end

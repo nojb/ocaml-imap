@@ -1,6 +1,6 @@
 (* The MIT License (MIT)
 
-   Copyright (c) 2015 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
+   Copyright (c) 2015-2017 Nicolas Ojeda Bar <n.oje.bar@gmail.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -302,6 +302,37 @@ module MIME = struct
     | Multipart of mime list * string [@@deriving sexp]
 end
 
+module Flag = struct
+  type flag =
+    | Answered
+    | Flagged
+    | Deleted
+    | Seen
+    | Draft
+    | Keyword of string
+    | Extension of string
+    | Recent
+    | Any [@@deriving sexp]
+end
+
+module MbxFlag = struct
+  type mbx_flag =
+    | Noselect
+    | Marked
+    | Unmarked
+    | Noinferiors
+    | HasChildren
+    | HasNoChildren
+    | All
+    | Archive
+    | Drafts
+    | Flagged
+    | Junk
+    | Sent
+    | Trash
+    | Extension of string [@@deriving sexp]
+end
+
 module E = struct
   type rope =
     | Cat of rope * rope
@@ -431,54 +462,16 @@ module E = struct
   let capability s =
     raw (string_of_capability s)
 
-  (* type result = *)
-  (*   | WaitForCont of string * rope *)
-  (*   | Done of string *)
-
-  (* let rec out b k = function *)
-  (*   | Cat (f, g) -> *)
-  (*       out b (Cat (g, k)) f *)
-  (*   | Flush -> *)
-  (*       Done (Buffer.contents b) *)
-  (*   | Wait -> *)
-  (*       WaitForCont (Buffer.contents b, k) *)
-  (*   | Raw s -> *)
-  (*       Buffer.add_string b s; *)
-  (*       out b empty k *)
-
-  (* let out k = *)
-  (*   out (Buffer.create 32) empty (Cat (k, Cat (Raw "\r\n", Flush))) *)
-end
-
-module Flag = struct
-  type flag =
-    | Answered
-    | Flagged
-    | Deleted
-    | Seen
-    | Draft
-    | Keyword of string
-    | Extension of string
-    | Recent
-    | Any [@@deriving sexp]
-end
-
-module MbxFlag = struct
-  type mbx_flag =
-    | Noselect
-    | Marked
-    | Unmarked
-    | Noinferiors
-    | HasChildren
-    | HasNoChildren
-    | All
-    | Archive
-    | Drafts
-    | Flagged
-    | Junk
-    | Sent
-    | Trash
-    | Extension of string [@@deriving sexp]
+  let flag = function
+    | Flag.Answered -> raw "\\Answered"
+    | Flagged -> raw "\\Flagged"
+    | Deleted -> raw "\\Deleted"
+    | Seen -> raw "\\Seen"
+    | Draft -> raw "\\Draft"
+    | Keyword s -> raw s
+    | Extension s -> raw ("\\" ^ s)
+    | Recent -> raw "\\Recent"
+    | Any -> raw "\\*"
 end
 
 module Code = struct
@@ -1141,7 +1134,7 @@ module Decoder = struct
 
   let resp_text =
     let resp_text_code = char '[' *> some resp_text_code <* char ']' <* char ' ' in
-    pair (return ()) resp_text_code text <?> "resp-text"
+    pair (return ()) (option None resp_text_code) text <?> "resp-text"
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
@@ -2137,496 +2130,413 @@ let xoauth2 user token =
 module A = Angstrom.Buffered
 module R = Response
 
-type bigstring =
-  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-
-type session =
-  {
-    tag: int;
-    unconsumed: A.unconsumed;
-  }
-
 type error =
   | Incorrect_tag of string * string
   | Decode_error of string * int
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
-  | No of string * session
-  | Bad of string * session
-
-let initial_session =
-  {
-    tag = 1;
-    unconsumed = {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0};
-  }
-
-type 'a state =
-  | Ok of 'a * session
-  | Error of error
-  | Write of string * 'a state
-  | Flush of 'a state
-  | Read of ([`String of string | `Bigstring of bigstring | `Eof] -> 'a state)
-
-type 'a command =
-  {
-    format: E.rope;
-    default: 'a;
-    process: session -> 'a -> R.untagged -> session * 'a;
-  }
-
-let tag {tag; _} =
-  Printf.sprintf "%04d" tag
-
-(* let rec wait_for_auth tag a = function *)
-(*   | Cont data -> *)
-(*       begin match a#step (B64.decode data) with *)
-(*       | (Ok data : (_, _) result) -> *)
-(*           let data = B64.encode ~pad:true data in *)
-(*           Next (Sending (E.raw data, WaitForResp (wait_for_auth tag a))) *)
-(*       | Error _ -> *)
-(*           Next (Sending (E.raw "*", WaitForResp (wait_for_auth tag a))) *)
-(*       end *)
-(*   | Untagged _ -> *)
-(*       Next (WaitForResp (wait_for_auth tag a)) *)
-(*   | Tagged (tag1, _) -> *)
-(*       assert (tag = tag1); *)
-(*       Done () *)
-
-(* let wait_for_greeting = function *)
-(*   | Untagged (State (OK _)) -> *)
-(*       Done () *)
-(*   | _ -> *)
-(*       assert false *)
-
-(* let wait_for_cont k = function *)
-(*   | Cont _ -> *)
-(*       Next k *)
-(*   | _ -> *)
-(*       assert false *)
-
-(* let rec wait_for_resp tag init f = function *)
-(*   | Cont _ -> *)
-(*       assert false *)
-(*   | Untagged r -> *)
-(*       Next (WaitForResp (wait_for_resp tag (f r init) f)) *)
-(*   | Tagged (tag1, _) -> *)
-(*       assert (tag = tag1); *)
-(*       Done init *)
-
-let rec wait_for_greeting = function
-  | A.Partial f ->
-      Read (fun inp -> wait_for_greeting (f inp))
-  | Done (unconsumed, R.Untagged (State (OK _))) ->
-      Ok ((), {initial_session with unconsumed})
-
-let init =
-  wait_for_greeting (Angstrom.Buffered.parse Decoder.response)
-
-(* let continue (session, state) = *)
-(*   let rec loop buf = function *)
-(*     | Done x -> *)
-(*         Ok (x, {session with buf}) *)
-(*     | Next (Sending (format, k)) -> *)
-(*         begin match E.out format with *)
-(*         | E.Done s -> *)
-(*             Send (s, ({session with buf}, k)) *)
-(*         | E.WaitForCont (s, format) -> *)
-(*             Send (s, ({session with buf}, WaitForResp (wait_for_cont k))) *)
-(*         end *)
-(*     | Next (WaitForResp k as state) -> *)
-(*         begin match Readline.next buf with *)
-(*         | Readline.Next (buf, r) -> *)
-(*             loop buf (k r) *)
-(*         | Readline.Refill buf -> *)
-(*             Refill ({session with buf}, state) *)
-(*         | Readline.Error -> *)
-(*             assert false *)
-(*         end *)
-(*   in *)
-(*   loop session.buf (Next state) *)
-
-(* let feed (session, state) s off len = *)
-(*   {session with buf = Readline.feed session.buf s off len}, state *)
-
-(* let rec wait_for_cont conn cont = function *)
-(*   | A.Partial f -> *)
-(*       Read (fun inp -> wait_for_cont conn cont (f inp)) *)
-(*   | Done (unconsumed, ..) -> *)
-(*       cont {conn with unconsumed} *)
-
-(* let rec wait_for_resp tag init f = function *)
-(*   | Cont _ -> *)
-(*       assert false *)
-(*   | Untagged r -> *)
-(*       Next (WaitForResp (wait_for_resp tag (f r init) f)) *)
-(*   | Tagged (tag1, _) -> *)
-(*       assert (tag = tag1); *)
-(*       Done init *)
-
-let parse {A.buffer; off; len} p =
-  let input = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
-  Bigarray.Array1.blit (Bigarray.Array1.sub buffer off len) input;
-  let input = `Bigstring input in
-  A.parse ~input p
-
-let rec wait_for_resp conn res f = function
-  | A.Partial k ->
-      Read (fun inp -> wait_for_resp conn res f (k inp))
-  | Done (unconsumed, R.Untagged u) ->
-      let conn, res = f conn res u in
-      wait_for_resp conn res f (parse unconsumed Decoder.response)
-  | Done (unconsumed, R.Tagged (t, _)) ->
-      Ok (res, {conn with tag = conn.tag + 1})
-
-let rec send conn r (cont : session -> unit state) : unit state =
-  match r with
-  | E.Cat (r1, r2) ->
-      send conn r1 (fun conn -> send conn r2 cont)
-  | E.Flush ->
-      Flush (cont conn)
-  | Wait ->
-      assert false
-      (* wait_for_cont conn cont *)
-  | Raw s ->
-      Write (s, cont conn)
-
-let run conn cmd =
-  let tag = tag conn in
-  let r = E.(raw tag ++ cmd.format ++ raw "\r\n" ++ Flush) in
-  send conn r
-    (fun conn -> wait_for_resp conn cmd.default cmd.process (parse conn.unconsumed Decoder.response))
-
-(* let state = Sending (format, WaitForResp (wait_for_resp tag cmd.default cmd.process)) in *)
-  (* continue (session, state) *)
-
-(* let rec wait_for_idle tag = function *)
-(*   | Cont _ -> *)
-(*       Next (WaitForResp (wait_for_idle tag)) *)
-(*   | Untagged _ -> *)
-(*       Next (Sending (E.(raw "DONE"), WaitForResp (wait_for_idle tag))) *)
-(*   | Tagged (tag1, _) -> *)
-(*       assert (tag = tag1); *)
-(*       Done () *)
-
-(* let idle session = *)
-(*   let tag = tag session in *)
-(*   let format = E.(raw tag ++ raw "IDLE") in *)
-(*   let state = Sending (format, WaitForResp (wait_for_idle tag)) in *)
-(*   continue (session, state) *)
-
-let login conn username password =
-  let format = E.(str "LOGIN" ++ str username ++ str password) in
-  let default = () in
-  let process conn _ _ = conn, () in
-  run conn {format; default; process}
-
-(* let authenticate session a = *)
-(*   let tag = tag session in *)
-(*   let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw a#name) in *)
-(*   let state = Sending (format, WaitForResp (wait_for_auth tag a)) in *)
-(*   continue (session, state) *)
-
-(* let capability ss = *)
-(*   let format = E.(str "CAPABILITY") in *)
-(*   let default = [] in *)
-(*   let process u caps = *)
-(*     match u with *)
-(*     | CAPABILITY caps1 -> caps @ caps1 *)
-(*     | _ -> caps *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let create ss m = *)
-(*   let format = E.(str "CREATE" ++ mailbox m) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let delete ss m = *)
-(*   let format = E.(str "DELETE" ++ mailbox m) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let rename ss m1 m2 = *)
-(*   let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let logout ss = *)
-(*   let format = E.(str "LOGOUT") in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let noop ss = *)
-(*   let format = E.(str "NOOP") in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let subscribe ss m = *)
-(*   let format = E.(str "SUBSCRIBE" ++ mailbox m) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let unsubscribe ss m = *)
-(*   let format = E.(str "UNSUBSCRIBE" ++ mailbox m) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let list ss ?(ref = "") s = *)
-(*   let format = E.(str "LIST" ++ mailbox ref ++ str s) in *)
-(*   let default = [] in *)
-(*   let process u res = *)
-(*     match u with *)
-(*     | LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (\* CHECK *\) *)
-(*     | _ -> res *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let lsub ss ?(ref = "") s = *)
-(*   let format = E.(str "LSUB" ++ mailbox ref ++ str s) in *)
-(*   let default = [] in *)
-(*   let process u res = *)
-(*     match u with *)
-(*     | LSUB (flags, delim, mbox) -> res @ [flags, delim, mbox] *)
-(*     | _ -> res *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let status ss m att = *)
-(*   let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in *)
-(*   let default = Status.default in *)
-(*   let process u resp = *)
-(*     match u with *)
-(*     | STATUS (mbox, items) when m = mbox -> *)
-(*         let aux resp = function *)
-(*           | (MESSAGES n : mbx_att) -> {resp with Status.messages = Some n} *)
-(*           | RECENT n -> {resp with recent = Some n} *)
-(*           | UIDNEXT n -> {resp with uidnext = Some n} *)
-(*           | UIDVALIDITY n -> {resp with uidvalidity = Some n} *)
-(*           | UNSEEN n -> {resp with unseen = Some n} *)
-(*           | HIGHESTMODSEQ n -> {resp with highestmodseq = Some n} *)
-(*         in *)
-(*         List.fold_left aux resp items *)
-(*     | _ -> *)
-(*         resp *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let copy_gen ss cmd s m = *)
-(*   let format = E.(cmd ++ eset s ++ mailbox m) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let copy ss s m = *)
-(*   copy_gen ss E.(raw "COPY") s m *)
-
-(* let uid_copy ss s m = *)
-(*   copy_gen ss E.(raw "UID" ++ raw "COPY") s m *)
-
-(* let check ss = *)
-(*   let format = E.(str "CHECK") in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let close ss = *)
-(*   let format = E.(str "CLOSE") in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let expunge ss = *)
-(*   let format = E.(str "EXPUNGE") in *)
-(*   let default = [] in *)
-(*   let process u info = *)
-(*     match u with *)
-(*     | EXPUNGE n -> n :: info *)
-(*     | _ -> info *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let search_gen ss cmd sk = *)
-(*   let format = E.(cmd ++ sk) in *)
-(*   let default = ([], None) in *)
-(*   let process u (res, m) = *)
-(*     match u with *)
-(*     | SEARCH (ids, m1) -> ids @ res, m1 *)
-(*     | _ -> (res, m) *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let search ss = *)
-(*   search_gen ss E.(raw "SEARCH") *)
-
-(* let uid_search ss = *)
-(*   search_gen ss E.(raw "UID" ++ raw "SEARCH") *)
-
-(* let select_gen ss cmd m = *)
-(*   let open E in *)
-(*   let format = cmd ++ mailbox m in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let condstore_select_gen ss cmd m = *)
-(*   let open E in *)
-(*   let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in *)
-(*   let default = Int64.zero in *)
-(*   let process u m = *)
-(*     match u with *)
-(*     | State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m *)
-(*     | _ -> m *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let select ss = *)
-(*   select_gen ss E.(raw "SELECT") *)
-
-(* let examine ss = *)
-(*   select_gen ss E.(raw "EXAMINE") *)
-
-(* let condstore_select ss = *)
-(*   condstore_select_gen ss E.(raw "SELECT") *)
-
-(* let condstore_examine ss = *)
-(*   condstore_select_gen ss E.(raw "EXAMINE") *)
-
-(* let append ss m ?(flags = []) data = *)
-(*   let format = E.(raw "APPEND" ++ mailbox m ++ p (list Flag.flag flags) ++ literal data) in *)
-(*   let default = () in *)
-(*   let process _ () = () in *)
-(*   run ss {format; default; process} *)
-
-(* let fetch_gen ss cmd ?changed ?(vanished = false) set att = *)
-(*   let open E in *)
-(*   let att = *)
-(*     match att with *)
-(*     (\* | `Fast -> raw "FAST" *\) *)
-(*     (\* | `Full -> raw "FULL" *\) *)
-(*     (\* | `All -> raw "ALL" *\) *)
-(*     | [x] -> x *)
-(*     | xs -> p (list (fun x -> x) xs) *)
-(*   in *)
-(*   let changed_since = *)
-(*     match changed, vanished with *)
-(*     | None, true -> invalid_arg "fetch_gen" *)
-(*     | None, false -> empty *)
-(*     | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m) *)
-(*     | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED") *)
-(*   in *)
-(*   let format = cmd ++ eset set ++ att ++ changed_since in *)
-(*   let default = Fetch.default in *)
-(*   let process u resp = *)
-(*     match u with *)
-(*     | FETCH (id, infos) -> *)
-(*         let aux resp = function *)
-(*           | (Response.FLAGS l : msg_att) -> {resp with Fetch.flags = Some l} *)
-(*           | ENVELOPE e -> {resp with envelope = Some e} *)
-(*           | INTERNALDATE (d, t) -> {resp with internaldate = Some (d, t)} *)
-(*           | RFC822 (Some s) -> {resp with rfc822 = Some s} *)
-(*           | RFC822 None -> {resp with rfc822 = Some ""} *)
-(*           | RFC822_HEADER (Some s) -> {resp with rfc822_header = Some s} *)
-(*           | RFC822_HEADER None -> {resp with rfc822_header = Some ""} *)
-(*           | RFC822_TEXT (Some s) -> {resp with rfc822_text = Some s} *)
-(*           | RFC822_TEXT None -> {resp with rfc822_text = Some ""} *)
-(*           | RFC822_SIZE n -> {resp with rfc822_size = Some n} *)
-(*           | BODY x -> {resp with body = Some x} *)
-(*           | BODYSTRUCTURE x -> {resp with bodystructure = Some x} *)
-(*           | BODY_SECTION (sec, len, s) -> {resp with body_section = Some (sec, len, s)} *)
-(*           | UID n -> {resp with uid = Some n} *)
-(*           | MODSEQ n -> {resp with modseq = Some n} *)
-(*           | X_GM_MSGID n -> {resp with x_gm_msgid = Some n} *)
-(*           | X_GM_THRID n -> {resp with x_gm_thrid = Some n} *)
-(*           | X_GM_LABELS n -> {resp with x_gm_labels = Some n} *)
-(*         in *)
-(*         List.fold_left aux resp infos *)
-(*     | _ -> *)
-(*         resp *)
-(*   in *)
-(*   run ss {format; default; process} *)
-
-(* let fetch ss ?changed ?vanished set att = *)
-(*   fetch_gen ss E.(raw "FETCH") ?changed ?vanished set att *)
-
-(* let uid_fetch ss ?changed ?vanished set att = *)
-(*   fetch_gen ss E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att *)
-
-(* let store_gen ss cmd ~silent ~unchanged mode set att = *)
-(*   let open E in *)
-(*   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in *)
-(*   let silent = if silent then ".SILENT" else "" in *)
-(*   let base = *)
-(*     match att with *)
-(*     | `Flags _ -> *)
-(*         Printf.sprintf "%sFLAGS%s" mode silent *)
-(*     | `Labels _ -> *)
-(*         Printf.sprintf "%sX-GM-LABELS%s" mode silent *)
-(*   in *)
-(*   let att = *)
-(*     match att with *)
-(*     | `Flags flags -> list Flag.flag flags *)
-(*     | `Labels labels -> list label labels *)
-(*   in *)
-(*   let unchanged_since = *)
-(*     match unchanged with *)
-(*     | None -> str "" *)
-(*     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m) *)
-(*   in *)
-(*   let format = cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in *)
-(*   let default = Fetch.default in *)
-(*   let process u m = m in *)
-(*   run ss {format; default; process} *)
-
-(* let add_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Add set (`Flags flags) *)
-
-(* let set_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Set set (`Flags flags) *)
-
-(* let remove_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Remove set (`Flags flags) *)
-
-(* let add_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Add set (`Labels labels) *)
-
-(* let set_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Set set (`Labels labels) *)
-
-(* let remove_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "STORE") ~silent ~unchanged `Remove set (`Labels labels) *)
-
-(* let uid_add_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Flags flags) *)
-
-(* let uid_set_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Flags flags) *)
-
-(* let uid_remove_flags ss ?(silent = false) ?unchanged set flags = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Flags flags) *)
-
-(* let uid_add_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Add set (`Labels labels) *)
-
-(* let uid_set_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Set set (`Labels labels) *)
-
-(* let uid_remove_labels ss ?(silent = false) ?unchanged set labels = *)
-(*   store_gen ss E.(raw "UID" ++ raw "STORE") ~silent ~unchanged `Remove set (`Labels labels) *)
-
-(* let enable ss caps = *)
-(*   let format = E.(str "ENABLE" ++ list capability caps) in *)
-(*   let default = [] in *)
-(*   let process u caps = *)
-(*     match u with *)
-(*     | ENABLED caps1 -> caps1 @ caps *)
-(*     | _ -> caps *)
-(*   in *)
-(*   run ss {format; default; process} *)
+  | No of string
+  | Bad of string [@@deriving sexp]
+
+module type MONAD = sig
+  type 'a t
+
+  val bind: 'a t -> ('a -> 'b t) -> 'b t
+  val return: 'a -> 'a t
+  val fail: exn -> 'a t
+
+  type ic
+  type oc
+
+  val read: ic -> string t
+  val write: oc -> string -> unit t
+  val flush: oc -> unit t
+end
+
+module Make (M : MONAD) = struct
+  let (>>=) = M.bind
+
+  type t =
+    {
+      ic: M.ic;
+      oc: M.oc;
+      mutable tag: int;
+      mutable unconsumed: A.unconsumed;
+    }
+
+  let tag {tag; _} =
+    Printf.sprintf "%04d" tag
+
+  let parse {A.buffer; off; len} p =
+    let input = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
+    Bigarray.Array1.blit (Bigarray.Array1.sub buffer off len) input;
+    let input = `Bigstring input in
+    A.parse ~input p
+
+  let connect ic oc =
+    let rec loop = function
+      | A.Partial f ->
+          M.read ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
+      | Done (unconsumed, (R.Untagged _ as r)) ->
+          Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+          M.return {ic; oc; tag = 0; unconsumed}
+      | Fail (_, l, s) ->
+          Printf.eprintf "Error at %s\n%!" s;
+          List.iter prerr_endline l;
+          M.fail (Failure "parse error")
+    in
+    loop (Angstrom.Buffered.parse Decoder.response)
+
+  let rec send conn r =
+    match r with
+    | E.Cat (r1, r2) ->
+        send conn r1 >>= fun () -> send conn r2
+    | E.Flush ->
+        M.flush conn.oc
+    | Wait ->
+        assert false
+    | Raw s ->
+        M.write conn.oc s
+
+  let run conn format default process =
+    let tag = tag conn in
+    let r = E.(raw tag ++ format ++ raw "\r\n" ++ Flush) in
+    send conn r >>= fun () ->
+    let rec loop res = function
+      | A.Partial f ->
+          M.read conn.ic >>= fun s -> prerr_string s; flush stderr; loop res (f (`String s))
+      | Done (unconsumed, (R.Untagged u as r)) ->
+          Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+          let res = process conn res u in
+          loop res (parse unconsumed Decoder.response)
+      | Done (unconsumed, (R.Tagged (t, _) as r)) ->
+          Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+          conn.tag <- conn.tag + 1;
+          M.return res
+    in
+    loop default (parse conn.unconsumed Decoder.response)
+
+  (* let rec wait_for_idle tag = function *)
+  (*   | Cont _ -> *)
+  (*       Next (WaitForResp (wait_for_idle tag)) *)
+  (*   | Untagged _ -> *)
+  (*       Next (Sending (E.(raw "DONE"), WaitForResp (wait_for_idle tag))) *)
+  (*   | Tagged (tag1, _) -> *)
+  (*       assert (tag = tag1); *)
+  (*       Done () *)
+
+  (* let idle session = *)
+  (*   let tag = tag session in *)
+  (*   let format = E.(raw tag ++ raw "IDLE") in *)
+  (*   let state = Sending (format, WaitForResp (wait_for_idle tag)) in *)
+  (*   continue (session, state) *)
+
+  let login conn username password =
+    let format = E.(str "LOGIN" ++ str username ++ str password) in
+    let default = () in
+    let process conn _ _ = () in
+    run conn format default process
+
+  let authenticate session a =
+    assert false
+  (*   let tag = tag session in *)
+  (*   let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw a#name) in *)
+  (*   let state = Sending (format, WaitForResp (wait_for_auth tag a)) in *)
+  (*   continue (session, state) *)
+
+  let capability ss =
+    let format = E.(str "CAPABILITY") in
+    let default = [] in
+    let process _ caps = function
+      | R.CAPABILITY caps1 -> caps @ caps1
+      | _ -> caps
+    in
+    run ss format default process
+
+  let create ss m =
+    let format = E.(str "CREATE" ++ mailbox m) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let delete ss m =
+    let format = E.(str "DELETE" ++ mailbox m) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let rename ss m1 m2 =
+    let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let logout ss =
+    let format = E.(str "LOGOUT") in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let noop ss =
+    let format = E.(str "NOOP") in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let subscribe ss m =
+    let format = E.(str "SUBSCRIBE" ++ mailbox m) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let unsubscribe ss m =
+    let format = E.(str "UNSUBSCRIBE" ++ mailbox m) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let list ss ?(ref = "") s =
+    let format = E.(str "LIST" ++ mailbox ref ++ str s) in
+    let default = [] in
+    let process _ res = function
+      | R.LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
+      | _ -> res
+    in
+    run ss format default process
+
+  let lsub ss ?(ref = "") s =
+    let format = E.(str "LSUB" ++ mailbox ref ++ str s) in
+    let default = [] in
+    let process _ res = function
+      | R.LSUB (flags, delim, mbox) -> res @ [flags, delim, mbox]
+      | _ -> res
+    in
+    run ss format default process
+
+  let status ss m att =
+    let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
+    let default = Status.default in
+    let process _ resp = function
+      | R.STATUS (mbox, items) when m = mbox ->
+          let aux resp = function
+            | (MESSAGES n : R.mbx_att) -> {resp with Status.messages = Some n}
+            | RECENT n -> {resp with recent = Some n}
+            | UIDNEXT n -> {resp with uidnext = Some n}
+            | UIDVALIDITY n -> {resp with uidvalidity = Some n}
+            | UNSEEN n -> {resp with unseen = Some n}
+            | HIGHESTMODSEQ n -> {resp with highestmodseq = Some n}
+          in
+          List.fold_left aux resp items
+      | _ ->
+          resp
+    in
+    run ss format default process
+
+  let copy_gen ss cmd s m =
+    let format = E.(cmd ++ eset s ++ mailbox m) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let copy ss s m =
+    copy_gen ss E.(raw "COPY") s m
+
+  let uid_copy ss s m =
+    copy_gen ss E.(raw "UID" ++ raw "COPY") s m
+
+  let check ss =
+    let format = E.(str "CHECK") in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let close ss =
+    let format = E.(str "CLOSE") in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let expunge ss =
+    let format = E.(str "EXPUNGE") in
+    let default = [] in
+    let process _ info = function
+      | R.EXPUNGE n -> n :: info
+      | _ -> info
+    in
+    run ss format default process
+
+  let search_gen ss cmd sk =
+    let format = E.(cmd ++ sk) in
+    let default = ([], None) in
+    let process _ (res, m) = function
+      | R.SEARCH (ids, m1) -> ids @ res, m1
+      | _ -> (res, m)
+    in
+    run ss format default process
+
+  let search ss =
+    search_gen ss E.(raw "SEARCH")
+
+  let uid_search ss =
+    search_gen ss E.(raw "UID" ++ raw "SEARCH")
+
+  let select_gen ss cmd m =
+    let open E in
+    let format = cmd ++ mailbox m in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let condstore_select_gen ss cmd m =
+    let open E in
+    let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in
+    let default = Int64.zero in
+    let process _ m = function
+      | R.State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
+      | _ -> m
+    in
+    run ss format default process
+
+  let select ss =
+    select_gen ss E.(raw "SELECT")
+
+  let examine ss =
+    select_gen ss E.(raw "EXAMINE")
+
+  let condstore_select ss =
+    condstore_select_gen ss E.(raw "SELECT")
+
+  let condstore_examine ss =
+    condstore_select_gen ss E.(raw "EXAMINE")
+
+  let append ss m ?(flags = []) data =
+    let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
+    let default = () in
+    let process _ () _ = () in
+    run ss format default process
+
+  let fetch_gen ss cmd ?changed ?(vanished = false) set att =
+    let open E in
+    let att =
+      match att with
+      (* | `Fast -> raw "FAST" *)
+      (* | `Full -> raw "FULL" *)
+      (* | `All -> raw "ALL" *)
+      | [x] -> x
+      | xs -> p (list (fun x -> x) xs)
+    in
+    let changed_since =
+      match changed, vanished with
+      | None, true -> invalid_arg "fetch_gen"
+      | None, false -> empty
+      | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
+      | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
+    in
+    let format = cmd ++ eset set ++ att ++ changed_since in
+    let default = Fetch.default in
+    let process _ resp = function
+      | R.FETCH (id, infos) ->
+          let aux resp = function
+            | (Response.FLAGS l : R.msg_att) -> {resp with Fetch.flags = Some l}
+            | ENVELOPE e -> {resp with envelope = Some e}
+            | INTERNALDATE (d, t) -> {resp with internaldate = Some (d, t)}
+            | RFC822 (Some s) -> {resp with rfc822 = Some s}
+            | RFC822 None -> {resp with rfc822 = Some ""}
+            | RFC822_HEADER (Some s) -> {resp with rfc822_header = Some s}
+            | RFC822_HEADER None -> {resp with rfc822_header = Some ""}
+            | RFC822_TEXT (Some s) -> {resp with rfc822_text = Some s}
+            | RFC822_TEXT None -> {resp with rfc822_text = Some ""}
+            | RFC822_SIZE n -> {resp with rfc822_size = Some n}
+            | BODY x -> {resp with body = Some x}
+            | BODYSTRUCTURE x -> {resp with bodystructure = Some x}
+            | BODY_SECTION (sec, len, s) -> {resp with body_section = Some (sec, len, s)}
+            | UID n -> {resp with uid = Some n}
+            | MODSEQ n -> {resp with modseq = Some n}
+            | X_GM_MSGID n -> {resp with x_gm_msgid = Some n}
+            | X_GM_THRID n -> {resp with x_gm_thrid = Some n}
+            | X_GM_LABELS n -> {resp with x_gm_labels = Some n}
+          in
+          List.fold_left aux resp infos
+      | _ ->
+          resp
+    in
+    run ss format default process
+
+  let fetch ss ?changed ?vanished set att =
+    fetch_gen ss E.(raw "FETCH") ?changed ?vanished set att
+
+  let uid_fetch ss ?changed ?vanished set att =
+    fetch_gen ss E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
+
+  let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
+    let open E in
+    let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
+    let silent = if silent then ".SILENT" else "" in
+    let base =
+      match att with
+      | `Flags _ ->
+          Printf.sprintf "%sFLAGS%s" mode silent
+      | `Labels _ ->
+          Printf.sprintf "%sX-GM-LABELS%s" mode silent
+    in
+    let att =
+      match att with
+      | `Flags flags -> list flag flags
+      | `Labels labels -> list label labels
+    in
+    let unchanged_since =
+      match unchanged with
+      | None -> str ""
+      | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
+    in
+    let format = raw cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
+    let default = Fetch.default in
+    let process _ m _ = m in
+    run ss format default process
+
+  let add_flags ss ?silent ?unchanged set flags =
+    store_gen ss "STORE" ?silent ?unchanged `Add set (`Flags flags)
+
+  let set_flags ss ?silent ?unchanged set flags =
+    store_gen ss "STORE" ?silent ?unchanged `Set set (`Flags flags)
+
+  let remove_flags ss ?silent ?unchanged set flags =
+    store_gen ss "STORE" ?silent ?unchanged `Remove set (`Flags flags)
+
+  let add_labels ss ?silent ?unchanged set labels =
+    store_gen ss "STORE" ?silent ?unchanged `Add set (`Labels labels)
+
+  let set_labels ss ?silent ?unchanged set labels =
+    store_gen ss "STORE" ?silent ?unchanged `Set set (`Labels labels)
+
+  let remove_labels ss ?silent ?unchanged set labels =
+    store_gen ss "STORE" ?silent ?unchanged `Remove set (`Labels labels)
+
+  let uid_add_flags ss ?silent ?unchanged set flags =
+    store_gen ss "UID STORE" ?silent ?unchanged `Add set (`Flags flags)
+
+  let uid_set_flags ss ?silent ?unchanged set flags =
+    store_gen ss "UID STORE" ?silent ?unchanged `Set set (`Flags flags)
+
+  let uid_remove_flags ss ?silent ?unchanged set flags =
+    store_gen ss "UID STORE" ?silent ?unchanged `Remove set (`Flags flags)
+
+  let uid_add_labels ss ?silent ?unchanged set labels =
+    store_gen ss "UID STORE" ?silent ?unchanged `Add set (`Labels labels)
+
+  let uid_set_labels ss ?silent ?unchanged set labels =
+    store_gen ss "UID STORE" ?silent ?unchanged `Set set (`Labels labels)
+
+  let uid_remove_labels ss ?silent ?unchanged set labels =
+    store_gen ss "UID STORE" ?silent ?unchanged `Remove set (`Labels labels)
+
+  let enable ss caps =
+    let format = E.(str "ENABLE" ++ list capability caps) in
+    let default = [] in
+    let process _ caps = function
+      | R.ENABLED caps1 -> caps1 @ caps
+      | _ -> caps
+    in
+    run ss format default process
+end

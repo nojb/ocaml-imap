@@ -1,5 +1,9 @@
 (jbuild_version 1)
 
+(executables
+ ((names (wait_mail))
+  (libraries (ssl lwt lwt_ssl imap))))
+
 ;; (executables
 ;;  ((names (wait_mail imap_shell))
 ;;   (libraries (cmdliner ssl lwt imap))))
