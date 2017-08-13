@@ -611,9 +611,8 @@ val uidnext: t -> Uid.t option
 val connect: string -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox] *)
 
-val capability: t -> capability list Lwt.t
-(** [capability] returns the list of {{!capability}capabilities} supported by
-    the server. *)
+val disconnect: t -> unit Lwt.t
+(** Disconnect. *)
 
 val create: t -> string -> unit Lwt.t
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
@@ -732,5 +731,3 @@ val store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t ->
 
 val uid_store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> store_kind -> Fetch.response Lwt.t
 (** Like {!add_flags}, but identifies messages by UID. *)
-
-val enable: t -> capability list -> capability list Lwt.t

@@ -2491,3 +2491,7 @@ let connect server username password mailbox =
   login imap username password >>= fun () ->
   select imap mailbox >>= fun () ->
   Lwt.return imap
+
+let disconnect imap =
+  logout imap >>= fun () ->
+  Lwt.join [Lwt_io.close imap.ic; Lwt_io.close imap.oc]
