@@ -2007,6 +2007,7 @@ type t =
   {
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
+
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
 
@@ -2015,6 +2016,8 @@ type t =
     mutable recent: int option;
     mutable unseen: int option;
     mutable uidvalidity: Uid.t option;
+
+    mutable capabilities: capability list;
   }
 
 let create_connection ic oc unconsumed =
@@ -2028,6 +2031,7 @@ let create_connection ic oc unconsumed =
     recent = None;
     messages = None;
     unseen = None;
+    capabilities = [];
   }
 
 let tag {tag; _} =
@@ -2090,35 +2094,39 @@ let rec send imap r process res =
       Lwt_io.write imap.oc s >>= fun () ->
       Lwt.return res
 
-let wrap_process f conn res u =
+let wrap_process f imap res u =
   begin match u with
   | R.State (OK (Some (UIDNEXT n), _)) ->
-      conn.uidnext <- Some n
-  | R.State (OK (Some (UIDVALIDITY n), _)) ->
-      conn.uidvalidity <- Some n
-  | R.RECENT n ->
-      conn.recent <- Some n
-  | R.EXISTS n ->
-      conn.messages <- Some n
-  | R.STATUS (_, items) ->
+      imap.uidnext <- Some n
+  | State (OK (Some (UIDVALIDITY n), _)) ->
+      imap.uidvalidity <- Some n
+  | State (OK (Some (CAPABILITY caps), _)) ->
+      imap.capabilities <- caps
+  | RECENT n ->
+      imap.recent <- Some n
+  | EXISTS n ->
+      imap.messages <- Some n
+  | STATUS (_, items) ->
       List.iter (function
           | R.MESSAGES n ->
-              conn.messages <- Some n
+              imap.messages <- Some n
           | RECENT n ->
-              conn.recent <- Some n
+              imap.recent <- Some n
           | UIDNEXT n ->
-              conn.uidnext <- Some n
+              imap.uidnext <- Some n
           | UIDVALIDITY n ->
-              conn.uidvalidity <- Some n
+              imap.uidvalidity <- Some n
           | UNSEEN n ->
-              conn.unseen <- Some n
+              imap.unseen <- Some n
           | _ ->
               ()
         ) items
+  | CAPABILITY caps ->
+      imap.capabilities <- caps
   | _ ->
       ()
   end;
-  f conn res u
+  f imap res u
 
 let run imap format res process =
   let process = wrap_process process in
