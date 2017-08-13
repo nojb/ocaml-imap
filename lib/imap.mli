@@ -609,8 +609,6 @@ type t
 val connect: string -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox] *)
 
-(* val idle: t -> unit state *)
-
 val capability: t -> capability list Lwt.t
 (** [capability] returns the list of {{!capability}capabilities} supported by
     the server. *)
@@ -732,7 +730,10 @@ val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t l
 type store_mode =
   [`Add | `Remove | `Set]
 
-val store_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
+type store_kind =
+  [`Flags of Flag.flag list | `Labels of string list]
+
+val store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> store_kind -> Fetch.response Lwt.t
 (** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
     messages with sequence number in [set].
 
@@ -742,13 +743,7 @@ val store_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSe
     If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
 
-val uid_store_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
+val uid_store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> store_kind -> Fetch.response Lwt.t
 (** Like {!add_flags}, but identifies messages by UID. *)
-
-val store_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
-
-val uid_store_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!add_labels}, but identfies messages by UID. *)
 
 val enable: t -> capability list -> capability list Lwt.t

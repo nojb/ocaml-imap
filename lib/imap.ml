@@ -2437,6 +2437,9 @@ let uid_fetch ss ?changed ?vanished set att =
 type store_mode =
   [`Add | `Remove | `Set]
 
+type store_kind =
+  [`Flags of Flag.flag list | `Labels of string list]
+
 let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
   let open E in
   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
@@ -2463,17 +2466,11 @@ let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
   let process _ m _ = m in
   run ss format default process
 
-let store_flags ss ?silent ?unchanged mode set flags =
-  store_gen ss "STORE" ?silent ?unchanged mode set (`Flags flags)
+let store ss =
+  store_gen ss "STORE"
 
-let store_labels ss ?silent ?unchanged mode set labels =
-  store_gen ss "STORE" ?silent ?unchanged mode set (`Labels labels)
-
-let uid_store_flags ss ?silent ?unchanged mode set flags =
-  store_gen ss "UID STORE" ?silent ?unchanged mode set (`Flags flags)
-
-let uid_store_labels ss ?silent ?unchanged mode set labels =
-  store_gen ss "UID STORE" ?silent ?unchanged mode set (`Labels labels)
+let uid_store ss =
+  store_gen ss "UID STORE"
 
 let enable ss caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
