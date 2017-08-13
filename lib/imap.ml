@@ -2175,12 +2175,14 @@ let rec send conn r =
 
 let wrap_process f conn res u =
   begin match u with
-  (* | R.Untagged (State (OK (Some (UIDNEXT n), _))) -> *)
-  (*     conn.uidnext <- Some n *)
-  (* | R.Untagged (State (OK (Some (UIDVALIDITY n), _))) -> *)
-  (*     conn.uidvalidity <- Some n *)
-  (* | R.Untagged (State (OK (Some (UNSEEN n), _))) -> *)
-  (*     conn.unseen <- Some n *)
+  | R.State (OK (Some (UIDNEXT n), _)) ->
+      conn.uidnext <- Some n
+  | R.State (OK (Some (UIDVALIDITY n), _)) ->
+      conn.uidvalidity <- Some n
+  | R.RECENT n ->
+      conn.recent <- Some n
+  | R.EXISTS n ->
+      conn.messages <- Some n
   | R.STATUS (_, items) ->
       List.iter (function
           | R.MESSAGES n ->
