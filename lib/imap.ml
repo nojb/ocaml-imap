@@ -2255,32 +2255,11 @@ let noop ss =
   let process _ () _ = () in
   run ss format default process
 
-let subscribe ss m =
-  let format = E.(str "SUBSCRIBE" ++ mailbox m) in
-  let default = () in
-  let process _ () _ = () in
-  run ss format default process
-
-let unsubscribe ss m =
-  let format = E.(str "UNSUBSCRIBE" ++ mailbox m) in
-  let default = () in
-  let process _ () _ = () in
-  run ss format default process
-
 let list ss ?(ref = "") s =
   let format = E.(str "LIST" ++ mailbox ref ++ str s) in
   let default = [] in
   let process _ res = function
     | R.LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
-    | _ -> res
-  in
-  run ss format default process
-
-let lsub ss ?(ref = "") s =
-  let format = E.(str "LSUB" ++ mailbox ref ++ str s) in
-  let default = [] in
-  let process _ res = function
-    | R.LSUB (flags, delim, mbox) -> res @ [flags, delim, mbox]
     | _ -> res
   in
   run ss format default process

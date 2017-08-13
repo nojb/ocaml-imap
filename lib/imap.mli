@@ -640,26 +640,11 @@ val noop: t -> unit Lwt.t
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity. *)
 
-val subscribe: t -> string -> unit Lwt.t
-(** [subscribe m] adds the mailbox [m] to the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
-
-val unsubscribe: t -> string -> unit Lwt.t
-(** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
-    "subscribed" mailboxes as returned by the {!lsub} command. *)
-
 val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
 (** [list ref m] returns a subset of names from the complete set of all names
-    available to the client.  Zero or more untagged [`List]
-    {{!untagged}replies} are returned, containing the name attributes,
-    hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
-    or a level of mailbox hierarchy, and indicates the context in which the
-    mailbox name is interpreted.*)
-
-val lsub: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
-(** [lsub ref m] is identical to {!list}, except that it returns a subset of
-    names from the set of names that the user has declared as being "active" or
-    "subscribed". *)
+    available to the client. The optional argument [ref] is the name of a
+    mailbox or a level of mailbox hierarchy, and indicates the context in which
+    the mailbox name is interpreted.*)
 
 val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
 (** [status] requests {{!status_query}status information} of the indicated
