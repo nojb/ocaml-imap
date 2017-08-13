@@ -336,13 +336,11 @@ end
 module E = struct
   type rope =
     | Cat of rope * rope
-    | Flush
     | Wait
     | Raw of string [@@deriving sexp]
 
   let rec is_empty = function
     | Cat (f, g) -> is_empty f && is_empty g
-    | Flush -> false
     | Wait -> false
     | Raw "" -> true
     | Raw _ -> false
@@ -2076,9 +2074,6 @@ let rec send imap r process res =
   | E.Cat (r1, r2) ->
       send imap r1 process res >>= fun res ->
       send imap r2 process res
-  | E.Flush ->
-      Lwt_io.flush imap.oc >>= fun () ->
-      Lwt.return res
   | Wait ->
       let rec loop res =
         recv imap >>= function
@@ -2089,10 +2084,15 @@ let rec send imap r process res =
         | R.Tagged _ ->
             Lwt.fail (Failure "not expected")
       in
-      loop res
+      Lwt_io.flush imap.oc >>= fun () -> loop res
   | Raw s ->
       Lwt_io.write imap.oc s >>= fun () ->
       Lwt.return res
+
+let send imap r process res =
+  send imap r process res >>= fun res ->
+  Lwt_io.flush imap.oc >>= fun () ->
+  Lwt.return res
 
 let wrap_process f imap res u =
   begin match u with
@@ -2131,7 +2131,7 @@ let wrap_process f imap res u =
 let run imap format res process =
   let process = wrap_process process in
   let tag = tag imap in
-  let r = E.(raw tag ++ format ++ raw "\r\n" ++ Flush) in
+  let r = E.(raw tag ++ format ++ raw "\r\n") in
   send imap r process res >>= fun res ->
   let rec loop res =
     recv imap >>= function
