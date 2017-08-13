@@ -2440,6 +2440,9 @@ let fetch ss ?changed ?vanished set att =
 let uid_fetch ss ?changed ?vanished set att =
   fetch_gen ss E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
 
+type store_mode =
+  [`Add | `Remove | `Set]
+
 let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
   let open E in
   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
@@ -2466,41 +2469,17 @@ let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
   let process _ m _ = m in
   run ss format default process
 
-let add_flags ss ?silent ?unchanged set flags =
-  store_gen ss "STORE" ?silent ?unchanged `Add set (`Flags flags)
+let store_flags ss ?silent ?unchanged mode set flags =
+  store_gen ss "STORE" ?silent ?unchanged mode set (`Flags flags)
 
-let set_flags ss ?silent ?unchanged set flags =
-  store_gen ss "STORE" ?silent ?unchanged `Set set (`Flags flags)
+let store_labels ss ?silent ?unchanged mode set labels =
+  store_gen ss "STORE" ?silent ?unchanged mode set (`Labels labels)
 
-let remove_flags ss ?silent ?unchanged set flags =
-  store_gen ss "STORE" ?silent ?unchanged `Remove set (`Flags flags)
+let uid_store_flags ss ?silent ?unchanged mode set flags =
+  store_gen ss "UID STORE" ?silent ?unchanged mode set (`Flags flags)
 
-let add_labels ss ?silent ?unchanged set labels =
-  store_gen ss "STORE" ?silent ?unchanged `Add set (`Labels labels)
-
-let set_labels ss ?silent ?unchanged set labels =
-  store_gen ss "STORE" ?silent ?unchanged `Set set (`Labels labels)
-
-let remove_labels ss ?silent ?unchanged set labels =
-  store_gen ss "STORE" ?silent ?unchanged `Remove set (`Labels labels)
-
-let uid_add_flags ss ?silent ?unchanged set flags =
-  store_gen ss "UID STORE" ?silent ?unchanged `Add set (`Flags flags)
-
-let uid_set_flags ss ?silent ?unchanged set flags =
-  store_gen ss "UID STORE" ?silent ?unchanged `Set set (`Flags flags)
-
-let uid_remove_flags ss ?silent ?unchanged set flags =
-  store_gen ss "UID STORE" ?silent ?unchanged `Remove set (`Flags flags)
-
-let uid_add_labels ss ?silent ?unchanged set labels =
-  store_gen ss "UID STORE" ?silent ?unchanged `Add set (`Labels labels)
-
-let uid_set_labels ss ?silent ?unchanged set labels =
-  store_gen ss "UID STORE" ?silent ?unchanged `Set set (`Labels labels)
-
-let uid_remove_labels ss ?silent ?unchanged set labels =
-  store_gen ss "UID STORE" ?silent ?unchanged `Remove set (`Labels labels)
+let uid_store_labels ss ?silent ?unchanged mode set labels =
+  store_gen ss "UID STORE" ?silent ?unchanged mode set (`Labels labels)
 
 let enable ss caps =
   let format = E.(str "ENABLE" ++ list capability caps) in

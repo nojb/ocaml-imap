@@ -735,7 +735,10 @@ val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list 
 val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
 (** Like {!fetch}, but identifies messages by UID. *)
 
-val add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
+type store_mode =
+  [`Add | `Remove | `Set]
+
+val store_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
 (** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
     messages with sequence number in [set].
 
@@ -745,38 +748,13 @@ val add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag
     If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
 
-val set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
-(** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
-
-val remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
-(** Like {!add_flags} but removes all flags instead of adding to them. *)
-
-val uid_add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
+val uid_store_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
 (** Like {!add_flags}, but identifies messages by UID. *)
 
-val uid_set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
-(** Like {!set_flags}, but identifies messages by UID. *)
-
-val uid_remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
-(** Like {!remove_flags}, but identifies messages by UID. *)
-
-val add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
+val store_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> string list -> Fetch.response Lwt.t
 (** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
 
-val set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
-
-val remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!remove_flags}, but acts on the set of Gmail labels instead of
-    flags. *)
-
-val uid_add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
+val uid_store_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> string list -> Fetch.response Lwt.t
 (** Like {!add_labels}, but identfies messages by UID. *)
-
-val uid_set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!set_labels}, but identifies messages by UID. *)
-
-val uid_remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
-(** Like {!remove_labels}, but identifies messages by UID. *)
 
 val enable: t -> capability list -> capability list Lwt.t
