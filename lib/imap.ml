@@ -773,13 +773,10 @@ module Decoder = struct
     number <?> "number"
 
   let nz_number =
-    Int32.of_string <$> take_while1 is_digit (* FIXME != 0 *)
-
-  let nz_number =
-    nz_number <?> "nz-number"
+    (Int32.of_string <$> take_while1 is_digit) <?> "nz-number" (* FIXME != 0 *)
 
   let uniqueid =
-    nz_number
+    (Int32.of_string <$> take_while1 is_digit) <?> "uniqueid"
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -2099,34 +2096,6 @@ module Search = struct
   let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
 end
 
-type authenticator =
-  <
-    name: string;
-    step: string -> (string, string) result;
-  >
-
-let plain user pass =
-  object
-    val mutable step = 0
-    method name = "PLAIN"
-    method step _ =
-      match step with
-      | 0 -> step <- 1; Ok (Printf.sprintf "\000%s\000%s" user pass)
-      | _ -> Error "should have worked already"
-  end
-
-let xoauth2 user token =
-  let s = Printf.sprintf "user=%s\001auth=Bearer %s\001\001" user token in
-  object
-    val mutable step = 0
-    method name = "XOAUTH2"
-    method step _ =
-      match step with
-      | 0 -> step <- 1; Ok s
-      | 1 -> step <- 2; Ok ""
-      | _ -> Error "should have worked already!"
-  end
-
 module A = Angstrom.Buffered
 module R = Response
 
@@ -2211,13 +2180,6 @@ let login conn username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
   let process conn _ _ = () in
   run conn format () process
-
-let authenticate session a =
-  assert false
-(*   let tag = tag session in *)
-(*   let format = E.(raw tag ++ raw "AUTHENTICATE" ++ raw a#name) in *)
-(*   let state = Sending (format, WaitForResp (wait_for_auth tag a)) in *)
-(*   continue (session, state) *)
 
 let capability ss =
   let format = E.(str "CAPABILITY") in
