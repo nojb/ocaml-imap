@@ -603,222 +603,206 @@ type error =
   | No of string
   | Bad of string
 
-module type MONAD = sig
-  type 'a t
+type t
+(** The type for connections. *)
 
-  val bind: 'a t -> ('a -> 'b t) -> 'b t
-  val return: 'a -> 'a t
-  val fail: exn -> 'a t
+val connect: string -> string -> string -> string -> t Lwt.t
+(** [connect server username password mailbox] *)
 
-  type ic
-  type oc
+(* val idle: t -> unit state *)
 
-  val read: ic -> string t
-  val write: oc -> string -> unit t
-  val flush: oc -> unit t
-end
+val login: t -> string -> string -> unit Lwt.t
+(** [login user pass] identifies the client to the server and carries the
+    plaintext password authenticating this [user] with password [pass].  A
+    server MAY include a [`Capability] response {{!code}code} in the tagged
+    [`Ok] response to a successful [login] command in order to send capabilities
+    automatically. *)
 
-module Make (M : MONAD) : sig
-  type t
-  (** The type for connections. *)
+val authenticate: t -> authenticator -> unit Lwt.t
 
-  val connect: M.ic -> M.oc -> t M.t
-
-  (* val idle: t -> unit state *)
-
-  val login: t -> string -> string -> unit M.t
-  (** [login user pass] identifies the client to the server and carries the
-      plaintext password authenticating this [user] with password [pass].  A
-      server MAY include a [`Capability] response {{!code}code} in the tagged
-      [`Ok] response to a successful [login] command in order to send capabilities
-      automatically. *)
-
-  val authenticate: t -> authenticator -> unit M.t
-
-  val capability: t -> capability list M.t
-  (** [capability] returns the list of {{!capability}capabilities} supported by
-      the server. *)
+val capability: t -> capability list Lwt.t
+(** [capability] returns the list of {{!capability}capabilities} supported by
+    the server. *)
 
 
-  val create: t -> string -> unit M.t
-  (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
-      if a new mailbox with that name has been created.  It is an error to attempt
-      to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
-      Any error in creation will return a tagged [`No] response. *)
+val create: t -> string -> unit Lwt.t
+(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
+    if a new mailbox with that name has been created.  It is an error to attempt
+    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
+    Any error in creation will return a tagged [`No] response. *)
 
-  val delete: t -> string -> unit M.t
-  (** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-      if the mailbox with that name has been deleted.
-      Any error in deletion will return a tagged [`No] response. *)
+val delete: t -> string -> unit Lwt.t
+(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
+    if the mailbox with that name has been deleted.
+    Any error in deletion will return a tagged [`No] response. *)
 
-  val rename: t -> string -> string -> unit M.t
-  (** [rename oldname newname] command changes the name of a mailbox from
-      [oldname] to [newname].  A tagged [`Ok] response is returned only if the
-      mailbox has been renamed.  It is an error to attempt to rename from a
-      mailbox name that does not exist or to a mailbox name that already exists.
-      Any error in renaming will return a tagged [`No] response. *)
+val rename: t -> string -> string -> unit Lwt.t
+(** [rename oldname newname] command changes the name of a mailbox from
+    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
+    mailbox has been renamed.  It is an error to attempt to rename from a
+    mailbox name that does not exist or to a mailbox name that already exists.
+    Any error in renaming will return a tagged [`No] response. *)
 
-  val logout: t -> unit M.t
-  (** [logout] gracefully terminates a session.  The server MUST send an untagged
-      [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
+val logout: t -> unit Lwt.t
+(** [logout] gracefully terminates a session.  The server MUST send an untagged
+    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
 
-  val noop: t -> unit M.t
-  (** [noop] does nothing.  Since any command can return a status update as
-      untagged data, the [noop] command can be used as a periodic poll for new
-      messages or message status updates during a period of inactivity. *)
+val noop: t -> unit Lwt.t
+(** [noop] does nothing.  Since any command can return a status update as
+    untagged data, the [noop] command can be used as a periodic poll for new
+    messages or message status updates during a period of inactivity. *)
 
-  val subscribe: t -> string -> unit M.t
-  (** [subscribe m] adds the mailbox [m] to the server's set of "active" or
-      "subscribed" mailboxes as returned by the {!lsub} command. *)
+val subscribe: t -> string -> unit Lwt.t
+(** [subscribe m] adds the mailbox [m] to the server's set of "active" or
+    "subscribed" mailboxes as returned by the {!lsub} command. *)
 
-  val unsubscribe: t -> string -> unit M.t
-  (** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
-      "subscribed" mailboxes as returned by the {!lsub} command. *)
+val unsubscribe: t -> string -> unit Lwt.t
+(** [unsubcribe m] removes the mailbox [m] from the server's set of "active" or
+    "subscribed" mailboxes as returned by the {!lsub} command. *)
 
-  val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list M.t
-  (** [list ref m] returns a subset of names from the complete set of all names
-      available to the client.  Zero or more untagged [`List]
-      {{!untagged}replies} are returned, containing the name attributes,
-      hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
-      or a level of mailbox hierarchy, and indicates the context in which the
-      mailbox name is interpreted.*)
+val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
+(** [list ref m] returns a subset of names from the complete set of all names
+    available to the client.  Zero or more untagged [`List]
+    {{!untagged}replies} are returned, containing the name attributes,
+    hierarchy delimiter.  The optional argument [ref] is the name of a mailbox
+    or a level of mailbox hierarchy, and indicates the context in which the
+    mailbox name is interpreted.*)
 
-  val lsub: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list M.t
-  (** [lsub ref m] is identical to {!list}, except that it returns a subset of
-      names from the set of names that the user has declared as being "active" or
-      "subscribed". *)
+val lsub: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
+(** [lsub ref m] is identical to {!list}, except that it returns a subset of
+    names from the set of names that the user has declared as being "active" or
+    "subscribed". *)
 
-  val status: t -> string -> Status.mbx_att_request list -> Status.response M.t
-  (** [status] requests {{!status_query}status information} of the indicated
-      mailbox.  An untagged [`Status] {{!untagged}response} is returned with
-      the requested information. *)
+val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
+(** [status] requests {{!status_query}status information} of the indicated
+    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
+    the requested information. *)
 
-  val copy: t -> SeqSet.t -> string -> unit M.t
-  (** [copy uid set m] copies the messages with sequence number in [set] to the
-      mailbox [m].  *)
+val copy: t -> SeqSet.t -> string -> unit Lwt.t
+(** [copy uid set m] copies the messages with sequence number in [set] to the
+    mailbox [m].  *)
 
-  val uid_copy: t -> UidSet.t -> string -> unit M.t
-  (** Like {!copy}, but identifies messages by UID. *)
+val uid_copy: t -> UidSet.t -> string -> unit Lwt.t
+(** Like {!copy}, but identifies messages by UID. *)
 
-  val check: t -> unit M.t
-  (** [check] requests a checkpoint of the currently selected mailbox.  A
-      checkpoint refers to any implementation-dependent housekeeping associated
-      with the mailbox. *)
+val check: t -> unit Lwt.t
+(** [check] requests a checkpoint of the currently selected mailbox.  A
+    checkpoint refers to any implementation-dependent housekeeping associated
+    with the mailbox. *)
 
-  val close: t -> unit M.t
-  (** [close] permanently removes all messages that have the [`Deleted]
-      {!flag} set from the currently selected mailbox, and returns to
-      the authenticated state from the selected state. *)
+val close: t -> unit Lwt.t
+(** [close] permanently removes all messages that have the [`Deleted]
+    {!flag} set from the currently selected mailbox, and returns to
+    the authenticated state from the selected state. *)
 
-  val expunge: t -> Seq.t list M.t
-  (** [expunge] permanently removes all messages that have the [`Deleted]
-      {!flag} set from the currently selected mailbox.  Before
-      returning an [`Ok] to the client, an untagged [`Expunge]
-      {{!untagged}response} is sent for each message that is removed. *)
+val expunge: t -> Seq.t list Lwt.t
+(** [expunge] permanently removes all messages that have the [`Deleted]
+    {!flag} set from the currently selected mailbox.  Before
+    returning an [`Ok] to the client, an untagged [`Expunge]
+    {{!untagged}response} is sent for each message that is removed. *)
 
-  val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) M.t
-  (** [uid_search conn key] returns the set of UIDs of messages satisfying the
-      criteria [key]. *)
+val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) Lwt.t
+(** [uid_search conn key] returns the set of UIDs of messages satisfying the
+    criteria [key]. *)
 
-  val search: t -> Search.key -> (Seq.t list * Modseq.t option) M.t
-  (** Like {!uid_search}, but the sequence numbers of matching messages is
-      returned instead. *)
+val search: t -> Search.key -> (Seq.t list * Modseq.t option) Lwt.t
+(** Like {!uid_search}, but the sequence numbers of matching messages is
+    returned instead. *)
 
-  val select: t -> string -> unit M.t
-  (** [select conn m] selects the mailbox [m] for access. *)
+val select: t -> string -> unit Lwt.t
+(** [select conn m] selects the mailbox [m] for access. *)
 
-  val condstore_select: t -> string -> Modseq.t M.t
-  (** Like {!select}, but retruns the modification sequence number in all
-      subsequent fetch requests. *)
+val condstore_select: t -> string -> Modseq.t Lwt.t
+(** Like {!select}, but retruns the modification sequence number in all
+    subsequent fetch requests. *)
 
-  val examine: t -> string -> unit M.t
-  (** Like {!select}, but in read-only mode. *)
+val examine: t -> string -> unit Lwt.t
+(** Like {!select}, but in read-only mode. *)
 
-  val condstore_examine: t -> string -> Modseq.t M.t
-  (** Like {!condstore_select}, but in read-only mode. *)
+val condstore_examine: t -> string -> Modseq.t Lwt.t
+(** Like {!condstore_select}, but in read-only mode. *)
 
-  val append: t -> string -> ?flags:Flag.flag list -> string -> unit M.t
-  (** [append m flags id data] appends [data] as a new message to the end of the
-      mailbox [m].  This argument should be in the format of an [RFC-2822]
-      message.
+val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
+(** [append m flags id data] appends [data] as a new message to the end of the
+    mailbox [m].  This argument should be in the format of an [RFC-2822]
+    message.
 
-      If a flag list is specified, the flags should be set in the resulting
-      message; otherwise, the flag list of the resulting message is set to empty
-      by default.  In either case, the [`Recent] flag is also set. *)
+    If a flag list is specified, the flags should be set in the resulting
+    message; otherwise, the flag list of the resulting message is set to empty
+    by default.  In either case, the [`Recent] flag is also set. *)
 
-  val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response M.t
-  (** [fetch uid ?changed ?vanished set att] retrieves data associated with
-      messages with sequence number in [set].
+val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response Lwt.t
+(** [fetch uid ?changed ?vanished set att] retrieves data associated with
+    messages with sequence number in [set].
 
-      If the [?changed] argument is passed, only those messages with
-      [CHANGEDSINCE] mod-sequence value at least the passed value are affected
-      (requires the [CONDSTORE] extension).
+    If the [?changed] argument is passed, only those messages with
+    [CHANGEDSINCE] mod-sequence value at least the passed value are affected
+    (requires the [CONDSTORE] extension).
 
-      The [vanished] optional parameter specifies whether one wants to receive
-      [`Vanished] responses as well. *)
+    The [vanished] optional parameter specifies whether one wants to receive
+    [`Vanished] responses as well. *)
 
-  val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response M.t
-  (** Like {!fetch}, but identifies messages by UID. *)
+val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
+(** Like {!fetch}, but identifies messages by UID. *)
 
-  val add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
-  (** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
-      messages with sequence number in [set].
+val add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
+    messages with sequence number in [set].
 
-      If [?silent] is present, the updated flags for the affected messages is
-      returned.
+    If [?silent] is present, the updated flags for the affected messages is
+    returned.
 
-      If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
-      mod-sequence value at least the passed value are affected. *)
+    If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
+    mod-sequence value at least the passed value are affected. *)
 
-  val set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
-  (** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
+val set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** Like {!store_add_flags}, but replaces all flags instead of adding to it. *)
 
-  val remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response M.t
-  (** Like {!add_flags} but removes all flags instead of adding to them. *)
+val remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** Like {!add_flags} but removes all flags instead of adding to them. *)
 
-  val uid_add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
-  (** Like {!add_flags}, but identifies messages by UID. *)
+val uid_add_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** Like {!add_flags}, but identifies messages by UID. *)
 
-  val uid_set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
-  (** Like {!set_flags}, but identifies messages by UID. *)
+val uid_set_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** Like {!set_flags}, but identifies messages by UID. *)
 
-  val uid_remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response M.t
-  (** Like {!remove_flags}, but identifies messages by UID. *)
+val uid_remove_flags: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> Flag.flag list -> Fetch.response Lwt.t
+(** Like {!remove_flags}, but identifies messages by UID. *)
 
-  val add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
-  (** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
+val add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!add_flags}, but acts on the set of Gmail labels instead of flags. *)
 
-  val set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
-  (** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
+val set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!set_flags}, but acts on the set of Gmail labels instead of flags. *)
 
-  val remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response M.t
-  (** Like {!remove_flags}, but acts on the set of Gmail labels instead of
-      flags. *)
+val remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> SeqSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!remove_flags}, but acts on the set of Gmail labels instead of
+    flags. *)
 
-  val uid_add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
-  (** Like {!add_labels}, but identfies messages by UID. *)
+val uid_add_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!add_labels}, but identfies messages by UID. *)
 
-  val uid_set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
-  (** Like {!set_labels}, but identifies messages by UID. *)
+val uid_set_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!set_labels}, but identifies messages by UID. *)
 
-  val uid_remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response M.t
-  (** Like {!remove_labels}, but identifies messages by UID. *)
+val uid_remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> string list -> Fetch.response Lwt.t
+(** Like {!remove_labels}, but identifies messages by UID. *)
 
-  val enable: t -> capability list -> capability list M.t
+val enable: t -> capability list -> capability list Lwt.t
 
-  (* val authenticate: Auth.authenticator -> unit command *)
-  (** [authenticate a] indicates a [SASL] authentication mechanism to the server.
-      If the server supports the requested authentication mechanism, it performs
-      an authentication protocol exchange to authenticate and identify the client.
-      See {!authenticator} for details on the interface with particular [SASL]
-      mechanisms. *)
+(* val authenticate: Auth.authenticator -> unit command *)
+(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
+    If the server supports the requested authentication mechanism, it performs
+    an authentication protocol exchange to authenticate and identify the client.
+    See {!authenticator} for details on the interface with particular [SASL]
+    mechanisms. *)
 
-  (** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
-      command is executing the client will receive a stream of incoming untagged
-      {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
-      of can be stopped by the client by forcing [stop].  If [stop] is forced
-      after [IDLE] ended, then it is a no-op.
+(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
+    command is executing the client will receive a stream of incoming untagged
+    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
+    of can be stopped by the client by forcing [stop].  If [stop] is forced
+    after [IDLE] ended, then it is a no-op.
 
-      See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
-      {{!ex}examples} for more details. *)
-end
+    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
+    {{!ex}examples} for more details. *)
