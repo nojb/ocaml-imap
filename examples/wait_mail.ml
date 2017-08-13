@@ -154,38 +154,12 @@
 
 open Lwt.Infix
 
-module M = struct
-  type 'a t = 'a Lwt.t
-  let bind = Lwt.bind
-  let return = Lwt.return
-  let fail = Lwt.fail
-  type ic = Lwt_io.input_channel
-  type oc = Lwt_io.output_channel
-  let read ic = Lwt_io.read ~count:4028 ic
-  let write oc s = Lwt_io.write oc s
-  let flush oc = Lwt_io.flush oc
-end
-
-module I = Imap.Make (M)
-
-let () =
-  Ssl.init ()
-
 let main () =
-  let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
-  let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
-  Lwt_unix.gethostbyname "imap.gmail.com" >>= fun he ->
-  let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), 993) in
-  Lwt_unix.connect sock addr >>= fun () ->
-  Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
-  let ic = Lwt_ssl.in_channel_of_descr sock in
-  let oc = Lwt_ssl.out_channel_of_descr sock in
-  I.connect ic oc >>= fun c ->
-  I.login c "" ""
+  Imap.connect "imap.gmail.com" "" "" "INBOX"
 
 let () =
   try
-    Lwt_main.run (main ())
+    ignore (Lwt_main.run (main ()))
   with e ->
     Printf.eprintf "** Fatal error: %s\n%!" (Printexc.to_string e);
     exit 1

@@ -611,15 +611,6 @@ val connect: string -> string -> string -> string -> t Lwt.t
 
 (* val idle: t -> unit state *)
 
-val login: t -> string -> string -> unit Lwt.t
-(** [login user pass] identifies the client to the server and carries the
-    plaintext password authenticating this [user] with password [pass].  A
-    server MAY include a [`Capability] response {{!code}code} in the tagged
-    [`Ok] response to a successful [login] command in order to send capabilities
-    automatically. *)
-
-val authenticate: t -> authenticator -> unit Lwt.t
-
 val capability: t -> capability list Lwt.t
 (** [capability] returns the list of {{!capability}capabilities} supported by
     the server. *)
@@ -790,19 +781,3 @@ val uid_remove_labels: t -> ?silent:bool -> ?unchanged:Modseq.t -> UidSet.t -> s
 (** Like {!remove_labels}, but identifies messages by UID. *)
 
 val enable: t -> capability list -> capability list Lwt.t
-
-(* val authenticate: Auth.authenticator -> unit command *)
-(** [authenticate a] indicates a [SASL] authentication mechanism to the server.
-    If the server supports the requested authentication mechanism, it performs
-    an authentication protocol exchange to authenticate and identify the client.
-    See {!authenticator} for details on the interface with particular [SASL]
-    mechanisms. *)
-
-(** [idle ()] is a pair [(c, stop)].  [c] starts an IDLE command.  When this
-    command is executing the client will receive a stream of incoming untagged
-    {{!untagged}responses} until [IDLE] ends.  IDLE can end by server decision
-    of can be stopped by the client by forcing [stop].  If [stop] is forced
-    after [IDLE] ended, then it is a no-op.
-
-    See the relevent {{:https://tools.ietf.org/html/rfc2177}RFC} and the
-    {{!ex}examples} for more details. *)

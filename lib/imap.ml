@@ -2158,31 +2158,6 @@ let parse {A.buffer; off; len} p =
   let input = `Bigstring input in
   A.parse ~input p
 
-let () =
-  Ssl.init ()
-
-let connect server username password mailbox =
-  let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
-  let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
-  Lwt_unix.gethostbyname "imap.gmail.com" >>= fun he ->
-  let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), 993) in
-  Lwt_unix.connect sock addr >>= fun () ->
-  Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
-  let ic = Lwt_ssl.in_channel_of_descr sock in
-  let oc = Lwt_ssl.out_channel_of_descr sock in
-  let rec loop = function
-    | A.Partial f ->
-        Lwt_io.read ~count:128 ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
-    | Done (unconsumed, (R.Untagged _ as r)) ->
-        Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        Lwt.return {ic; oc; tag = 0; unconsumed}
-    | Fail (_, l, s) ->
-        Printf.eprintf "Error at %s\n%!" s;
-        List.iter prerr_endline l;
-        Lwt.fail (Failure "parse error")
-  in
-  loop (Angstrom.Buffered.parse Decoder.response)
-
 let rec send conn r =
   match r with
   | E.Cat (r1, r2) ->
@@ -2535,3 +2510,31 @@ let enable ss caps =
     | _ -> caps
   in
   run ss format default process
+
+let () =
+  Ssl.init ()
+
+let connect server username password mailbox =
+  let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
+  let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
+  Lwt_unix.gethostbyname server >>= fun he ->
+  let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), 993) in
+  Lwt_unix.connect sock addr >>= fun () ->
+  Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
+  let ic = Lwt_ssl.in_channel_of_descr sock in
+  let oc = Lwt_ssl.out_channel_of_descr sock in
+  let rec loop = function
+    | A.Partial f ->
+        Lwt_io.read ~count:128 ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
+    | Done (unconsumed, (R.Untagged _ as r)) ->
+        Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+        Lwt.return {ic; oc; tag = 0; unconsumed}
+    | Fail (_, l, s) ->
+        Printf.eprintf "Error at %s\n%!" s;
+        List.iter prerr_endline l;
+        Lwt.fail (Failure "parse error")
+  in
+  loop (Angstrom.Buffered.parse Decoder.response) >>= fun imap ->
+  login imap username password >>= fun () ->
+  select imap mailbox >>= fun () ->
+  Lwt.return imap
