@@ -606,6 +606,8 @@ type error =
 type t
 (** The type for connections. *)
 
+val uidnext: t -> Uid.t option
+
 val connect: string -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox] *)
 

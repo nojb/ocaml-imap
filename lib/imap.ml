@@ -2147,10 +2147,14 @@ type t =
     oc: Lwt_io.output_channel;
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
+    mutable uidnext: Uid.t option;
   }
 
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
+
+let uidnext {uidnext; _} =
+  uidnext
 
 let parse {A.buffer; off; len} p =
   let input = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
@@ -2477,7 +2481,7 @@ let connect server username password mailbox =
         Lwt_io.read ~count:128 ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
     | Done (unconsumed, (R.Untagged _ as r)) ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        Lwt.return {ic; oc; tag = 0; unconsumed}
+        Lwt.return {ic; oc; tag = 0; unconsumed; uidnext = None}
     | Fail (_, l, s) ->
         Printf.eprintf "Error at %s\n%!" s;
         List.iter prerr_endline l;
