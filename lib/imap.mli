@@ -659,21 +659,9 @@ val copy: t -> SeqSet.t -> string -> unit Lwt.t
 val uid_copy: t -> UidSet.t -> string -> unit Lwt.t
 (** Like {!copy}, but identifies messages by UID. *)
 
-val check: t -> unit Lwt.t
-(** [check] requests a checkpoint of the currently selected mailbox.  A
-    checkpoint refers to any implementation-dependent housekeeping associated
-    with the mailbox. *)
-
-val close: t -> unit Lwt.t
-(** [close] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox, and returns to
-    the authenticated state from the selected state. *)
-
 val expunge: t -> Seq.t list Lwt.t
-(** [expunge] permanently removes all messages that have the [`Deleted]
-    {!flag} set from the currently selected mailbox.  Before
-    returning an [`Ok] to the client, an untagged [`Expunge]
-    {{!untagged}response} is sent for each message that is removed. *)
+(** [expunge] permanently removes all messages that have the [`Deleted] {!flag}
+    set from the currently selected mailbox. *)
 
 val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) Lwt.t
 (** [uid_search conn key] returns the set of UIDs of messages satisfying the
