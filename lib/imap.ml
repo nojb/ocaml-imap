@@ -2209,9 +2209,8 @@ let run conn format default process =
 
 let login conn username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
-  let default = () in
   let process conn _ _ = () in
-  run conn format default process
+  run conn format () process
 
 let authenticate session a =
   assert false
@@ -2231,126 +2230,110 @@ let capability ss =
 
 let create ss m =
   let format = E.(str "CREATE" ++ mailbox m) in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let delete ss m =
   let format = E.(str "DELETE" ++ mailbox m) in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let rename ss m1 m2 =
   let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let logout ss =
   let format = E.(str "LOGOUT") in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let noop ss =
   let format = E.(str "NOOP") in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let list ss ?(ref = "") s =
   let format = E.(str "LIST" ++ mailbox ref ++ str s) in
-  let default = [] in
   let process _ res = function
     | R.LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
     | _ -> res
   in
-  run ss format default process
+  run ss format [] process
 
 let status ss m att =
   let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
-  let default = Status.default in
-  let process _ resp = function
+  let process _ res = function
     | R.STATUS (mbox, items) when m = mbox ->
         let aux resp = function
-          | (MESSAGES n : R.mbx_att) -> {resp with Status.messages = Some n}
-          | RECENT n -> {resp with recent = Some n}
-          | UIDNEXT n -> {resp with uidnext = Some n}
-          | UIDVALIDITY n -> {resp with uidvalidity = Some n}
-          | UNSEEN n -> {resp with unseen = Some n}
-          | HIGHESTMODSEQ n -> {resp with highestmodseq = Some n}
+          | (MESSAGES n : R.mbx_att) -> {res with Status.messages = Some n}
+          | RECENT n -> {res with recent = Some n}
+          | UIDNEXT n -> {res with uidnext = Some n}
+          | UIDVALIDITY n -> {res with uidvalidity = Some n}
+          | UNSEEN n -> {res with unseen = Some n}
+          | HIGHESTMODSEQ n -> {res with highestmodseq = Some n}
         in
-        List.fold_left aux resp items
+        List.fold_left aux res items
     | _ ->
-        resp
+        res
   in
-  run ss format default process
+  run ss format Status.default process
 
 let copy_gen ss cmd s m =
-  let format = E.(cmd ++ eset s ++ mailbox m) in
-  let default = () in
+  let format = E.(raw cmd ++ eset s ++ mailbox m) in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let copy ss s m =
-  copy_gen ss E.(raw "COPY") s m
+  copy_gen ss "COPY" s m
 
 let uid_copy ss s m =
-  copy_gen ss E.(raw "UID" ++ raw "COPY") s m
+  copy_gen ss "UID COPY" s m
 
 let check ss =
   let format = E.(str "CHECK") in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let close ss =
   let format = E.(str "CLOSE") in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let expunge ss =
   let format = E.(str "EXPUNGE") in
-  let default = [] in
   let process _ info = function
     | R.EXPUNGE n -> n :: info
     | _ -> info
   in
-  run ss format default process
+  run ss format [] process
 
 let search_gen ss cmd sk =
-  let format = E.(cmd ++ sk) in
-  let default = ([], None) in
+  let format = E.(raw cmd ++ sk) in
   let process _ (res, m) = function
     | R.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)
   in
-  run ss format default process
+  run ss format ([], None) process
 
 let search ss =
-  search_gen ss E.(raw "SEARCH")
+  search_gen ss "SEARCH"
 
 let uid_search ss =
-  search_gen ss E.(raw "UID" ++ raw "SEARCH")
+  search_gen ss "UID SEARCH"
 
 let select_gen ss cmd m =
-  let open E in
-  let format = raw cmd ++ mailbox m in
-  let default = () in
+  let format = E.(raw cmd ++ mailbox m) in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let condstore_select_gen ss cmd m =
-  let open E in
-  let format = raw cmd ++ mailbox m ++ p (raw "CONDSTORE") in
-  let default = Int64.zero in
+  let format = E.(raw cmd ++ mailbox m ++ p (raw "CONDSTORE")) in
   let process _ m = function
     | R.State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
     | _ -> m
   in
-  run ss format default process
+  run ss format 0L process
 
 let select ss ?(read_only = false) mbox =
   select_gen ss (if read_only then "EXAMINE" else "SELECT") mbox
@@ -2360,9 +2343,8 @@ let condstore_select ss ?(read_only = false) mbox =
 
 let append ss m ?(flags = []) data =
   let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
-  let default = () in
   let process _ () _ = () in
-  run ss format default process
+  run ss format () process
 
 let fetch_gen ss cmd ?changed ?(vanished = false) set att =
   let open E in
@@ -2381,41 +2363,40 @@ let fetch_gen ss cmd ?changed ?(vanished = false) set att =
     | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
     | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
-  let format = cmd ++ eset set ++ att ++ changed_since in
-  let default = Fetch.default in
-  let process _ resp = function
+  let format = raw cmd ++ eset set ++ att ++ changed_since in
+  let process _ res = function
     | R.FETCH (id, infos) ->
-        let aux resp = function
-          | (Response.FLAGS l : R.msg_att) -> {resp with Fetch.flags = Some l}
-          | ENVELOPE e -> {resp with envelope = Some e}
-          | INTERNALDATE (d, t) -> {resp with internaldate = Some (d, t)}
-          | RFC822 (Some s) -> {resp with rfc822 = Some s}
-          | RFC822 None -> {resp with rfc822 = Some ""}
-          | RFC822_HEADER (Some s) -> {resp with rfc822_header = Some s}
-          | RFC822_HEADER None -> {resp with rfc822_header = Some ""}
-          | RFC822_TEXT (Some s) -> {resp with rfc822_text = Some s}
-          | RFC822_TEXT None -> {resp with rfc822_text = Some ""}
-          | RFC822_SIZE n -> {resp with rfc822_size = Some n}
-          | BODY x -> {resp with body = Some x}
-          | BODYSTRUCTURE x -> {resp with bodystructure = Some x}
-          | BODY_SECTION (sec, len, s) -> {resp with body_section = Some (sec, len, s)}
-          | UID n -> {resp with uid = Some n}
-          | MODSEQ n -> {resp with modseq = Some n}
-          | X_GM_MSGID n -> {resp with x_gm_msgid = Some n}
-          | X_GM_THRID n -> {resp with x_gm_thrid = Some n}
-          | X_GM_LABELS n -> {resp with x_gm_labels = Some n}
+        let aux res = function
+          | (Response.FLAGS l : R.msg_att) -> {res with Fetch.flags = Some l}
+          | ENVELOPE e -> {res with envelope = Some e}
+          | INTERNALDATE (d, t) -> {res with internaldate = Some (d, t)}
+          | RFC822 (Some s) -> {res with rfc822 = Some s}
+          | RFC822 None -> {res with rfc822 = Some ""}
+          | RFC822_HEADER (Some s) -> {res with rfc822_header = Some s}
+          | RFC822_HEADER None -> {res with rfc822_header = Some ""}
+          | RFC822_TEXT (Some s) -> {res with rfc822_text = Some s}
+          | RFC822_TEXT None -> {res with rfc822_text = Some ""}
+          | RFC822_SIZE n -> {res with rfc822_size = Some n}
+          | BODY x -> {res with body = Some x}
+          | BODYSTRUCTURE x -> {res with bodystructure = Some x}
+          | BODY_SECTION (sec, len, s) -> {res with body_section = Some (sec, len, s)}
+          | UID n -> {res with uid = Some n}
+          | MODSEQ n -> {res with modseq = Some n}
+          | X_GM_MSGID n -> {res with x_gm_msgid = Some n}
+          | X_GM_THRID n -> {res with x_gm_thrid = Some n}
+          | X_GM_LABELS n -> {res with x_gm_labels = Some n}
         in
-        List.fold_left aux resp infos
+        List.fold_left aux res infos
     | _ ->
-        resp
+        res
   in
-  run ss format default process
+  run ss format Fetch.default process
 
 let fetch ss ?changed ?vanished set att =
-  fetch_gen ss E.(raw "FETCH") ?changed ?vanished set att
+  fetch_gen ss "FETCH" ?changed ?vanished set att
 
 let uid_fetch ss ?changed ?vanished set att =
-  fetch_gen ss E.(raw "UID" ++ raw "FETCH") ?changed ?vanished set att
+  fetch_gen ss "UID FETCH" ?changed ?vanished set att
 
 type store_mode =
   [`Add | `Remove | `Set]
@@ -2445,9 +2426,8 @@ let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format = raw cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
-  let default = Fetch.default in
   let process _ m _ = m in
-  run ss format default process
+  run ss format Fetch.default process
 
 let store ss =
   store_gen ss "STORE"
@@ -2457,12 +2437,11 @@ let uid_store ss =
 
 let enable ss caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
-  let default = [] in
   let process _ caps = function
     | R.ENABLED caps1 -> caps1 @ caps
     | _ -> caps
   in
-  run ss format default process
+  run ss format [] process
 
 let () =
   Ssl.init ()
