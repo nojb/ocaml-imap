@@ -699,18 +699,12 @@ val search: t -> Search.key -> (Seq.t list * Modseq.t option) Lwt.t
 (** Like {!uid_search}, but the sequence numbers of matching messages is
     returned instead. *)
 
-val select: t -> string -> unit Lwt.t
+val select: t -> ?read_only:bool -> string -> unit Lwt.t
 (** [select conn m] selects the mailbox [m] for access. *)
 
-val condstore_select: t -> string -> Modseq.t Lwt.t
+val condstore_select: t -> ?read_only:bool -> string -> Modseq.t Lwt.t
 (** Like {!select}, but retruns the modification sequence number in all
     subsequent fetch requests. *)
-
-val examine: t -> string -> unit Lwt.t
-(** Like {!select}, but in read-only mode. *)
-
-val condstore_examine: t -> string -> Modseq.t Lwt.t
-(** Like {!condstore_select}, but in read-only mode. *)
 
 val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
 (** [append m flags id data] appends [data] as a new message to the end of the

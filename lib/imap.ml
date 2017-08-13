@@ -2354,14 +2354,14 @@ let uid_search ss =
 
 let select_gen ss cmd m =
   let open E in
-  let format = cmd ++ mailbox m in
+  let format = raw cmd ++ mailbox m in
   let default = () in
   let process _ () _ = () in
   run ss format default process
 
 let condstore_select_gen ss cmd m =
   let open E in
-  let format = cmd ++ mailbox m ++ p (raw "CONDSTORE") in
+  let format = raw cmd ++ mailbox m ++ p (raw "CONDSTORE") in
   let default = Int64.zero in
   let process _ m = function
     | R.State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
@@ -2369,17 +2369,11 @@ let condstore_select_gen ss cmd m =
   in
   run ss format default process
 
-let select ss =
-  select_gen ss E.(raw "SELECT")
+let select ss ?(read_only = false) mbox =
+  select_gen ss (if read_only then "EXAMINE" else "SELECT") mbox
 
-let examine ss =
-  select_gen ss E.(raw "EXAMINE")
-
-let condstore_select ss =
-  condstore_select_gen ss E.(raw "SELECT")
-
-let condstore_examine ss =
-  condstore_select_gen ss E.(raw "EXAMINE")
+let condstore_select ss ?(read_only = false) mbox =
+  condstore_select_gen ss (if read_only then "EXAMINE" else "SELECT") mbox
 
 let append ss m ?(flags = []) data =
   let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
