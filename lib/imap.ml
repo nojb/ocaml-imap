@@ -2067,16 +2067,28 @@ let recv conn =
   in
   loop (parse conn.unconsumed Decoder.response)
 
-let rec send conn r =
+let rec send imap r process res =
   match r with
   | E.Cat (r1, r2) ->
-      send conn r1 >>= fun () -> send conn r2
+      send imap r1 process res >>= fun res ->
+      send imap r2 process res
   | E.Flush ->
-      Lwt_io.flush conn.oc
+      Lwt_io.flush imap.oc >>= fun () ->
+      Lwt.return res
   | Wait ->
-      assert false
+      let rec loop res =
+        recv imap >>= function
+        | R.Cont _ ->
+            Lwt.return res
+        | R.Untagged u ->
+            loop (process imap res u)
+        | R.Tagged _ ->
+            Lwt.fail (Failure "not expected")
+      in
+      loop res
   | Raw s ->
-      Lwt_io.write conn.oc s
+      Lwt_io.write imap.oc s >>= fun () ->
+      Lwt.return res
 
 let wrap_process f conn res u =
   begin match u with
@@ -2108,24 +2120,24 @@ let wrap_process f conn res u =
   end;
   f conn res u
 
-let run conn format default process =
+let run imap format res process =
   let process = wrap_process process in
-  let tag = tag conn in
+  let tag = tag imap in
   let r = E.(raw tag ++ format ++ raw "\r\n" ++ Flush) in
-  send conn r >>= fun () ->
+  send imap r process res >>= fun res ->
   let rec loop res =
-    recv conn >>= function
+    recv imap >>= function
     | R.Cont _ ->
         Lwt.fail (Failure "unexpected")
     | Untagged u as r ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        loop (process conn res u)
+        loop (process imap res u)
     | Tagged (t, _) as r ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        conn.tag <- conn.tag + 1;
+        imap.tag <- imap.tag + 1;
         Lwt.return res
   in
-  loop default
+  loop res
 
 (* let idle session = *)
 (*   let tag = tag session in *)
