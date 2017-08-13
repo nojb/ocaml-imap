@@ -537,7 +537,7 @@ module Response = struct
     | RECENT of int
     | UIDNEXT of int32
     | UIDVALIDITY of int32
-    | UNSEEN of int32
+    | UNSEEN of int
     | HIGHESTMODSEQ of int64 [@@deriving sexp]
 
   type untagged =
@@ -680,7 +680,7 @@ module Status = struct
       recent: int option;
       uidnext: Uid.t option;
       uidvalidity: Uid.t option;
-      unseen: Seq.t option;
+      unseen: int option;
       highestmodseq: Modseq.t option;
     } [@@deriving sexp]
 
@@ -1256,7 +1256,7 @@ module Decoder = struct
         "RECENT", sp *> number >>| (fun n -> (RECENT (Int32.to_int n) : mbx_att));
         "UIDNEXT", sp *> number >>| (fun n -> UIDNEXT n);
         "UIDVALIDITY", sp *> number >>| (fun n -> UIDVALIDITY n);
-        "UNSEEN", sp *> number >>| (fun n -> UNSEEN n);
+        "UNSEEN", sp *> number >>| (fun n -> UNSEEN (Int32.to_int n));
         "HIGHESTMODSEQ", sp *> mod_sequence_valzer >>| (fun n -> HIGHESTMODSEQ n);
       ]
     in
@@ -2116,14 +2116,45 @@ type t =
     oc: Lwt_io.output_channel;
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
+
     mutable uidnext: Uid.t option;
+    mutable messages: int option;
+    mutable recent: int option;
+    mutable unseen: int option;
+    mutable uidvalidity: Uid.t option;
   }
+
+let create_connection ic oc unconsumed =
+  {
+    ic;
+    oc;
+    tag = 0;
+    unconsumed;
+    uidnext = None;
+    uidvalidity = None;
+    recent = None;
+    messages = None;
+    unseen = None;
+  }
+
 
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
 let uidnext {uidnext; _} =
   uidnext
+
+let messages {messages; _} =
+  messages
+
+let recent {recent; _} =
+  recent
+
+let unseen {unseen; _} =
+  unseen
+
+let uidvalidity {uidvalidity; _} =
+  uidvalidity
 
 let parse {A.buffer; off; len} p =
   let input = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
@@ -2142,7 +2173,36 @@ let rec send conn r =
   | Raw s ->
       Lwt_io.write conn.oc s
 
+let wrap_process f conn res u =
+  begin match u with
+  (* | R.Untagged (State (OK (Some (UIDNEXT n), _))) -> *)
+  (*     conn.uidnext <- Some n *)
+  (* | R.Untagged (State (OK (Some (UIDVALIDITY n), _))) -> *)
+  (*     conn.uidvalidity <- Some n *)
+  (* | R.Untagged (State (OK (Some (UNSEEN n), _))) -> *)
+  (*     conn.unseen <- Some n *)
+  | R.STATUS (_, items) ->
+      List.iter (function
+          | R.MESSAGES n ->
+              conn.messages <- Some n
+          | RECENT n ->
+              conn.recent <- Some n
+          | UIDNEXT n ->
+              conn.uidnext <- Some n
+          | UIDVALIDITY n ->
+              conn.uidvalidity <- Some n
+          | UNSEEN n ->
+              conn.unseen <- Some n
+          | _ ->
+              ()
+        ) items
+  | _ ->
+      ()
+  end;
+  f conn res u
+
 let run conn format default process =
+  let process = wrap_process process in
   let tag = tag conn in
   let r = E.(raw tag ++ format ++ raw "\r\n" ++ Flush) in
   send conn r >>= fun () ->
@@ -2422,7 +2482,7 @@ let connect server username password mailbox =
         Lwt_io.read ~count:128 ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
     | Done (unconsumed, (R.Untagged _ as r)) ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        Lwt.return {ic; oc; tag = 0; unconsumed; uidnext = None}
+        Lwt.return (create_connection ic oc unconsumed)
     | Fail (_, l, s) ->
         Printf.eprintf "Error at %s\n%!" s;
         List.iter prerr_endline l;

@@ -380,7 +380,7 @@ module Status : sig
       recent: int option;
       uidnext: Uid.t option;
       uidvalidity: Uid.t option;
-      unseen: Seq.t option;
+      unseen: int option;
       highestmodseq: Modseq.t option;
     } [@@deriving sexp]
 end
@@ -573,6 +573,10 @@ type t
 (** The type for connections. *)
 
 val uidnext: t -> Uid.t option
+val messages: t -> int option
+val recent: t -> int option
+val unseen: t -> int option
+val uidvalidity: t -> Uid.t option
 
 val connect: string -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox] *)
