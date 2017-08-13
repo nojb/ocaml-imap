@@ -1940,113 +1940,6 @@ module Decoder = struct
     | Error s -> failwith s
 end
 
-module Readline = struct
-  type step =
-    | Reading
-    | LF
-    | Lit of int
-
-  type state =
-    {
-      src: string;
-      off: int;
-      len: int;
-      step: step;
-      eof: bool;
-      buf: string;
-    }
-
-  type 'a res =
-    | Refill of state
-    | Next of state * 'a
-    | Error
-
-  let string_of_step = function
-    | Reading -> "Reading"
-    | LF -> "LF"
-    | Lit n -> Printf.sprintf "Lit %d" n
-
-  let print_state {src; off; len; step; eof; buf} =
-    Printf.eprintf "src=%S off=%d len=%d step=%s eof=%B buf=%S\n%!" src off len (string_of_step step) eof buf
-
-  let empty =
-    {
-      src = "";
-      off = 0;
-      len = 0;
-      step = Reading;
-      eof = false;
-      buf = "";
-    }
-
-  let next state =
-    if false then print_state state;
-    let {src; off; len; step; eof; buf} = state in
-    let rec go step i off len buf =
-      if i >= off + len then
-        let buf = buf ^ String.sub src off len in
-        if eof then
-          Error
-        else
-          let state = {state with step; buf; src = ""; off = 0; len = 0} in
-          Refill state
-      else begin
-        match step, src.[i] with
-        | Reading, '\r'
-        | LF, '\r' ->
-            go LF (i+1) off len buf
-        | Lit n, _ ->
-            let m = min n len in
-            go (if m < n then Lit (n-m) else Reading) (i+m) off len buf
-        | LF, '\n' ->
-            let buf = buf ^ String.sub src off (i-off+1) in
-            let off = i+1 and len = len-i+off-1 in
-            let ai = String.length buf + i - off in
-            let complete () =
-              let state = {state with off; len; buf = ""; step = Reading} in
-              Next (state, Decoder.decode buf)
-            in
-            let module S = struct type t = Start | Acc end in
-            let open S in
-            let rec scan step acc i =
-              if i < 0 then
-                complete ()
-              else begin
-                match step, buf.[i] with
-                | Start, '}' ->
-                    scan Acc false (i - 1)
-                | Acc, '0' .. '9' ->
-                    scan Acc true (i - 1)
-                | Acc, '{' when acc ->
-                    let n =
-                      let acc = ref 0 in
-                      for j = i+1 to ai-3 do
-                        acc := 10 * !acc + (Char.code buf.[j] - Char.code '0')
-                      done;
-                      !acc
-                    in
-                    go (Lit n) (ai+1) off len buf
-                | Start, _ | Acc, _ ->
-                    complete ()
-              end
-            in
-            scan Start false (ai-2)
-        | Reading, _ | LF, _ ->
-            go Reading (i+1) off len buf
-      end
-    in
-    go step off off len buf
-
-  let feed state src off len =
-    if false then Printf.eprintf "feed: src=%S off=%d len=%d\n%!" src off len;
-    let src = if state.src <> "" then state.src ^ src else src in
-    let off = if state.src <> "" then state.off + off else off in
-    let len = if state.src <> "" then state.len + len else len in
-    {state with src; off; len; eof = len = 0}
-end
-
-(* Commands *)
-
 module Search = struct
   open E
 
@@ -2137,7 +2030,6 @@ let create_connection ic oc unconsumed =
     unseen = None;
   }
 
-
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
@@ -2161,6 +2053,19 @@ let parse {A.buffer; off; len} p =
   Bigarray.Array1.blit (Bigarray.Array1.sub buffer off len) input;
   let input = `Bigstring input in
   A.parse ~input p
+
+let recv conn =
+  let rec loop = function
+    | A.Partial f ->
+        Lwt_io.read ~count:128 conn.ic >>= fun s ->
+        loop (f (`String s))
+    | Done (unconsumed, r) ->
+        conn.unconsumed <- unconsumed;
+        Lwt.return r
+    | Fail _ ->
+        Lwt.fail (Failure "parse error")
+  in
+  loop (parse conn.unconsumed Decoder.response)
 
 let rec send conn r =
   match r with
@@ -2208,29 +2113,19 @@ let run conn format default process =
   let tag = tag conn in
   let r = E.(raw tag ++ format ++ raw "\r\n" ++ Flush) in
   send conn r >>= fun () ->
-  let rec loop res = function
-    | A.Partial f ->
-        Lwt_io.read ~count:128 conn.ic >>= fun s ->
-        prerr_string s; flush stderr; loop res (f (`String s))
-    | Done (unconsumed, (R.Untagged u as r)) ->
+  let rec loop res =
+    recv conn >>= function
+    | R.Cont _ ->
+        Lwt.fail (Failure "unexpected")
+    | Untagged u as r ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        let res = process conn res u in
-        loop res (parse unconsumed Decoder.response)
-    | Done (unconsumed, (R.Tagged (t, _) as r)) ->
+        loop (process conn res u)
+    | Tagged (t, _) as r ->
         Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
         conn.tag <- conn.tag + 1;
         Lwt.return res
   in
-  loop default (parse conn.unconsumed Decoder.response)
-
-(* let rec wait_for_idle tag = function *)
-(*   | Cont _ -> *)
-(*       Next (WaitForResp (wait_for_idle tag)) *)
-(*   | Untagged _ -> *)
-(*       Next (Sending (E.(raw "DONE"), WaitForResp (wait_for_idle tag))) *)
-(*   | Tagged (tag1, _) -> *)
-(*       assert (tag = tag1); *)
-(*       Done () *)
+  loop default
 
 (* let idle session = *)
 (*   let tag = tag session in *)
@@ -2245,12 +2140,11 @@ let login conn username password =
 
 let capability ss =
   let format = E.(str "CAPABILITY") in
-  let default = [] in
   let process _ caps = function
     | R.CAPABILITY caps1 -> caps @ caps1
     | _ -> caps
   in
-  run ss format default process
+  run ss format [] process
 
 let create ss m =
   let format = E.(str "CREATE" ++ mailbox m) in
@@ -2479,21 +2373,17 @@ let connect server username password mailbox =
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
   let ic = Lwt_ssl.in_channel_of_descr sock in
   let oc = Lwt_ssl.out_channel_of_descr sock in
-  let rec loop = function
-    | A.Partial f ->
-        Lwt_io.read ~count:128 ic >>= fun s -> prerr_string s; flush stderr; loop (f (`String s))
-    | Done (unconsumed, (R.Untagged _ as r)) ->
-        Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
-        Lwt.return (create_connection ic oc unconsumed)
-    | Fail (_, l, s) ->
-        Printf.eprintf "Error at %s\n%!" s;
-        List.iter prerr_endline l;
-        Lwt.fail (Failure "parse error")
+  let imap =
+    create_connection ic oc {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
   in
-  loop (Angstrom.Buffered.parse Decoder.response) >>= fun imap ->
-  login imap username password >>= fun () ->
-  select imap mailbox >>= fun () ->
-  Lwt.return imap
+  recv imap >>= function
+  | R.Untagged _ as r ->
+      Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+      login imap username password >>= fun () ->
+      select imap mailbox >>= fun () ->
+      Lwt.return imap
+  | Tagged _ | Cont _ ->
+      Lwt.fail (Failure "unexpected response")
 
 let disconnect imap =
   logout imap >>= fun () ->
