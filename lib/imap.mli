@@ -615,7 +615,6 @@ val capability: t -> capability list Lwt.t
 (** [capability] returns the list of {{!capability}capabilities} supported by
     the server. *)
 
-
 val create: t -> string -> unit Lwt.t
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
     if a new mailbox with that name has been created.  It is an error to attempt
