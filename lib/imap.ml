@@ -2158,48 +2158,48 @@ let login conn username password =
   let process conn _ _ = () in
   run conn format () process
 
-let capability ss =
+let capability imap=
   let format = E.(str "CAPABILITY") in
   let process _ caps = function
     | R.CAPABILITY caps1 -> caps @ caps1
     | _ -> caps
   in
-  run ss format [] process
+  run imap format [] process
 
-let create ss m =
+let create imap m =
   let format = E.(str "CREATE" ++ mailbox m) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let delete ss m =
+let delete imap m =
   let format = E.(str "DELETE" ++ mailbox m) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let rename ss m1 m2 =
+let rename imap m1 m2 =
   let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let logout ss =
+let logout imap =
   let format = E.(str "LOGOUT") in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let noop ss =
+let noop imap =
   let format = E.(str "NOOP") in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let list ss ?(ref = "") s =
+let list imap ?(ref = "") s =
   let format = E.(str "LIST" ++ mailbox ref ++ str s) in
   let process _ res = function
     | R.LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
     | _ -> res
   in
-  run ss format [] process
+  run imap format [] process
 
-let status ss m att =
+let status imap m att =
   let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
   let process _ res = function
     | R.STATUS (mbox, items) when m = mbox ->
@@ -2215,76 +2215,76 @@ let status ss m att =
     | _ ->
         res
   in
-  run ss format Status.default process
+  run imap format Status.default process
 
-let copy_gen ss cmd s m =
+let copy_gen imap cmd s m =
   let format = E.(raw cmd ++ eset s ++ mailbox m) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let copy ss s m =
-  copy_gen ss "COPY" s m
+let copy imap s m =
+  copy_gen imap "COPY" s m
 
-let uid_copy ss s m =
-  copy_gen ss "UID COPY" s m
+let uid_copy imap s m =
+  copy_gen imap "UID COPY" s m
 
-let check ss =
+let check imap =
   let format = E.(str "CHECK") in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let close ss =
+let close imap =
   let format = E.(str "CLOSE") in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let expunge ss =
+let expunge imap =
   let format = E.(str "EXPUNGE") in
   let process _ info = function
     | R.EXPUNGE n -> n :: info
     | _ -> info
   in
-  run ss format [] process
+  run imap format [] process
 
-let search_gen ss cmd sk =
+let search_gen imap cmd sk =
   let format = E.(raw cmd ++ sk) in
   let process _ (res, m) = function
     | R.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)
   in
-  run ss format ([], None) process
+  run imap format ([], None) process
 
-let search ss =
-  search_gen ss "SEARCH"
+let search imap =
+  search_gen imap "SEARCH"
 
-let uid_search ss =
-  search_gen ss "UID SEARCH"
+let uid_search imap =
+  search_gen imap "UID SEARCH"
 
-let select_gen ss cmd m =
+let select_gen imap cmd m =
   let format = E.(raw cmd ++ mailbox m) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let condstore_select_gen ss cmd m =
+let condstore_select_gen imap cmd m =
   let format = E.(raw cmd ++ mailbox m ++ p (raw "CONDSTORE")) in
   let process _ m = function
     | R.State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
     | _ -> m
   in
-  run ss format 0L process
+  run imap format 0L process
 
-let select ss ?(read_only = false) mbox =
-  select_gen ss (if read_only then "EXAMINE" else "SELECT") mbox
+let select imap ?(read_only = false) mbox =
+  select_gen imap (if read_only then "EXAMINE" else "SELECT") mbox
 
-let condstore_select ss ?(read_only = false) mbox =
-  condstore_select_gen ss (if read_only then "EXAMINE" else "SELECT") mbox
+let condstore_select imap ?(read_only = false) mbox =
+  condstore_select_gen imap (if read_only then "EXAMINE" else "SELECT") mbox
 
-let append ss m ?(flags = []) data =
+let append imap m ?(flags = []) data =
   let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
   let process _ () _ = () in
-  run ss format () process
+  run imap format () process
 
-let fetch_gen ss cmd ?changed_since set att =
+let fetch_gen imap cmd ?changed_since set att =
   let open E in
   let att =
     match att with
@@ -2326,13 +2326,13 @@ let fetch_gen ss cmd ?changed_since set att =
     | _ ->
         res
   in
-  run ss format Fetch.default process
+  run imap format Fetch.default process
 
-let fetch ss ?changed_since set att =
-  fetch_gen ss "FETCH" ?changed_since set att
+let fetch imap ?changed_since set att =
+  fetch_gen imap "FETCH" ?changed_since set att
 
-let uid_fetch ss ?changed_since set att =
-  fetch_gen ss "UID FETCH" ?changed_since set att
+let uid_fetch imap ?changed_since set att =
+  fetch_gen imap "UID FETCH" ?changed_since set att
 
 type store_mode =
   [`Add | `Remove | `Set]
@@ -2340,7 +2340,7 @@ type store_mode =
 type store_kind =
   [`Flags of Flag.flag list | `Labels of string list]
 
-let store_gen ss cmd ?(silent = false) ?unchanged_since mode set att =
+let store_gen imap cmd ?(silent = false) ?unchanged_since mode set att =
   let open E in
   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
   let silent = if silent then ".SILENT" else "" in
@@ -2363,21 +2363,21 @@ let store_gen ss cmd ?(silent = false) ?unchanged_since mode set att =
   in
   let format = raw cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
   let process _ m _ = m in
-  run ss format Fetch.default process
+  run imap format Fetch.default process
 
-let store ss =
-  store_gen ss "STORE"
+let store imap =
+  store_gen imap "STORE"
 
-let uid_store ss =
-  store_gen ss "UID STORE"
+let uid_store imap =
+  store_gen imap "UID STORE"
 
-let enable ss caps =
+let enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
   let process _ caps = function
     | R.ENABLED caps1 -> caps1 @ caps
     | _ -> caps
   in
-  run ss format [] process
+  run imap format [] process
 
 let () =
   Ssl.init ()
