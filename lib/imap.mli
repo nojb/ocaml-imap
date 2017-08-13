@@ -653,7 +653,7 @@ val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
     message; otherwise, the flag list of the resulting message is set to empty
     by default.  In either case, the [`Recent] flag is also set. *)
 
-val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list -> Fetch.response Lwt.t
+val fetch: t -> ?changed_since:Modseq.t -> SeqSet.t -> Fetch.t list -> Fetch.response Lwt.t
 (** [fetch uid ?changed ?vanished set att] retrieves data associated with
     messages with sequence number in [set].
 
@@ -664,7 +664,7 @@ val fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> SeqSet.t -> Fetch.t list 
     The [vanished] optional parameter specifies whether one wants to receive
     [`Vanished] responses as well. *)
 
-val uid_fetch: t -> ?changed:Modseq.t -> ?vanished:bool -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
+val uid_fetch: t -> ?changed_since:Modseq.t -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
 (** Like {!fetch}, but identifies messages by UID. *)
 
 type store_mode =
@@ -673,7 +673,7 @@ type store_mode =
 type store_kind =
   [`Flags of Flag.flag list | `Labels of string list]
 
-val store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t -> store_kind -> Fetch.response Lwt.t
+val store: t -> ?silent:bool -> ?unchanged_since:Modseq.t -> store_mode -> SeqSet.t -> store_kind -> Fetch.response Lwt.t
 (** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
     messages with sequence number in [set].
 
@@ -683,5 +683,5 @@ val store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> SeqSet.t ->
     If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
 
-val uid_store: t -> ?silent:bool -> ?unchanged:Modseq.t -> store_mode -> UidSet.t -> store_kind -> Fetch.response Lwt.t
+val uid_store: t -> ?silent:bool -> ?unchanged_since:Modseq.t -> store_mode -> UidSet.t -> store_kind -> Fetch.response Lwt.t
 (** Like {!add_flags}, but identifies messages by UID. *)

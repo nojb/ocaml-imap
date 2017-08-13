@@ -2276,7 +2276,7 @@ let append ss m ?(flags = []) data =
   let process _ () _ = () in
   run ss format () process
 
-let fetch_gen ss cmd ?changed ?(vanished = false) set att =
+let fetch_gen ss cmd ?changed_since set att =
   let open E in
   let att =
     match att with
@@ -2287,11 +2287,9 @@ let fetch_gen ss cmd ?changed ?(vanished = false) set att =
     | xs -> p (list (fun x -> x) xs)
   in
   let changed_since =
-    match changed, vanished with
-    | None, true -> invalid_arg "fetch_gen"
-    | None, false -> empty
-    | Some m, false -> p (raw "CHANGEDSINCE" ++ uint64 m)
-    | Some m, true -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
+    match changed_since with
+    | None -> empty
+    | Some m -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
   let format = raw cmd ++ eset set ++ att ++ changed_since in
   let process _ res = function
@@ -2322,11 +2320,11 @@ let fetch_gen ss cmd ?changed ?(vanished = false) set att =
   in
   run ss format Fetch.default process
 
-let fetch ss ?changed ?vanished set att =
-  fetch_gen ss "FETCH" ?changed ?vanished set att
+let fetch ss ?changed_since set att =
+  fetch_gen ss "FETCH" ?changed_since set att
 
-let uid_fetch ss ?changed ?vanished set att =
-  fetch_gen ss "UID FETCH" ?changed ?vanished set att
+let uid_fetch ss ?changed_since set att =
+  fetch_gen ss "UID FETCH" ?changed_since set att
 
 type store_mode =
   [`Add | `Remove | `Set]
@@ -2334,7 +2332,7 @@ type store_mode =
 type store_kind =
   [`Flags of Flag.flag list | `Labels of string list]
 
-let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
+let store_gen ss cmd ?(silent = false) ?unchanged_since mode set att =
   let open E in
   let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
   let silent = if silent then ".SILENT" else "" in
@@ -2351,7 +2349,7 @@ let store_gen ss cmd ?(silent = false) ?unchanged mode set att =
     | `Labels labels -> list label labels
   in
   let unchanged_since =
-    match unchanged with
+    match unchanged_since with
     | None -> str ""
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
