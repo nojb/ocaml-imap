@@ -632,10 +632,6 @@ val rename: t -> string -> string -> unit Lwt.t
     mailbox name that does not exist or to a mailbox name that already exists.
     Any error in renaming will return a tagged [`No] response. *)
 
-val logout: t -> unit Lwt.t
-(** [logout] gracefully terminates a session.  The server MUST send an untagged
-    [`Bye] {{!untagged}response} before the (tagged) [`Ok] response. *)
-
 val noop: t -> unit Lwt.t
 (** [noop] does nothing.  Since any command can return a status update as
     untagged data, the [noop] command can be used as a periodic poll for new
