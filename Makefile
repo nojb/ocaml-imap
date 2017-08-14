@@ -35,4 +35,4 @@ publish-doc: doc
 publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
 
-.PHONY: all lib clean doc install uninstall test
+.PHONY: all lib clean doc install uninstall test examples
