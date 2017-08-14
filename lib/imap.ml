@@ -2309,7 +2309,8 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
   let format = raw cmd ++ eset (Uint32Set.of_list nums) ++ att & changed_since in
-  let process _ r = function
+  let strm, push = Lwt_stream.create () in
+  let process _ () = function
     | R.FETCH (num, items) ->
         let aux res = function
           | (Response.FLAGS l : R.msg_att) -> {res with Fetch.flags = Some l}
@@ -2331,13 +2332,13 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
           | X_GM_THRID n -> {res with x_gm_thrid = Some n}
           | X_GM_LABELS n -> {res with x_gm_labels = Some n}
         in
-        let info = try Int32Map.find num r with Not_found -> Fetch.default in
-        let info = List.fold_left aux info items in
-        Int32Map.add num info r
+        let info = List.fold_left aux Fetch.default items in
+        push (Some (num, info))
     | _ ->
-        r
+        ()
   in
-  run imap format Int32Map.empty process >|= Int32Map.bindings
+  Lwt.ignore_result (run imap format () process >|= fun () -> push None);
+  strm
 
 type store_mode =
   [ `Add
