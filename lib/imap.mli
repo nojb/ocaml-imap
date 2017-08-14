@@ -520,6 +520,8 @@ val unseen: t -> int option
 
 val uidvalidity: t -> Uid.t option
 
+val highestmodseq: t -> Modseq.t option
+
 val connect: string -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
@@ -567,10 +569,6 @@ val search: t -> 'a num_kind -> Search.key -> ('a list * Modseq.t option) Lwt.t
 
 val select: t -> ?read_only:bool -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
-
-val condstore_select: t -> ?read_only:bool -> string -> Modseq.t Lwt.t
-(** Like {!select}, but returns the modification sequence number in all
-    subsequent fetch requests. *)
 
 val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
 (** [append imap mbox flags id data] appends [data] as a new message to the end

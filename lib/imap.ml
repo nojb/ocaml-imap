@@ -1999,6 +1999,7 @@ type t =
     mutable recent: int option;
     mutable unseen: int option;
     mutable uidvalidity: Uid.t option;
+    mutable highestmodseq: Modseq.t option;
 
     mutable capabilities: capability list;
 
@@ -2016,6 +2017,7 @@ let create_connection ic oc unconsumed =
     recent = None;
     messages = None;
     unseen = None;
+    highestmodseq = None;
     capabilities = [];
     stop_poll = None;
   }
@@ -2037,6 +2039,9 @@ let unseen {unseen; _} =
 
 let uidvalidity {uidvalidity; _} =
   uidvalidity
+
+let highestmodseq {highestmodseq; _} =
+  highestmodseq
 
 let unconsumed_to_string {A.buffer; off; len} =
   let b = Bytes.create len in
@@ -2104,6 +2109,8 @@ let wrap_process f imap res u =
       imap.uidvalidity <- Some n;
   | State (OK (Some (CAPABILITY caps), _)) ->
       imap.capabilities <- caps
+  | State (OK (Some (HIGHESTMODSEQ n), _)) ->
+      imap.highestmodseq <- Some n
   | RECENT n ->
       imap.recent <- Some n
   | EXISTS n ->
@@ -2120,8 +2127,8 @@ let wrap_process f imap res u =
               imap.uidvalidity <- Some n
           | UNSEEN n ->
               imap.unseen <- Some n
-          | _ ->
-              ()
+          | HIGHESTMODSEQ n ->
+              imap.highestmodseq <- Some n
         ) items
   | CAPABILITY caps ->
       imap.capabilities <- caps
@@ -2286,24 +2293,11 @@ let search (type a) imap (num_kind : a num_kind) sk : (a list * _) Lwt.t =
   in
   run imap format ([], None) process >>= fun (l, m) -> Lwt.return (cast l, m)
 
-let select_gen imap cmd m =
-  let format = E.(raw cmd ++ mailbox m) in
-  let process _ () _ = () in
-  run imap format () process
-
-let condstore_select_gen imap cmd m =
-  let format = E.(raw cmd ++ mailbox m ++ p (raw "CONDSTORE")) in
-  let process _ m = function
-    | R.State (OK (Some (Code.HIGHESTMODSEQ m), _)) -> m
-    | _ -> m
-  in
-  run imap format 0L process
-
-let select imap ?(read_only = false) mbox =
-  select_gen imap (if read_only then "EXAMINE" else "SELECT") mbox
-
-let condstore_select imap ?(read_only = false) mbox =
-  condstore_select_gen imap (if read_only then "EXAMINE" else "SELECT") mbox
+let select imap ?(read_only = false) m =
+  let cmd = if read_only then "EXAMINE" else "SELECT" in
+  let arg = if List.mem CONDSTORE imap.capabilities then " (CONDSTORE)" else "" in
+  let format = E.(raw cmd ++ mailbox m & raw arg) in
+  run imap format () (fun _ r _ -> r)
 
 let append imap m ?(flags = []) data =
   let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
