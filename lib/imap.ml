@@ -345,18 +345,22 @@ module E = struct
     | Raw "" -> true
     | Raw _ -> false
 
-  let empty = Raw ""
+  let raw s =
+    Raw s
 
-  let (++) f g =
+  let empty =
+    raw ""
+
+  let (&) f g =
     if is_empty f then g
     else if is_empty g then f
-    else Cat (f, Cat (Raw " ", g))
+    else Cat (f, g)
+
+  let (++) f g =
+    f & raw " " & g
 
   let literal s =
     Cat (Raw (Printf.sprintf "{%d}\r\n" (String.length s)), Cat (Wait, Raw s))
-
-  let raw s =
-    Raw s
 
   let str s =
     let literal_chars = function
@@ -2131,7 +2135,7 @@ let wrap_process f imap res u =
 let run imap format res process =
   let process = wrap_process process in
   let tag = tag imap in
-  let r = E.(raw tag ++ format ++ raw "\r\n") in
+  let r = E.(raw tag ++ format & raw "\r\n") in
   send imap r process res >>= fun res ->
   let rec loop res =
     recv imap >>= function
@@ -2147,18 +2151,47 @@ let run imap format res process =
   in
   loop res
 
-(* let idle session = *)
-(*   let tag = tag session in *)
-(*   let format = E.(raw tag ++ raw "IDLE") in *)
-(*   let state = Sending (format, WaitForResp (wait_for_idle tag)) in *)
-(*   continue (session, state) *)
+let idle imap =
+  let process = wrap_process (fun _ r _ -> r) in
+  let tag = tag imap in
+  let r = E.(raw tag ++ raw "IDLE\r\n") in
+  let started = ref false in
+  let stopnow = ref false in
+  let t, u = Lwt.wait () in
+  let t = t >>= fun () -> send imap E.(raw "DONE\r\n") process () in
+  let u = Lazy.from_fun (Lwt.wakeup u) in
+  let stop () = if !started then Lazy.force u else stopnow := true in
+  let t =
+    send imap r process () >>= fun () ->
+    let rec loop () =
+      recv imap >>= function
+      | R.Cont _ ->
+          started := true;
+          if !stopnow then stop ();
+          loop ()
+      | R.Untagged _ ->
+          stop ();
+          loop ()
+      | Tagged (t, _) ->
+          imap.tag <- imap.tag + 1;
+          Lwt.return_unit
+    in
+    Lwt.join [loop (); t]
+  in
+  t, stop
 
-let login conn username password =
+let poll imap =
+  if List.mem IDLE imap.capabilities then
+    idle imap
+  else
+    Lwt.fail (Failure "IDLE not supported"), (fun () -> failwith "IDLE not supported")
+
+let login imap username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in
-  let process conn _ _ = () in
-  run conn format () process
+  let process _ res _ = res in
+  run imap format () process
 
-let capability imap=
+let capability imap =
   let format = E.(str "CAPABILITY") in
   let process _ caps = function
     | R.CAPABILITY caps1 -> caps @ caps1
@@ -2168,17 +2201,17 @@ let capability imap=
 
 let create imap m =
   let format = E.(str "CREATE" ++ mailbox m) in
-  let process _ () _ = () in
+  let process _ res _ = res in
   run imap format () process
 
 let delete imap m =
   let format = E.(str "DELETE" ++ mailbox m) in
-  let process _ () _ = () in
+  let process _ res _ = res in
   run imap format () process
 
 let rename imap m1 m2 =
   let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
-  let process _ () _ = () in
+  let process _ res _ = res in
   run imap format () process
 
 let logout imap =

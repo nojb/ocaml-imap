@@ -584,6 +584,8 @@ val connect: string -> string -> string -> string -> t Lwt.t
 val disconnect: t -> unit Lwt.t
 (** Disconnect. *)
 
+val poll: t -> unit Lwt.t * (unit -> unit)
+
 val create: t -> string -> unit Lwt.t
 (** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
     if a new mailbox with that name has been created.  It is an error to attempt
