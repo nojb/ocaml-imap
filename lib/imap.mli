@@ -235,7 +235,7 @@ end
 
 module Fetch : sig
   (** The [section] type is used to specify which part(s) of a message should be
-      retrieved when using {!fetch} with [`Body_section].  See
+      retrieved when using {!fetch} with {!body_section}.  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
       more details.
 
@@ -246,33 +246,28 @@ module Fetch : sig
   type section =
     | HEADER                             (* Full RFC 2822 message headers *)
     | HEADER_FIELDS of string list       (* Header fields matching one of the given field names *)
-    | HEADER_FIELDS_NOT of string list   (* Header fields not matching any of the given field names *)
+    | HEADER_FIELDS_NOT of string list   (* Header fields not matching the given field names *)
     | TEXT                               (* The text body of this part, omitting RFC2822 headers *)
     | MIME                               (* The MIME headers of this part *)
     | Part of int * section              (* Subpart *)
     | All [@@deriving sexp]              (* The whole message *)
 
+  type t
   (** Message attributes that can be requested using the {!fetch} command. *)
 
-  type t
-
   val envelope: t
-  (** The envelope structure of the message.  This is computed by the server
-      by parsing the header into the component parts, defaulting various
-      fields as necessary. *)
+  (** The envelope structure of the message. *)
 
   val internaldate: t
   (** The internal date of the message. *)
 
   val rfc822_header: t
-  (** Functionally equivalent to [`Body_section (`Peek, `Header, None)],
-      differing in the syntax of the resulting untagged [`Fetch]
-      {{!untagged}data} ([`Rfc822_header] is returned). *)
+  (** Equivalent to [body_section ~peek:true HEADER], but returning a
+      rfc822_header response. *)
 
   val rfc822_text: t
-  (** Functionally equivalent to [`Body_section (`Look, `Text, None)],
-      differing in the syntax of the resulting untagged [`Fetch]
-      {{!untagged}data} ([`Rfc822_text] is returned). *)
+  (** Equivalent to [body_section ~peek:false TEXT], but returning a
+      rfc822_text response. *)
 
   val rfc822_size: t
   (** The size of the message. *)
@@ -287,7 +282,7 @@ module Fetch : sig
 
   val body_section: peek:bool -> section -> (int * int) option -> t
   (** The text of a particular body section.  The [peek] flag is an alternate
-      form that does not implicitly set the [`Seen] {!flag}. *)
+      form that does not implicitly set the [Seen] {!flag}. *)
 
   val bodystructure: t
   (** The MIME body structure of the message.  This is computed by the server
@@ -301,20 +296,17 @@ module Fetch : sig
   (** The {{!flag}flags} that are set for this message. *)
 
   val all: t list
+  (** Equivalent to [[flags; internaldate; rfc822_size; envelope]]. *)
+
   val fast: t list
+  (** Equivalent to [[flags; internaldate; rfc822_size]]. *)
+
   val full: t list
+  (** Equivalent to [[flags; internaldate; rfc822_size; envelope; body]]. *)
 
   val x_gm_msgid: t
   val x_gm_thrid: t
   val x_gm_labels: t
-  (** [fetch_all uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-      [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope]]. *)
-
-  (** [fetch_fast uid changed vanished set] is equivalent to [fetch uid changed vanished set a], where
-      [a = [`Flags; `Internal_date; `Rfc822_size]]. *)
-
-  (** [fetch_full u c v s] is equivalent to [fetch u c v s a] where
-      [a = [`Flags; `Internal_date; `Rfc822_size; `Envelope; `Body]]. *)
 
   type response =
     {
@@ -372,8 +364,7 @@ module Status : sig
     | HIGHESTMODSEQ [@@deriving sexp]
     (** TODO *)
 
-  (** Mailbox status items returned in the untagged [`Status] {{!untagged}response}
-      to the {!status} command. *)
+  (** Mailbox status items returned by {!status} command. *)
   type response =
     {
       messages: int option;
@@ -388,18 +379,16 @@ end
 (** Message search *)
 
 module Search : sig
-  (** Search keys. See {!search} command. *)
   type key [@@deriving sexp]
 
   val all: key
-  (** All messages in the mailbox; the default initial key for ANDing. *)
+  (** All messages in the mailbox. *)
 
   val seq: SeqSet.t -> key
-  (** Messages with message sequence numbers corresponding to the specified
-      message sequence number set. *)
+  (** Messages with message sequence number in the given set. *)
 
   val answered: key
-  (** Messages with the [`Answered] flag set. *)
+  (** Messages with the [Answered] flag set. *)
 
   val bcc: string -> key
   (** Messages that contain the specified string in the envelope structure's
@@ -417,54 +406,49 @@ module Search : sig
       "CC" field. *)
 
   val deleted: key
-  (** Messages with the [`Deleted] {!flag} set. *)
+  (** Messages with the [Deleted] {!flag} set. *)
 
   val draft: key
-  (** Messages with the [`Draft] {!flag} set. *)
+  (** Messages with the [Draft] {!flag} set. *)
 
   val flagged: key
-  (** Messages with the [`Flagged] {!flag} set. *)
+  (** Messages with the [Flagged] {!flag} set. *)
 
   val from: string -> key
-  (** Messages that contain the specified string in the envelope structure's
-      "FROM" field. *)
+  (** Messages with FROM field containing given string. *)
 
   val header: string -> string -> key
-  (** Messages that have a header with the specified field-name and that
+  (** Messages with headers with the specified field-name and that
       contains the specified string in the text of the header (what comes after
-      the colon).  If the string to search is zero-length, this matches all
-      messages that have a header line with the specified field-name regardless
-      of the contents. *)
+      the colon). *)
 
   val keyword: string -> key
-  (** Messages with the specified keyword {!flag} set. *)
+  (** Messages with the specified [Keyword] {!flag} set. *)
 
   val larger: int -> key
-  (** Messages with a size larger than the specified number of octets. *)
+  (** Messages with size at least the given number of bytes. *)
 
   val new_: key
-  (** Messages that have the [`Recent] {!flag} set but not the [`Seen] {!flag}.
-      This is functionally equivalent to [`And (`Recent, `Unseen)]. *)
+  (** Messages that have the [Recent] {!flag} set but not the [Seen] {!flag}. *)
 
   val not: key -> key
-  (** Messages that do not match the specified search key. *)
+  (** Negation of search criteria. *)
 
   val old: key
-  (** Messages that do not have the [`Recent] {!flag} set.  This is
-      functionally equivalent to [`Not `Recent] (as opposed to [`Not `New]). *)
+  (** Messages that do not have the [Recent] {!flag} set. *)
 
   val on: date -> key
   (** Messages whose internal date (disregarding time and timezone) is within
       the specified date.  *)
 
   val (||): key -> key -> key
-  (** Messages that match either search key. *)
+  (** OR of search criteria. *)
 
   val recent: key
-  (** Messages that have the [`Recent] {!flag} set. *)
+  (** Messages that have the [Recent] {!flag} set. *)
 
   val seen: key
-  (** Messages that have the [`Seen] {!flag} set. *)
+  (** Messages that have the [Seen] {!flag} set. *)
 
   val sent_before: date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
@@ -498,14 +482,13 @@ module Search : sig
       "TO" field. *)
 
   val uid: UidSet.t -> key
-  (** Messages with unique identifiers corresponding to the specified unique
-      identifier set.  Sequence set ranges are permitted. *)
+  (** Messages with UID in the given set. *)
 
   val unanswered: key
-  (** Messages that do not have the [`Answered] {!flag} set. *)
+  (** Messages that do not have the [Answered] {!flag} set. *)
 
   val undeleted: key
-  (** Messages that do not have the [`Deleted] {!flag} set. *)
+  (** Messages that do not have the [Deleted] {!flag} set. *)
 
   val undraft: key
   (** Messages that do not have the [`Draft] {!flag} set. *)
@@ -526,7 +509,7 @@ module Search : sig
   (** Messages that have equal or greater modification sequence numbers. *)
 
   val x_gm_raw: string -> key
-  (** TOOD *)
+  (** Gmail search string *)
 
   val x_gm_msgid: Modseq.t -> key
   (** Messages with a given Gmail Message ID. *)

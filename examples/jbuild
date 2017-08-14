@@ -2,7 +2,7 @@
 
 (executables
  ((names (wait_mail))
-  (libraries (ssl lwt lwt_ssl imap))))
+  (libraries (cmdliner imap))))
 
 ;; (executables
 ;;  ((names (wait_mail imap_shell))

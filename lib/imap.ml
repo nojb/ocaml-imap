@@ -2054,10 +2054,15 @@ let unseen {unseen; _} =
 let uidvalidity {uidvalidity; _} =
   uidvalidity
 
-let parse {A.buffer; off; len} p =
-  let input = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
-  Bigarray.Array1.blit (Bigarray.Array1.sub buffer off len) input;
-  let input = `Bigstring input in
+let unconsumed_to_string {A.buffer; off; len} =
+  let b = Bytes.create len in
+  for i = 0 to len - 1 do
+    Bytes.set b i (Bigarray.Array1.get buffer (off + i))
+  done;
+  Bytes.unsafe_to_string b
+
+let parse unconsumed p =
+  let input = `String (unconsumed_to_string unconsumed) in
   A.parse ~input p
 
 let recv conn =
@@ -2068,7 +2073,10 @@ let recv conn =
     | Done (unconsumed, r) ->
         conn.unconsumed <- unconsumed;
         Lwt.return r
-    | Fail _ ->
+    | Fail (unconsumed, backtrace, f) ->
+        Lwt_io.eprintlf "** Parse error at `%s':" f >>= fun () ->
+        Lwt_list.iter_s Lwt_io.eprintl backtrace >>= fun () ->
+        Lwt_io.eprintlf "** Unconsumed: %S" (unconsumed_to_string unconsumed) >>= fun () ->
         Lwt.fail (Failure "parse error")
   in
   loop (parse conn.unconsumed Decoder.response)

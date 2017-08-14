@@ -19,22 +19,25 @@ open Lwt.Infix
 
 let wait_mail server port username password mailbox =
   Imap.connect server username password mailbox >>= fun imap ->
-  let uidnext = Imap.uidnext imap in
-  Imap.idle imap >>= fun () ->
-  Imap.uid_search imap (uidnext) >>= function
-  | n :: _ ->
-      Imap.fetch imap n `Envelope >>= fun e ->
-      Lwt_io.eprintlf "..." >>= fun () ->
-  (* | `Envelope e -> *)
-  (*     begin match e.Imap.env_from with *)
-  (*     | [] -> name *)
-  (*     | ad :: _ -> *)
-  (*         Some (Printf.sprintf "\"%s\" <%s@%s>" *)
-  (*                 ad.Imap.ad_name ad.Imap.ad_mailbox ad.Imap.ad_host) *)
-  (*     end *)
-      Imap.disconnect imap
-  | [] ->
-      assert false
+  let rec loop () =
+    let t, _ = Imap.poll imap in
+    t >>= fun () ->
+    Imap.uid_search imap Imap.Search.new_ >>= function
+    | (n :: _), _ ->
+        Imap.uid_fetch imap (Imap.UidSet.singleton n) [Imap.Fetch.envelope] >>= begin function
+        | {Imap.Fetch.envelope = Some {Imap.env_from = {Imap.ad_name; ad_mailbox; ad_host; _} :: _; _}; _} ->
+            Lwt_io.printlf "New mail! (from \"%s\" <%s@%s>)" ad_name ad_mailbox ad_host >>= fun () ->
+            Imap.disconnect imap
+        | _ ->
+            loop ()
+        end
+    | [], _ ->
+        loop ()
+  in
+  loop ()
+
+let wait_mail server port username password mailbox =
+  Lwt_main.run (wait_mail server port username password mailbox)
 
 open Cmdliner
 
