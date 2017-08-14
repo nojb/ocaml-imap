@@ -73,7 +73,7 @@ module Uint32Set = struct
   let singleton n = [(n, n)]
 
   let rec union s1 s2 =
-    let open Int32 in
+    let open Uint32 in
     let rec loop s1 s2 =
       match s1, s2 with
       | [], s2 -> s2
