@@ -567,7 +567,7 @@ val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: t -> ?changed_since:modseq -> 'a num_kind -> 'a list -> Fetch.t list -> Fetch.response Lwt.t
+val fetch: t -> ?changed_since:modseq -> 'a num_kind -> 'a list -> Fetch.t list -> (seq * Fetch.response) list Lwt.t
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 

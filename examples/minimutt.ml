@@ -6,6 +6,7 @@ open Lwt.Infix
 
 let sync server ?port username password mailbox =
   Lwt_unix.mkdir mailbox 0o700 >>= fun () ->
+  Lwt_unix.chdir mailbox >>= fun () ->
   Imap.connect server ?port username password ~read_only:true mailbox >>= fun imap ->
   Imap.search imap Uid Imap.Search.all >>= fun (l, _) ->
   Lwt_list.iter_s (fun (uid : Imap.uid) ->
@@ -13,7 +14,7 @@ let sync server ?port username password mailbox =
       Lwt_unix.openfile filename [O_WRONLY; O_CREAT; O_TRUNC] 0o600 >>= fun fd ->
       let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
       Imap.fetch imap Imap.Uid [uid] [Imap.Fetch.rfc822] >>= function
-      | {Imap.Fetch.rfc822 = Some s; _} ->
+      | [_, {Imap.Fetch.rfc822 = Some s; _}] ->
           Lwt_io.write oc s >>= fun () -> Lwt_io.close oc >>= fun () ->
           Lwt_io.eprintlf "OK writing #%s" filename
       | _ ->
@@ -52,7 +53,7 @@ let mailbox =
 
 let main =
   Term.(pure sync $ server $ port $ username $ password $ mailbox),
-  Term.info "wait_mail"
+  Term.info "minimutt"
 
 let () =
   match Term.eval ~catch:true main with

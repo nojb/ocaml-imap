@@ -1859,7 +1859,7 @@ module Decoder = struct
           resp_cond_auth;
         ]
     in
-    (char '*' *> sp *> data <* crlf) <?> "response_data"
+    (char '*' *> sp *> data <* crlf) <?> "response-data"
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -2287,6 +2287,8 @@ let append imap m ?(flags = []) data =
   let process _ () _ = () in
   run imap format () process
 
+module Int32Map = Map.Make (Int32)
+
 let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) att =
   let open E in
   let cmd, (nums : int32 list) =
@@ -2308,8 +2310,8 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
   let format = raw cmd ++ eset (Uint32Set.of_list nums) ++ att & changed_since in
-  let process _ res = function
-    | R.FETCH (id, infos) ->
+  let process _ r = function
+    | R.FETCH (num, items) ->
         let aux res = function
           | (Response.FLAGS l : R.msg_att) -> {res with Fetch.flags = Some l}
           | ENVELOPE e -> {res with envelope = Some e}
@@ -2330,11 +2332,13 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
           | X_GM_THRID n -> {res with x_gm_thrid = Some n}
           | X_GM_LABELS n -> {res with x_gm_labels = Some n}
         in
-        List.fold_left aux res infos
+        let info = try Int32Map.find num r with Not_found -> Fetch.default in
+        let info = List.fold_left aux info items in
+        Int32Map.add num info r
     | _ ->
-        res
+        r
   in
-  run imap format Fetch.default process
+  run imap format Int32Map.empty process >|= Int32Map.bindings
 
 type store_mode =
   [ `Add
