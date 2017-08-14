@@ -701,6 +701,24 @@ module Decoder = struct
   open Response
   open Angstrom
 
+  let sp =
+    char ' '
+
+  let pair sep p1 p2 =
+    p1 >>= fun a1 -> sep *> p2 >>| fun a2 -> (a1, a2)
+
+  let triple sep p1 p2 p3 =
+    p1 >>= fun a1 -> sep *> p2 >>= fun a2 -> sep *> p3 >>| fun a3 -> (a1, a2, a3)
+
+  let psep_by1 sep p =
+    char '(' *> sep_by1 sep p <* char ')'
+
+  let psep_by sep p =
+    char '(' *> sep_by sep p <* char ')'
+
+  let maybe p =
+    option () (ignore <$> p)
+
 (*
    CHAR           =  %x01-7F
                           ; any 7-bit US-ASCII character,
@@ -745,7 +763,7 @@ module Decoder = struct
 *)
 
   let crlf =
-    char '\r' *> char '\n' *> return ()
+    ignore <$> string "\r\n"
 
 (*
    number          = 1*DIGIT
@@ -769,10 +787,7 @@ module Decoder = struct
     | _ -> false
 
   let number =
-    Int32.of_string <$> take_while1 is_digit
-
-  let number =
-    number <?> "number"
+    (Int32.of_string <$> take_while1 is_digit) <?> "number"
 
   let nz_number =
     (Int32.of_string <$> take_while1 is_digit) <?> "nz-number" (* FIXME != 0 *)
@@ -792,22 +807,20 @@ module Decoder = struct
       [
         satisfy (function '"' | '\\' -> false | '\x01'..'\x7f' -> true | _ -> false);
         char '\\' *> satisfy (function '"' | '\\' -> true | _ -> false);
-      ]
-
-  let quoted_char =
-    quoted_char <?> "quoted-char"
+      ] <?> "quoted-char"
 
   let accumulate p =
-    let b = Buffer.create 0 in
-    let rec loop () =
+    let rec loop cl =
       choice [p >>| (fun c -> `Add c); return `Stop] >>= function
       | `Add c ->
-          Buffer.add_char b c;
-          loop ()
+          loop (c :: cl)
       | `Stop ->
-          return (Buffer.contents b)
+          let n = List.length cl in
+          let b = Bytes.create n in
+          List.iteri (fun i c -> Bytes.set b (n - 1 - i) c) cl;
+          return (Bytes.unsafe_to_string b)
     in
-    (Buffer.add_char b <$> p) >>= loop
+    p >>= fun c -> loop [c]
 
   let quoted =
     (char '"' *> accumulate quoted_char <* char '"') <?> "quoted"
@@ -820,10 +833,7 @@ module Decoder = struct
 *)
 
   let literal =
-    Int32.to_int <$> (char '{' *> number <* char '}' <* crlf) >>= take
-
-  let literal =
-    literal <?> "literal"
+    (Int32.to_int <$> (char '{' *> number <* char '}' <* crlf) >>= take) <?> "literal"
 
   let imap_string =
     choice [quoted; literal] <?> "string"
@@ -977,20 +987,6 @@ module Decoder = struct
                      ; Example: 2:4 and 4:2 are equivalent.
 *)
 
-  let sp = char ' '
-
-  let pair sep p1 p2 =
-    p1 >>= fun a1 -> sep *> p2 >>| fun a2 -> (a1, a2)
-
-  let triple sep p1 p2 p3 =
-    p1 >>= fun a1 -> sep *> p2 >>= fun a2 -> sep *> p3 >>| fun a3 -> (a1, a2, a3)
-
-  let psep_by1 sep p =
-    char '(' *> sep_by1 sep p <* char ')'
-
-  let psep_by sep p =
-    char '(' *> sep_by sep p <* char ')'
-
   let uid_range =
     (pair (char ':') uniqueid uniqueid) <?> "uid-range"
 
@@ -1132,7 +1128,7 @@ module Decoder = struct
 *)
 
   let resp_text =
-    let resp_text_code = char '[' *> some resp_text_code <* char ']' <* char ' ' in
+    let resp_text_code = char '[' *> some resp_text_code <* char ']' <* maybe sp in
     pair (return ()) (option None resp_text_code) text <?> "resp-text"
 
 (*
@@ -1794,35 +1790,28 @@ module Decoder = struct
    response-data =/ "*" SP enable-data CRLF
 *)
 
-  let flag_list =
-    psep_by sp flag <?> "flag-list"
-
-  let status_att_list =
-    sep_by sp status_att <?> "status-att-list"
-
   let search_sort_mod_seq =
     (char '(' *> switch ["MODSEQ", sp *> mod_sequence_value] <* char ')') <?> "search-sort-mod-seq"
 
   let mailbox_data =
     let cases =
       [
-        "FLAGS", sp *> flag_list >>| (fun l -> FLAGS l);
+        "FLAGS", sp *> psep_by sp flag >>| (fun l -> FLAGS l);
         "LIST", sp *> mailbox_list >>| (fun (xs, c, m) -> LIST (xs, c, m));
         "LSUB", sp *> mailbox_list >>| (fun (xs, c, m) -> LSUB (xs, c, m));
         "SEARCH", pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n));
-        "STATUS", sp *> pair sp mailbox (char '(' *> status_att_list <* char ')') >>| (fun (m, l) ->
+        "STATUS", sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) ->
             STATUS (m, l));
       ]
     in
     let otherwise =
-      number >>| Int32.to_int >>= fun n ->
-      let cases =
+      let cases n =
         [
           "EXISTS", return (EXISTS n);
           "RECENT", return (RECENT n);
         ]
       in
-      sp *> switch cases
+      number >>= fun n -> sp *> switch (cases (Int32.to_int n))
     in
     choice [switch cases; otherwise] <?> "mailbox-data"
 
@@ -1890,10 +1879,10 @@ module Decoder = struct
           message_data;
           capability_data;
           enable_data;
-          resp_cond_auth; (* CHECK *)
+          resp_cond_auth;
         ]
     in
-    char '*' *> sp *> data <* crlf
+    (char '*' *> sp *> data <* crlf) <?> "response_data"
 
 (*
    resp-cond-bye   = "BYE" SP resp-text
@@ -1915,8 +1904,9 @@ module Decoder = struct
    response-done   = response-tagged / response-fatal
 *)
 
-  let is_tag_char c =
-    is_astring_char c && c != '+'
+  let is_tag_char = function
+    | '+' -> false
+    | c -> is_astring_char c
 
   let tag =
     take_while1 is_tag_char <?> "tag"
@@ -1929,17 +1919,12 @@ module Decoder = struct
 
   let continue_req =
     let resp_text = resp_text >>| fun (_, x) -> Cont x in
-    (char '+' *> choice [sp *> resp_text; resp_text] <* crlf) <?> "continue-req"
+    (char '+' *> maybe sp *> resp_text <* crlf) <?> "continue-req"
   (* space is optional CHECKME ! base64 *)
 
   let response =
     let response_data = response_data >>| fun x -> Untagged x in
     choice [continue_req; response_data; response_tagged] <?> "response"
-
-  let decode s =
-    match parse_only response (`String s) with
-    | Ok x -> x
-    | Error s -> failwith s
 end
 
 module Search = struct
@@ -2072,6 +2057,7 @@ let recv conn =
         loop (f (`String s))
     | Done (unconsumed, r) ->
         conn.unconsumed <- unconsumed;
+        Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (R.sexp_of_response r)) >>= fun () ->
         Lwt.return r
     | Fail (unconsumed, backtrace, f) ->
         Lwt_io.eprintlf "** Parse error at `%s':" f >>= fun () ->
@@ -2102,6 +2088,7 @@ let rec send imap r process res =
       Lwt.return res
 
 let send imap r process res =
+  Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (E.sexp_of_rope r)) >>= fun () ->
   send imap r process res >>= fun res ->
   Lwt_io.flush imap.oc >>= fun () ->
   Lwt.return res
@@ -2149,11 +2136,9 @@ let run imap format res process =
     recv imap >>= function
     | R.Cont _ ->
         Lwt.fail (Failure "unexpected")
-    | Untagged u as r ->
-        Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+    | Untagged u ->
         loop (process imap res u)
-    | Tagged (t, _) as r ->
-        Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+    | Tagged _ ->
         imap.tag <- imap.tag + 1;
         Lwt.return res
   in
@@ -2338,9 +2323,9 @@ let fetch_gen imap cmd ?changed_since set att =
   let changed_since =
     match changed_since with
     | None -> empty
-    | Some m -> p (raw "CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
+    | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
-  let format = raw cmd ++ eset set ++ att ++ changed_since in
+  let format = raw cmd ++ eset set ++ att & changed_since in
   let process _ res = function
     | R.FETCH (id, infos) ->
         let aux res = function
@@ -2436,8 +2421,7 @@ let connect server username password mailbox =
     create_connection ic oc {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
   in
   recv imap >>= function
-  | R.Untagged _ as r ->
-      Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (R.sexp_of_response r));
+  | R.Untagged _ ->
       login imap username password >>= fun () ->
       select imap mailbox >>= fun () ->
       Lwt.return imap
@@ -2445,5 +2429,4 @@ let connect server username password mailbox =
       Lwt.fail (Failure "unexpected response")
 
 let disconnect imap =
-  logout imap >>= fun () ->
-  Lwt.join [Lwt_io.close imap.ic; Lwt_io.close imap.oc]
+  logout imap >>= fun () -> Lwt_io.close imap.oc
