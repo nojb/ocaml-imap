@@ -9,7 +9,11 @@ depends: [
   "jbuilder" {build}
   "base64"
   "uutf"
-  "uint"
+  "angstrom"
+  "sexplib"
+  "ppx_sexp_conv" {build}
+  "lwt"
+  "lwt_ssl"
 ]
 build: [
   ["jbuilder" "build" "-p" name "-j" jobs]
