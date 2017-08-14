@@ -1981,12 +1981,14 @@ module R = Response
 
 type error =
   | Incorrect_tag of string * string
-  | Decode_error of string * int
+  | Decode_error of string * string list * string
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
   | No of string
   | Bad of string [@@deriving sexp]
+
+exception Error of error
 
 open Lwt.Infix
 
@@ -2063,7 +2065,7 @@ let recv conn =
         Lwt_io.eprintlf "** Parse error at `%s':" f >>= fun () ->
         Lwt_list.iter_s Lwt_io.eprintl backtrace >>= fun () ->
         Lwt_io.eprintlf "** Unconsumed: %S" (unconsumed_to_string unconsumed) >>= fun () ->
-        Lwt.fail (Failure "parse error")
+        Lwt.fail (Error (Decode_error (unconsumed_to_string unconsumed, backtrace, f)))
   in
   loop (parse conn.unconsumed Decoder.response)
 
@@ -2095,10 +2097,14 @@ let send imap r process res =
 
 let wrap_process f imap res u =
   begin match u with
-  | R.State (OK (Some (UIDNEXT n), _)) ->
+  | R.State (NO (_, s)) ->
+      raise (Error (No s))
+  | State (BAD (_, s)) ->
+      raise (Error (Bad s))
+  | State (OK (Some (UIDNEXT n), _)) ->
       imap.uidnext <- Some n
   | State (OK (Some (UIDVALIDITY n), _)) ->
-      imap.uidvalidity <- Some n
+      imap.uidvalidity <- Some n;
   | State (OK (Some (CAPABILITY caps), _)) ->
       imap.capabilities <- caps
   | RECENT n ->
@@ -2137,7 +2143,12 @@ let run imap format res process =
     | R.Cont _ ->
         Lwt.fail (Failure "unexpected")
     | Untagged u ->
-        loop (process imap res u)
+        begin match process imap res u with
+        | exception e ->
+            Lwt.fail e
+        | res ->
+            loop res
+        end
     | Tagged _ ->
         imap.tag <- imap.tag + 1;
         Lwt.return res

@@ -507,101 +507,74 @@ module Search : sig
   (** Messages with given Gmail labels. *)
 end
 
-(** {1:commands Commands}
-
-    These are the available commands that can be sent to an IMAP server.  Not
-    all commands will be supported in every IMAP server as they will depend on
-    certain capabilities being enabled.  A command is executed using {!run}.
-    It is a programmer error to try to run more than one command at the same
-    time.  If this is required, more than one connection should be opened to the
-    server.
-
-    Some commands have a [?uid] optional argument.  When [true] it means to use
-    the variant of the command that uses UIDs (instead of sequence numbers).
-    See for example {!copy}, {!search}, {!fetch} and {!store_add_flags}. *)
-
-(** {3 Connections}
-
-    {{!connection}Connections} manage the encoder and decoder states and keeps
-    track of message tags. *)
+(** {3 Connections} *)
 
 type error =
   | Incorrect_tag of string * string (** An unknown response tag was received. *)
-  | Decode_error of string * int
-  (** Decoding error. It contains the reason, the curren tinput buffer and the
-      current position.  The connection should be closed after this.  In some
-      cases it might be possible to continue fater a decoding error, but this is
-      not yet implemented. *)
+  | Decode_error of string * string list * string (** Decoding error. *)
   | Unexpected_cont (** A continuation request '+' is received at an unexpected time. *)
   | Bad_greeting (** The server did not send a valid greeting message. *)
   | Auth_error of string (** A SASL authentication error ocurred. *)
-  | No of string
-  | Bad of string
+  | No of string (** Server replied NO. *)
+  | Bad of string (** Server replied BAD. *)
 
 type t
 (** The type for connections. *)
 
 val uidnext: t -> Uid.t option
+
 val messages: t -> int option
+
 val recent: t -> int option
+
 val unseen: t -> int option
+
 val uidvalidity: t -> Uid.t option
 
 val connect: string -> string -> string -> string -> t Lwt.t
-(** [connect server username password mailbox] *)
+(** [connect server username password mailbox]. *)
 
 val disconnect: t -> unit Lwt.t
 (** Disconnect. *)
 
+(** {1 Commands} *)
+
 val poll: t -> unit Lwt.t * (unit -> unit)
 
 val create: t -> string -> unit Lwt.t
-(** [create m] creates a mailbox named [m].  An [`Ok] response is returned only
-    if a new mailbox with that name has been created.  It is an error to attempt
-    to create "INBOX" or a mailbox with a name that refers to an existent mailbox.
-    Any error in creation will return a tagged [`No] response. *)
+(** [create imap name] creates a mailbox named [name]. *)
 
 val delete: t -> string -> unit Lwt.t
-(** [delete m] deletes a mailbox named [m].  An [`Ok] response is returned only
-    if the mailbox with that name has been deleted.
-    Any error in deletion will return a tagged [`No] response. *)
+(** [delete imap name] deletes mailbox [name]. *)
 
 val rename: t -> string -> string -> unit Lwt.t
-(** [rename oldname newname] command changes the name of a mailbox from
-    [oldname] to [newname].  A tagged [`Ok] response is returned only if the
-    mailbox has been renamed.  It is an error to attempt to rename from a
-    mailbox name that does not exist or to a mailbox name that already exists.
-    Any error in renaming will return a tagged [`No] response. *)
+(** [rename imap oldname newname] renames mailbox [oldname] to [newname]. *)
 
 val noop: t -> unit Lwt.t
-(** [noop] does nothing.  Since any command can return a status update as
+(** [noop imap] does nothing.  Since any command can return a status update as
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity. *)
 
 val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
-(** [list ref m] returns a subset of names from the complete set of all names
-    available to the client. The optional argument [ref] is the name of a
-    mailbox or a level of mailbox hierarchy, and indicates the context in which
-    the mailbox name is interpreted.*)
+(** [list imap ref m] returns the list of mailboxes with names matching
+    [ref]. *)
 
 val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
-(** [status] requests {{!status_query}status information} of the indicated
-    mailbox.  An untagged [`Status] {{!untagged}response} is returned with
-    the requested information. *)
+(** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
 val copy: t -> SeqSet.t -> string -> unit Lwt.t
-(** [copy uid set m] copies the messages with sequence number in [set] to the
-    mailbox [m].  *)
+(** [copy imap nums mbox] copies messages with sequence number in [nums] to
+    mailbox [mbox]. *)
 
 val uid_copy: t -> UidSet.t -> string -> unit Lwt.t
 (** Like {!copy}, but identifies messages by UID. *)
 
 val expunge: t -> Seq.t list Lwt.t
-(** [expunge] permanently removes all messages that have the [`Deleted] {!flag}
-    set from the currently selected mailbox. *)
+(** [expunge imap] permanently removes all messages that have the [Deleted]
+    {!flag} set from the currently selected mailbox. *)
 
 val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) Lwt.t
-(** [uid_search conn key] returns the set of UIDs of messages satisfying the
+(** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
 
 val search: t -> Search.key -> (Seq.t list * Modseq.t option) Lwt.t
@@ -609,31 +582,24 @@ val search: t -> Search.key -> (Seq.t list * Modseq.t option) Lwt.t
     returned instead. *)
 
 val select: t -> ?read_only:bool -> string -> unit Lwt.t
-(** [select conn m] selects the mailbox [m] for access. *)
+(** [select imap m] selects the mailbox [m] for access. *)
 
 val condstore_select: t -> ?read_only:bool -> string -> Modseq.t Lwt.t
 (** Like {!select}, but retruns the modification sequence number in all
     subsequent fetch requests. *)
 
 val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
-(** [append m flags id data] appends [data] as a new message to the end of the
-    mailbox [m].  This argument should be in the format of an [RFC-2822]
-    message.
-
-    If a flag list is specified, the flags should be set in the resulting
-    message; otherwise, the flag list of the resulting message is set to empty
-    by default.  In either case, the [`Recent] flag is also set. *)
+(** [append imap mbox flags id data] appends [data] as a new message to the end
+    of the mailbox [mbox]. An optional flag list can be passed using the [flags]
+    argument. *)
 
 val fetch: t -> ?changed_since:Modseq.t -> SeqSet.t -> Fetch.t list -> Fetch.response Lwt.t
-(** [fetch uid ?changed ?vanished set att] retrieves data associated with
+(** [fetch imap uid ?changed ?vanished set att] retrieves data associated with
     messages with sequence number in [set].
 
     If the [?changed] argument is passed, only those messages with
     [CHANGEDSINCE] mod-sequence value at least the passed value are affected
-    (requires the [CONDSTORE] extension).
-
-    The [vanished] optional parameter specifies whether one wants to receive
-    [`Vanished] responses as well. *)
+    (requires the [CONDSTORE] extension). *)
 
 val uid_fetch: t -> ?changed_since:Modseq.t -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
 (** Like {!fetch}, but identifies messages by UID. *)
