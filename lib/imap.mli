@@ -528,7 +528,9 @@ val disconnect: t -> unit Lwt.t
 
 (** {1 Commands} *)
 
-val poll: t -> unit Lwt.t * (unit -> unit)
+val poll: t -> unit Lwt.t
+
+val stop_poll: t -> unit
 
 val create: t -> string -> unit Lwt.t
 (** [create imap name] creates a mailbox named [name]. *)

@@ -2001,6 +2001,8 @@ type t =
     mutable uidvalidity: Uid.t option;
 
     mutable capabilities: capability list;
+
+    mutable stop_poll: (unit -> unit) option;
   }
 
 let create_connection ic oc unconsumed =
@@ -2015,6 +2017,7 @@ let create_connection ic oc unconsumed =
     messages = None;
     unseen = None;
     capabilities = [];
+    stop_poll = None;
   }
 
 let tag {tag; _} =
@@ -2153,36 +2156,34 @@ let idle imap =
   let process = wrap_process (fun _ r _ -> r) in
   let tag = tag imap in
   let r = E.(raw tag ++ raw "IDLE\r\n") in
-  let started = ref false in
-  let stopnow = ref false in
   let t, u = Lwt.wait () in
   let t = t >>= fun () -> send imap E.(raw "DONE\r\n") process () in
-  let u = Lazy.from_fun (Lwt.wakeup u) in
-  let stop () = if !started then Lazy.force u else stopnow := true in
-  let t =
-    send imap r process () >>= fun () ->
-    let rec loop () =
-      recv imap >>= function
-      | R.Cont _ ->
-          started := true;
-          if !stopnow then stop ();
-          loop ()
-      | R.Untagged _ ->
-          stop ();
-          loop ()
-      | Tagged (t, _) ->
-          imap.tag <- imap.tag + 1;
-          Lwt.return_unit
-    in
-    Lwt.join [loop (); t]
+  let stop () = imap.stop_poll <- None; Lwt.wakeup u () in
+  send imap r process () >>= fun () ->
+  let rec loop () =
+    recv imap >>= function
+    | R.Cont _ ->
+        imap.stop_poll <- Some stop;
+        loop ()
+    | R.Untagged _ ->
+        stop ();
+        loop ()
+    | Tagged (t, _) ->
+        imap.tag <- imap.tag + 1;
+        Lwt.return_unit
   in
-  t, stop
+  Lwt.join [loop (); t]
+
+let stop_poll imap =
+  match imap.stop_poll with
+  | Some f -> f ()
+  | None -> ()
 
 let poll imap =
   if List.mem IDLE imap.capabilities then
     idle imap
   else
-    Lwt.fail (Failure "IDLE not supported"), (fun () -> failwith "IDLE not supported")
+    Lwt.fail (Failure "IDLE not supported")
 
 let login imap username password =
   let format = E.(str "LOGIN" ++ str username ++ str password) in

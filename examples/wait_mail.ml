@@ -25,8 +25,7 @@ let wait_mail server port username password mailbox =
       | Some n -> n
       | None -> failwith "Could not determine UIDNEXT"
     in
-    let t, _ = Imap.poll imap in
-    t >>= fun () ->
+    Imap.poll imap >>= fun () ->
     Imap.search imap Imap.Uid Imap.Search.(unseen && uid [uidnext]) >>= function
     | (n :: _), _ ->
         Imap.fetch imap Imap.Uid [n] [Imap.Fetch.envelope] >>= begin function
