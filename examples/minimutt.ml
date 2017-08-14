@@ -4,6 +4,9 @@
 
 open Lwt.Infix
 
+let () =
+  Printexc.record_backtrace true
+
 let sync server ?port username password mailbox =
   Lwt_unix.mkdir mailbox 0o700 >>= fun () ->
   Lwt_unix.chdir mailbox >>= fun () ->

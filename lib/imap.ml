@@ -696,6 +696,9 @@ module Decoder = struct
   let maybe p =
     option () (ignore <$> p)
 
+  let switch cases =
+    choice (List.map (fun (s, p) -> string_ci s *> commit *> p) cases)
+
 (*
    CHAR           =  %x01-7F
                           ; any 7-bit US-ASCII character,
@@ -825,7 +828,7 @@ module Decoder = struct
     is_atom_char c || c = ']'
 
   let astring =
-    choice [take_while1 is_astring_char; imap_string]
+    choice [take_while1 is_astring_char; imap_string] <?> "astring"
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -839,7 +842,8 @@ module Decoder = struct
     | _ -> false
 
   let text =
-    choice [take_while1 is_text_char; return ""] (* allow empty texts for greater tolerance *)
+    (* allow empty texts for greater tolerance *)
+    choice [take_while1 is_text_char; return ""] <?> "text"
 
 (*
    nil             = "NIL"
@@ -876,19 +880,10 @@ module Decoder = struct
 *)
 
   let flag_keyword =
-    atom >>| fun s -> Flag.Keyword s
-
-  let flag_keyword =
-    flag_keyword <?> "flag-keyword"
+    (atom >>| fun s -> Flag.Keyword s) <?> "flag-keyword"
 
   let flag_extension =
-    char '\\' *> atom >>| fun s -> Flag.Extension s
-
-  let flag_extension =
-    flag_extension <?> "flag-extension"
-
-  let switch cases =
-    choice (List.map (fun (s, p) -> string_ci s *> commit *> p) cases)
+    (char '\\' *> atom >>| fun s -> Flag.Extension s) <?> "flag-extension"
 
   let flag =
     let open Flag in
@@ -1061,10 +1056,7 @@ module Decoder = struct
     choice [switch cases; atom >>| (fun s -> OTHER s)] <?> "capability"
 
   let mod_sequence_value =
-    Int64.of_string <$> take_while1 is_digit (* FIXME non zero *)
-
-  let mod_sequence_value =
-    mod_sequence_value <?> "mod-sequence-value"
+    (Int64.of_string <$> take_while1 is_digit) <?> "mod-sequence-value" (* FIXME non zero *)
 
   let append_uid = uniqueid
 
@@ -1222,7 +1214,7 @@ module Decoder = struct
 *)
 
   let mod_sequence_valzer =
-    Int64.of_string <$> take_while1 is_digit
+    (Int64.of_string <$> take_while1 is_digit) <?> "mod-sequence-valzer"
 
   let status_att =
     let cases =
@@ -1419,13 +1411,16 @@ module Decoder = struct
 
   let body_ext_gen =
     option None (sp *> some body_fld_dsp) >>= function
-    | None -> return {MIME.ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
+    | None ->
+        return {MIME.ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
     | Some ext_dsp ->
         option None (sp *> some body_fld_lang) >>= function
-        | None -> return {MIME.ext_dsp; ext_lang = []; ext_loc = None; ext_ext = []}
+        | None ->
+            return {MIME.ext_dsp; ext_lang = []; ext_loc = None; ext_ext = []}
         | Some ext_lang ->
             option None (sp *> some body_fld_loc) >>= function
-            | None -> return {MIME.ext_dsp; ext_lang; ext_loc = None; ext_ext = []}
+            | None ->
+                return {MIME.ext_dsp; ext_lang; ext_loc = None; ext_ext = []}
             | Some ext_loc ->
                 many (sp *> body_extension) >>| fun ext_ext ->
                 {MIME.ext_dsp; ext_lang; ext_loc; ext_ext}
@@ -1582,20 +1577,14 @@ module Decoder = struct
     digits4 <?> "date-year"
 
   let time =
-    triple (char ':') digits2 digits2 digits2
-
-  let time =
-    time <?> "time"
+    triple (char ':') digits2 digits2 digits2 <?> "time"
 
   let zone =
     switch
       [
         "+", digits4;
         "-", digits4 >>| (fun n -> -n);
-      ]
-
-  let zone =
-    zone <?> "zone"
+      ] <?> "zone"
 
   let date_time =
     let aux =
@@ -1704,7 +1693,7 @@ module Decoder = struct
     let cases =
       [
         "FLAGS", sp *> psep_by sp flag_fetch >>| (fun l -> (FLAGS l : msg_att));
-        "MODSEQ", sp *> permsg_modsequence >>| (fun n -> MODSEQ n);
+        "MODSEQ", sp *> char '(' *> permsg_modsequence <* char ')' >>| (fun n -> MODSEQ n);
         "X-GM-LABELS", sp *> choice [psep_by sp astring; nil *> return []] >>| (fun l -> X_GM_LABELS l);
       ]
     in
@@ -1735,7 +1724,7 @@ module Decoder = struct
     switch cases <?> "msg-att-static"
 
   let msg_att =
-    psep_by1 sp (msg_att_static <|> msg_att_dynamic) <?> "msg-att"
+    psep_by1 sp (choice [msg_att_static; msg_att_dynamic]) <?> "msg-att"
 
 (*
    mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
@@ -1777,8 +1766,7 @@ module Decoder = struct
         "LIST", sp *> mailbox_list >>| (fun (xs, c, m) -> LIST (xs, c, m));
         "LSUB", sp *> mailbox_list >>| (fun (xs, c, m) -> LSUB (xs, c, m));
         "SEARCH", pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n));
-        "STATUS", sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) ->
-            STATUS (m, l));
+        "STATUS", sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l));
       ]
     in
     let otherwise =
@@ -1895,9 +1883,8 @@ module Decoder = struct
     (aux <* crlf) <?> "response-tagged"
 
   let continue_req =
-    let resp_text = resp_text >>| fun (_, x) -> Cont x in
-    (char '+' *> maybe sp *> resp_text <* crlf) <?> "continue-req"
-  (* space is optional CHECKME ! base64 *)
+    (* space is optional CHECKME ! base64 *)
+    (char '+' *> maybe sp *> (resp_text >>| fun (_, x) -> Cont x) <* crlf) <?> "continue-req"
 
   let response =
     let response_data = response_data >>| fun x -> Untagged x in
@@ -1974,6 +1961,8 @@ type t =
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
 
+    mutable debug: bool;
+
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
 
@@ -1993,6 +1982,9 @@ let create_connection ic oc unconsumed =
   {
     ic;
     oc;
+
+    debug = false;
+
     tag = 0;
     unconsumed;
     uidnext = None;
@@ -2037,14 +2029,18 @@ let parse unconsumed p =
   let input = `String (unconsumed_to_string unconsumed) in
   A.parse ~input p
 
-let recv conn =
+let recv imap =
   let rec loop = function
     | A.Partial f ->
-        Lwt_io.read ~count:128 conn.ic >>= fun s ->
-        loop (f (`String s))
+        Lwt_io.read_line imap.ic >>= fun line ->
+        (if imap.debug then Lwt_io.eprintlf "> %s" line else Lwt.return_unit) >>= fun () ->
+        loop (f (`String (line ^ "\r\n")))
     | Done (unconsumed, r) ->
-        conn.unconsumed <- unconsumed;
-        Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (R.sexp_of_response r)) >>= fun () ->
+        imap.unconsumed <- unconsumed;
+        begin if imap.debug then
+          Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (R.sexp_of_response r))
+        else
+          Lwt.return_unit end >>= fun () ->
         Lwt.return r
     | Fail (unconsumed, backtrace, f) ->
         Lwt_io.eprintlf "** Parse error at `%s':" f >>= fun () ->
@@ -2052,7 +2048,7 @@ let recv conn =
         Lwt_io.eprintlf "** Unconsumed: %S" (unconsumed_to_string unconsumed) >>= fun () ->
         Lwt.fail (Error (Decode_error (unconsumed_to_string unconsumed, backtrace, f)))
   in
-  loop (parse conn.unconsumed Decoder.response)
+  loop (parse imap.unconsumed Decoder.response)
 
 let rec send imap r process res =
   match r with
@@ -2075,7 +2071,10 @@ let rec send imap r process res =
       Lwt.return res
 
 let send imap r process res =
-  Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (E.sexp_of_rope r)) >>= fun () ->
+  begin if imap.debug then
+    Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (E.sexp_of_rope r))
+  else
+    Lwt.return_unit end >>= fun () ->
   send imap r process res >>= fun res ->
   Lwt_io.flush imap.oc >>= fun () ->
   Lwt.return res
