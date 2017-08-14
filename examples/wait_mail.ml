@@ -18,7 +18,7 @@
 open Lwt.Infix
 
 let wait_mail server ?port username password mailbox =
-  Imap.connect server ?port username password mailbox >>= fun imap ->
+  Imap.connect server ?port username password ~read_only:true mailbox >>= fun imap ->
   let rec loop () =
     let uidnext =
       match Imap.uidnext imap with

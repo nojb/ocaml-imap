@@ -2384,7 +2384,7 @@ let enable imap caps =
 let () =
   Ssl.init ()
 
-let connect server ?(port = 993) username password mailbox =
+let connect server ?(port = 993) username password ?read_only mailbox =
   let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
   let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname server >>= fun he ->
@@ -2399,7 +2399,7 @@ let connect server ?(port = 993) username password mailbox =
   recv imap >>= function
   | R.Untagged _ ->
       login imap username password >>= fun () ->
-      select imap mailbox >>= fun () ->
+      select imap ?read_only mailbox >>= fun () ->
       Lwt.return imap
   | Tagged _ | Cont _ ->
       Lwt.fail (Failure "unexpected response")

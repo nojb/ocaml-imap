@@ -6,7 +6,7 @@ open Lwt.Infix
 
 let sync server ?port username password mailbox =
   Lwt_unix.mkdir mailbox 0o700 >>= fun () ->
-  Imap.connect server ?port username password mailbox >>= fun imap ->
+  Imap.connect server ?port username password ~read_only:true mailbox >>= fun imap ->
   Imap.search imap Uid Imap.Search.all >>= fun (l, _) ->
   Lwt_list.iter_s (fun (uid : Imap.uid) ->
       let filename = Int32.to_string (uid :> int32) in
