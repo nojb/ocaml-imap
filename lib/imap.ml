@@ -29,6 +29,8 @@ module type NUMBER = sig
   val compare: t -> t -> int
 end
 
+type (_, _) eq = Eq : ('a, 'a) eq
+
 module Uint32 = struct
   type t = int32 [@@deriving sexp]
 
@@ -55,6 +57,8 @@ module Uint32 = struct
   let min n m = if n <= m then n else m
 
   let max n m = if n <= m then m else n
+
+  let eq : (t, int32) eq = Eq
 end
 
 module Modseq = struct
@@ -70,19 +74,12 @@ module Modseq = struct
 end
 
 module Uid = Uint32
+
 module Seq = Uint32
 
-module type NUMBER_SET = sig
-  type elt
-  type t [@@deriving sexp]
-
-  val empty: t
-  val singleton: elt -> t
-  val union: t -> t -> t
-  val add: elt -> t -> t
-  val interval: elt -> elt -> t
-  val of_list: elt list -> t
-end
+type _ num_kind =
+  | Uid: Uid.t num_kind
+  | Seq: Seq.t num_kind
 
 module Uint32Set = struct
   type t =
@@ -111,12 +108,9 @@ module Uint32Set = struct
   let interval n m =
     if n <= m then [n, m] else [m, n]
 
-  let of_list l =
+  let of_list (type a) (Eq : (a, int32) eq) (l : a list) : t =
     List.fold_left (fun s n -> add n s) empty l
 end
-
-module UidSet = Uint32Set
-module SeqSet = Uint32Set
 
 module Mutf7 = struct
   let recode ?nln ?encoding out_encoding src dst =
@@ -1933,7 +1927,7 @@ module Search = struct
   type key = rope [@@deriving sexp]
 
   let all = raw "ALL"
-  let seq s = eset s
+  let seq s = eset (Uint32Set.of_list Seq.eq s)
   let answered = raw "ANSWERED"
   let bcc s = raw "BCC" ++ str s
   let before t = raw "BEFORE" ++ date t
@@ -1961,7 +1955,7 @@ module Search = struct
   let subject s = raw "SUBJECT" ++ str s
   let text s = raw "TEXT" ++ str s
   let to_ s = raw "TO" ++ str s
-  let uid s = raw "UID" ++ eset s
+  let uid s = raw "UID" ++ eset (Uint32Set.of_list Uid.eq s)
   let unanswered = raw "UNANSWERED"
   let undeleted = raw "UNDELETED"
   let undraft = raw "UNDRAFT"
@@ -2254,26 +2248,21 @@ let status imap m att =
   in
   run imap format Status.default process
 
-let copy_gen imap cmd s m =
-  let format = E.(raw cmd ++ eset s ++ mailbox m) in
-  let process _ () _ = () in
-  run imap format () process
-
-let copy imap s m =
-  copy_gen imap "COPY" s m
-
-let uid_copy imap s m =
-  copy_gen imap "UID COPY" s m
+let copy : type a. _ -> a num_kind -> a list -> _ -> _ = fun imap kind nums mbox ->
+  let cmd, nums =
+    match kind with
+    | Uid -> "UID COPY", Uint32Set.of_list Uid.eq nums
+    | Seq -> "COPY", Uint32Set.of_list Seq.eq nums
+  in
+  let format = E.(raw cmd ++ eset nums ++ mailbox mbox) in
+  run imap format () (fun _ r _ -> r)
 
 let check imap =
   let format = E.(str "CHECK") in
-  let process _ () _ = () in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let close imap =
-  let format = E.(str "CLOSE") in
-  let process _ () _ = () in
-  run imap format () process
+  run imap E.(raw "CLOSE") () (fun _ r _ -> r)
 
 let expunge imap =
   let format = E.(str "EXPUNGE") in
@@ -2283,19 +2272,18 @@ let expunge imap =
   in
   run imap format [] process
 
-let search_gen imap cmd sk =
+let search (type a) imap (num_kind : a num_kind) sk : (a list * _) Lwt.t =
+  let cmd, (cast : int32 list -> a list) =
+    match num_kind with
+    | Uid -> "UID SEARCH", (match Uid.eq with Eq -> fun l -> l)
+    | Seq -> "SEARCH", (match Seq.eq with Eq -> fun l -> l)
+  in
   let format = E.(raw cmd ++ sk) in
   let process _ (res, m) = function
     | R.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)
   in
-  run imap format ([], None) process
-
-let search imap =
-  search_gen imap "SEARCH"
-
-let uid_search imap =
-  search_gen imap "UID SEARCH"
+  run imap format ([], None) process >>= fun (l, m) -> Lwt.return (cast l, m)
 
 let select_gen imap cmd m =
   let format = E.(raw cmd ++ mailbox m) in
@@ -2321,8 +2309,13 @@ let append imap m ?(flags = []) data =
   let process _ () _ = () in
   run imap format () process
 
-let fetch_gen imap cmd ?changed_since set att =
+let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) att =
   let open E in
+  let cmd, nums =
+    match num_kind with
+    | Uid -> "UID FETCH", Uint32Set.of_list Uid.eq nums
+    | Seq -> "FETCH", Uint32Set.of_list Seq.eq nums
+  in
   let att =
     match att with
     (* | `Fast -> raw "FAST" *)
@@ -2336,7 +2329,7 @@ let fetch_gen imap cmd ?changed_since set att =
     | None -> empty
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
-  let format = raw cmd ++ eset set ++ att & changed_since in
+  let format = raw cmd ++ eset nums ++ att & changed_since in
   let process _ res = function
     | R.FETCH (id, infos) ->
         let aux res = function
@@ -2365,28 +2358,29 @@ let fetch_gen imap cmd ?changed_since set att =
   in
   run imap format Fetch.default process
 
-let fetch imap ?changed_since set att =
-  fetch_gen imap "FETCH" ?changed_since set att
-
-let uid_fetch imap ?changed_since set att =
-  fetch_gen imap "UID FETCH" ?changed_since set att
-
 type store_mode =
-  [`Add | `Remove | `Set]
+  [ `Add
+  | `Remove
+  | `Set ]
 
 type store_kind =
-  [`Flags of Flag.flag list | `Labels of string list]
+  [ `Flags of Flag.flag list
+  | `Labels of string list ]
 
-let store_gen imap cmd ?(silent = false) ?unchanged_since mode set att =
+let store (type a) imap ?unchanged_since mode (num_kind : a num_kind) (nums : a list) att =
   let open E in
-  let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
-  let silent = if silent then ".SILENT" else "" in
+  let cmd, nums =
+    match num_kind with
+    | Uid -> "UID STORE", Uint32Set.of_list Uid.eq nums
+    | Seq -> "STORE", Uint32Set.of_list Seq.eq nums
+  in
   let base =
+    let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
     match att with
     | `Flags _ ->
-        Printf.sprintf "%sFLAGS%s" mode silent
+        Printf.sprintf "%sFLAGS.SILENT" mode
     | `Labels _ ->
-        Printf.sprintf "%sX-GM-LABELS%s" mode silent
+        Printf.sprintf "%sX-GM-LABELS.SILENT" mode
   in
   let att =
     match att with
@@ -2398,15 +2392,9 @@ let store_gen imap cmd ?(silent = false) ?unchanged_since mode set att =
     | None -> str ""
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
-  let format = raw cmd ++ eset set ++ unchanged_since ++ raw base ++ p att in
+  let format = raw cmd ++ eset nums ++ unchanged_since ++ raw base ++ p att in
   let process _ m _ = m in
   run imap format Fetch.default process
-
-let store imap =
-  store_gen imap "STORE"
-
-let uid_store imap =
-  store_gen imap "UID STORE"
 
 let enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in

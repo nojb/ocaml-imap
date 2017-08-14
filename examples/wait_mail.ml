@@ -27,9 +27,9 @@ let wait_mail server port username password mailbox =
     in
     let t, _ = Imap.poll imap in
     t >>= fun () ->
-    Imap.uid_search imap Imap.Search.(unseen && uid (Imap.UidSet.singleton uidnext)) >>= function
+    Imap.search imap Imap.Uid Imap.Search.(unseen && uid [uidnext]) >>= function
     | (n :: _), _ ->
-        Imap.uid_fetch imap (Imap.UidSet.singleton n) [Imap.Fetch.flags; Imap.Fetch.envelope] >>= begin function
+        Imap.fetch imap Imap.Uid [n] [Imap.Fetch.envelope] >>= begin function
         | {Imap.Fetch.envelope = Some {Imap.env_from = {Imap.ad_name; ad_mailbox; ad_host; _} :: _; _}; _} ->
             Lwt_io.printlf "New mail! (from \"%s\" <%s@%s>)" ad_name ad_mailbox ad_host >>= fun () ->
             Imap.disconnect imap

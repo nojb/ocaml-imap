@@ -61,20 +61,9 @@ module Uid : NUMBER
 module Seq : NUMBER
 (** Message sequence numbers. *)
 
-module type NUMBER_SET = sig
-  type elt
-  type t [@@deriving sexp]
-  val empty: t
-  val singleton: elt -> t
-  val union: t -> t -> t
-  val add: elt -> t -> t
-  val interval: elt -> elt -> t
-  val of_list: elt list -> t
-end
-
-module SeqSet : NUMBER_SET with type elt := Seq.t
-
-module UidSet : NUMBER_SET with type elt := Uid.t
+type _ num_kind =
+  | Uid : Uid.t num_kind
+  | Seq : Seq.t num_kind
 
 type date =
   {
@@ -370,7 +359,7 @@ module Search : sig
   val all: key
   (** All messages in the mailbox. *)
 
-  val seq: SeqSet.t -> key
+  val seq: Seq.t list -> key
   (** Messages with message sequence number in the given set. *)
 
   val answered: key
@@ -467,7 +456,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  val uid: UidSet.t -> key
+  val uid: Uid.t list -> key
   (** Messages with UID in the given set. *)
 
   val unanswered: key
@@ -562,30 +551,23 @@ val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * s
 val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
-val copy: t -> SeqSet.t -> string -> unit Lwt.t
+val copy: t -> 'a num_kind -> 'a list -> string -> unit Lwt.t
 (** [copy imap nums mbox] copies messages with sequence number in [nums] to
     mailbox [mbox]. *)
-
-val uid_copy: t -> UidSet.t -> string -> unit Lwt.t
-(** Like {!copy}, but identifies messages by UID. *)
 
 val expunge: t -> Seq.t list Lwt.t
 (** [expunge imap] permanently removes all messages that have the [Deleted]
     {!flag} set from the currently selected mailbox. *)
 
-val uid_search: t -> Search.key -> (Uid.t list * Modseq.t option) Lwt.t
+val search: t -> 'a num_kind -> Search.key -> ('a list * Modseq.t option) Lwt.t
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
-
-val search: t -> Search.key -> (Seq.t list * Modseq.t option) Lwt.t
-(** Like {!uid_search}, but the sequence numbers of matching messages is
-    returned instead. *)
 
 val select: t -> ?read_only:bool -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
 
 val condstore_select: t -> ?read_only:bool -> string -> Modseq.t Lwt.t
-(** Like {!select}, but retruns the modification sequence number in all
+(** Like {!select}, but returns the modification sequence number in all
     subsequent fetch requests. *)
 
 val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
@@ -593,32 +575,26 @@ val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: t -> ?changed_since:Modseq.t -> SeqSet.t -> Fetch.t list -> Fetch.response Lwt.t
-(** [fetch imap uid ?changed ?vanished set att] retrieves data associated with
+val fetch: t -> ?changed_since:Modseq.t -> 'a num_kind -> 'a list -> Fetch.t list -> Fetch.response Lwt.t
+(** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
-    If the [?changed] argument is passed, only those messages with
+    If the [?changed_since] argument is passed, only those messages with
     [CHANGEDSINCE] mod-sequence value at least the passed value are affected
     (requires the [CONDSTORE] extension). *)
 
-val uid_fetch: t -> ?changed_since:Modseq.t -> UidSet.t -> Fetch.t list -> Fetch.response Lwt.t
-(** Like {!fetch}, but identifies messages by UID. *)
-
 type store_mode =
-  [`Add | `Remove | `Set]
+  [ `Add
+  | `Remove
+  | `Set ]
 
 type store_kind =
-  [`Flags of Flag.flag list | `Labels of string list]
+  [ `Flags of Flag.flag list
+  | `Labels of string list ]
 
-val store: t -> ?silent:bool -> ?unchanged_since:Modseq.t -> store_mode -> SeqSet.t -> store_kind -> Fetch.response Lwt.t
-(** [store_add_flags uid ?silent ?unchanged set flags] adds flags [flags] to the
-    messages with sequence number in [set].
+val store: t -> ?unchanged_since:Modseq.t -> store_mode -> 'a num_kind -> 'a list -> store_kind -> Fetch.response Lwt.t
+(** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
+    [mode] for those message with sequence number in [nums].
 
-    If [?silent] is present, the updated flags for the affected messages is
-    returned.
-
-    If [?unchanged] is present, then only those messages with [UNCHANGEDSINCE]
+    If [?unchanged_since] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
-
-val uid_store: t -> ?silent:bool -> ?unchanged_since:Modseq.t -> store_mode -> UidSet.t -> store_kind -> Fetch.response Lwt.t
-(** Like {!add_flags}, but identifies messages by UID. *)
