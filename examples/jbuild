@@ -4,15 +4,6 @@
  ((names (wait_mail))
   (libraries (cmdliner imap))))
 
-;; (executables
-;;  ((names (wait_mail imap_shell))
-;;   (libraries (cmdliner ssl lwt imap))))
-
-;; (alias
-;;  ((name DEFAULT)
-;;   (deps (imap_shell.exe))
-;;   (action (run ${<}))))
-
 ;; (alias
 ;;  ((name DEFAULT)
 ;;   (deps (wait_mail.exe))
