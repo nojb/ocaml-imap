@@ -17,8 +17,8 @@
 
 open Lwt.Infix
 
-let wait_mail server port username password mailbox =
-  Imap.connect server username password mailbox >>= fun imap ->
+let wait_mail server ?port username password mailbox =
+  Imap.connect server ?port username password mailbox >>= fun imap ->
   let rec loop () =
     let uidnext =
       match Imap.uidnext imap with
@@ -41,7 +41,7 @@ let wait_mail server port username password mailbox =
   loop ()
 
 let wait_mail server port username password mailbox =
-  Lwt_main.run (wait_mail server port username password mailbox)
+  Lwt_main.run (wait_mail server ?port username password mailbox)
 
 open Cmdliner
 
@@ -51,7 +51,7 @@ let server =
 
 let port =
   let doc = Arg.info ~docv:"PORT" ~doc:"Server port" ["port"; "p"] in
-  Arg.(value & opt int 993 & doc)
+  Arg.(value & opt (some int) None & doc)
 
 let username =
   let doc = Arg.info ~docv:"USERNAME" ~doc:"Username" [] in

@@ -522,7 +522,7 @@ val uidvalidity: t -> Uid.t option
 
 val highestmodseq: t -> Modseq.t option
 
-val connect: string -> string -> string -> string -> t Lwt.t
+val connect: string -> ?port:int -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
 val disconnect: t -> unit Lwt.t

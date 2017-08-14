@@ -2402,11 +2402,11 @@ let enable imap caps =
 let () =
   Ssl.init ()
 
-let connect server username password mailbox =
+let connect server ?(port = 993) username password mailbox =
   let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
   let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname server >>= fun he ->
-  let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), 993) in
+  let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
   let ic = Lwt_ssl.in_channel_of_descr sock in
