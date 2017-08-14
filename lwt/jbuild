@@ -1,6 +1,0 @@
-(jbuild_version 1)
-
-(library
- ((name imap_lwt)
-  (wrapped false)
-  (libraries (lwt imap))))

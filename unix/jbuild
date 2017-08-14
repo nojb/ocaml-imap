@@ -1,5 +1,0 @@
-(jbuild_version 1)
-
-(library
- ((name imap_unix)
-  (libraries (imap base-unix))))
