@@ -22,18 +22,9 @@
 
 (** Non-blocking IMAP4 protocol codec.
 
-    [Imap] is a non-blocking codec to encode and decode the full
+    [Imap] is a Lwt-compatible client library for the
     {{:https://tools.ietf.org/html/rfc3501}IMAP4} protocol, together with some
-    {{!section:limitations}extensions}.  It can process input without blocking
-    on IO and is completely independent of any particular buffering and/or IO
-    strategry (concurrent, like {{:https://github.com/ocsigen/lwt}Lwt} or
-    {{:https://github.com/janestreet/async}Async}, sequential, etc.).
-
-    Most users should begin by looking at the {{!ex}examples}, the types and
-    functions describing {{!type:connection}connections},
-    {{!section:commands}commands}, and the {!run} function.
-
-    See the {{!ex}examples} of use.
+    {{!section:limitations}extensions}.
 
     {3 References}
     {ul
@@ -62,13 +53,13 @@ module type NUMBER = sig
 end
 
 module Modseq : NUMBER
-(** Unsigned 64-bit integers are used for: mod-sequence numbers, Gmail message
-    and thread IDs. *)
+(** Modification sequence numbers. *)
 
 module Uid : NUMBER
+(** Message unique identification numbers. *)
+
 module Seq : NUMBER
-(** Unsigned 32-bit integers are used for: message sequence numbers, unique
-    identification numbers (UIDs). *)
+(** Message sequence numbers. *)
 
 module type NUMBER_SET = sig
   type elt
@@ -82,6 +73,7 @@ module type NUMBER_SET = sig
 end
 
 module SeqSet : NUMBER_SET with type elt := Seq.t
+
 module UidSet : NUMBER_SET with type elt := Uid.t
 
 type date =
@@ -100,7 +92,7 @@ type time =
   } [@@deriving sexp]
 
 (** List of standard capabilites.  These are returned by the {!capability}
-    command, in status {{!code}codes} and can be enabled by the {!enable} command. *)
+    command, in status {{!Code.code}codes} and can be enabled by the {!enable} command. *)
 type capability =
   | ACL
   | BINARY
@@ -133,14 +125,8 @@ type capability =
 
 (** {3 Envelope information}
 
-    It is returned when fetching the [`Envelope] message
-    {{!fetch_query}attribute} using the {!fetch} command.
-
-    If [val a : address], then the expression
-    {[
-      Printf.printf "\"%s\" <%s@%s>" a.ad_name a.ad_mailbox a.ad_host
-    ]}
-    will output [a] in the usual format ["name" <user\@host.com>]. *)
+    Returned when fetching the {{!Fetch.envelope}envelope message attribute}
+    using the {!fetch} command. *)
 
 type address =
   {

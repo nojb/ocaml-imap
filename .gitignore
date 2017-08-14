@@ -10,3 +10,4 @@ setup.log
 *.a
 *.o
 *.lib
+.gh-pages
