@@ -22,13 +22,6 @@
 
 open Sexplib.Std
 
-module type NUMBER = sig
-  type t
-  val zero: t
-  val of_int: int -> t
-  val compare: t -> t -> int
-end
-
 type (_, _) eq = Eq : ('a, 'a) eq
 
 module Uint32 = struct
@@ -61,25 +54,15 @@ module Uint32 = struct
   let eq : (t, int32) eq = Eq
 end
 
-module Modseq = struct
-  type t = int64 [@@deriving sexp]
+type modseq = int64 [@@deriving sexp]
 
-  let zero = 0L
+type uid = int32 [@@deriving sexp]
 
-  let of_int = Int64.of_int
-
-  let compare = Int64.compare
-
-  let of_string = Int64.of_string
-end
-
-module Uid = Uint32
-
-module Seq = Uint32
+type seq = int32 [@@deriving sexp]
 
 type _ num_kind =
-  | Uid: Uid.t num_kind
-  | Seq: Seq.t num_kind
+  | Uid: uid num_kind
+  | Seq: seq num_kind
 
 module Uint32Set = struct
   type t =
@@ -108,7 +91,7 @@ module Uint32Set = struct
   let interval n m =
     if n <= m then [n, m] else [m, n]
 
-  let of_list (type a) (Eq : (a, int32) eq) (l : a list) : t =
+  let of_list l =
     List.fold_left (fun s n -> add n s) empty l
 end
 
@@ -622,10 +605,10 @@ module Fetch = struct
       body: MIME.mime option;
       bodystructure: MIME.mime option;
       body_section: (section * int option * string option) option;
-      uid: Uid.t option;
-      modseq: Modseq.t option;
-      x_gm_msgid: Modseq.t option;
-      x_gm_thrid: Modseq.t option;
+      uid: uid option;
+      modseq: modseq option;
+      x_gm_msgid: modseq option;
+      x_gm_thrid: modseq option;
       x_gm_labels: string list option;
     } [@@deriving sexp]
 
@@ -674,10 +657,10 @@ module Status = struct
     {
       messages: int option;
       recent: int option;
-      uidnext: Uid.t option;
-      uidvalidity: Uid.t option;
+      uidnext: uid option;
+      uidvalidity: uid option;
       unseen: int option;
-      highestmodseq: Modseq.t option;
+      highestmodseq: modseq option;
     } [@@deriving sexp]
 
   let default =
@@ -1078,7 +1061,7 @@ module Decoder = struct
     choice [switch cases; atom >>| (fun s -> OTHER s)] <?> "capability"
 
   let mod_sequence_value =
-    Modseq.of_string <$> take_while1 is_digit (* FIXME non zero *)
+    Int64.of_string <$> take_while1 is_digit (* FIXME non zero *)
 
   let mod_sequence_value =
     mod_sequence_value <?> "mod-sequence-value"
@@ -1239,7 +1222,7 @@ module Decoder = struct
 *)
 
   let mod_sequence_valzer =
-    Modseq.of_string <$> take_while1 is_digit
+    Int64.of_string <$> take_while1 is_digit
 
   let status_att =
     let cases =
@@ -1927,7 +1910,7 @@ module Search = struct
   type key = rope [@@deriving sexp]
 
   let all = raw "ALL"
-  let seq s = eset (Uint32Set.of_list Seq.eq s)
+  let seq s = eset (Uint32Set.of_list s)
   let answered = raw "ANSWERED"
   let bcc s = raw "BCC" ++ str s
   let before t = raw "BEFORE" ++ date t
@@ -1955,7 +1938,7 @@ module Search = struct
   let subject s = raw "SUBJECT" ++ str s
   let text s = raw "TEXT" ++ str s
   let to_ s = raw "TO" ++ str s
-  let uid s = raw "UID" ++ eset (Uint32Set.of_list Uid.eq s)
+  let uid s = raw "UID" ++ eset (Uint32Set.of_list s)
   let unanswered = raw "UNANSWERED"
   let undeleted = raw "UNDELETED"
   let undraft = raw "UNDRAFT"
@@ -1994,12 +1977,12 @@ type t =
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
 
-    mutable uidnext: Uid.t option;
+    mutable uidnext: uid option;
     mutable messages: int option;
     mutable recent: int option;
     mutable unseen: int option;
-    mutable uidvalidity: Uid.t option;
-    mutable highestmodseq: Modseq.t option;
+    mutable uidvalidity: uid option;
+    mutable highestmodseq: modseq option;
 
     mutable capabilities: capability list;
 
@@ -2256,13 +2239,13 @@ let status imap m att =
   in
   run imap format Status.default process
 
-let copy : type a. _ -> a num_kind -> a list -> _ -> _ = fun imap kind nums mbox ->
-  let cmd, nums =
+let copy (type a) imap (kind : a num_kind) (nums : a list) mbox =
+  let cmd, (nums : int32 list) =
     match kind with
-    | Uid -> "UID COPY", Uint32Set.of_list Uid.eq nums
-    | Seq -> "COPY", Uint32Set.of_list Seq.eq nums
+    | Uid -> "UID COPY", nums
+    | Seq -> "COPY", nums
   in
-  let format = E.(raw cmd ++ eset nums ++ mailbox mbox) in
+  let format = E.(raw cmd ++ eset (Uint32Set.of_list nums) ++ mailbox mbox) in
   run imap format () (fun _ r _ -> r)
 
 let check imap =
@@ -2283,8 +2266,8 @@ let expunge imap =
 let search (type a) imap (num_kind : a num_kind) sk : (a list * _) Lwt.t =
   let cmd, (cast : int32 list -> a list) =
     match num_kind with
-    | Uid -> "UID SEARCH", (match Uid.eq with Eq -> fun l -> l)
-    | Seq -> "SEARCH", (match Seq.eq with Eq -> fun l -> l)
+    | Uid -> "UID SEARCH", (fun l -> l)
+    | Seq -> "SEARCH", (fun l -> l)
   in
   let format = E.(raw cmd ++ sk) in
   let process _ (res, m) = function
@@ -2306,10 +2289,10 @@ let append imap m ?(flags = []) data =
 
 let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) att =
   let open E in
-  let cmd, nums =
+  let cmd, (nums : int32 list) =
     match num_kind with
-    | Uid -> "UID FETCH", Uint32Set.of_list Uid.eq nums
-    | Seq -> "FETCH", Uint32Set.of_list Seq.eq nums
+    | Uid -> "UID FETCH", nums
+    | Seq -> "FETCH", nums
   in
   let att =
     match att with
@@ -2324,7 +2307,7 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
     | None -> empty
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
-  let format = raw cmd ++ eset nums ++ att & changed_since in
+  let format = raw cmd ++ eset (Uint32Set.of_list nums) ++ att & changed_since in
   let process _ res = function
     | R.FETCH (id, infos) ->
         let aux res = function
@@ -2364,10 +2347,10 @@ type store_kind =
 
 let store (type a) imap ?unchanged_since mode (num_kind : a num_kind) (nums : a list) att =
   let open E in
-  let cmd, nums =
+  let cmd, (nums : int32 list) =
     match num_kind with
-    | Uid -> "UID STORE", Uint32Set.of_list Uid.eq nums
-    | Seq -> "STORE", Uint32Set.of_list Seq.eq nums
+    | Uid -> "UID STORE", nums
+    | Seq -> "STORE", nums
   in
   let base =
     let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
@@ -2387,9 +2370,8 @@ let store (type a) imap ?unchanged_since mode (num_kind : a num_kind) (nums : a 
     | None -> str ""
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
-  let format = raw cmd ++ eset nums ++ unchanged_since ++ raw base ++ p att in
-  let process _ m _ = m in
-  run imap format Fetch.default process
+  let format = raw cmd ++ eset (Uint32Set.of_list nums) ++ unchanged_since ++ raw base ++ p att in
+  run imap format Fetch.default (fun _ r _ -> r)
 
 let enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in

@@ -36,7 +36,7 @@
     The following extensions are supported:
     - {{:https://tools.ietf.org/html/rfc4551}CONDSTORE}
     - {{:https://tools.ietf.org/html/rfc5162}QRESYNC}
-    - {{:http://tools.ietf.org/html/rfc5161}ENABLE}
+    - {{:https://tools.ietf.org/html/rfc5161}ENABLE}
     - {{:https://tools.ietf.org/html/rfc4315}UIDPLUS}
     - {{:https://tools.ietf.org/html/rfc6154}SPECIAL-USE}
     - {{:https://tools.ietf.org/html/rfc2177}IDLE}
@@ -44,26 +44,18 @@
 
 (** {1 Common types for IMAP} *)
 
-module type NUMBER = sig
-  type t
-
-  val zero: t
-  val of_int: int -> t
-  val compare: t -> t -> int
-end
-
-module Modseq : NUMBER
+type modseq = private int64
 (** Modification sequence numbers. *)
 
-module Uid : NUMBER
+type uid = private int32
 (** Message unique identification numbers. *)
 
-module Seq : NUMBER
+type seq = private int32
 (** Message sequence numbers. *)
 
 type _ num_kind =
-  | Uid : Uid.t num_kind
-  | Seq : Seq.t num_kind
+  | Uid : uid num_kind
+  | Seq : seq num_kind
 
 type date =
   {
@@ -295,10 +287,10 @@ module Fetch : sig
       body: MIME.mime option;
       bodystructure: MIME.mime option;
       body_section: (section * int option * string option) option;
-      uid: Uid.t option;
-      modseq: Modseq.t option;
-      x_gm_msgid: Modseq.t option;
-      x_gm_thrid: Modseq.t option;
+      uid: uid option;
+      modseq: modseq option;
+      x_gm_msgid: modseq option;
+      x_gm_thrid: modseq option;
       x_gm_labels: string list option;
     } [@@deriving sexp]
 end
@@ -344,10 +336,10 @@ module Status : sig
     {
       messages: int option;
       recent: int option;
-      uidnext: Uid.t option;
-      uidvalidity: Uid.t option;
+      uidnext: uid option;
+      uidvalidity: uid option;
       unseen: int option;
-      highestmodseq: Modseq.t option;
+      highestmodseq: modseq option;
     } [@@deriving sexp]
 end
 
@@ -359,7 +351,7 @@ module Search : sig
   val all: key
   (** All messages in the mailbox. *)
 
-  val seq: Seq.t list -> key
+  val seq: seq list -> key
   (** Messages with message sequence number in the given set. *)
 
   val answered: key
@@ -456,7 +448,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  val uid: Uid.t list -> key
+  val uid: uid list -> key
   (** Messages with UID in the given set. *)
 
   val unanswered: key
@@ -480,16 +472,16 @@ module Search : sig
   val (&&): key -> key -> key
   (** Messages that satisfy both search criteria. *)
 
-  val modseq: Modseq.t -> key
+  val modseq: modseq -> key
   (** Messages that have equal or greater modification sequence numbers. *)
 
   val x_gm_raw: string -> key
   (** Gmail search string *)
 
-  val x_gm_msgid: Modseq.t -> key
+  val x_gm_msgid: modseq -> key
   (** Messages with a given Gmail Message ID. *)
 
-  val x_gm_thrid: Modseq.t -> key
+  val x_gm_thrid: modseq -> key
   (** Messages with a given Gmail Thread ID. *)
 
   val x_gm_labels: string list -> key
@@ -510,7 +502,7 @@ type error =
 type t
 (** The type for connections. *)
 
-val uidnext: t -> Uid.t option
+val uidnext: t -> uid option
 
 val messages: t -> int option
 
@@ -518,9 +510,9 @@ val recent: t -> int option
 
 val unseen: t -> int option
 
-val uidvalidity: t -> Uid.t option
+val uidvalidity: t -> uid option
 
-val highestmodseq: t -> Modseq.t option
+val highestmodseq: t -> modseq option
 
 val connect: string -> ?port:int -> string -> string -> string -> t Lwt.t
 (** [connect server username password mailbox]. *)
@@ -559,11 +551,11 @@ val copy: t -> 'a num_kind -> 'a list -> string -> unit Lwt.t
 (** [copy imap nums mbox] copies messages with sequence number in [nums] to
     mailbox [mbox]. *)
 
-val expunge: t -> Seq.t list Lwt.t
+val expunge: t -> seq list Lwt.t
 (** [expunge imap] permanently removes all messages that have the [Deleted]
     {!flag} set from the currently selected mailbox. *)
 
-val search: t -> 'a num_kind -> Search.key -> ('a list * Modseq.t option) Lwt.t
+val search: t -> 'a num_kind -> Search.key -> ('a list * modseq option) Lwt.t
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
 
@@ -575,7 +567,7 @@ val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: t -> ?changed_since:Modseq.t -> 'a num_kind -> 'a list -> Fetch.t list -> Fetch.response Lwt.t
+val fetch: t -> ?changed_since:modseq -> 'a num_kind -> 'a list -> Fetch.t list -> Fetch.response Lwt.t
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
@@ -592,7 +584,7 @@ type store_kind =
   [ `Flags of Flag.flag list
   | `Labels of string list ]
 
-val store: t -> ?unchanged_since:Modseq.t -> store_mode -> 'a num_kind -> 'a list -> store_kind -> Fetch.response Lwt.t
+val store: t -> ?unchanged_since:modseq -> store_mode -> 'a num_kind -> 'a list -> store_kind -> Fetch.response Lwt.t
 (** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
     [mode] for those message with sequence number in [nums].
 
