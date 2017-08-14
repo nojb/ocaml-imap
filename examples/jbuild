@@ -1,10 +1,5 @@
 (jbuild_version 1)
 
 (executables
- ((names (wait_mail))
+ ((names (wait_mail minimutt))
   (libraries (cmdliner imap))))
-
-;; (alias
-;;  ((name DEFAULT)
-;;   (deps (wait_mail.exe))
-;;   (action (run ${<}))))

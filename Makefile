@@ -3,6 +3,7 @@ all:
 
 examples:
 	jbuilder build examples/wait_mail.exe
+	jbuilder build examples/minimutt.exe
 
 test:
 	jbuilder runtest
