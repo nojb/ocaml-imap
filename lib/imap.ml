@@ -2189,34 +2189,29 @@ let capability imap =
 
 let create imap m =
   let format = E.(str "CREATE" ++ mailbox m) in
-  let process _ res _ = res in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let delete imap m =
   let format = E.(str "DELETE" ++ mailbox m) in
-  let process _ res _ = res in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let rename imap m1 m2 =
   let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
-  let process _ res _ = res in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let logout imap =
   let format = E.(str "LOGOUT") in
-  let process _ () _ = () in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let noop imap =
   let format = E.(str "NOOP") in
-  let process _ () _ = () in
-  run imap format () process
+  run imap format () (fun _ r _ -> r)
 
 let list imap ?(ref = "") s =
   let format = E.(str "LIST" ++ mailbox ref ++ str s) in
-  let process _ res = function
-    | R.LIST (flags, delim, mbox) -> res @ [flags, delim, mbox] (* CHECK *)
-    | _ -> res
+  let process _ r = function
+    | R.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: r
+    | _ -> List.rev r
   in
   run imap format [] process
 
