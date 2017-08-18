@@ -60,10 +60,6 @@ type uid = int32 [@@deriving sexp]
 
 type seq = int32 [@@deriving sexp]
 
-type _ num_kind =
-  | Uid: uid num_kind
-  | Seq: seq num_kind
-
 module Uint32Set = struct
   type t =
     (int32 * int32) list [@@deriving sexp] (* disjoint, sorted intervals *)
@@ -198,12 +194,14 @@ type time =
   } [@@deriving sexp]
 
 type capability =
+  | IMAP4rev1
   | ACL
   | BINARY
   | CATENATE
   | CHILDREN
   | COMPRESS_DEFLATE
   | CONDSTORE
+  | ESEARCH
   | ENABLE
   | IDLE
   | ID
@@ -408,35 +406,37 @@ module E = struct
     in
     list ~sep:',' f s
 
-    let string_of_capability = function
-      | ACL -> "ACL"
-      | BINARY -> "BINARY"
-      | CATENATE -> "CATENATE"
-      | CHILDREN -> "CHILDREN"
-      | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
-      | CONDSTORE -> "CONDSTORE"
-      | ENABLE -> "ENABLE"
-      | IDLE -> "IDLE"
-      | ID -> "ID"
-      | LITERALPLUS -> "LITERAL+"
-      | LITERALMINUS -> "LITERAL-"
-      | UTF8_ACCEPT -> "UTF8=ACCEPT"
-      | UTF8_ONLY -> "UTF8=ONLY"
-      | MULTIAPPEND -> "MULTIAPPEND"
-      | NAMESPACE -> "NAMESPACE"
-      | QRESYNC -> "QRESYNC"
-      | QUOTE -> "QUOTE"
-      | SORT -> "SORT"
-      | STARTTLS -> "STARTTLS"
-      | UIDPLUS -> "UIDPLUS"
-      | UNSELECT -> "UNSELECT"
-      | XLIST -> "XLIST"
-      | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
-      | AUTH_LOGIN -> "AUTH=LOGIN"
-      | AUTH_PLAIN -> "AUTH=PLAIN"
-      | XOAUTH2 -> "XOAUTH2"
-      | X_GM_EXT_1 -> "X-GM-EXT-1"
-      | OTHER s -> s
+  let string_of_capability = function
+    | IMAP4rev1 -> "IMAP4rev1"
+    | ACL -> "ACL"
+    | BINARY -> "BINARY"
+    | CATENATE -> "CATENATE"
+    | CHILDREN -> "CHILDREN"
+    | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
+    | CONDSTORE -> "CONDSTORE"
+    | ESEARCH -> "ESEARCH"
+    | ENABLE -> "ENABLE"
+    | IDLE -> "IDLE"
+    | ID -> "ID"
+    | LITERALPLUS -> "LITERAL+"
+    | LITERALMINUS -> "LITERAL-"
+    | UTF8_ACCEPT -> "UTF8=ACCEPT"
+    | UTF8_ONLY -> "UTF8=ONLY"
+    | MULTIAPPEND -> "MULTIAPPEND"
+    | NAMESPACE -> "NAMESPACE"
+    | QRESYNC -> "QRESYNC"
+    | QUOTE -> "QUOTE"
+    | SORT -> "SORT"
+    | STARTTLS -> "STARTTLS"
+    | UIDPLUS -> "UIDPLUS"
+    | UNSELECT -> "UNSELECT"
+    | XLIST -> "XLIST"
+    | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
+    | AUTH_LOGIN -> "AUTH=LOGIN"
+    | AUTH_PLAIN -> "AUTH=PLAIN"
+    | XOAUTH2 -> "XOAUTH2"
+    | X_GM_EXT_1 -> "X-GM-EXT-1"
+    | OTHER s -> s
 
   let capability s =
     raw (string_of_capability s)
@@ -2246,14 +2246,15 @@ let status imap m att =
   in
   run imap format Status.default process
 
-let copy (type a) imap (kind : a num_kind) (nums : a list) mbox =
-  let cmd, (nums : int32 list) =
-    match kind with
-    | Uid -> "UID COPY", nums
-    | Seq -> "COPY", nums
-  in
+let copy_gen cmd imap nums mbox =
   let format = E.(raw cmd ++ eset (Uint32Set.of_list nums) ++ mailbox mbox) in
   run imap format () (fun _ r _ -> r)
+
+let copy =
+  copy_gen "COPY"
+
+let uid_copy =
+  copy_gen "UID COPY"
 
 let check imap =
   let format = E.(str "CHECK") in
@@ -2264,24 +2265,25 @@ let close imap =
 
 let expunge imap =
   let format = E.(str "EXPUNGE") in
-  let process _ info = function
-    | R.EXPUNGE n -> n :: info
-    | _ -> info
-  in
-  run imap format [] process
+  run imap format () (fun _ r _ -> r)
 
-let search (type a) imap (num_kind : a num_kind) sk : (a list * _) Lwt.t =
-  let cmd, (cast : int32 list -> a list) =
-    match num_kind with
-    | Uid -> "UID SEARCH", (fun l -> l)
-    | Seq -> "SEARCH", (fun l -> l)
-  in
+let uid_expunge imap nums =
+  let format = E.(str "UID EXPUNGE" ++ eset (Uint32Set.of_list nums)) in
+  run imap format () (fun _ r _ -> r)
+
+let search_gen cmd imap sk =
   let format = E.(raw cmd ++ sk) in
   let process _ (res, m) = function
     | R.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)
   in
-  run imap format ([], None) process >>= fun (l, m) -> Lwt.return (cast l, m)
+  run imap format ([], None) process
+
+let search =
+  search_gen "SEARCH"
+
+let uid_search =
+  search_gen "UID SEARCH"
 
 let select imap ?(read_only = false) m =
   let cmd = if read_only then "EXAMINE" else "SELECT" in
@@ -2296,13 +2298,8 @@ let append imap m ?(flags = []) data =
 
 module Int32Map = Map.Make (Int32)
 
-let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) att =
+let fetch_gen cmd imap ?changed_since nums att =
   let open E in
-  let cmd, (nums : int32 list) =
-    match num_kind with
-    | Uid -> "UID FETCH", nums
-    | Seq -> "FETCH", nums
-  in
   let att =
     match att with
     (* | `Fast -> raw "FAST" *)
@@ -2348,6 +2345,12 @@ let fetch (type a) imap ?changed_since (num_kind : a num_kind) (nums : a list) a
   Lwt.ignore_result (run imap format () process >|= fun () -> push None);
   strm
 
+let fetch =
+  fetch_gen "FETCH"
+
+let uid_fetch =
+  fetch_gen "UID FETCH"
+
 type store_mode =
   [ `Add
   | `Remove
@@ -2357,13 +2360,8 @@ type store_kind =
   [ `Flags of Flag.flag list
   | `Labels of string list ]
 
-let store (type a) imap ?unchanged_since mode (num_kind : a num_kind) (nums : a list) att =
+let store_gen cmd imap ?unchanged_since mode nums att =
   let open E in
-  let cmd, (nums : int32 list) =
-    match num_kind with
-    | Uid -> "UID STORE", nums
-    | Seq -> "STORE", nums
-  in
   let base =
     let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
     match att with
@@ -2383,7 +2381,13 @@ let store (type a) imap ?unchanged_since mode (num_kind : a num_kind) (nums : a 
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format = raw cmd ++ eset (Uint32Set.of_list nums) ++ unchanged_since ++ raw base ++ p att in
-  run imap format Fetch.default (fun _ r _ -> r)
+  run imap format () (fun _ r _ -> r)
+
+let store =
+  store_gen "STORE"
+
+let uid_store =
+  store_gen "UID STORE"
 
 let enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in

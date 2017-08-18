@@ -53,10 +53,6 @@ type uid = private int32
 type seq = private int32
 (** Message sequence numbers. *)
 
-type _ num_kind =
-  | Uid : uid num_kind
-  | Seq : seq num_kind
-
 type date =
   {
     day: int;
@@ -75,12 +71,14 @@ type time =
 (** List of standard capabilites.  These are returned by the {!capability}
     command, in status {{!Code.code}codes} and can be enabled by the {!enable} command. *)
 type capability =
+  | IMAP4rev1
   | ACL
   | BINARY
   | CATENATE
   | CHILDREN
   | COMPRESS_DEFLATE
   | CONDSTORE
+  | ESEARCH
   | ENABLE
   | IDLE
   | ID
@@ -547,17 +545,24 @@ val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * s
 val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
-val copy: t -> 'a num_kind -> 'a list -> string -> unit Lwt.t
+val copy: t -> seq list -> string -> unit Lwt.t
 (** [copy imap nums mbox] copies messages with sequence number in [nums] to
     mailbox [mbox]. *)
 
-val expunge: t -> seq list Lwt.t
+val uid_copy: t -> uid list -> string -> unit Lwt.t
+
+val expunge: t -> unit Lwt.t
 (** [expunge imap] permanently removes all messages that have the [Deleted]
     {!flag} set from the currently selected mailbox. *)
 
-val search: t -> 'a num_kind -> Search.key -> ('a list * modseq option) Lwt.t
+val uid_expunge: t -> uid list -> unit Lwt.t
+(** Requires [UIDPLUS] extension. *)
+
+val search: t -> Search.key -> (seq list * modseq option) Lwt.t
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
+
+val uid_search: t -> Search.key -> (uid list * modseq option) Lwt.t
 
 val select: t -> ?read_only:bool -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
@@ -567,13 +572,15 @@ val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: t -> ?changed_since:modseq -> 'a num_kind -> 'a list -> Fetch.t list -> (seq * Fetch.response) Lwt_stream.t
+val fetch: t -> ?changed_since:modseq -> seq list -> Fetch.t list -> (seq * Fetch.response) Lwt_stream.t
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
     If the [?changed_since] argument is passed, only those messages with
     [CHANGEDSINCE] mod-sequence value at least the passed value are affected
     (requires the [CONDSTORE] extension). *)
+
+val uid_fetch: t -> ?changed_since:modseq -> uid list -> Fetch.t list -> (seq * Fetch.response) Lwt_stream.t
 
 type store_mode =
   [ `Add
@@ -584,9 +591,11 @@ type store_kind =
   [ `Flags of Flag.flag list
   | `Labels of string list ]
 
-val store: t -> ?unchanged_since:modseq -> store_mode -> 'a num_kind -> 'a list -> store_kind -> Fetch.response Lwt.t
+val store: t -> ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> unit Lwt.t
 (** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
     [mode] for those message with sequence number in [nums].
 
     If [?unchanged_since] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
+
+val uid_store: t -> ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -> unit Lwt.t
