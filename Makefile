@@ -1,9 +1,5 @@
 all:
-	jbuilder build @install @DEFAULT
-
-examples:
-	jbuilder build examples/wait_mail.exe
-	jbuilder build examples/minimutt.exe
+	jbuilder build --dev @install @examples/examples
 
 test:
 	jbuilder runtest
@@ -36,4 +32,4 @@ publish-doc: doc
 publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
 
-.PHONY: all lib clean doc install uninstall test examples
+.PHONY: all test clean install uninstall doc

@@ -11,12 +11,12 @@ let sync server ?port username password mailbox =
   Lwt_unix.mkdir mailbox 0o700 >>= fun () ->
   Lwt_unix.chdir mailbox >>= fun () ->
   Imap.connect server ?port username password ~read_only:true mailbox >>= fun imap ->
-  Imap.search imap Uid Imap.Search.all >>= fun (l, _) ->
+  Imap.uid_search imap Imap.Search.all >>= fun (l, _) ->
   Lwt_list.iter_s (fun (uid : Imap.uid) ->
       let filename = Int32.to_string (uid :> int32) in
       Lwt_unix.openfile filename [O_WRONLY; O_CREAT; O_TRUNC] 0o600 >>= fun fd ->
       let oc = Lwt_io.of_fd ~mode:Lwt_io.Output fd in
-      Lwt_stream.to_list (Imap.fetch imap Imap.Uid [uid] [Imap.Fetch.rfc822]) >>= function
+      Lwt_stream.to_list (Imap.uid_fetch imap [uid] [Imap.Fetch.rfc822]) >>= function
       | [_, {Imap.Fetch.rfc822 = Some s; _}] ->
           Lwt_io.write oc s >>= fun () -> Lwt_io.close oc >>= fun () ->
           Lwt_io.eprintlf "OK writing #%s" filename

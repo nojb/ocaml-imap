@@ -22,15 +22,8 @@
 
 open Sexplib.Std
 
-type (_, _) eq = Eq : ('a, 'a) eq
-
 module Uint32 = struct
   type t = int32 [@@deriving sexp]
-
-  let zero = 0l
-
-  let of_int n =
-    Scanf.sscanf (Printf.sprintf "%u" n) "%lu" (fun n -> n)
 
   let msb n = Int32.(logand n (shift_left 1l 31)) <> 0l
 
@@ -50,8 +43,6 @@ module Uint32 = struct
   let min n m = if n <= m then n else m
 
   let max n m = if n <= m then m else n
-
-  let eq : (t, int32) eq = Eq
 end
 
 type modseq = int64 [@@deriving sexp]
@@ -84,7 +75,7 @@ module Uint32Set = struct
   let add n s =
     union (singleton n) s
 
-  let interval n m =
+  let _interval n m =
     if n <= m then [n, m] else [m, n]
 
   let of_list l =
@@ -369,9 +360,6 @@ module E = struct
   let int n =
     raw (string_of_int n)
 
-  let uint32 m =
-    raw (Printf.sprintf "%lu" m)
-
   let uint64 m =
     raw (Printf.sprintf "%Lu" m)
 
@@ -643,7 +631,7 @@ module Status = struct
 
   open E
 
-  type t = rope
+  type _t = rope (* FIXME *)
 
   let enc = function
     | (MESSAGES : mbx_att_request) -> raw "MESSAGES"
@@ -762,7 +750,7 @@ module Decoder = struct
     | '0'..'9' -> true
     | _ -> false
 
-  let is_nz_digit = function
+  let _is_nz_digit = function
     | '1'..'9' -> true
     | _ -> false
 
@@ -1474,14 +1462,14 @@ module Decoder = struct
   let media_basic =
     pair sp imap_string media_subtype <?> "media-basic" (* FIXME *)
 
-  let body_type_mpart body body_type_mpart = (* TODO Return the extension data *)
+  let body_type_mpart body = (* TODO Return the extension data *)
     many1 body >>= fun bodies ->
     sp *> imap_string >>= fun media_subtype ->
     option None (sp *> some body_ext_mpart) >>| fun _ ->
     MIME.Multipart (bodies, media_subtype)
 
   let body_type_mpart body =
-    fix (body_type_mpart body) <?> "body-type-mpart"
+    body_type_mpart body <?> "body-type-mpart"
 
   let body_type_basic media_type media_subtype =
     let aux =
@@ -2170,7 +2158,7 @@ let idle imap =
     | R.Untagged _ ->
         stop ();
         loop ()
-    | Tagged (t, _) ->
+    | Tagged (_t, _) -> (* FIXME *)
         imap.tag <- imap.tag + 1;
         Lwt.return_unit
   in
@@ -2192,7 +2180,7 @@ let login imap username password =
   let process _ res _ = res in
   run imap format () process
 
-let capability imap =
+let _capability imap =
   let format = E.(str "CAPABILITY") in
   let process _ caps = function
     | R.CAPABILITY caps1 -> caps @ caps1
@@ -2232,7 +2220,7 @@ let status imap m att =
   let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
   let process _ res = function
     | R.STATUS (mbox, items) when m = mbox ->
-        let aux resp = function
+        let aux res = function
           | (MESSAGES n : R.mbx_att) -> {res with Status.messages = Some n}
           | RECENT n -> {res with recent = Some n}
           | UIDNEXT n -> {res with uidnext = Some n}
@@ -2256,11 +2244,11 @@ let copy =
 let uid_copy =
   copy_gen "UID COPY"
 
-let check imap =
+let _check imap =
   let format = E.(str "CHECK") in
   run imap format () (fun _ r _ -> r)
 
-let close imap =
+let _close imap =
   run imap E.(raw "CLOSE") () (fun _ r _ -> r)
 
 let expunge imap =
@@ -2389,7 +2377,7 @@ let store =
 let uid_store =
   store_gen "UID STORE"
 
-let enable imap caps =
+let _enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
   let process _ caps = function
     | R.ENABLED caps1 -> caps1 @ caps

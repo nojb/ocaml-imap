@@ -3,3 +3,7 @@
 (executables
  ((names (wait_mail minimutt))
   (libraries (cmdliner imap))))
+
+(alias
+ ((name examples)
+  (deps (wait_mail.exe minimutt.exe))))

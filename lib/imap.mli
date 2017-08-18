@@ -68,40 +68,6 @@ type time =
     zone: int;
   } [@@deriving sexp]
 
-(** List of standard capabilites.  These are returned by the {!capability}
-    command, in status {{!Code.code}codes} and can be enabled by the {!enable} command. *)
-type capability =
-  | IMAP4rev1
-  | ACL
-  | BINARY
-  | CATENATE
-  | CHILDREN
-  | COMPRESS_DEFLATE
-  | CONDSTORE
-  | ESEARCH
-  | ENABLE
-  | IDLE
-  | ID
-  | LITERALPLUS
-  | LITERALMINUS
-  | UTF8_ACCEPT
-  | UTF8_ONLY
-  | MULTIAPPEND
-  | NAMESPACE
-  | QRESYNC
-  | QUOTE
-  | SORT
-  | STARTTLS
-  | UIDPLUS
-  | UNSELECT
-  | XLIST
-  | AUTH_ANONYMOUS
-  | AUTH_LOGIN
-  | AUTH_PLAIN
-  | XOAUTH2
-  | X_GM_EXT_1
-  | OTHER of string [@@deriving sexp]
-
 (** {3 Envelope information}
 
     Returned when fetching the {{!Fetch.envelope}envelope message attribute}
