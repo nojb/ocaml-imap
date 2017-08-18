@@ -313,12 +313,12 @@ end
 module E = struct
   type rope =
     | Cat of rope * rope
-    | Wait
+    | Literal of string
     | Raw of string [@@deriving sexp]
 
   let rec is_empty = function
     | Cat (f, g) -> is_empty f && is_empty g
-    | Wait -> false
+    | Literal _ -> false
     | Raw "" -> true
     | Raw _ -> false
 
@@ -337,7 +337,7 @@ module E = struct
     f & raw " " & g
 
   let literal s =
-    Cat (Raw (Printf.sprintf "{%d}\r\n" (String.length s)), Cat (Wait, Raw s))
+    Literal s
 
   let str s =
     let literal_chars = function
@@ -2059,17 +2059,26 @@ let rec send imap r process res =
   | E.Cat (r1, r2) ->
       send imap r1 process res >>= fun res ->
       send imap r2 process res
-  | Wait ->
-      let rec loop res =
-        recv imap >>= function
-        | R.Cont _ ->
-            Lwt.return res
-        | R.Untagged u ->
-            loop (process imap res u)
-        | R.Tagged _ ->
-            Lwt.fail (Failure "not expected")
-      in
-      Lwt_io.flush imap.oc >>= fun () -> loop res
+  | Literal s ->
+      if List.mem LITERALPLUS imap.capabilities ||
+         (List.mem LITERALMINUS imap.capabilities && String.length s <= 4096)
+      then
+        Lwt_io.fprintf imap.oc "{%d+}\r\n" (String.length s) >>= fun () ->
+        Lwt_io.write imap.oc s >>= fun () ->
+        Lwt.return res
+      else
+        let rec loop res =
+          recv imap >>= function
+          | R.Cont _ ->
+              Lwt.return res
+          | R.Untagged u ->
+              loop (process imap res u)
+          | R.Tagged _ ->
+              Lwt.fail (Failure "not expected")
+        in
+        Lwt_io.fprintf imap.oc "{%d}\r\n" (String.length s) >>= fun () ->
+        Lwt_io.flush imap.oc >>= fun () ->
+        loop res
   | Raw s ->
       Lwt_io.write imap.oc s >>= fun () ->
       Lwt.return res
