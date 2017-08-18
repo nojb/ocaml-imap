@@ -1958,6 +1958,7 @@ open Lwt.Infix
 
 type t =
   {
+    sock: Lwt_ssl.socket;
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
 
@@ -1978,12 +1979,15 @@ type t =
     mutable stop_poll: (unit -> unit) option;
   }
 
-let create_connection ic oc unconsumed =
+let create_connection sock unconsumed =
+  let ic = Lwt_ssl.in_channel_of_descr sock in
+  let oc = Lwt_ssl.out_channel_of_descr sock in
   {
+    sock;
     ic;
     oc;
 
-    debug = false;
+    debug = true;
 
     tag = 0;
     unconsumed;
@@ -2390,10 +2394,8 @@ let connect server ?(port = 993) username password ?read_only mailbox =
   let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
-  let ic = Lwt_ssl.in_channel_of_descr sock in
-  let oc = Lwt_ssl.out_channel_of_descr sock in
   let imap =
-    create_connection ic oc {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
+    create_connection sock {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
   in
   recv imap >>= function
   | R.Untagged _ ->
@@ -2404,4 +2406,4 @@ let connect server ?(port = 993) username password ?read_only mailbox =
       Lwt.fail (Failure "unexpected response")
 
 let disconnect imap =
-  logout imap >>= fun () -> Lwt_io.close imap.oc
+  logout imap >>= fun () -> Lwt_ssl.ssl_shutdown imap.sock
