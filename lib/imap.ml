@@ -1023,6 +1023,7 @@ module Decoder = struct
       [
         "COMPRESS=DEFLATE", return COMPRESS_DEFLATE;
         "CONDSTORE", return CONDSTORE;
+        "ESEARCH", return ESEARCH;
         "ENABLE", return ENABLE;
         "IDLE", return IDLE;
         "LITERAL+", return LITERALPLUS;
