@@ -561,7 +561,7 @@ module Fetch = struct
   let rfc822_size = raw "RFC822.SIZE"
   let rfc822 = raw "RFC822"
   let body = raw "BODY"
-  let body_section ~peek s partial =
+  let body_section ?(peek = true) ?partial s =
     let cmd = if peek then "BODY.PEEK" else "BODY" in
     let partial =
       match partial with
@@ -2380,11 +2380,7 @@ let uid_store =
 
 let _enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
-  let process _ caps = function
-    | R.ENABLED caps1 -> caps1 @ caps
-    | _ -> caps
-  in
-  run imap format [] process
+  run imap format () (fun _ r _ -> r)
 
 let () =
   Ssl.init ()

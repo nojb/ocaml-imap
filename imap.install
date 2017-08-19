@@ -11,6 +11,9 @@ lib: [
   "_build/install/default/lib/imap/imap.a"
   "_build/install/default/lib/imap/imap.cmxs"
 ]
+bin: [
+  "_build/install/default/bin/mlsync" {"mlsync"}
+]
 doc: [
   "_build/install/default/doc/imap/README.md"
   "_build/install/default/doc/imap/LICENSE"
