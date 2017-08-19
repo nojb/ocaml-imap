@@ -282,7 +282,7 @@ module Flag = struct
 end
 
 module MbxFlag = struct
-  type mbx_flag =
+  type t =
     | Noselect
     | Marked
     | Unmarked
@@ -354,8 +354,8 @@ module E = struct
   let p f =
     Cat (Raw "(", Cat (f, Raw ")"))
 
-  let mailbox s =
-    str (Mutf7.encode s)
+  let mutf7 s =
+    raw (Mutf7.encode s)
 
   let int n =
     raw (string_of_int n)
@@ -472,27 +472,27 @@ module Response = struct
     | NO of Code.code option * string
     | BAD of Code.code option * string [@@deriving sexp]
 
-  type section =
+  type section_msgtext =
     | HEADER
     | HEADER_FIELDS of string list
     | HEADER_FIELDS_NOT of string list
     | TEXT
-    | MIME
-    | Part of int * section
-    | All
-  [@@deriving sexp]
+    | MIME [@@deriving sexp]
+
+  type section =
+    int list * section_msgtext option [@@deriving sexp]
 
   type msg_att =
     | FLAGS of Flag.flag list
     | ENVELOPE of envelope
     | INTERNALDATE of date * time
-    | RFC822 of string option
-    | RFC822_HEADER of string option
-    | RFC822_TEXT of string option
+    (* | RFC822 of string option *)
+    (* | RFC822_HEADER of string option *)
+    (* | RFC822_TEXT of string option *)
     | RFC822_SIZE of int
     | BODY of MIME.mime
     | BODYSTRUCTURE of MIME.mime
-    | BODY_SECTION of section * int option * string option
+    | BODY_SECTION of section * string option
     | UID of int32
     | MODSEQ of int64
     | X_GM_MSGID of int64
@@ -512,8 +512,8 @@ module Response = struct
     | BYE of Code.code option * string
     | PREAUTH of Code.code option * string
     | FLAGS of Flag.flag list
-    | LIST of MbxFlag.mbx_flag list * char option * string
-    | LSUB of MbxFlag.mbx_flag list * char option * string
+    | LIST of MbxFlag.t list * char option * string
+    | LSUB of MbxFlag.t list * char option * string
     | SEARCH of int32 list * int64 option
     | STATUS of string * mbx_att list
     | EXISTS of int
@@ -532,43 +532,48 @@ module Response = struct
 end
 
 module Fetch = struct
-  type section = Response.section =
+  type section_msgtext = Response.section_msgtext =
     | HEADER
     | HEADER_FIELDS of string list
     | HEADER_FIELDS_NOT of string list
     | TEXT
-    | MIME
-    | Part of int * section
-    | All [@@deriving sexp]
+    | MIME [@@deriving sexp]
+
+  type section =
+    int list * section_msgtext option [@@deriving sexp]
 
   open E
 
   type t = rope
 
-  let rec section = function
-    | Response.HEADER -> raw "HEADER"
+  let section_msgtext = function
+    | HEADER -> raw "HEADER"
     | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l
     | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l
     | TEXT -> raw "TEXT"
     | MIME -> raw "MIME"
-    | Part (n, s) -> Cat (int n, Cat (str ".", section s))
-    | All -> empty
+
+  let section_enc (nl, sec) =
+    let sec = match sec with None -> empty | Some sec -> section_msgtext sec in
+    match nl with
+    | [] ->
+        sec
+    | _ :: _ ->
+        list ~sep:'.' int nl & raw "." & sec
+
+  let header ?(part = []) () = part, Some HEADER
+  let header_fields ?(part = []) l = part, Some (HEADER_FIELDS l)
+  let header_fields_not ?(part = []) l = part, Some (HEADER_FIELDS_NOT l)
+  let text ?(part = []) () = part, Some TEXT
+  let part ~part () = part, None
+  let mime ~part () = part, Some MIME
 
   let envelope = raw "ENVELOPE"
   let internaldate = raw "INTERNALDATE"
-  let rfc822_header = raw "RFC822.HEADER"
-  let rfc822_text = raw "RFC822.TEXT"
   let rfc822_size = raw "RFC822.SIZE"
-  let rfc822 = raw "RFC822"
   let body = raw "BODY"
-  let body_section ?(peek = true) ?partial s =
-    let cmd = if peek then "BODY.PEEK" else "BODY" in
-    let partial =
-      match partial with
-      | None -> empty
-      | Some (n, l) -> raw (Printf.sprintf "<%d.%d>" n l)
-    in
-    Cat (raw cmd, Cat (raw "[", Cat (section s, Cat (raw "]", partial))))
+  let body_section ?(peek = true) ?section:(sec = [], None) () =
+    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & section_enc sec & raw "]"
   let bodystructure = raw "BODYSTRUCTURE"
   let uid = raw "UID"
   let flags = raw "FLAGS"
@@ -586,13 +591,10 @@ module Fetch = struct
       flags: Flag.flag list option;
       envelope: envelope option;
       internaldate: (date * time) option;
-      rfc822: string option;
-      rfc822_header: string option;
-      rfc822_text: string option;
       rfc822_size: int option;
       body: MIME.mime option;
       bodystructure: MIME.mime option;
-      body_section: (section * int option * string option) option;
+      body_section: (section * string option) list;
       uid: uid option;
       modseq: modseq option;
       x_gm_msgid: modseq option;
@@ -605,13 +607,10 @@ module Fetch = struct
       flags = None;
       envelope = None;
       internaldate = None;
-      rfc822 = None;
-      rfc822_header = None;
-      rfc822_text = None;
       rfc822_size = None;
       body = None;
       bodystructure = None;
-      body_section = None;
+      body_section = [];
       uid = None;
       modseq = None;
       x_gm_msgid = None;
@@ -621,25 +620,21 @@ module Fetch = struct
 end
 
 module Status = struct
-  type mbx_att_request =
-    | MESSAGES
-    | RECENT
-    | UIDNEXT
-    | UIDVALIDITY
-    | UNSEEN
-    | HIGHESTMODSEQ [@@deriving sexp]
-
   open E
 
-  type _t = rope (* FIXME *)
+  type t = rope
 
-  let enc = function
-    | (MESSAGES : mbx_att_request) -> raw "MESSAGES"
-    | RECENT -> raw "RECENT"
-    | UIDNEXT -> raw "UIDNEXT"
-    | UIDVALIDITY -> raw "UIDVALIDITY"
-    | UNSEEN -> raw "UNSEEN"
-    | HIGHESTMODSEQ -> raw "HIGHESTMODSEQ"
+  let messages = raw "MESSAGES"
+
+  let recent = raw "RECENT"
+
+  let uidnext = raw "UIDNEXT"
+
+  let uidvalidity = raw "UIDVALIDITY"
+
+  let unseen = raw "UNSEEN"
+
+  let highestmodseq = raw "HIGHESTMODSEQ"
 
   type response =
     {
@@ -1627,18 +1622,20 @@ module Decoder = struct
     choice [section_msgtext; switch ["MIME", return MIME]] <?> "section-text"
 
   let section_part =
-    sep_by1 (char '.') nz_number <?> "section-part"
+    (List.map Int32.to_int <$> sep_by (char '.') nz_number) <?> "section-part"
 
   let section_spec =
-    let aux =
-      section_part >>= fun l ->
-      choice [section_text; return All] >>| fun p ->
-      List.fold_right (fun i x -> Part (Int32.to_int i, x)) l p
-    in
-    choice [section_msgtext; aux] <?> "section-spec"
+    section_part >>= function
+    | [] ->
+        option None (some section_text) >>| fun sec -> [], sec
+    | _ :: _ as nl ->
+        option None (char '.' *> some section_text) >>| fun sec -> nl, sec
+
+  let section_spec =
+    section_spec <?> "section-spec"
 
   let section =
-    (char '[' *> choice [section_spec; return All] <* char ']') <?> "section"
+    (char '[' *> section_spec <* char ']') <?> "section"
 
 (*
    msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -1690,19 +1687,17 @@ module Decoder = struct
 
   let msg_att_static =
     let section =
-      section >>= fun s ->
-      option None (char '<' *> some (Int32.to_int <$> number) <* char '>') >>= fun r ->
-      sp *> nstring >>| fun x ->
-      BODY_SECTION (s, r, x)
+      section >>= fun s -> sp *> nstring >>| fun x ->
+      BODY_SECTION (s, x)
     in
     let cases =
       [
         "ENVELOPE", sp *> envelope >>| (fun e -> ENVELOPE e);
         "INTERNALDATE", sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t));
-        "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s);
-        "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s);
+        (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
+        (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
         "RFC822.SIZE", sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n));
-        "RFC822", sp *> nstring >>| (fun s -> RFC822 s);
+        (* "RFC822", sp *> nstring >>| (fun s -> RFC822 s); *)
         "BODYSTRUCTURE", sp *> body >>| (fun b -> BODYSTRUCTURE b);
         "BODY", choice [sp *> body >>| (fun b -> BODY b); section];
         "UID", sp *> uniqueid >>| (fun n -> UID n);
@@ -2190,15 +2185,15 @@ let _capability imap =
   run imap format [] process
 
 let create imap m =
-  let format = E.(str "CREATE" ++ mailbox m) in
+  let format = E.(str "CREATE" ++ mutf7 m) in
   run imap format () (fun _ r _ -> r)
 
 let delete imap m =
-  let format = E.(str "DELETE" ++ mailbox m) in
+  let format = E.(str "DELETE" ++ mutf7 m) in
   run imap format () (fun _ r _ -> r)
 
 let rename imap m1 m2 =
-  let format = E.(str "RENAME" ++ mailbox m1 ++ mailbox m2) in
+  let format = E.(str "RENAME" ++ mutf7 m1 ++ mutf7 m2) in
   run imap format () (fun _ r _ -> r)
 
 let logout imap =
@@ -2210,7 +2205,7 @@ let noop imap =
   run imap format () (fun _ r _ -> r)
 
 let list imap ?(ref = "") s =
-  let format = E.(str "LIST" ++ mailbox ref ++ str s) in
+  let format = E.(str "LIST" ++ mutf7 ref ++ str s) in
   let process _ r = function
     | R.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: r
     | _ -> List.rev r
@@ -2218,7 +2213,7 @@ let list imap ?(ref = "") s =
   run imap format [] process
 
 let status imap m att =
-  let format = E.(str "STATUS" ++ mailbox m ++ p (list Status.enc att)) in
+  let format = E.(str "STATUS" ++ mutf7 m ++ p (list (fun x -> x) att)) in
   let process _ res = function
     | R.STATUS (mbox, items) when m = mbox ->
         let aux res = function
@@ -2236,7 +2231,7 @@ let status imap m att =
   run imap format Status.default process
 
 let copy_gen cmd imap nums mbox =
-  let format = E.(raw cmd ++ eset (Uint32Set.of_list nums) ++ mailbox mbox) in
+  let format = E.(raw cmd ++ eset (Uint32Set.of_list nums) ++ mutf7 mbox) in
   run imap format () (fun _ r _ -> r)
 
 let copy =
@@ -2277,11 +2272,11 @@ let uid_search =
 let select imap ?(read_only = false) m =
   let cmd = if read_only then "EXAMINE" else "SELECT" in
   let arg = if List.mem CONDSTORE imap.capabilities then " (CONDSTORE)" else "" in
-  let format = E.(raw cmd ++ mailbox m & raw arg) in
+  let format = E.(raw cmd ++ mutf7 m & raw arg) in
   run imap format () (fun _ r _ -> r)
 
 let append imap m ?(flags = []) data =
-  let format = E.(raw "APPEND" ++ mailbox m ++ p (list flag flags) ++ literal data) in
+  let format = E.(raw "APPEND" ++ mutf7 m ++ p (list flag flags) ++ literal data) in
   let process _ () _ = () in
   run imap format () process
 
@@ -2310,16 +2305,16 @@ let fetch_gen cmd imap ?changed_since nums att =
           | (Response.FLAGS l : R.msg_att) -> {res with Fetch.flags = Some l}
           | ENVELOPE e -> {res with envelope = Some e}
           | INTERNALDATE (d, t) -> {res with internaldate = Some (d, t)}
-          | RFC822 (Some s) -> {res with rfc822 = Some s}
-          | RFC822 None -> {res with rfc822 = Some ""}
-          | RFC822_HEADER (Some s) -> {res with rfc822_header = Some s}
-          | RFC822_HEADER None -> {res with rfc822_header = Some ""}
-          | RFC822_TEXT (Some s) -> {res with rfc822_text = Some s}
-          | RFC822_TEXT None -> {res with rfc822_text = Some ""}
+          (* | RFC822 (Some s) -> {res with rfc822 = Some s} *)
+          (* | RFC822 None -> {res with rfc822 = Some ""} *)
+          (* | RFC822_HEADER (Some s) -> {res with rfc822_header = Some s} *)
+          (* | RFC822_HEADER None -> {res with rfc822_header = Some ""} *)
+          (* | RFC822_TEXT (Some s) -> {res with rfc822_text = Some s} *)
+          (* | RFC822_TEXT None -> {res with rfc822_text = Some ""} *)
           | RFC822_SIZE n -> {res with rfc822_size = Some n}
           | BODY x -> {res with body = Some x}
           | BODYSTRUCTURE x -> {res with bodystructure = Some x}
-          | BODY_SECTION (sec, len, s) -> {res with body_section = Some (sec, len, s)}
+          | BODY_SECTION (sec, s) -> {res with body_section = (sec, s) :: res.body_section}
           | UID n -> {res with uid = Some n}
           | MODSEQ n -> {res with modseq = Some n}
           | X_GM_MSGID n -> {res with x_gm_msgid = Some n}

@@ -165,6 +165,15 @@ module Flag : sig
 end
 
 module Fetch : sig
+  type section_msgtext =
+    | HEADER
+    | HEADER_FIELDS of string list
+    | HEADER_FIELDS_NOT of string list
+    | TEXT
+    | MIME
+
+  type section =
+    int list * section_msgtext option
   (** The [section] type is used to specify which part(s) of a message should be
       retrieved when using {!fetch} with {!body_section}.  See
       {{:https://tools.ietf.org/html/rfc3501#section-6.4.5}RFC 3501 6.4.5} for
@@ -174,14 +183,23 @@ module Fetch : sig
       {{:https://tools.ietf.org/html/rfc2822#section-2.2}RFC 2822, 2.2}.  For more
       on MIME headers, see {{:https://tools.ietf.org/html/rfc2045#section-3}RFC
       2045, 3}. *)
-  type section =
-    | HEADER                             (* Full RFC 2822 message headers *)
-    | HEADER_FIELDS of string list       (* Header fields matching one of the given field names *)
-    | HEADER_FIELDS_NOT of string list   (* Header fields not matching the given field names *)
-    | TEXT                               (* The text body of this part, omitting RFC2822 headers *)
-    | MIME                               (* The MIME headers of this part *)
-    | Part of int * section              (* Subpart *)
-    | All [@@deriving sexp]              (* The whole message *)
+
+  val header: ?part:int list -> unit -> section
+  (** Full RFC 2822 message headers *)
+
+  val header_fields: ?part:int list -> string list -> section
+  (** Header fields matching one of the given field names *)
+
+  val header_fields_not: ?part:int list -> string list -> section
+  (** Header fields not matching the given field names *)
+
+  val text: ?part:int list -> unit -> section
+  (** The text body of this part, omitting RFC2822 headers *)
+
+  val part: part:int list -> unit -> section
+
+  val mime: part:int list -> unit -> section
+  (** The MIME headers of this part *)
 
   type t
   (** Message attributes that can be requested using the {!fetch} command. *)
@@ -192,33 +210,18 @@ module Fetch : sig
   val internaldate: t
   (** The internal date of the message. *)
 
-  val rfc822_header: t
-  (** Equivalent to [body_section ~peek:true HEADER], but returning a
-      rfc822_header response. *)
-
-  val rfc822_text: t
-  (** Equivalent to [body_section ~peek:false TEXT], but returning a
-      rfc822_text response. *)
-
   val rfc822_size: t
   (** The size of the message. *)
 
-  val rfc822: t
-  (** Functionally equivalent to [`Body_section (`Look, `All, None)],
-      differing in the syntax of the resulting untagged [`Fetch]
-      {{!untagged}data} ([`Rfc822] is returned). *)
-
   val body: t
-  (** Non-extensible form of [`Body_structure]. *)
+  (** Non-extensible form of {!bodystructure}. *)
 
-  val body_section: ?peek:bool -> ?partial:(int * int) -> section -> t
+  val body_section: ?peek:bool -> ?section:section -> unit -> t
   (** The text of a particular body section.  The [peek] flag is an alternate
-      form that does not implicitly set the [Seen] {!flag}. *)
+      form that does not implicitly set the {!Seen} {!flag}. *)
 
   val bodystructure: t
-  (** The MIME body structure of the message.  This is computed by the server
-      by parsing the MIME header fields in the [RFC-2822] header and MIME
-      headers. *)
+  (** The MIME body structure of the message. *)
 
   val uid: t
   (** The unique identifier for the message. *)
@@ -236,21 +239,26 @@ module Fetch : sig
   (** Equivalent to [[flags; internaldate; rfc822_size; envelope; body]]. *)
 
   val x_gm_msgid: t
+  (** Gmail message ID *)
+
   val x_gm_thrid: t
+  (** Gmail thread ID *)
+
   val x_gm_labels: t
+  (** Gmail labels *)
 
   type response =
     {
       flags: Flag.flag list option;
       envelope: envelope option;
       internaldate: (date * time) option;
-      rfc822: string option;
-      rfc822_header: string option;
-      rfc822_text: string option;
+      (* rfc822: string option; *)
+      (* rfc822_header: string option; *)
+      (* rfc822_text: string option; *)
       rfc822_size: int option;
       body: MIME.mime option;
       bodystructure: MIME.mime option;
-      body_section: (section * int option * string option) option;
+      body_section: (section * string option) list;
       uid: uid option;
       modseq: modseq option;
       x_gm_msgid: modseq option;
@@ -260,7 +268,7 @@ module Fetch : sig
 end
 
 module MbxFlag : sig
-  type mbx_flag =
+  type t =
     | Noselect
     | Marked
     | Unmarked
@@ -280,20 +288,26 @@ end
 (** {3 Mailbox status} *)
 
 module Status : sig
+  type t
   (** Mailbox attibutes that can be requested with the {!status} command. *)
-  type mbx_att_request =
-    | MESSAGES
-    (** The number of messages in the mailbox. *)
-    | RECENT
-    (** The number of messages with the [`Recent] {!flag} set. *)
-    | UIDNEXT
-    (** The next unique identifier value of the mailbox. *)
-    | UIDVALIDITY
-    (** The unique identifier validity value of the mailbox. *)
-    | UNSEEN
-    (** The number of messages which do not have the [`Seen] {!flag} set. *)
-    | HIGHESTMODSEQ [@@deriving sexp]
-    (** TODO *)
+
+  val messages: t
+  (** The number of messages in the mailbox. *)
+
+  val recent: t
+  (** The number of messages with the [Recent] {!flag} set. *)
+
+  val uidnext: t
+  (** The next unique identifier value of the mailbox. *)
+
+  val uidvalidity: t
+  (** The unique identifier validity value of the mailbox. *)
+
+  val unseen: t
+  (** The number of messages which do not have the [Seen] {!flag} set. *)
+
+  val highestmodseq: t
+  (** TODO *)
 
   (** Mailbox status items returned by {!status} command. *)
   type response =
@@ -504,11 +518,11 @@ val noop: t -> unit Lwt.t
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity. *)
 
-val list: t -> ?ref:string -> string -> (MbxFlag.mbx_flag list * char option * string) list Lwt.t
+val list: t -> ?ref:string -> string -> (MbxFlag.t list * char option * string) list Lwt.t
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 
-val status: t -> string -> Status.mbx_att_request list -> Status.response Lwt.t
+val status: t -> string -> Status.t list -> Status.response Lwt.t
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
 val copy: t -> seq list -> string -> unit Lwt.t
