@@ -2006,10 +2006,10 @@ let uidvalidity {uidvalidity; _} =
 let highestmodseq {highestmodseq; _} =
   highestmodseq
 
-let unconsumed_to_string {A.buffer; off; len} =
+let unconsumed_to_string {A.buf; off; len} =
   let b = Bytes.create len in
   for i = 0 to len - 1 do
-    Bytes.set b i (Bigarray.Array1.get buffer (off + i))
+    Bytes.set b i (Bigarray.Array1.get buf (off + i))
   done;
   Bytes.unsafe_to_string b
 
@@ -2388,7 +2388,7 @@ let connect server ?(port = 993) username password ?read_only mailbox =
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
   let imap =
-    create_connection sock {A.buffer = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
+    create_connection sock {A.buf = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
   in
   recv imap >>= function
   | R.Untagged _ ->
