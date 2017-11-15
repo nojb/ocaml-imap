@@ -7,7 +7,7 @@ bug-reports: "https://www.github.com/nojb/ocaml-imap/issues"
 license: "MIT"
 depends: [
   "jbuilder" {build}
-  "base64"
+  "base64" {>= "2.0.0"}
   "uutf"
   "angstrom"
   "sexplib"
