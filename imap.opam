@@ -6,14 +6,15 @@ dev-repo: "https://www.github.com/nojb/ocaml-imap.git"
 bug-reports: "https://www.github.com/nojb/ocaml-imap/issues"
 license: "MIT"
 depends: [
-  "jbuilder" {build}
+  "jbuilder" {build & >="1.0+beta12"}
   "base64" {>= "2.0.0"}
   "uutf"
   "angstrom"
   "sexplib"
   "ppx_sexp_conv" {build}
   "lwt"
-  "lwt_ssl"
+  "tls"
+  "ptime"
 ]
 build: [
   ["jbuilder" "build" "-p" name "-j" jobs]
