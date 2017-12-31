@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(library
+ ((name imap_cmdliner)
+  (public_name imap.cmdliner)
+  (libraries (imap cmdliner))))
