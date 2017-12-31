@@ -11,3 +11,5 @@ setup.log
 *.o
 *.lib
 .gh-pages
+_opam
+.*.swp
