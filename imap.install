@@ -10,9 +10,15 @@ lib: [
   "_build/install/default/lib/imap/imap.cmxa"
   "_build/install/default/lib/imap/imap.a"
   "_build/install/default/lib/imap/imap.cmxs"
-]
-bin: [
-  "_build/install/default/bin/mlsync" {"mlsync"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmi" {"cmdliner/imap_cmdliner.cmi"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmx" {"cmdliner/imap_cmdliner.cmx"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmt" {"cmdliner/imap_cmdliner.cmt"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmti" {"cmdliner/imap_cmdliner.cmti"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.mli" {"cmdliner/imap_cmdliner.mli"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cma" {"cmdliner/imap_cmdliner.cma"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmxa" {"cmdliner/imap_cmdliner.cmxa"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.a" {"cmdliner/imap_cmdliner.a"}
+  "_build/install/default/lib/imap/cmdliner/imap_cmdliner.cmxs" {"cmdliner/imap_cmdliner.cmxs"}
 ]
 doc: [
   "_build/install/default/doc/imap/README.md"

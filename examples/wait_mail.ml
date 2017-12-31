@@ -16,9 +16,10 @@
     server which can be quite instructive. *)
 
 open Lwt.Infix
+module C = Imap_cmdliner
 
-let wait_mail server ?port username password mailbox =
-  Imap.connect server ?port username password ~read_only:true mailbox >>= fun imap ->
+let wait_mail opts =
+  C.connect opts >>= fun imap ->
   let rec loop () =
     let uidnext =
       match Imap.uidnext imap with
@@ -40,37 +41,17 @@ let wait_mail server ?port username password mailbox =
   in
   loop ()
 
-let wait_mail server port username password mailbox =
-  Lwt_main.run (wait_mail server ?port username password mailbox)
+let wait_mail opts =
+  Lwt_main.run (wait_mail opts)
 
 open Cmdliner
-
-let server =
-  let doc = Arg.info ~docv:"SERVER" ~doc:"Server hostname" [] in
-  Arg.(required & pos 0 (some string) None & doc)
-
-let port =
-  let doc = Arg.info ~docv:"PORT" ~doc:"Server port" ["port"; "p"] in
-  Arg.(value & opt (some int) None & doc)
-
-let username =
-  let doc = Arg.info ~docv:"USERNAME" ~doc:"Username" [] in
-  Arg.(required & pos 1 (some string) None & doc)
-
-let password =
-  let doc = Arg.info ~docv:"PASSWORD" ~doc:"Password" [] in
-  Arg.(required & pos 2 (some string) None & doc)
-
-let mailbox =
-  let doc = Arg.info ~docv:"MAILBOX" ~doc:"Mailbox to watch" [] in
-  Arg.(required & pos 3 (some string) None & doc)
 
 (* let debug = *)
 (*   let doc = Arg.info ~doc:"Show debug info" ["debug"; "d"] in *)
 (*   Arg.(value & flag doc) *)
 
 let main =
-  Term.(pure wait_mail $ server $ port $ username $ password $ mailbox),
+  Term.(pure wait_mail $ C.client),
   Term.info "wait_mail"
 
 let () =
