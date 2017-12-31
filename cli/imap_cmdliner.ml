@@ -33,7 +33,8 @@ type args = {
   mailbox: string;
 }
 
-let opts server port username password tls mailbox =
+let opts server port username password no_tls mailbox =
+  let tls = not no_tls in
   { server; port; username; password; tls; mailbox}
 
 let server =
@@ -52,16 +53,16 @@ let password =
   let doc = Arg.info ~docv:"PASSWORD" ~doc:"Password" [] in
   Arg.(required & pos 2 (some string) None & doc)
 
-let tls =
-  let doc = "Connect via TLS" in
-  Arg.(value & flag & info ["tls"] ~doc)
+let no_tls =
+  let doc = "Connect via plain-text and disable TLS (use with care)" in
+  Arg.(value & flag & info ["no-tls"] ~doc)
 
 let mailbox =
   let doc = Arg.info ~docv:"MAILBOX" ~doc:"Mailbox to connect to" [] in
   Arg.(required & pos 3 (some string) None & doc)
 
 let client =
-  Term.(const opts $ server $ port $ username $ password $ tls $ mailbox)
+  Term.(const opts $ server $ port $ username $ password $ no_tls $ mailbox)
 
 let connect ?read_only {server; port; username; password; tls; mailbox} =
   Imap.connect server ~tls ?port username password ?read_only mailbox

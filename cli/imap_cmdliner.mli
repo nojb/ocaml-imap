@@ -51,6 +51,6 @@ val server : string Cmdliner.Term.t
 val port : int option Cmdliner.Term.t
 val username : string Cmdliner.Term.t
 val password : string Cmdliner.Term.t
-val tls : bool Cmdliner.Term.t
+val no_tls : bool Cmdliner.Term.t
 val mailbox : string Cmdliner.Term.t
 
