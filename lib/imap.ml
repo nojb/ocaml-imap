@@ -2373,10 +2373,17 @@ let _enable imap caps =
   let format = E.(str "ENABLE" ++ list capability caps) in
   run imap format () (fun _ r _ -> r)
 
-let connect host ?(port = 993) username password ?read_only mailbox =
-  X509_lwt.authenticator `No_authentication_I'M_STUPID >>= fun authenticator ->
-  let config = Tls.Config.client ~authenticator () in
-  Tls_lwt.connect_ext config (host, port) >>= fun (ic,oc) ->
+let connect host ?(tls=true) ?(port = 993) username password ?read_only mailbox =
+  begin match tls with
+  | true ->
+    X509_lwt.authenticator `No_authentication_I'M_STUPID >>= fun authenticator ->
+    let config = Tls.Config.client ~authenticator () in
+    Tls_lwt.connect_ext config (host, port)
+  | false ->
+    Lwt_unix.gethostbyname host >>= fun he ->
+    let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
+    Lwt_io.open_connection addr
+  end >>= fun (ic,oc) ->
   let imap =
     create_connection (ic,oc) {A.buf = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
   in
