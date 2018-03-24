@@ -2016,7 +2016,7 @@ let unconsumed_to_string {A.buf; off; len} =
 
 let parse unconsumed p =
   let input = `String (unconsumed_to_string unconsumed) in
-  A.parse ~input p
+  A.feed (A.parse p) input
 
 let recv imap =
   let rec loop = function
