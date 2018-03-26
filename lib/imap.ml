@@ -95,6 +95,7 @@ module Mutf7 = struct
     loop d e
 
   let replace s ch1 ch2 =
+    let s = Bytes.unsafe_of_string s in
     for i = 0 to Bytes.length s - 1 do
       if Bytes.get s i = ch1 then Bytes.set s i ch2
     done
@@ -2015,7 +2016,7 @@ let unconsumed_to_string {A.buf; off; len} =
 
 let parse unconsumed p =
   let input = `String (unconsumed_to_string unconsumed) in
-  A.parse ~input p
+  A.feed (A.parse p) input
 
 let recv imap =
   let rec loop = function
