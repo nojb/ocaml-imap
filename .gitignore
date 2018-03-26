@@ -1,13 +1,4 @@
 _build/
-setup.data
-setup.log
 .merlin
 *.install
-*.docdir
-*.native
-*.byte
-*.cm*
-*.a
-*.o
-*.lib
 .gh-pages
