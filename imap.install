@@ -6,13 +6,11 @@ lib: [
   "_build/install/default/lib/imap/imap.cmt"
   "_build/install/default/lib/imap/imap.cmti"
   "_build/install/default/lib/imap/imap.mli"
+  "_build/install/default/lib/imap/imap.ml"
   "_build/install/default/lib/imap/imap.cma"
   "_build/install/default/lib/imap/imap.cmxa"
   "_build/install/default/lib/imap/imap.a"
   "_build/install/default/lib/imap/imap.cmxs"
-]
-bin: [
-  "_build/install/default/bin/mlsync" {"mlsync"}
 ]
 doc: [
   "_build/install/default/doc/imap/README.md"
