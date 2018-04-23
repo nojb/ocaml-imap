@@ -10,8 +10,6 @@ depends: [
   "base64" {>= "2.0.0"}
   "uutf"
   "angstrom"
-  "sexplib"
-  "ppx_sexp_conv" {build}
   "lwt"
   "lwt_ssl"
 ]

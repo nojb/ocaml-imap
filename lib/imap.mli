@@ -44,6 +44,8 @@
 
 (** {1 Common types for IMAP} *)
 
+module Flag = Flag
+
 type modseq = private int64
 (** Modification sequence numbers. *)
 
@@ -58,7 +60,7 @@ type date =
     day: int;
     month: int;
     year: int;
-  } [@@deriving sexp]
+  }
 
 type time =
   {
@@ -66,7 +68,7 @@ type time =
     minutes: int;
     seconds: int;
     zone: int;
-  } [@@deriving sexp]
+  }
 
 (** {3 Envelope information}
 
@@ -79,7 +81,7 @@ type address =
     ad_adl: string;
     ad_mailbox: string;
     ad_host: string;
-  } [@@deriving sexp]
+  }
 
 type envelope =
   {
@@ -93,7 +95,7 @@ type envelope =
     env_bcc: address list;
     env_in_reply_to: string;
     env_message_id: string;
-  } [@@deriving sexp]
+  }
 
 module MIME : sig
   (** {3 MIME message structure}
@@ -116,7 +118,7 @@ module MIME : sig
       fld_desc: string option;                 (* Optional content description *)
       fld_enc: string;                         (* Content transfer encoding *)
       fld_octets: int;           (* Size in bytes *)
-    } [@@deriving sexp]
+    }
 
   (** MIME content types
 
@@ -148,20 +150,7 @@ module MIME : sig
     | Text of string * fields * int
     | Message of fields * envelope * mime * int
     | Basic of string * string * fields
-    | Multipart of mime list * string [@@deriving sexp]
-end
-
-module Flag : sig
-  type flag =
-    | Answered
-    | Flagged
-    | Deleted
-    | Seen
-    | Draft
-    | Keyword of string
-    | Extension of string
-    | Recent
-    | Any [@@deriving sexp]
+    | Multipart of mime list * string
 end
 
 module Fetch : sig
@@ -249,7 +238,7 @@ module Fetch : sig
 
   type response =
     {
-      flags: Flag.flag list option;
+      flags: Flag.t list option;
       envelope: envelope option;
       internaldate: (date * time) option;
       (* rfc822: string option; *)
@@ -264,7 +253,7 @@ module Fetch : sig
       x_gm_msgid: modseq option;
       x_gm_thrid: modseq option;
       x_gm_labels: string list option;
-    } [@@deriving sexp]
+    }
 end
 
 module MbxFlag : sig
@@ -282,7 +271,7 @@ module MbxFlag : sig
     | Junk
     | Sent
     | Trash
-    | Extension of string [@@deriving sexp]
+    | Extension of string
 end
 
 (** {3 Mailbox status} *)
@@ -318,13 +307,13 @@ module Status : sig
       uidvalidity: uid option;
       unseen: int option;
       highestmodseq: modseq option;
-    } [@@deriving sexp]
+    }
 end
 
 (** Message search *)
 
 module Search : sig
-  type key [@@deriving sexp]
+  type key
 
   val all: key
   (** All messages in the mailbox. *)
@@ -547,7 +536,7 @@ val uid_search: t -> Search.key -> (uid list * modseq option) Lwt.t
 val select: t -> ?read_only:bool -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
 
-val append: t -> string -> ?flags:Flag.flag list -> string -> unit Lwt.t
+val append: t -> string -> ?flags:Flag.t list -> string -> unit Lwt.t
 (** [append imap mbox flags id data] appends [data] as a new message to the end
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
@@ -568,7 +557,7 @@ type store_mode =
   | `Set ]
 
 type store_kind =
-  [ `Flags of Flag.flag list
+  [ `Flags of Flag.t list
   | `Labels of string list ]
 
 val store: t -> ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> unit Lwt.t
