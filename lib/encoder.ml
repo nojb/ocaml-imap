@@ -94,48 +94,8 @@ let eset s =
   in
   list ~sep:',' f s
 
-let string_of_capability = function
-  | Capability.IMAP4rev1 -> "IMAP4rev1"
-  | ACL -> "ACL"
-  | BINARY -> "BINARY"
-  | CATENATE -> "CATENATE"
-  | CHILDREN -> "CHILDREN"
-  | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
-  | CONDSTORE -> "CONDSTORE"
-  | ESEARCH -> "ESEARCH"
-  | ENABLE -> "ENABLE"
-  | IDLE -> "IDLE"
-  | ID -> "ID"
-  | LITERALPLUS -> "LITERAL+"
-  | LITERALMINUS -> "LITERAL-"
-  | UTF8_ACCEPT -> "UTF8=ACCEPT"
-  | UTF8_ONLY -> "UTF8=ONLY"
-  | MULTIAPPEND -> "MULTIAPPEND"
-  | NAMESPACE -> "NAMESPACE"
-  | QRESYNC -> "QRESYNC"
-  | QUOTE -> "QUOTE"
-  | SORT -> "SORT"
-  | STARTTLS -> "STARTTLS"
-  | UIDPLUS -> "UIDPLUS"
-  | UNSELECT -> "UNSELECT"
-  | XLIST -> "XLIST"
-  | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
-  | AUTH_LOGIN -> "AUTH=LOGIN"
-  | AUTH_PLAIN -> "AUTH=PLAIN"
-  | XOAUTH2 -> "XOAUTH2"
-  | X_GM_EXT_1 -> "X-GM-EXT-1"
-  | OTHER s -> s
-
 let capability s =
-  raw (string_of_capability s)
+  raw (Capability.to_string s)
 
-let flag = function
-  | Flag.Answered -> raw "\\Answered"
-  | Flagged -> raw "\\Flagged"
-  | Deleted -> raw "\\Deleted"
-  | Seen -> raw "\\Seen"
-  | Draft -> raw "\\Draft"
-  | Keyword s -> raw s
-  | Extension s -> raw ("\\" ^ s)
-  | Recent -> raw "\\Recent"
-  | Any -> raw "\\*"
+let flag s =
+  raw (Flag.to_string s)
