@@ -244,6 +244,10 @@ let run imap format res process =
         | res ->
             loop res
         end
+    | Tagged (_, OK (Some (CAPABILITY caps), _)) ->
+        imap.capabilities <- caps;
+        imap.tag <- imap.tag + 1;
+        Lwt.return res
     | Tagged _ ->
         imap.tag <- imap.tag + 1;
         Lwt.return res
