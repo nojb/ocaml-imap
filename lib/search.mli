@@ -20,14 +20,10 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+open Sexplib.Std
+open Common
+
 (** Message search *)
-
-type modseq = int64 [@@deriving sexp]
-
-type uid = int32 [@@deriving sexp]
-
-type seq = int32 [@@deriving sexp]
-
 type key = Encoder.t [@@deriving sexp]
 
 val all: key

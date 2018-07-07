@@ -21,12 +21,7 @@
    SOFTWARE. *)
 
 open Sexplib.Std
-
-type modseq = int64 [@@deriving sexp]
-
-type uid = int32 [@@deriving sexp]
-
-type seq = int32 [@@deriving sexp]
+open Common
 
 open Encoder
 

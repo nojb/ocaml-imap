@@ -21,6 +21,7 @@
    SOFTWARE. *)
 
 open Sexplib.Std
+open Common
 
 module MailboxAttribute = struct
   type t =
@@ -49,12 +50,6 @@ module Request = struct
 
   let highestmodseq = raw "HIGHESTMODSEQ"
 end
-
-type modseq = int64 [@@deriving sexp]
-
-type uid = int32 [@@deriving sexp]
-
-type seq = int32 [@@deriving sexp]
 
 module Response = struct
   type t =

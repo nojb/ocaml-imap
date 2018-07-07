@@ -1073,7 +1073,7 @@ let msg_att_static =
       (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
       (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
       "RFC822.SIZE", sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n));
-      (* "RFC822", sp *> nstring >>| (fun s -> RFC822 s); *)
+      "RFC822", sp *> nstring' >>| (fun s -> RFC822 s);
       "BODYSTRUCTURE", sp *> body >>| (fun b -> BODYSTRUCTURE b);
       "BODY", choice [sp *> body >>| (fun b -> BODY b); section];
       "UID", sp *> uniqueid >>| (fun n -> UID n);
