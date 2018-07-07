@@ -21,6 +21,7 @@
    SOFTWARE. *)
 
 open Sexplib.Std
+open Common
 
 module Date = struct
   type t =
@@ -100,12 +101,6 @@ module Request = struct
   let x_gm_labels = raw "X-GM-LABELS"
 end
 
-type modseq = int64 [@@deriving sexp]
-
-type uid = int32 [@@deriving sexp]
-
-type seq = int32 [@@deriving sexp]
-
 module Response = struct
   type t =
     {
@@ -116,8 +111,8 @@ module Response = struct
       body: MIME.Response.t option;
       bodystructure: MIME.Response.t option;
       body_section: (MIME.Section.t * string) list;
-      uid: uid option;
-      modseq: modseq option;
+      uid: uid;
+      modseq: modseq;
       x_gm_msgid: modseq option;
       x_gm_thrid: modseq option;
       x_gm_labels: string list option;
@@ -132,8 +127,8 @@ module Response = struct
       body = None;
       bodystructure = None;
       body_section = [];
-      uid = None;
-      modseq = None;
+      uid = 0l;
+      modseq = 0L;
       x_gm_msgid = None;
       x_gm_thrid = None;
       x_gm_labels = None;

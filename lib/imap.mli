@@ -47,7 +47,7 @@
 type modseq = private int64
 (** Modification sequence numbers. *)
 
-type uid = int32 (* FIXME *)
+type uid = private int32
 (** Message unique identification numbers. *)
 
 type seq = private int32

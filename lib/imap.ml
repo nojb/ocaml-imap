@@ -22,14 +22,9 @@
 
 open Sexplib.Std
 
+include Common
+
 module Uint32 = Uint32
-
-type modseq = int64 [@@deriving sexp]
-
-type uid = int32 [@@deriving sexp]
-
-type seq = int32 [@@deriving sexp]
-
 module MIME = MIME
 module Envelope = Envelope
 module Flag = Flag
@@ -428,8 +423,8 @@ let fetch_gen cmd imap ?changed_since nums att =
           | BODYSTRUCTURE x -> {res with bodystructure = Some x}
           | BODY_SECTION (sec, None) -> {res with body_section = (sec, "") :: res.body_section}
           | BODY_SECTION (sec, Some s) -> {res with body_section = (sec, s) :: res.body_section}
-          | UID n -> {res with uid = Some n}
-          | MODSEQ n -> {res with modseq = Some n}
+          | UID uid -> {res with uid}
+          | MODSEQ modseq -> {res with modseq}
           | X_GM_MSGID n -> {res with x_gm_msgid = Some n}
           | X_GM_THRID n -> {res with x_gm_thrid = Some n}
           | X_GM_LABELS n -> {res with x_gm_labels = Some n}
