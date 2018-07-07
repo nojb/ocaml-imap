@@ -22,12 +22,20 @@
 
 open Sexplib.Std
 
-(** {3 Mailbox status} *)
+module MailboxAttribute = struct
+  type t =
+    | MESSAGES of int
+    | RECENT of int
+    | UIDNEXT of int32
+    | UIDVALIDITY of int32
+    | UNSEEN of int
+    | HIGHESTMODSEQ of int64 [@@deriving sexp]
+end
 
 module Request = struct
   open Encoder
 
-  type t = rope
+  type nonrec t = t
 
   let messages = raw "MESSAGES"
 

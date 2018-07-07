@@ -22,49 +22,67 @@
 
 open Sexplib.Std
 
+module Date = struct
+  type t =
+    {
+      day: int;
+      month: int;
+      year: int;
+    } [@@deriving sexp]
+
+  let to_string {day; month; year} =
+    let months =
+      [|
+        "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun";
+        "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec";
+      |]
+    in
+    Printf.sprintf "%d-%s-%4d" day months.(month) year
+
+  let encode d =
+    Encoder.raw (to_string d)
+end
+
+module Time = struct
+  type t =
+    {
+      hours: int;
+      minutes: int;
+      seconds: int;
+      zone: int;
+    } [@@deriving sexp]
+end
+
+module MessageAttribute = struct
+  type t =
+    | FLAGS of Flag.t list
+    | ENVELOPE of Envelope.t
+    | INTERNALDATE of Date.t * Time.t
+    (* | RFC822 of string option *)
+    (* | RFC822_HEADER of string option *)
+    (* | RFC822_TEXT of string option *)
+    | RFC822_SIZE of int
+    | BODY of MIME.t
+    | BODYSTRUCTURE of MIME.t
+    | BODY_SECTION of MIME.Section.t * string option
+    | UID of int32
+    | MODSEQ of int64
+    | X_GM_MSGID of int64
+    | X_GM_THRID of int64
+    | X_GM_LABELS of string list [@@deriving sexp]
+end
+
 module Request = struct
-  type section_msgtext = Response.section_msgtext =
-    | HEADER
-    | HEADER_FIELDS of string list
-    | HEADER_FIELDS_NOT of string list
-    | TEXT
-    | MIME [@@deriving sexp]
-
-  type section =
-    int list * section_msgtext option [@@deriving sexp]
-
   open Encoder
 
-  type t = rope
-
-  let section_msgtext = function
-    | HEADER -> raw "HEADER"
-    | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l
-    | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l
-    | TEXT -> raw "TEXT"
-    | MIME -> raw "MIME"
-
-  let section_enc (nl, sec) =
-    let sec = match sec with None -> empty | Some sec -> section_msgtext sec in
-    match nl with
-    | [] ->
-        sec
-    | _ :: _ ->
-        list ~sep:'.' int nl & raw "." & sec
-
-  let header ?(part = []) () = part, Some HEADER
-  let header_fields ?(part = []) l = part, Some (HEADER_FIELDS l)
-  let header_fields_not ?(part = []) l = part, Some (HEADER_FIELDS_NOT l)
-  let text ?(part = []) () = part, Some TEXT
-  let part ~part () = part, None
-  let mime ~part () = part, Some MIME
+  type nonrec t = t
 
   let envelope = raw "ENVELOPE"
   let internaldate = raw "INTERNALDATE"
   let rfc822_size = raw "RFC822.SIZE"
   let body = raw "BODY"
   let body_section ?(peek = true) ?section:(sec = [], None) () =
-    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & section_enc sec & raw "]"
+    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Section.encode sec & raw "]"
   let bodystructure = raw "BODYSTRUCTURE"
   let uid = raw "UID"
   let flags = raw "FLAGS"
@@ -89,11 +107,11 @@ module Response = struct
     {
       flags: Flag.t list option;
       envelope: Envelope.t option;
-      internaldate: (Response.Date.t * Response.Time.t) option;
+      internaldate: (Date.t * Time.t) option;
       rfc822_size: int option;
       body: MIME.t option;
       bodystructure: MIME.t option;
-      body_section: (Response.section * string option) list;
+      body_section: (MIME.Section.t * string option) list;
       uid: uid option;
       modseq: modseq option;
       x_gm_msgid: modseq option;

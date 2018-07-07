@@ -43,3 +43,6 @@ let to_string = function
   | Extension s -> "\\" ^ s
   | Recent -> "\\Recent"
   | Any -> "\\*"
+
+let encode f =
+  Encoder.raw (to_string f)

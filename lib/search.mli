@@ -28,7 +28,7 @@ type uid = int32 [@@deriving sexp]
 
 type seq = int32 [@@deriving sexp]
 
-type key = Encoder.rope [@@deriving sexp]
+type key = Encoder.t [@@deriving sexp]
 
 val all: key
 (** All messages in the mailbox. *)
@@ -43,7 +43,7 @@ val bcc: string -> key
 (** Messages that contain the specified string in the envelope structure's
     "BCC" field. *)
 
-val before: Response.Date.t -> key
+val before: Fetch.Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is earlier
     than the specified date. *)
 
@@ -86,7 +86,7 @@ val not: key -> key
 val old: key
 (** Messages that do not have the [Recent] {!flag} set. *)
 
-val on: Response.Date.t -> key
+val on: Fetch.Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is within
     the specified date.  *)
 
@@ -99,19 +99,19 @@ val recent: key
 val seen: key
 (** Messages that have the [Seen] {!flag} set. *)
 
-val sent_before: Response.Date.t -> key
+val sent_before: Fetch.Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is earlier
     than the specified date. *)
 
-val sent_on: Response.Date.t -> key
+val sent_on: Fetch.Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is within
     the specified date. *)
 
-val sent_since: Response.Date.t -> key
+val sent_since: Fetch.Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is within
     or later than the specified date.  *)
 
-val since: Response.Date.t -> key
+val since: Fetch.Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is within or
     later than the specified date.  *)
 

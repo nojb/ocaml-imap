@@ -180,7 +180,7 @@ let rec send imap r process res =
 
 let send imap r process res =
   begin if imap.debug then
-    Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_rope r))
+    Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_t r))
   else
     Lwt.return_unit end >>= fun () ->
   send imap r process res >>= fun res ->
@@ -207,7 +207,7 @@ let wrap_process f imap res u =
       imap.messages <- Some n
   | STATUS (_, items) ->
       List.iter (function
-          | Response.MESSAGES n ->
+          | Status.MailboxAttribute.MESSAGES n ->
               imap.messages <- Some n
           | RECENT n ->
               imap.recent <- Some n
@@ -328,7 +328,7 @@ let status imap m att =
   let process _ res = function
     | Response.Untagged.STATUS (mbox, items) when m = mbox ->
         let aux res = function
-          | (MESSAGES n : Response.mbx_att) -> {res with Status.Response.messages = Some n}
+          | (MESSAGES n : Status.MailboxAttribute.t) -> {res with Status.Response.messages = Some n}
           | RECENT n -> {res with recent = Some n}
           | UIDNEXT n -> {res with uidnext = Some n}
           | UIDVALIDITY n -> {res with uidvalidity = Some n}
@@ -387,7 +387,7 @@ let select imap ?(read_only = false) m =
   run imap format () (fun _ r _ -> r)
 
 let append imap m ?(flags = []) data =
-  let format = Encoder.(raw "APPEND" ++ mutf7 m ++ p (list flag flags) ++ literal data) in
+  let format = Encoder.(raw "APPEND" ++ mutf7 m ++ p (list Flag.encode flags) ++ literal data) in
   let process _ () _ = () in
   run imap format () process
 
@@ -413,7 +413,7 @@ let fetch_gen cmd imap ?changed_since nums att =
   let process _ () = function
     | Response.Untagged.FETCH (num, items) ->
         let aux res = function
-          | (Response.FLAGS l : Response.msg_att) -> {res with Fetch.Response.flags = Some l}
+          | (FLAGS l : Fetch.MessageAttribute.t) -> {res with Fetch.Response.flags = Some l}
           | ENVELOPE e -> {res with envelope = Some e}
           | INTERNALDATE (d, t) -> {res with internaldate = Some (d, t)}
           (* | RFC822 (Some s) -> {res with rfc822 = Some s} *)
@@ -467,7 +467,7 @@ let store_gen cmd imap ?unchanged_since mode nums att =
   in
   let att =
     match att with
-    | `Flags flags -> list flag flags
+    | `Flags flags -> list Flag.encode flags
     | `Labels labels -> list label labels
   in
   let unchanged_since =
@@ -485,7 +485,7 @@ let uid_store =
   store_gen "UID STORE"
 
 let _enable imap caps =
-  let format = Encoder.(str "ENABLE" ++ list capability caps) in
+  let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in
   run imap format () (fun _ r _ -> r)
 
 let () =

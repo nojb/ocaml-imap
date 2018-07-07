@@ -86,6 +86,9 @@ module Capability = struct
     | XOAUTH2 -> "XOAUTH2"
     | X_GM_EXT_1 -> "X-GM-EXT-1"
     | OTHER s -> s
+
+  let encode s =
+    Encoder.raw (to_string s)
 end
 
 module Code = struct
@@ -113,75 +116,12 @@ module Code = struct
     | USEATTR [@@deriving sexp]
 end
 
-module Date = struct
-  type t =
-    {
-      day: int;
-      month: int;
-      year: int;
-    } [@@deriving sexp]
-
-  let to_string {day; month; year} =
-    let months =
-      [|
-        "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun";
-        "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec";
-      |]
-    in
-    Printf.sprintf "%d-%s-%4d" day months.(month) year
-end
-
-module Time = struct
-  type t =
-    {
-      hours: int;
-      minutes: int;
-      seconds: int;
-      zone: int;
-    } [@@deriving sexp]
-end
-
 module State = struct
   type t =
     | OK of Code.t option * string
     | NO of Code.t option * string
     | BAD of Code.t option * string [@@deriving sexp]
 end
-
-type section_msgtext =
-  | HEADER
-  | HEADER_FIELDS of string list
-  | HEADER_FIELDS_NOT of string list
-  | TEXT
-  | MIME [@@deriving sexp]
-
-type section =
-  int list * section_msgtext option [@@deriving sexp]
-
-type msg_att =
-  | FLAGS of Flag.t list
-  | ENVELOPE of Envelope.t
-  | INTERNALDATE of Date.t * Time.t
-  (* | RFC822 of string option *)
-  (* | RFC822_HEADER of string option *)
-  (* | RFC822_TEXT of string option *)
-  | RFC822_SIZE of int
-  | BODY of MIME.t
-  | BODYSTRUCTURE of MIME.t
-  | BODY_SECTION of section * string option
-  | UID of int32
-  | MODSEQ of int64
-  | X_GM_MSGID of int64
-  | X_GM_THRID of int64
-  | X_GM_LABELS of string list [@@deriving sexp]
-
-type mbx_att =
-  | MESSAGES of int
-  | RECENT of int
-  | UIDNEXT of int32
-  | UIDVALIDITY of int32
-  | UNSEEN of int
-  | HIGHESTMODSEQ of int64 [@@deriving sexp]
 
 module Untagged = struct
   type t =
@@ -192,11 +132,11 @@ module Untagged = struct
     | LIST of MailboxFlag.t list * char option * string
     | LSUB of MailboxFlag.t list * char option * string
     | SEARCH of int32 list * int64 option
-    | STATUS of string * mbx_att list
+    | STATUS of string * Status.MailboxAttribute.t list
     | EXISTS of int
     | RECENT of int
     | EXPUNGE of int32
-    | FETCH of int32 * msg_att list
+    | FETCH of int32 * Fetch.MessageAttribute.t list
     | CAPABILITY of Capability.t list
     | VANISHED of Uint32.Set.t
     | VANISHED_EARLIER of Uint32.Set.t

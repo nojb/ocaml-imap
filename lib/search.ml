@@ -30,13 +30,13 @@ type seq = int32 [@@deriving sexp]
 
 open Encoder
 
-type key = rope [@@deriving sexp]
+type key = t [@@deriving sexp]
 
 let all = raw "ALL"
 let seq s = eset (Uint32.Set.of_list s)
 let answered = raw "ANSWERED"
 let bcc s = raw "BCC" ++ str s
-let before t = raw "BEFORE" ++ date t
+let before t = raw "BEFORE" ++ Fetch.Date.encode t
 let body s = raw "BODY" ++ str s
 let cc s = raw "CC" ++ str s
 let deleted = raw "DELETED"
@@ -49,14 +49,14 @@ let larger n = raw "LARGER" ++ int n
 let new_ = raw "NEW"
 let not k = raw "NOT" ++ p k
 let old = raw "OLD"
-let on t = raw "ON" ++ date t
+let on t = raw "ON" ++ Fetch.Date.encode t
 let (||) k1 k2 = raw "OR" ++ p k1 ++ p k2
 let recent = raw "RECENT"
 let seen = raw "SEEN"
-let sent_before t = raw "SENTBEFORE" ++ date t
-let sent_on t = raw "SENTON" ++ date t
-let sent_since t = raw "SENTSINCE" ++ date t
-let since t = raw "SINCE" ++ date t
+let sent_before t = raw "SENTBEFORE" ++ Fetch.Date.encode t
+let sent_on t = raw "SENTON" ++ Fetch.Date.encode t
+let sent_since t = raw "SENTSINCE" ++ Fetch.Date.encode t
+let since t = raw "SINCE" ++ Fetch.Date.encode t
 let smaller n = raw "SMALLER" ++ int n
 let subject s = raw "SUBJECT" ++ str s
 let text s = raw "TEXT" ++ str s

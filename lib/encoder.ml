@@ -22,8 +22,8 @@
 
 open Sexplib.Std
 
-type rope =
-  | Cat of rope * rope
+type t =
+  | Cat of t * t
   | Literal of string
   | Raw of string [@@deriving sexp]
 
@@ -99,9 +99,6 @@ let list ?(sep = ' ') f l =
 let plist ?sep f l =
   Cat (Raw "(", Cat (list ?sep f l, Raw ")"))
 
-let date d =
-  raw (Response.Date.to_string d)
-
 let eset s =
   let elt = function 0l -> "*" | n -> Printf.sprintf "%lu" n in
   let f = function
@@ -109,9 +106,3 @@ let eset s =
     | (lo, hi) -> raw (Printf.sprintf "%s:%s" (elt lo) (elt hi))
   in
   list ~sep:',' f s
-
-let capability s =
-  raw (Response.Capability.to_string s)
-
-let flag f =
-  raw (Flag.to_string f)

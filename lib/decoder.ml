@@ -565,10 +565,11 @@ let mod_sequence_valzer =
   (Int64.of_string <$> take_while1 is_digit) <?> "mod-sequence-valzer"
 
 let status_att =
+  let open Status.MailboxAttribute in
   let cases =
     [
-      "MESSAGES", sp *> number >>| (fun n -> (MESSAGES (Int32.to_int n) : mbx_att));
-      "RECENT", sp *> number >>| (fun n -> (RECENT (Int32.to_int n) : mbx_att));
+      "MESSAGES", sp *> number >>| (fun n -> MESSAGES (Int32.to_int n));
+      "RECENT", sp *> number >>| (fun n -> RECENT (Int32.to_int n));
       "UIDNEXT", sp *> number >>| (fun n -> UIDNEXT n);
       "UIDVALIDITY", sp *> number >>| (fun n -> UIDVALIDITY n);
       "UNSEEN", sp *> number >>| (fun n -> UNSEEN (Int32.to_int n));
@@ -935,8 +936,8 @@ let zone =
     ] <?> "zone"
 
 let date_time =
-  let open Response.Date in
-  let open Response.Time in
+  let open Fetch.Date in
+  let open Fetch.Time in
   let aux =
     date_day_fixed >>= fun day ->
     char '-' *> date_month >>= fun month ->
@@ -974,6 +975,7 @@ let header_list =
   psep_by1 sp header_fld_name <?> "header-list"
 
 let section_msgtext =
+  let open MIME.Section in
   let cases =
     [
       "HEADER.FIELDS.NOT", sp *> header_list >>| (fun l -> HEADER_FIELDS_NOT l);
@@ -985,7 +987,7 @@ let section_msgtext =
   switch cases <?> "section-msgtext"
 
 let section_text =
-  choice [section_msgtext; switch ["MIME", return MIME]] <?> "section-text"
+  choice [section_msgtext; switch ["MIME", return MIME.Section.MIME]] <?> "section-text"
 
 let section_part =
   (List.map Int32.to_int <$> sep_by (char '.') nz_number) <?> "section-part"
@@ -1042,9 +1044,10 @@ let permsg_modsequence =
   mod_sequence_value <?> "permsg-modsequence"
 
 let msg_att_dynamic =
+  let open Fetch.MessageAttribute in
   let cases =
     [
-      "FLAGS", sp *> psep_by sp flag_fetch >>| (fun l -> (FLAGS l : msg_att));
+      "FLAGS", sp *> psep_by sp flag_fetch >>| (fun l -> FLAGS l);
       "MODSEQ", sp *> char '(' *> permsg_modsequence <* char ')' >>| (fun n -> MODSEQ n);
       "X-GM-LABELS", sp *> choice [psep_by sp astring; nil *> return []] >>| (fun l -> X_GM_LABELS l);
     ]
@@ -1052,6 +1055,7 @@ let msg_att_dynamic =
   switch cases <?> "msg-att-dynamic"
 
 let msg_att_static =
+  let open Fetch.MessageAttribute in
   let section =
     section >>= fun s -> sp *> nstring >>| fun x ->
     BODY_SECTION (s, x)
