@@ -37,7 +37,7 @@ module Date = struct
         "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec";
       |]
     in
-    Printf.sprintf "%d-%s-%4d" day months.(month) year
+    Printf.sprintf "%2d-%s-%4d" day months.(month) year
 
   let encode d =
     Encoder.raw (to_string d)
@@ -51,6 +51,10 @@ module Time = struct
       seconds: int;
       zone: int;
     } [@@deriving sexp]
+
+  let to_string {hours; minutes; seconds; zone} =
+    Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds
+      (if zone >= 0 then '+' else '-') (abs zone)
 end
 
 module MessageAttribute = struct
