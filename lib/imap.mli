@@ -57,7 +57,6 @@ module Envelope = Envelope
 module Flag = Flag
 module Fetch = Fetch
 module Status = Status
-module Response = Response
 module Search = Search
 
 (** {3 Connections} *)
