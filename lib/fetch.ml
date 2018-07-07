@@ -109,7 +109,7 @@ type seq = int32 [@@deriving sexp]
 module Response = struct
   type t =
     {
-      flags: Flag.t list option;
+      flags: Flag.t list;
       envelope: Envelope.t option;
       internaldate: (Date.t * Time.t) option;
       rfc822_size: int option;
@@ -125,7 +125,7 @@ module Response = struct
 
   let default =
     {
-      flags = None;
+      flags = [];
       envelope = None;
       internaldate = None;
       rfc822_size = None;
