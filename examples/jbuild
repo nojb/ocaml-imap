@@ -1,9 +1,6 @@
 (jbuild_version 1)
 
-(executables
- ((names (wait_mail minimutt))
-  (libraries (cmdliner imap))))
-
-(alias
- ((name examples)
-  (deps (wait_mail.exe minimutt.exe))))
+(executable
+ ((name wait_mail)
+  (public_name wait_mail)
+  (libraries (imap re))))
