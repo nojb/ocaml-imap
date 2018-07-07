@@ -696,12 +696,13 @@ let body_fld_octets =
   number <?> "body-fld-octets"
 
 let body_fields =
+  let open MIME.Response.Fields in
   body_fld_param >>= fun fld_params ->
   sp *> nstring >>= fun fld_id ->
   sp *> nstring >>= fun fld_desc ->
   sp *> imap_string >>= fun fld_enc ->
   sp *> body_fld_octets >>| Int32.to_int >>| fun fld_octets ->
-  {MIME.fld_params; fld_id; fld_desc; fld_enc; fld_octets}
+  {fld_params; fld_id; fld_desc; fld_enc; fld_octets}
 
 let body_fields =
   body_fields <?> "body-fields"
@@ -718,7 +719,7 @@ let body_fields =
 *)
 
 let body_extension body_extension =
-  let open MIME in
+  let open MIME.Response.BodyExtension in
   let nstring = nstring' >>| fun s -> String s in
   let number = number >>| fun n -> Number n in
   let list = psep_by1 sp body_extension >>| fun l -> List l in
@@ -759,20 +760,21 @@ let body_fld_loc =
   nstring <?> "body-fld-loc"
 
 let body_ext_gen =
+  let open MIME.Response.Extension in
   option None (sp *> some body_fld_dsp) >>= function
   | None ->
-      return {MIME.ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
+      return {ext_dsp = None; ext_lang = []; ext_loc = None; ext_ext = []}
   | Some ext_dsp ->
       option None (sp *> some body_fld_lang) >>= function
       | None ->
-          return {MIME.ext_dsp; ext_lang = []; ext_loc = None; ext_ext = []}
+          return {ext_dsp; ext_lang = []; ext_loc = None; ext_ext = []}
       | Some ext_lang ->
           option None (sp *> some body_fld_loc) >>= function
           | None ->
-              return {MIME.ext_dsp; ext_lang; ext_loc = None; ext_ext = []}
+              return {ext_dsp; ext_lang; ext_loc = None; ext_ext = []}
           | Some ext_loc ->
               many (sp *> body_extension) >>| fun ext_ext ->
-              {MIME.ext_dsp; ext_lang; ext_loc; ext_ext}
+              {ext_dsp; ext_lang; ext_loc; ext_ext}
 
 let body_ext_1part =
   pair (return ()) nstring body_ext_gen <?> "body-ext-1part" (* FIXME *)
@@ -824,36 +826,40 @@ let media_basic =
   pair sp imap_string media_subtype <?> "media-basic" (* FIXME *)
 
 let body_type_mpart body = (* TODO Return the extension data *)
+  let open MIME.Response in
   many1 body >>= fun bodies ->
   sp *> imap_string >>= fun media_subtype ->
   option None (sp *> some body_ext_mpart) >>| fun _ ->
-  MIME.Multipart (bodies, media_subtype)
+  Multipart (bodies, media_subtype)
 
 let body_type_mpart body =
   body_type_mpart body <?> "body-type-mpart"
 
 let body_type_basic media_type media_subtype =
+  let open MIME.Response in
   let aux =
     sp *> body_fields >>| fun body_fields ->
-    MIME.Basic (media_type, media_subtype, body_fields)
+    Basic (media_type, media_subtype, body_fields)
   in
   aux <?> "body-type-basic"
 
 let body_type_msg body =
+  let open MIME.Response in
   let aux =
     sp *> body_fields >>= fun body_fields ->
     sp *> envelope >>= fun envelope ->
     sp *> body >>= fun body ->
     sp *> body_fld_lines >>| fun body_fld_lines ->
-    MIME.Message (body_fields, envelope, body, body_fld_lines)
+    Message (body_fields, envelope, body, body_fld_lines)
   in
   aux <?> "body-type-msg"
 
 let body_type_text media_subtype =
+  let open MIME.Response in
   let aux =
     sp *> body_fields >>= fun body_fields ->
     sp *> body_fld_lines >>| fun body_fld_lines ->
-    MIME.Text (media_subtype, body_fields, body_fld_lines)
+    Text (media_subtype, body_fields, body_fld_lines)
   in
   aux <?> "body-type-text"
 

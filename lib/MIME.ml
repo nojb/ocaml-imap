@@ -32,8 +32,11 @@ module Section = struct
 
   type t =
     int list * msgtext option [@@deriving sexp]
+end
 
+module Request = struct
   open Encoder
+  open Section
 
   let section_msgtext = function
     | HEADER -> raw "HEADER"
@@ -58,30 +61,38 @@ module Section = struct
   let mime ~part () = part, Some MIME
 end
 
-type fields =
-  {
-    fld_params : (string * string) list;
-    fld_id : string option;
-    fld_desc : string option;
-    fld_enc : string;
-    fld_octets : int;
-  } [@@deriving sexp]
+module Response = struct
+  module Fields = struct
+    type t =
+      {
+        fld_params : (string * string) list;
+        fld_id : string option;
+        fld_desc : string option;
+        fld_enc : string;
+        fld_octets : int;
+      } [@@deriving sexp]
+  end
 
-type body_extension =
-  | List of body_extension list
-  | Number of int32
-  | String of string [@@deriving sexp]
+  module BodyExtension = struct
+    type t =
+      | List of t list
+      | Number of int32
+      | String of string [@@deriving sexp]
+  end
 
-type part_extension =
-  {
-    ext_dsp: (string * (string * string) list) option;
-    ext_lang: string list;
-    ext_loc: string option;
-    ext_ext: body_extension list;
-  } [@@deriving sexp]
+  module Extension = struct
+    type t =
+      {
+        ext_dsp: (string * (string * string) list) option;
+        ext_lang: string list;
+        ext_loc: string option;
+        ext_ext: BodyExtension.t list;
+      } [@@deriving sexp]
+  end
 
-type t =
-  | Text of string * fields * int
-  | Message of fields * Envelope.t * t * int
-  | Basic of string * string * fields
-  | Multipart of t list * string [@@deriving sexp]
+  type t =
+    | Text of string * Fields.t * int
+    | Message of Fields.t * Envelope.t * t * int
+    | Basic of string * string * Fields.t
+    | Multipart of t list * string [@@deriving sexp]
+end

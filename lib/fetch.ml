@@ -62,8 +62,8 @@ module MessageAttribute = struct
     (* | RFC822_HEADER of string option *)
     (* | RFC822_TEXT of string option *)
     | RFC822_SIZE of int
-    | BODY of MIME.t
-    | BODYSTRUCTURE of MIME.t
+    | BODY of MIME.Response.t
+    | BODYSTRUCTURE of MIME.Response.t
     | BODY_SECTION of MIME.Section.t * string option
     | UID of int32
     | MODSEQ of int64
@@ -82,7 +82,7 @@ module Request = struct
   let rfc822_size = raw "RFC822.SIZE"
   let body = raw "BODY"
   let body_section ?(peek = true) ?section:(sec = [], None) () =
-    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Section.encode sec & raw "]"
+    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Request.encode sec & raw "]"
   let bodystructure = raw "BODYSTRUCTURE"
   let uid = raw "UID"
   let flags = raw "FLAGS"
@@ -109,8 +109,8 @@ module Response = struct
       envelope: Envelope.t option;
       internaldate: (Date.t * Time.t) option;
       rfc822_size: int option;
-      body: MIME.t option;
-      bodystructure: MIME.t option;
+      body: MIME.Response.t option;
+      bodystructure: MIME.Response.t option;
       body_section: (MIME.Section.t * string option) list;
       uid: uid option;
       modseq: modseq option;
