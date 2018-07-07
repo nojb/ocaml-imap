@@ -113,9 +113,9 @@ module Response = struct
       body_section: (MIME.Section.t * string) list;
       uid: uid;
       modseq: modseq;
-      x_gm_msgid: modseq option;
-      x_gm_thrid: modseq option;
-      x_gm_labels: string list option;
+      x_gm_msgid: modseq;
+      x_gm_thrid: modseq;
+      x_gm_labels: string list;
     } [@@deriving sexp]
 
   let default =
@@ -129,8 +129,8 @@ module Response = struct
       body_section = [];
       uid = 0l;
       modseq = 0L;
-      x_gm_msgid = None;
-      x_gm_thrid = None;
-      x_gm_labels = None;
+      x_gm_msgid = 0L;
+      x_gm_thrid = 0L;
+      x_gm_labels = [];
     }
 end

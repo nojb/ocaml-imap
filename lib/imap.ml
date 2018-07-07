@@ -425,9 +425,9 @@ let fetch_gen cmd imap ?changed_since nums att =
           | BODY_SECTION (sec, Some s) -> {res with body_section = (sec, s) :: res.body_section}
           | UID uid -> {res with uid}
           | MODSEQ modseq -> {res with modseq}
-          | X_GM_MSGID n -> {res with x_gm_msgid = Some n}
-          | X_GM_THRID n -> {res with x_gm_thrid = Some n}
-          | X_GM_LABELS n -> {res with x_gm_labels = Some n}
+          | X_GM_MSGID x_gm_msgid -> {res with x_gm_msgid}
+          | X_GM_THRID x_gm_thrid -> {res with x_gm_thrid}
+          | X_GM_LABELS x_gm_labels -> {res with x_gm_labels}
         in
         let info = List.fold_left aux Fetch.Response.default items in
         push (Some (num, info))
