@@ -376,7 +376,7 @@ let text_1 =
   choice [take_while1 is_text_other_char; return ""] (* We allow empty text_1 *)
 
 let capability =
-  let open Response.Capability in
+  let open Capability in
   let cases =
     [
       "COMPRESS=DEFLATE", return COMPRESS_DEFLATE;

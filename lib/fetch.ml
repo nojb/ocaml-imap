@@ -111,7 +111,7 @@ module Response = struct
       rfc822_size: int option;
       body: MIME.Response.t option;
       bodystructure: MIME.Response.t option;
-      body_section: (MIME.Section.t * string option) list;
+      body_section: (MIME.Section.t * string) list;
       uid: uid option;
       modseq: modseq option;
       x_gm_msgid: modseq option;

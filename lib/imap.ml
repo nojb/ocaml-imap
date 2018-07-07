@@ -30,6 +30,7 @@ type uid = int32 [@@deriving sexp]
 
 type seq = int32 [@@deriving sexp]
 
+module MIME = MIME
 module Envelope = Envelope
 module Flag = Flag
 module Fetch = Fetch
@@ -69,7 +70,7 @@ type t =
     mutable uidvalidity: uid option;
     mutable highestmodseq: modseq option;
 
-    mutable capabilities: Response.Capability.t list;
+    mutable capabilities: Capability.t list;
 
     mutable stop_poll: (unit -> unit) option;
   }
@@ -82,7 +83,7 @@ let create_connection sock unconsumed =
     ic;
     oc;
 
-    debug = true;
+    debug = false;
 
     tag = 0;
     unconsumed;
@@ -155,8 +156,8 @@ let rec send imap r process res =
       send imap r1 process res >>= fun res ->
       send imap r2 process res
   | Literal s ->
-      if List.mem Response.Capability.LITERALPLUS imap.capabilities ||
-         (List.mem Response.Capability.LITERALMINUS imap.capabilities && String.length s <= 4096)
+      if List.mem Capability.LITERALPLUS imap.capabilities ||
+         (List.mem Capability.LITERALMINUS imap.capabilities && String.length s <= 4096)
       then
         Lwt_io.fprintf imap.oc "{%d+}\r\n" (String.length s) >>= fun () ->
         Lwt_io.write imap.oc s >>= fun () ->
@@ -277,7 +278,7 @@ let stop_poll imap =
   | None -> ()
 
 let poll imap =
-  if List.mem Response.Capability.IDLE imap.capabilities then
+  if List.mem Capability.IDLE imap.capabilities then
     idle imap
   else
     Lwt.fail (Failure "IDLE not supported")
@@ -382,7 +383,7 @@ let uid_search =
 
 let select imap ?(read_only = false) m =
   let cmd = if read_only then "EXAMINE" else "SELECT" in
-  let arg = if List.mem Response.Capability.CONDSTORE imap.capabilities then " (CONDSTORE)" else "" in
+  let arg = if List.mem Capability.CONDSTORE imap.capabilities then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
   run imap format () (fun _ r _ -> r)
 
@@ -425,7 +426,8 @@ let fetch_gen cmd imap ?changed_since nums att =
           | RFC822_SIZE n -> {res with rfc822_size = Some n}
           | BODY x -> {res with body = Some x}
           | BODYSTRUCTURE x -> {res with bodystructure = Some x}
-          | BODY_SECTION (sec, s) -> {res with body_section = (sec, s) :: res.body_section}
+          | BODY_SECTION (sec, None) -> {res with body_section = (sec, "") :: res.body_section}
+          | BODY_SECTION (sec, Some s) -> {res with body_section = (sec, s) :: res.body_section}
           | UID n -> {res with uid = Some n}
           | MODSEQ n -> {res with modseq = Some n}
           | X_GM_MSGID n -> {res with x_gm_msgid = Some n}

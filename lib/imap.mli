@@ -53,6 +53,7 @@ type uid = int32 (* FIXME *)
 type seq = private int32
 (** Message sequence numbers. *)
 
+module MIME = MIME
 module Envelope = Envelope
 module Flag = Flag
 module Fetch = Fetch
