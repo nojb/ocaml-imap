@@ -20,9 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-open Common
-
 open Encoder
 
 type key = t [@@deriving sexp]
