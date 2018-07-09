@@ -233,6 +233,9 @@ let capability buf =
   | "X-GM-EXT-1"  -> X_GM_EXT_1
   | a -> OTHER a
 
+let mod_sequence_value buf =
+  Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
+
 let resp_text_code buf k =
   let open Code in
   let k code = char ']' buf; k code in
@@ -271,8 +274,9 @@ let resp_text_code buf k =
       k (UNSEEN (nz_number buf))
   | "CLOSED" ->
       k CLOSED
-  (* | "HIGHESTMODSEQ" ->
-   *     sp *> mod_sequence_value >>| (fun n -> HIGHESTMODSEQ n) *)
+  | "HIGHESTMODSEQ" ->
+      char ' ' buf;
+      k (HIGHESTMODSEQ (mod_sequence_value buf))
   | "NOMODSEQ" ->
       k NOMODSEQ
   (* | "MODIFIED" ->
@@ -298,9 +302,6 @@ let resp_text buf k =
     | _ -> k None
   in
   code buf (fun code -> if curr buf = ' ' then next buf; k code (text buf))
-
-let mod_sequence_value buf =
-  Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
 
 let search_sort_mod_seq buf =
   char '(' buf;
@@ -1144,7 +1145,7 @@ let%expect_test _ =
     (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
-    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
+    (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) "")))
     (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
     (Untagged (EXISTS 172))
     (Untagged (RECENT 1))
@@ -1163,7 +1164,7 @@ let%expect_test _ =
     (Tagged a103 (OK () "Conditional Store completed"))
     (Untagged (FETCH 50 ((MODSEQ 12111230047))))
     (Tagged a104 (OK () "Store (conditional) completed"))
-    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 12111230047"))) "")))
+    (Untagged (State (OK ((HIGHESTMODSEQ 12111230047)) "")))
     (Untagged (FETCH 50 ((MODSEQ 12111230048))))
     (Tagged c101 (OK () "Store (conditional) completed"))
     (Untagged (FETCH 5 ((MODSEQ 320162350))))
@@ -1259,7 +1260,7 @@ let%expect_test _ =
     (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
-    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
+    (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) "")))
     (Tagged A142 (OK (READ_WRITE) "SELECT completed, CONDSTORE is now enabled"))
     (Tagged a (OK () "Extended SEARCH completed"))
     (Tagged a (OK () "Extended SORT completed"))
@@ -1269,9 +1270,7 @@ let%expect_test _ =
     (Untagged (RECENT 3))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) UIDVALIDITY)))
     (Untagged (State (OK ((UIDNEXT 550)) "Predicted next UID")))
-    (Untagged
-     (State
-      (OK ((OTHER HIGHESTMODSEQ (" 90060128194045007"))) "Highest mailbox")))
+    (Untagged (State (OK ((HIGHESTMODSEQ 90060128194045007)) "Highest mailbox")))
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
@@ -1282,8 +1281,7 @@ let%expect_test _ =
     (Untagged (RECENT 11))
     (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
     (Untagged (State (OK ((UIDNEXT 600)) "Predicted next UID")))
-    (Untagged
-     (State (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) Highest)))
+    (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) Highest)))
     (Untagged (State (OK ((UNSEEN 7)) "There are some unseen")))
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
@@ -1303,9 +1301,7 @@ let%expect_test _ =
     (Untagged (RECENT 4))
     (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
     (Untagged (State (OK ((UIDNEXT 30013)) "Predicted next UID")))
-    (Untagged
-     (State
-      (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) "Highest mailbox")))
+    (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) "Highest mailbox")))
     (Untagged
      (State (OK ((UNSEEN 7)) "There are some unseen messages in the mailbox")))
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
