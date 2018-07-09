@@ -313,6 +313,62 @@ let search_sort_mod_seq buf =
   | _ ->
       error buf
 
+let permsg_modsequence =
+  mod_sequence_value
+
+let msg_att buf k =
+  let open Fetch.MessageAttribute in
+  match atom buf with
+  (* | "FLAGS" ->
+   *     sp *> psep_by sp flag_fetch >>| (fun l -> FLAGS l) *)
+  | "MODSEQ" ->
+      char ' ' buf;
+      char '(' buf;
+      let n = permsg_modsequence buf in
+      char ')' buf;
+      k (MODSEQ n)
+  (* | "X-GM-LABELS" ->
+   *     sp *> choice [psep_by sp astring; nil *> return []] >>| (fun l -> X_GM_LABELS l) *)
+  (* | "ENVELOPE" ->
+   *     sp *> envelope >>| (fun e -> ENVELOPE e) *)
+  (* | "INTERNALDATE" ->
+   *     sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t)) *)
+  (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
+    (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
+  (* | "RFC822.SIZE" ->
+   *     sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n)) *)
+  (* | "RFC822" ->
+   *     sp *> nstring' >>| (fun s -> RFC822 s) *)
+  (* | "BODYSTRUCTURE" ->
+   *     sp *> body >>| (fun b -> BODYSTRUCTURE b) *)
+  (* | "BODY" ->
+   *     let section =
+   *       section >>= fun s -> sp *> nstring >>| fun x ->
+   *       BODY_SECTION (s, x)
+   *     in
+   *     choice [sp *> body >>| (fun b -> BODY b); section] *)
+  | "UID" ->
+      char ' ' buf;
+      k (UID (uniqueid buf))
+  | "X-GM-MSGID" ->
+      char ' ' buf;
+      k (X_GM_MSGID (mod_sequence_value buf))
+  | "X-GM-THRID" ->
+      char ' ' buf;
+      k (X_GM_THRID (mod_sequence_value buf))
+  | _ ->
+      error buf
+
+let msg_att buf k =
+  char '(' buf;
+  let rec loop acc buf k =
+    if curr buf = ' ' then
+      (next buf; msg_att buf (fun att -> loop (att :: acc) buf k))
+    else
+      (char ')' buf; k (List.rev acc))
+  in
+  msg_att buf (fun att -> loop [att] buf k)
+
 let response_data buf k =
   char '*' buf;
   char ' ' buf;
@@ -328,9 +384,10 @@ let response_data buf k =
           k (RECENT (Int32.to_int n))
       | "EXPUNGE" ->
           k (EXPUNGE n)
-      (* | "FETCH" ->
-       *     sp *> msg_att >>| (fun x -> FETCH (n, x))
-       * | "VANISHED (EARLIER)" ->
+      | "FETCH" ->
+          char ' ' buf;
+          msg_att buf (fun x -> k (FETCH (n, x)))
+      (* | "VANISHED (EARLIER)" ->
        *     sp *> known_ids >>| (fun l -> VANISHED_EARLIER l)
        * | "VANISHED" ->
        *     sp *> known_ids >>| (fun l -> VANISHED l) *)
@@ -740,7 +797,7 @@ let%expect_test _ =
       {|* OK [HIGHESTMODSEQ 90060128194045007] Highest mailbox|};
       {|* OK [UNSEEN 12] Message 12 is first unseen|};
       {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
-      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft|};
+      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
       {|A02 OK [READ-WRITE] Sorry, UIDVALIDITY mismatch|};
       {|* OK [CLOSED]|};
       {|* 100 EXISTS|};
