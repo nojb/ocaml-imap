@@ -93,7 +93,7 @@ let parse s =
   let buf =
     { read_line = (fun _k -> assert false);
       line = s;
-      pos = 0}
+      pos = 0 }
   in
   let result = ref (Cont "") in
   match response buf (fun u -> result := u) with
@@ -108,6 +108,8 @@ let%expect_test _ =
       "+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC";
       "+ YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe";
       "+";
+      "+ Ready for literal data";
+      "+ Ready for additional command text";
     ]
   in
   List.iter parse tests;
