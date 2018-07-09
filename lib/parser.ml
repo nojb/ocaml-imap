@@ -100,6 +100,30 @@ let nz_number =
 let uniqueid =
   number
 
+let capability buf =
+  let open Capability in
+  match atom buf with
+  | "COMPRESS=DEFLATE" -> COMPRESS_DEFLATE
+  | "CONDSTORE" -> CONDSTORE
+  | "ESEARCH" -> ESEARCH
+  | "ENABLE" -> ENABLE
+  | "IDLE" -> IDLE
+  | "LITERAL+" -> LITERALPLUS
+  | "LITERAL-" -> LITERALMINUS
+  | "UTF8=ACCEPT" -> UTF8_ACCEPT
+  | "UTF8=ONLY" -> UTF8_ONLY
+  | "NAMESPACE" -> NAMESPACE
+  | "ID" -> ID
+  | "QRESYNC" -> QRESYNC
+  | "UIDPLUS" -> UIDPLUS
+  | "UNSELECT" -> UNSELECT
+  | "XLIST" -> XLIST
+  | "AUTH=PLAIN" -> AUTH_PLAIN
+  | "AUTH=LOGIN" -> AUTH_LOGIN
+  | "XOAUTH2" -> XOAUTH2
+  | "X-GM-EXT-1"  -> X_GM_EXT_1
+  | a -> OTHER a
+
 let resp_text_code buf k =
   let open Code in
   let k code = char ']' buf; char ' ' buf; k code in
@@ -108,9 +132,15 @@ let resp_text_code buf k =
   | "ALERT" ->
       k ALERT
   (* | "BADCHARSET" ->
-   *     many (sp *> astring) >>| (fun l -> BADCHARSET l)
-   * | "CAPABILITY" ->
-   *     many (sp *> capability) >>| (fun l -> CAPABILITY l) *)
+   *     many (sp *> astring) >>| (fun l -> BADCHARSET l) *)
+  | "CAPABILITY" ->
+      let rec loop acc buf =
+        if curr buf = ' ' then
+          (next buf; loop (capability buf :: acc) buf)
+        else
+          k (CAPABILITY (List.rev acc))
+      in
+      loop [] buf
   | "PARSE" ->
       k PARSE
   (* | "PERMANENTFLAGS" ->
@@ -207,11 +237,23 @@ let response_data buf k =
        * | "SEARCH" ->
        *     pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n))
        * | "STATUS" ->
-       *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l))
-       * | "CAPABILITY" ->
-       *     many (sp *> capability) >>| (fun l -> CAPABILITY l)
-       * | "ENABLED" ->
-       *     many (sp *> capability) >>| (fun l -> ENABLED l) *)
+       *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l)) *)
+      | "CAPABILITY" ->
+          let rec loop acc buf =
+            if curr buf = ' ' then
+              (next buf; loop (capability buf :: acc) buf)
+            else
+              k (CAPABILITY (List.rev acc))
+          in
+          loop [] buf
+      | "ENABLED" ->
+          let rec loop acc buf =
+            if curr buf = ' ' then
+              (next buf; loop (capability buf :: acc) buf)
+            else
+              k (ENABLED (List.rev acc))
+          in
+          loop [] buf
       | "PREAUTH" ->
           char ' ' buf;
           resp_text buf (fun code text -> k (PREAUTH (code, text)))
@@ -324,6 +366,68 @@ let%expect_test _ =
       {|* OK [UIDNEXT 4392] Predicted next UID|};
       {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
       {|* OK [PERMANENTFLAGS ()] No permanent flags permitted|};
+      {|* LIST () "/" blurdybloop|};
+      {|* LIST (\Noselect) "/" foo|};
+      {|* LIST () "/" foo/bar|};
+      {|* LIST (\Noselect) "/" foo|};
+      {|* LIST () "." blurdybloop|};
+      {|* LIST () "." foo|};
+      {|* LIST () "." foo.bar|};
+      {|* LIST () "." foo.bar|};
+      {|A85 OK LIST completed|};
+      {|* LIST (\Noselect) "." foo|};
+      {|A86 OK LIST completed|};
+      {|* LIST () "/" blurdybloop|};
+      {|* LIST (\Noselect) "/" foo|};
+      {|* LIST () "/" foo/bar|};
+      {|A682 OK LIST completed|};
+      {|A683 OK RENAME completed|};
+      {|A684 OK RENAME Completed|};
+      {|* LIST () "/" sarasoop|};
+      {|* LIST (\Noselect) "/" zowie|};
+      {|* LIST () "/" zowie/bar|};
+      {|A685 OK LIST completed|};
+      {|* LIST () "." INBOX|};
+      {|* LIST () "." INBOX.bar|};
+      {|Z432 OK LIST completed|};
+      {|Z433 OK RENAME completed|};
+      {|* LIST () "." INBOX|};
+      {|* LIST () "." INBOX.bar|};
+      {|* LIST () "." old-mail|};
+      {|Z434 OK LIST completed|};
+      {|A002 OK SUBSCRIBE completed|};
+      {|A002 OK UNSUBSCRIBE completed|};
+      {|* LIST (\Noselect) "/" ""|};
+      {|A101 OK LIST Completed|};
+      {|* LIST (\Noselect) "." #news.|};
+      {|A102 OK LIST Completed|};
+      {|* LIST (\Noselect) "/" /|};
+      {|A103 OK LIST Completed|};
+      {|* LIST (\Noselect) "/" ~/Mail/foo|};
+      {|* LIST () "/" ~/Mail/meetings|};
+      {|A202 OK LIST completed|};
+      {|* LSUB () "." #news.comp.mail.mime|};
+      {|* LSUB () "." #news.comp.mail.misc|};
+      {|A002 OK LSUB completed|};
+      {|* LSUB (\NoSelect) "." #news.comp.mail|};
+      {|A003 OK LSUB completed|};
+      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
+      {|A042 OK STATUS completed|};
+      {|A003 OK APPEND completed|};
+      {|FXXZ OK CHECK Completed|};
+      {|A341 OK CLOSE completed|};
+      {|* 3 EXPUNGE|};
+      {|* 3 EXPUNGE|};
+      {|* 5 EXPUNGE|};
+      {|* 8 EXPUNGE|};
+      {|A202 OK EXPUNGE completed|};
+      {|* SEARCH 2 84 882|};
+      {|A282 OK SEARCH completed|};
+      {|* SEARCH|};
+      {|A283 OK SEARCH completed|};
+      {|* SEARCH 43|};
+      {|A284 OK SEARCH completed|};
+      {|A654 OK FETCH completed|};
     ]
   in
   List.iter parse tests;
