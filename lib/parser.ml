@@ -47,8 +47,8 @@ let next buf =
 let error buf =
   raise (Error (buf.line, buf.pos))
 
-let sp buf =
-  if curr buf = ' ' then next buf else error buf
+let char c buf =
+  if curr buf = c then next buf else error buf
 
 let take_while1 f buf =
   let pos0 = buf.pos in
@@ -81,16 +81,68 @@ let is_text_char = function
 let text buf =
   take_while1 is_text_char buf
 
-let resp_text_code buf =
-  error buf
+let is_text_other_char c =
+  is_text_char c && (c <> ']')
 
-let resp_text buf =
-  let code =
+let text_1 =
+  take_while1 is_text_other_char
+
+let resp_text_code buf k =
+  let open Code in
+  let k code = char ']' buf; char ' ' buf; k code in
+  char '[' buf;
+  match atom buf with
+  | "ALERT" ->
+      k ALERT
+  (* | "BADCHARSET" ->
+   *     many (sp *> astring) >>| (fun l -> BADCHARSET l)
+   * | "CAPABILITY" ->
+   *     many (sp *> capability) >>| (fun l -> CAPABILITY l) *)
+  | "PARSE" ->
+      k PARSE
+  (* | "PERMANENTFLAGS" ->
+   *     sp *> psep_by sp flag_perm >>| (fun l -> PERMANENTFLAGS l) *)
+  | "READ-ONLY" ->
+      k READ_ONLY
+  | "READ-WRITE" ->
+      k READ_WRITE
+  | "TRYCREATE" ->
+      k TRYCREATE
+  (* | "UIDNEXT" ->
+   *     sp *> nz_number >>| (fun n -> UIDNEXT n)
+   * | "UIDVALIDITY" ->
+   *     sp *> nz_number >>| (fun n -> UIDVALIDITY n)
+   * | "UNSEEN" ->
+   *     sp *> nz_number >>| (fun n -> UNSEEN n) *)
+  | "CLOSED" ->
+      k CLOSED
+  (* | "HIGHESTMODSEQ" ->
+   *     sp *> mod_sequence_value >>| (fun n -> HIGHESTMODSEQ n) *)
+  | "NOMODSEQ" ->
+      k NOMODSEQ
+  (* | "MODIFIED" ->
+   *     sp *> set >>| (fun l -> MODIFIED l)
+   * | "APPENDUID" ->
+   *     sp *> pair sp nz_number append_uid >>| (fun (n, uid) -> APPENDUID (n, uid))
+   * | "COPYUID" ->
+   *     sp *> triple sp nz_number set set >>| (fun (n, s1, s2) -> COPYUID (n, s1, s2)) *)
+  | "UIDNOTSTICKY" ->
+      k UIDNOTSTICKY
+  | "COMPRESSIONACTIVE" ->
+      k COMPRESSIONACTIVE
+  | "USEATTR" ->
+      k USEATTR
+  | a ->
+      let x = if curr buf = ' ' then Some (text_1 buf) else None in
+      k (OTHER (a, x))
+
+let resp_text buf k =
+  let code buf k =
     match curr buf with
-    | '[' -> Some (resp_text_code buf)
-    | _ -> None
+    | '[' -> resp_text_code buf (fun code -> k (Some code))
+    | _ -> k None
   in
-  code, text buf
+  code buf (fun code -> k code (text buf))
 
 let is_tag_char = function
   | '+' -> false
@@ -99,21 +151,18 @@ let is_tag_char = function
 let tag =
   take_while1 is_tag_char
 
-let resp_cond_state buf =
+let resp_cond_state buf k =
   let open Response.State in
   match atom buf with
   | "OK" ->
-      sp buf;
-      let code, text = resp_text buf in
-      OK (code, text)
+      char ' ' buf;
+      resp_text buf (fun code text -> k (OK (code, text)))
   | "NO" ->
-      sp buf;
-      let code, text = resp_text buf in
-      NO (code, text)
+      char ' ' buf;
+      resp_text buf (fun code text -> k (NO (code, text)))
   | "BAD" ->
-      sp buf;
-      let code, text = resp_text buf in
-      BAD (code, text)
+      char ' ' buf;
+      resp_text buf (fun code text -> k (BAD (code, text)))
   | _ ->
       error buf
 
@@ -122,15 +171,14 @@ let response buf k =
   | '+' ->
       next buf;
       if curr buf = ' ' then next buf;
-      if not (is_eol buf) then let _, x = resp_text buf in k (Cont x)
+      if not (is_eol buf) then resp_text buf (fun _ x -> k (Cont x))
       else k (Cont "")
   | '*' ->
       error buf
   | _ ->
       let tag = tag buf in
-      sp buf;
-      let state = resp_cond_state buf in
-      k (Tagged (tag, state))
+      char ' ' buf;
+      resp_cond_state buf (fun state -> k (Tagged (tag, state)))
 
 let parse s =
   let buf =
