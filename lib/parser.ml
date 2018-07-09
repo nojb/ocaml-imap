@@ -70,8 +70,34 @@ let is_atom_char = function
 let atom =
   take_while1 is_atom_char
 
+let quoted_char r buf =
+  match curr buf with
+  | '\\' ->
+      next buf;
+      begin match curr buf with
+      | '\\' | '"' as c ->
+          next buf;
+          r := c;
+          true
+      | _ ->
+          error buf
+      end
+  | '"' ->
+      false
+  | '\x01'..'\x7f' as c ->
+      next buf;
+      r := c;
+      true
+  | _ ->
+      error buf
+
 let quoted buf =
-  error buf
+  char '"' buf;
+  let b = Buffer.create 17 in
+  let r = ref '\000' in
+  while quoted_char r buf do Buffer.add_char b !r done;
+  char '"' buf;
+  Buffer.contents b
 
 let literal buf _k =
   error buf
@@ -125,26 +151,32 @@ let uniqueid =
 let mbx_flag buf =
   let open MailboxFlag in
   char '\\' buf;
-  match atom buf with
-  | "Noselect" -> Noselect
-  | "Marked" -> Marked
-  | "Unmarked" -> Unmarked
-  | "Noinferiors" -> Noinferiors
-  | "HasChildren" -> HasChildren
-  | "HasNoChildren" -> HasNoChildren
-  | "All" -> All
-  | "Archive" -> Archive
-  | "Drafts" -> Drafts
-  | "Flagged" -> Flagged
-  | "Junk" -> Junk
-  | "Sent" -> Sent
-  | "Trash" -> Trash
-  | a -> Extension a
+  let a = atom buf in
+  match String.lowercase_ascii a with
+  | "noselect" -> Noselect
+  | "marked" -> Marked
+  | "unmarked" -> Unmarked
+  | "noinferiors" -> Noinferiors
+  | "haschildren" -> HasChildren
+  | "hasnochildren" -> HasNoChildren
+  | "all" -> All
+  | "archive" -> Archive
+  | "drafts" -> Drafts
+  | "flagged" -> Flagged
+  | "junk" -> Junk
+  | "sent" -> Sent
+  | "trash" -> Trash
+  | _ -> Extension a
 
 let delim buf =
   match curr buf with
   | '"' ->
-      error buf
+      next buf;
+      let r = ref '\000' in
+      if quoted_char r buf then
+        (char '"' buf; Some !r)
+      else
+        error buf
   | _ ->
       char 'N' buf;
       char 'I' buf;
@@ -174,6 +206,7 @@ let mailbox_list buf k =
   char ')' buf;
   char ' ' buf;
   let delim = delim buf in
+  char ' ' buf;
   mailbox buf (k flags delim)
 
 let capability buf =
