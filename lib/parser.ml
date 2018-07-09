@@ -214,6 +214,18 @@ let%expect_test _ =
       "A001 OK GSSAPI authentication successful";
       "a001 OK LOGIN completed";
       "A142 OK [READ-WRITE] SELECT completed";
+      "A932 OK [READ-ONLY] EXAMINE completed";
+      "A003 OK CREATE completed";
+      "A004 OK CREATE completed";
+      "A682 OK LIST completed";
+      "A683 OK DELETE completed";
+      "A684 NO Name \"foo\" has inferior hierarchical names";
+      "A685 OK DELETE Completed";
+      "A686 OK LIST completed";
+      "A687 OK DELETE Completed";
+      "A82 OK LIST completed";
+      "A83 OK DELETE completed";
+      "A84 OK DELETE Completed";
     ]
   in
   List.iter parse tests;
