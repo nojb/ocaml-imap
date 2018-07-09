@@ -373,8 +373,9 @@ let msg_att buf k =
    *     sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t)) *)
   (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
     (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
-  (* | "RFC822.SIZE" ->
-   *     sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n)) *)
+  | "RFC822.SIZE" ->
+      char ' ' buf;
+      k (RFC822_SIZE (Int32.to_int (number buf)))
   (* | "RFC822" ->
    *     sp *> nstring' >>| (fun s -> RFC822 s) *)
   (* | "BODYSTRUCTURE" ->
@@ -497,18 +498,16 @@ let response_data buf k =
           mailbox_list buf (fun xs c m -> k (LSUB (xs, c, m)))
       | "SEARCH" ->
           let rec loop acc buf =
-            if curr buf = ' ' then
-              (next buf; loop (nz_number buf :: acc) buf)
-            else
-              List.rev acc
+            if curr buf = ' ' then begin
+              next buf;
+              if curr buf = '(' then
+                List.rev acc, Some (search_sort_mod_seq buf)
+              else
+                loop (nz_number buf :: acc) buf
+            end else
+              List.rev acc, None
           in
-          let nums = loop [] buf in
-          let modseq =
-            if curr buf = ' ' then
-              (next buf; Some (search_sort_mod_seq buf))
-            else
-              None
-          in
+          let nums, modseq = loop [] buf in
           k (SEARCH (nums, modseq))
       | "STATUS" ->
           char ' ' buf;
@@ -824,7 +823,7 @@ let%expect_test _ =
       {|* 101 FETCH (MODSEQ (303181230852))|};
       {|b108 OK Conditional Store completed|};
       {|* 100 FETCH (MODSEQ (303181230852))|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
       {|* 102 FETCH (MODSEQ (303181230852))|};
       {|* 150 FETCH (MODSEQ (303181230852))|};
       {|a106 OK Conditional STORE completed|};
@@ -841,7 +840,7 @@ let%expect_test _ =
       {|b003 OK Conditional Store completed|};
       {|* 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))|};
       {|* 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))|};
-      {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk|};
+      {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk))|};
       {|s100 OK FETCH completed|};
       {|* 1 FETCH (MODSEQ (624140003))|};
       {|* 2 FETCH (MODSEQ (624140007))|};
@@ -857,7 +856,7 @@ let%expect_test _ =
       {|D210 OK Noop completed|};
       {|* 7 FETCH (MODSEQ (12121231777))|};
       {|A240 OK Store completed|};
-      {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ|};
+      {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ (12))|};
       {|C270 OK Noop completed|};
       {|D300 OK Noop completed|};
       {|* 7 FETCH (MODSEQ (12121245160))|};
@@ -1080,6 +1079,7 @@ let%expect_test _ =
     (Untagged (EXISTS 23))
     (Untagged (RECENT 5))
     (Untagged (EXPUNGE 44))
+    (Untagged (FETCH 23 ((FLAGS (Seen)) (RFC822_SIZE 44827))))
     (Tagged A001 (OK () "LOGIN completed"))
     (Tagged A044 (BAD () "No such command as \"BLURDYBLOOP\""))
     (Untagged (State (OK () "IMAP4rev1 Service Ready")))
@@ -1152,6 +1152,8 @@ let%expect_test _ =
     (Untagged (FETCH 101 ((MODSEQ 303181230852))))
     (Tagged b108 (OK () "Conditional Store completed"))
     (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged
+     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted)))))
     (Untagged (FETCH 102 ((MODSEQ 303181230852))))
     (Untagged (FETCH 150 ((MODSEQ 303181230852))))
     (Tagged a106 (OK () "Conditional STORE completed"))
@@ -1169,6 +1171,9 @@ let%expect_test _ =
     (Tagged b003 (OK () "Conditional Store completed"))
     (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen)))))
     (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted)))))
+    (Untagged
+     (FETCH 4
+      ((UID 8) (MODSEQ 29738) (FLAGS ((Keyword $NoJunk) (Keyword $AutoJunk))))))
     (Tagged s100 (OK () "FETCH completed"))
     (Untagged (FETCH 1 ((MODSEQ 624140003))))
     (Untagged (FETCH 2 ((MODSEQ 624140007))))
@@ -1187,6 +1192,7 @@ let%expect_test _ =
     (Tagged D210 (OK () "Noop completed"))
     (Untagged (FETCH 7 ((MODSEQ 12121231777))))
     (Tagged A240 (OK () "Store completed"))
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered Seen)) (MODSEQ 12))))
     (Tagged C270 (OK () "Noop completed"))
     (Tagged D300 (OK () "Noop completed"))
     (Untagged (FETCH 7 ((MODSEQ 12121245160))))
@@ -1195,6 +1201,7 @@ let%expect_test _ =
     (Tagged C360 (OK () "Noop completed"))
     (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160))))
     (Tagged D390 (OK () "Noop completed"))
+    (Untagged (SEARCH (2 5 6 7 11 12 18 19 20 23) (917162500)))
     (Tagged a (OK () "Search complete"))
     (Untagged (SEARCH () ()))
     (Tagged t (OK () "Search complete, nothing found"))
@@ -1263,23 +1270,8 @@ let%expect_test _ =
       ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
        (MODSEQ 90060115194045027))))
     Parsing error:
-    * 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)
-                                         ^
-    Parsing error:
     * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
                                           ^
-    Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
-                                                                 ^
-    Parsing error:
-    * 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk
-                                                            ^
-    Parsing error:
-    * 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ
-                                                      ^
-    Parsing error:
-    * SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)
-                                       ^
     Parsing error:
     * ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236
              ^
