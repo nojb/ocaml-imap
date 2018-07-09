@@ -87,6 +87,19 @@ let is_text_other_char c =
 let text_1 =
   take_while1 is_text_other_char
 
+let is_digit = function
+  | '0'..'9' -> true
+  | _ -> false
+
+let number buf =
+  Int32.of_string (take_while1 is_digit buf)
+
+let nz_number =
+  number
+
+let uniqueid =
+  number
+
 let resp_text_code buf k =
   let open Code in
   let k code = char ']' buf; char ' ' buf; k code in
@@ -108,12 +121,15 @@ let resp_text_code buf k =
       k READ_WRITE
   | "TRYCREATE" ->
       k TRYCREATE
-  (* | "UIDNEXT" ->
-   *     sp *> nz_number >>| (fun n -> UIDNEXT n)
-   * | "UIDVALIDITY" ->
-   *     sp *> nz_number >>| (fun n -> UIDVALIDITY n)
-   * | "UNSEEN" ->
-   *     sp *> nz_number >>| (fun n -> UNSEEN n) *)
+  | "UIDNEXT" ->
+      char ' ' buf;
+      k (UIDNEXT (nz_number buf))
+  | "UIDVALIDITY" ->
+      char ' ' buf;
+      k (UIDVALIDITY (nz_number buf))
+  | "UNSEEN" ->
+      char ' ' buf;
+      k (UNSEEN (nz_number buf))
   | "CLOSED" ->
       k CLOSED
   (* | "HIGHESTMODSEQ" ->
