@@ -3,5 +3,6 @@
 (library
  ((name imap)
   (public_name imap)
-  (preprocess (pps (ppx_sexp_conv)))
+  (inline_tests)
+  (preprocess (pps (ppx_expect ppx_sexp_conv)))
   (libraries (uutf base64 sexplib angstrom ssl lwt lwt_ssl))))
