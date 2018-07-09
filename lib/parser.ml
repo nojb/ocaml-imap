@@ -435,6 +435,27 @@ let status_att buf =
   | _ ->
       error buf
 
+let uid_range buf =
+  let n = uniqueid buf in
+  if curr buf = ':' then
+    (next buf; (n, uniqueid buf))
+  else
+    (n, n)
+
+let uid_set buf =
+  let rec loop acc buf =
+    match curr buf with
+    | ',' ->
+        next buf;
+        loop (uid_range buf :: acc) buf
+    | _ ->
+        List.rev acc
+  in
+  loop [uid_range buf] buf
+
+let known_ids =
+  uid_set
+
 let response_data buf k =
   char '*' buf;
   char ' ' buf;
@@ -453,10 +474,6 @@ let response_data buf k =
       | "FETCH" ->
           char ' ' buf;
           msg_att buf (fun x -> k (FETCH (n, x)))
-      (* | "VANISHED (EARLIER)" ->
-       *     sp *> known_ids >>| (fun l -> VANISHED_EARLIER l)
-       * | "VANISHED" ->
-       *     sp *> known_ids >>| (fun l -> VANISHED l) *)
       | _ ->
           error buf
       end
@@ -547,6 +564,19 @@ let response_data buf k =
       | "PREAUTH" ->
           if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (PREAUTH (code, text)))
+      | "VANISHED" ->
+          char ' ' buf;
+          if curr buf = '(' then begin
+            next buf;
+            match atom buf with
+            | "EARLIER" ->
+                char ')' buf;
+                char ' ' buf;
+                k (VANISHED_EARLIER (known_ids buf))
+            | _ ->
+                error buf
+          end else
+            k (VANISHED (known_ids buf))
       | _ ->
           error buf
       end
@@ -916,7 +946,7 @@ let%expect_test _ =
       {|* OK [UNSEEN 7] There are some unseen messages in the mailbox|};
       {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
       {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
-      {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],|};
+      {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,89|};
       {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ (90060115194045027))|};
     ]
   in
@@ -1245,6 +1275,8 @@ let%expect_test _ =
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
     (Untagged
+     (VANISHED_EARLIER ((41 41) (43 116) (118 118) (120 211) (214 540))))
+    (Untagged
      (FETCH 49 ((UID 117) (FLAGS (Seen Answered)) (MODSEQ 12111230047))))
     (Untagged
      (FETCH 50
@@ -1265,6 +1297,7 @@ let%expect_test _ =
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    (Untagged (VANISHED_EARLIER ((1 2) (4 5) (7 8) (10 11) (13 14) (89 89))))
     (Untagged
      (FETCH 1
       ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
@@ -1277,10 +1310,4 @@ let%expect_test _ =
              ^
     Parsing error:
     * ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236
-             ^
-    Parsing error:
-    * VANISHED (EARLIER) 41,43:116,118,120:211,214:540
-              ^
-    Parsing error:
-    * VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],
-              ^ |}]
+             ^ |}]
