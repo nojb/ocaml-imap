@@ -92,7 +92,7 @@ let is_digit = function
   | _ -> false
 
 let number buf =
-  Int32.of_string (take_while1 is_digit buf)
+  Scanf.sscanf (take_while1 is_digit buf) "%lu" (fun n -> n)
 
 let nz_number =
   number
@@ -160,6 +160,65 @@ let resp_text buf k =
   in
   code buf (fun code -> k code (text buf))
 
+let response_data buf k =
+  char '*' buf;
+  char ' ' buf;
+  let open Response.Untagged in
+  match curr buf with
+  | '0'..'9' ->
+      let n = number buf in
+      char ' ' buf;
+      begin match atom buf with
+      | "EXISTS" ->
+          k (EXISTS (Int32.to_int n))
+      | "RECENT" ->
+          k (RECENT (Int32.to_int n))
+      | "EXPUNGE" ->
+          k (EXPUNGE n)
+      (* | "FETCH" ->
+       *     sp *> msg_att >>| (fun x -> FETCH (n, x))
+       * | "VANISHED (EARLIER)" ->
+       *     sp *> known_ids >>| (fun l -> VANISHED_EARLIER l)
+       * | "VANISHED" ->
+       *     sp *> known_ids >>| (fun l -> VANISHED l) *)
+      | _ ->
+          error buf
+      end
+  | _ ->
+      begin match atom buf with
+      | "OK" ->
+          char ' ' buf;
+          resp_text buf (fun code text -> k (State (OK (code, text))))
+      | "NO" ->
+          char ' ' buf;
+          resp_text buf (fun code text -> k (State (NO (code, text))))
+      | "BAD" ->
+          char ' ' buf;
+          resp_text buf (fun code text -> k (State (BAD (code, text))))
+      | "BYE" ->
+          char ' ' buf;
+          resp_text buf (fun code text -> k (BYE (code, text)))
+      (* | "FLAGS" ->
+       *     sp *> psep_by sp flag >>| (fun l -> FLAGS l)
+       * | "LIST" ->
+       *     sp *> mailbox_list >>| (fun (xs, c, m) -> LIST (xs, c, m))
+       * | "LSUB" ->
+       *     sp *> mailbox_list >>| (fun (xs, c, m) -> LSUB (xs, c, m))
+       * | "SEARCH" ->
+       *     pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n))
+       * | "STATUS" ->
+       *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l))
+       * | "CAPABILITY" ->
+       *     many (sp *> capability) >>| (fun l -> CAPABILITY l)
+       * | "ENABLED" ->
+       *     many (sp *> capability) >>| (fun l -> ENABLED l) *)
+      | "PREAUTH" ->
+          char ' ' buf;
+          resp_text buf (fun code text -> k (PREAUTH (code, text)))
+      | _ ->
+          error buf
+      end
+
 let is_tag_char = function
   | '+' -> false
   | c -> is_astring_char c
@@ -190,7 +249,7 @@ let response buf k =
       if not (is_eol buf) then resp_text buf (fun _ x -> k (Cont x))
       else k (Cont "")
   | '*' ->
-      error buf
+      response_data buf (fun u -> k (Untagged u))
   | _ ->
       let tag = tag buf in
       char ' ' buf;
@@ -212,36 +271,59 @@ let parse s =
 let%expect_test _ =
   let tests =
     [
-      "+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC";
-      "+ YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe";
-      "+";
-      "+ Ready for literal data";
-      "+ Ready for additional command text";
-      "abcd OK CAPABILITY completed";
-      "efgh OK STARTLS completed";
-      "ijkl OK CAPABILITY completed";
-      "a002 OK NOOP completed";
-      "a047 OK NOOP completed";
-      "A023 OK LOGOUT completed";
-      "a001 OK CAPABILITY completed";
-      "a002 OK Begin TLS negotiation now";
-      "a003 OK CAPABILITY completed";
-      "a004 OK LOGIN completed";
-      "A001 OK GSSAPI authentication successful";
-      "a001 OK LOGIN completed";
-      "A142 OK [READ-WRITE] SELECT completed";
-      "A932 OK [READ-ONLY] EXAMINE completed";
-      "A003 OK CREATE completed";
-      "A004 OK CREATE completed";
-      "A682 OK LIST completed";
-      "A683 OK DELETE completed";
-      "A684 NO Name \"foo\" has inferior hierarchical names";
-      "A685 OK DELETE Completed";
-      "A686 OK LIST completed";
-      "A687 OK DELETE Completed";
-      "A82 OK LIST completed";
-      "A83 OK DELETE completed";
-      "A84 OK DELETE Completed";
+      {|+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC|};
+      {|+ YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe|};
+      {|+|};
+      {|+ Ready for literal data|};
+      {|+ Ready for additional command text|};
+      {|abcd OK CAPABILITY completed|};
+      {|efgh OK STARTLS completed|};
+      {|ijkl OK CAPABILITY completed|};
+      {|a002 OK NOOP completed|};
+      {|a047 OK NOOP completed|};
+      {|A023 OK LOGOUT completed|};
+      {|a001 OK CAPABILITY completed|};
+      {|a002 OK Begin TLS negotiation now|};
+      {|a003 OK CAPABILITY completed|};
+      {|a004 OK LOGIN completed|};
+      {|A001 OK GSSAPI authentication successful|};
+      {|a001 OK LOGIN completed|};
+      {|A142 OK [READ-WRITE] SELECT completed|};
+      {|A932 OK [READ-ONLY] EXAMINE completed|};
+      {|A003 OK CREATE completed|};
+      {|A004 OK CREATE completed|};
+      {|A682 OK LIST completed|};
+      {|A683 OK DELETE completed|};
+      {|A684 NO Name "foo" has inferior hierarchical names|};
+      {|A685 OK DELETE Completed|};
+      {|A686 OK LIST completed|};
+      {|A687 OK DELETE Completed|};
+      {|A82 OK LIST completed|};
+      {|A83 OK DELETE completed|};
+      {|A84 OK DELETE Completed|};
+      {|* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI|};
+      {|* CAPABILITY IMAP4rev1 AUTH=GSSAPI AUTH=PLAIN|};
+      {|* 22 EXPUNGE|};
+      {|* 23 EXISTS|};
+      {|* 3 RECENT|};
+      {|* 14 FETCH (FLAGS (\Seen \Deleted))|};
+      {|* BYE IMAP4rev1 Server logging out|};
+      {|* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED|};
+      {|* CAPABILITY IMAP4rev1 AUTH=PLAIN|};
+      {|* OK IMAP4rev1 Server|};
+      {|* 172 EXISTS|};
+      {|* 1 RECENT|};
+      {|* OK [UNSEEN 12] Message 12 is first unseen|};
+      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+      {|* OK [UIDNEXT 4392] Predicted next UID|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+      {|* 17 EXISTS|};
+      {|* 2 RECENT|};
+      {|* OK [UNSEEN 8] Message 8 is first unseen|};
+      {|* OK [UIDNEXT 4392] Predicted next UID|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS ()] No permanent flags permitted|};
     ]
   in
   List.iter parse tests;
