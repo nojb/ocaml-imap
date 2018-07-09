@@ -70,8 +70,30 @@ let is_atom_char = function
 let atom =
   take_while1 is_atom_char
 
+let quoted buf =
+  error buf
+
+let literal buf _k =
+  error buf
+
+let imap_string buf k =
+  match curr buf with
+  | '"' ->
+      k (quoted buf)
+  | '{' ->
+      literal buf k
+  | _ ->
+      assert false
+
 let is_astring_char c =
   is_atom_char c || c = ']'
+
+let astring buf k =
+  match curr buf with
+  | '"' | '{' ->
+      imap_string buf k
+  | _ ->
+      k (take_while1 is_astring_char buf)
 
 let is_text_char = function
   | '\r' | '\n' -> false
@@ -99,6 +121,60 @@ let nz_number =
 
 let uniqueid =
   number
+
+let mbx_flag buf =
+  let open MailboxFlag in
+  char '\\' buf;
+  match atom buf with
+  | "Noselect" -> Noselect
+  | "Marked" -> Marked
+  | "Unmarked" -> Unmarked
+  | "Noinferiors" -> Noinferiors
+  | "HasChildren" -> HasChildren
+  | "HasNoChildren" -> HasNoChildren
+  | "All" -> All
+  | "Archive" -> Archive
+  | "Drafts" -> Drafts
+  | "Flagged" -> Flagged
+  | "Junk" -> Junk
+  | "Sent" -> Sent
+  | "Trash" -> Trash
+  | a -> Extension a
+
+let delim buf =
+  match curr buf with
+  | '"' ->
+      error buf
+  | _ ->
+      char 'N' buf;
+      char 'I' buf;
+      char 'L' buf;
+      None
+
+let is_inbox s =
+  String.length s = String.length "INBOX" &&
+  String.uppercase_ascii s = "INBOX"
+
+let mailbox buf k =
+  astring buf (fun s -> if is_inbox s then k "INBOX" else k s)
+
+let mailbox_list buf k =
+  char '(' buf;
+  let flags =
+    if curr buf = ')' then []
+    else
+      let rec loop acc buf =
+        if curr buf = ' ' then
+          (next buf; loop (mbx_flag buf :: acc) buf)
+        else
+          List.rev acc
+      in
+      loop [mbx_flag buf] buf
+  in
+  char ')' buf;
+  char ' ' buf;
+  let delim = delim buf in
+  mailbox buf (k flags delim)
 
 let capability buf =
   let open Capability in
@@ -229,12 +305,14 @@ let response_data buf k =
           char ' ' buf;
           resp_text buf (fun code text -> k (BYE (code, text)))
       (* | "FLAGS" ->
-       *     sp *> psep_by sp flag >>| (fun l -> FLAGS l)
-       * | "LIST" ->
-       *     sp *> mailbox_list >>| (fun (xs, c, m) -> LIST (xs, c, m))
-       * | "LSUB" ->
-       *     sp *> mailbox_list >>| (fun (xs, c, m) -> LSUB (xs, c, m))
-       * | "SEARCH" ->
+       *     sp *> psep_by sp flag >>| (fun l -> FLAGS l) *)
+      | "LIST" ->
+          char ' ' buf;
+          mailbox_list buf (fun xs c m -> k (LIST (xs, c, m)))
+      | "LSUB" ->
+          char ' ' buf;
+          mailbox_list buf (fun xs c m -> k (LSUB (xs, c, m)))
+      (* | "SEARCH" ->
        *     pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n))
        * | "STATUS" ->
        *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l)) *)
