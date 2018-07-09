@@ -826,4 +826,448 @@ let%expect_test _ =
     ]
   in
   List.iter parse tests;
-  [%expect {| |}]
+  [%expect {|
+    (Cont YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC)
+    (Cont YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe)
+    (Cont "")
+    (Cont "Ready for literal data")
+    (Cont "Ready for additional command text")
+    (Tagged abcd (OK () "CAPABILITY completed"))
+    (Tagged efgh (OK () "STARTLS completed"))
+    (Tagged ijkl (OK () "CAPABILITY completed"))
+    (Tagged a002 (OK () "NOOP completed"))
+    (Tagged a047 (OK () "NOOP completed"))
+    (Tagged A023 (OK () "LOGOUT completed"))
+    (Tagged a001 (OK () "CAPABILITY completed"))
+    (Tagged a002 (OK () "Begin TLS negotiation now"))
+    (Tagged a003 (OK () "CAPABILITY completed"))
+    (Tagged a004 (OK () "LOGIN completed"))
+    (Tagged A001 (OK () "GSSAPI authentication successful"))
+    (Tagged a001 (OK () "LOGIN completed"))
+    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
+    (Tagged A932 (OK (READ_ONLY) "EXAMINE completed"))
+    (Tagged A003 (OK () "CREATE completed"))
+    (Tagged A004 (OK () "CREATE completed"))
+    (Tagged A682 (OK () "LIST completed"))
+    (Tagged A683 (OK () "DELETE completed"))
+    (Tagged A684 (NO () "Name \"foo\" has inferior hierarchical names"))
+    (Tagged A685 (OK () "DELETE Completed"))
+    (Tagged A686 (OK () "LIST completed"))
+    (Tagged A687 (OK () "DELETE Completed"))
+    (Tagged A82 (OK () "LIST completed"))
+    (Tagged A83 (OK () "DELETE completed"))
+    (Tagged A84 (OK () "DELETE Completed"))
+    (Untagged
+     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI))))
+    (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER AUTH=GSSAPI) AUTH_PLAIN)))
+    (Untagged (EXPUNGE 22))
+    (Untagged (EXISTS 23))
+    (Untagged (RECENT 3))
+    (Untagged (BYE () "IMAP4rev1 Server logging out"))
+    (Untagged
+     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER LOGINDISABLED))))
+    (Untagged (CAPABILITY ((OTHER IMAP4rev1) AUTH_PLAIN)))
+    (Untagged (State (OK () "IMAP4rev1 Server")))
+    (Untagged (EXISTS 172))
+    (Untagged (RECENT 1))
+    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
+    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
+    (Untagged (EXISTS 17))
+    (Untagged (RECENT 2))
+    (Untagged (State (OK ((UNSEEN 8)) "Message 8 is first unseen")))
+    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" ()"))) "No permanent flags permitted")))
+    (Untagged (LIST () (/) blurdybloop))
+    (Untagged (LIST (Noselect) (/) foo))
+    (Untagged (LIST () (/) foo/bar))
+    (Untagged (LIST (Noselect) (/) foo))
+    (Untagged (LIST () (.) blurdybloop))
+    (Untagged (LIST () (.) foo))
+    (Untagged (LIST () (.) foo.bar))
+    (Untagged (LIST () (.) foo.bar))
+    (Tagged A85 (OK () "LIST completed"))
+    (Untagged (LIST (Noselect) (.) foo))
+    (Tagged A86 (OK () "LIST completed"))
+    (Untagged (LIST () (/) blurdybloop))
+    (Untagged (LIST (Noselect) (/) foo))
+    (Untagged (LIST () (/) foo/bar))
+    (Tagged A682 (OK () "LIST completed"))
+    (Tagged A683 (OK () "RENAME completed"))
+    (Tagged A684 (OK () "RENAME Completed"))
+    (Untagged (LIST () (/) sarasoop))
+    (Untagged (LIST (Noselect) (/) zowie))
+    (Untagged (LIST () (/) zowie/bar))
+    (Tagged A685 (OK () "LIST completed"))
+    (Untagged (LIST () (.) INBOX))
+    (Untagged (LIST () (.) INBOX.bar))
+    (Tagged Z432 (OK () "LIST completed"))
+    (Tagged Z433 (OK () "RENAME completed"))
+    (Untagged (LIST () (.) INBOX))
+    (Untagged (LIST () (.) INBOX.bar))
+    (Untagged (LIST () (.) old-mail))
+    (Tagged Z434 (OK () "LIST completed"))
+    (Tagged A002 (OK () "SUBSCRIBE completed"))
+    (Tagged A002 (OK () "UNSUBSCRIBE completed"))
+    (Untagged (LIST (Noselect) (/) ""))
+    (Tagged A101 (OK () "LIST Completed"))
+    (Untagged (LIST (Noselect) (.) #news.))
+    (Tagged A102 (OK () "LIST Completed"))
+    (Untagged (LIST (Noselect) (/) /))
+    (Tagged A103 (OK () "LIST Completed"))
+    (Untagged (LIST (Noselect) (/) ~/Mail/foo))
+    (Untagged (LIST () (/) ~/Mail/meetings))
+    (Tagged A202 (OK () "LIST completed"))
+    (Untagged (LSUB () (.) #news.comp.mail.mime))
+    (Untagged (LSUB () (.) #news.comp.mail.misc))
+    (Tagged A002 (OK () "LSUB completed"))
+    (Untagged (LSUB (Noselect) (.) #news.comp.mail))
+    (Tagged A003 (OK () "LSUB completed"))
+    (Tagged A042 (OK () "STATUS completed"))
+    (Tagged A003 (OK () "APPEND completed"))
+    (Tagged FXXZ (OK () "CHECK Completed"))
+    (Tagged A341 (OK () "CLOSE completed"))
+    (Untagged (EXPUNGE 3))
+    (Untagged (EXPUNGE 3))
+    (Untagged (EXPUNGE 5))
+    (Untagged (EXPUNGE 8))
+    (Tagged A202 (OK () "EXPUNGE completed"))
+    (Untagged (SEARCH (2 84 882) ()))
+    (Tagged A282 (OK () "SEARCH completed"))
+    (Untagged (SEARCH () ()))
+    (Tagged A283 (OK () "SEARCH completed"))
+    (Untagged (SEARCH (43) ()))
+    (Tagged A284 (OK () "SEARCH completed"))
+    (Tagged A654 (OK () "FETCH completed"))
+    (Tagged A003 (OK () "STORE completed"))
+    (Tagged A003 (OK () "COPY completed"))
+    (Tagged A999 (OK () "UID FETCH completed"))
+    (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER XPIG-LATIN))))
+    (Tagged a441 (OK () "CAPABILITY completed"))
+    (Tagged A442 (OK () "XPIG-LATIN ompleted-cay"))
+    (Untagged (State (OK () "IMAP4rev1 server ready")))
+    (Untagged (State (OK (ALERT) "System shutdown in 10 minutes")))
+    (Tagged A001 (OK () "LOGIN Completed"))
+    (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data")))
+    (Tagged A222 (OK () "COPY completed"))
+    (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data")))
+    (Untagged (State (NO () "Disk is 99% full, please delete unnecessary data")))
+    (Tagged A223 (NO () "COPY failed: disk is full"))
+    (Untagged (State (BAD () "Command line too long")))
+    (Untagged (State (BAD () "Empty command line")))
+    (Untagged (State (BAD () "Disk crash, attempting salvage to a new disk!")))
+    (Untagged (State (OK () "Salvage successful, no data lost")))
+    (Tagged A443 (OK () "Expunge completed"))
+    (Untagged (PREAUTH () "IMAP4rev1 server logged in as Smith"))
+    (Untagged (BYE () "Autologout; idle for too long"))
+    (Untagged
+     (CAPABILITY
+      ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI) (OTHER XPIG-LATIN))))
+    (Untagged (LIST (Noselect) (/) ~/Mail/foo))
+    (Untagged (LSUB () (.) #news.comp.mail.misc))
+    (Untagged (SEARCH (2 3 6) ()))
+    (Untagged (EXISTS 23))
+    (Untagged (RECENT 5))
+    (Untagged (EXPUNGE 44))
+    (Tagged A001 (OK () "LOGIN completed"))
+    (Tagged A044 (BAD () "No such command as \"BLURDYBLOOP\""))
+    (Untagged (State (OK () "IMAP4rev1 Service Ready")))
+    (Tagged a001 (OK () "LOGIN completed"))
+    (Untagged (EXISTS 18))
+    (Untagged (RECENT 2))
+    (Untagged
+     (State (OK ((UNSEEN 17)) "Message 17 is the first unseen message")))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
+    (Tagged a002 (OK (READ_WRITE) "SELECT completed"))
+    (Tagged a003 (OK () "FETCH completed"))
+    (Untagged (EXISTS 172))
+    (Untagged (RECENT 1))
+    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
+    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
+    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
+    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
+    (Untagged (EXISTS 172))
+    (Untagged (RECENT 1))
+    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
+    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
+    (Untagged
+     (State (OK (NOMODSEQ) "Sorry, this mailbox format doesn't support")))
+    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
+    (Untagged (FETCH 1 ((UID 4) (MODSEQ 12121231000))))
+    (Untagged (FETCH 2 ((UID 6) (MODSEQ 12121230852))))
+    (Untagged (FETCH 4 ((UID 8) (MODSEQ 12121230956))))
+    (Tagged a103 (OK () "Conditional Store completed"))
+    (Untagged (FETCH 50 ((MODSEQ 12111230047))))
+    (Tagged a104 (OK () "Store (conditional) completed"))
+    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 12111230047"))) "")))
+    (Untagged (FETCH 50 ((MODSEQ 12111230048))))
+    (Tagged c101 (OK () "Store (conditional) completed"))
+    (Untagged (FETCH 5 ((MODSEQ 320162350))))
+    (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
+    (Untagged (FETCH 5 ((MODSEQ 320162350))))
+    (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
+    (Tagged a102 (OK ((OTHER MODIFIED (" 12"))) "Conditional STORE failed"))
+    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
+    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
+    (Tagged a107 (OK () ""))
+    (Tagged b107 (OK () ""))
+    (Untagged (FETCH 101 ((MODSEQ 303181230852))))
+    (Tagged b108 (OK () "Conditional Store completed"))
+    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
+    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
+    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
+    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
+    (Untagged (FETCH 101 ((MODSEQ 303181230852))))
+    (Tagged b108 (OK () "Conditional Store completed"))
+    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
+    (Tagged a106 (OK () "Conditional STORE completed"))
+    (Tagged B001
+     (NO ((OTHER MODIFIED (" 2"))) "Some of the messages no longer exist."))
+    (Untagged (EXPUNGE 4))
+    (Untagged (EXPUNGE 4))
+    (Untagged (EXPUNGE 4))
+    (Untagged (EXPUNGE 4))
+    (Tagged B002 (OK () "NOOP Completed."))
+    (Tagged b003 (OK () "Conditional Store completed"))
+    (Tagged s100 (OK () "FETCH completed"))
+    (Untagged (FETCH 1 ((MODSEQ 624140003))))
+    (Untagged (FETCH 2 ((MODSEQ 624140007))))
+    (Untagged (FETCH 3 ((MODSEQ 624140005))))
+    (Tagged a (OK () "Fetch complete"))
+    (Untagged
+     (State
+      (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Deleted \\Seen \\*)")))
+       Limited)))
+    (Untagged (FETCH 7 ((MODSEQ 2121231000))))
+    (Tagged A160 (OK () "Store completed"))
+    (Tagged C180 (OK () "Noop completed"))
+    (Tagged D210 (OK () "Noop completed"))
+    (Untagged (FETCH 7 ((MODSEQ 12121231777))))
+    (Tagged A240 (OK () "Store completed"))
+    (Tagged C270 (OK () "Noop completed"))
+    (Tagged D300 (OK () "Noop completed"))
+    (Untagged (FETCH 7 ((MODSEQ 12121245160))))
+    (Tagged A330 (OK () "Store completed"))
+    (Tagged C360 (OK () "Noop completed"))
+    (Tagged D390 (OK () "Noop completed"))
+    (Tagged a (OK () "Search complete"))
+    (Untagged (SEARCH () ()))
+    (Tagged t (OK () "Search complete, nothing found"))
+    (Tagged A042 (OK () "STATUS completed"))
+    (Untagged (EXISTS 172))
+    (Untagged (RECENT 1))
+    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
+    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
+    (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
+    (Tagged A142 (OK (READ_WRITE) "SELECT completed, CONDSTORE is now enabled"))
+    (Tagged a (OK () "Extended SEARCH completed"))
+    (Tagged a (OK () "Extended SORT completed"))
+    (Untagged (EXISTS 464))
+    (Untagged (RECENT 3))
+    (Untagged (State (OK ((UIDVALIDITY -437438251)) UIDVALIDITY)))
+    (Untagged (State (OK ((UIDNEXT 550)) "Predicted next UID")))
+    (Untagged
+     (State
+      (OK ((OTHER HIGHESTMODSEQ (" 90060128194045007"))) "Highest mailbox")))
+    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    (Tagged A02 (OK (READ_WRITE) "Sorry, UIDVALIDITY mismatch"))
+    (Untagged (State (OK (CLOSED) "")))
+    (Untagged (EXISTS 100))
+    (Untagged (RECENT 11))
+    (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
+    (Untagged (State (OK ((UIDNEXT 600)) "Predicted next UID")))
+    (Untagged
+     (State (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) Highest)))
+    (Untagged (State (OK ((UNSEEN 7)) "There are some unseen")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    (Tagged A03 (OK (READ_WRITE) "mailbox selected"))
+    (Untagged (EXISTS 10003))
+    (Untagged (RECENT 4))
+    (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
+    (Untagged (State (OK ((UIDNEXT 30013)) "Predicted next UID")))
+    (Untagged
+     (State
+      (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) "Highest mailbox")))
+    (Untagged
+     (State (OK ((UNSEEN 7)) "There are some unseen messages in the mailbox")))
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    Parsing error:
+    * 14 FETCH (FLAGS (\Seen \Deleted))
+                     ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
+            ^
+    Parsing error:
+    * 2 FETCH (FLAGS (\Deleted \Seen))
+                    ^
+    Parsing error:
+    * 3 FETCH (FLAGS (\Deleted))
+                    ^
+    Parsing error:
+    * 4 FETCH (FLAGS (\Deleted \Flagged \Seen))
+                    ^
+    Parsing error:
+    * 23 FETCH (FLAGS (\Seen) UID 4827313)
+                     ^
+    Parsing error:
+    * 24 FETCH (FLAGS (\Seen) UID 4827943)
+                     ^
+    Parsing error:
+    * 25 FETCH (FLAGS (\Seen) UID 4828442)
+                     ^
+    Parsing error:
+    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
+            ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)
+                     ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
+                     ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))
+                                       ^
+    Parsing error:
+    * 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))
+                                       ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))
+                                            ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))
+                                            ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))
+                                            ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))
+                                            ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
+                                            ^
+    Parsing error:
+    * 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))
+                                       ^
+    Parsing error:
+    * 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))
+                                       ^
+    Parsing error:
+    * 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))
+                                       ^
+    Parsing error:
+    * 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))
+                                       ^
+    Parsing error:
+    * 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))
+                                         ^
+    Parsing error:
+    * 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))
+                                         ^
+    Parsing error:
+    * 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk
+                                         ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))
+                    ^
+    Parsing error:
+    * 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))
+                    ^
+    Parsing error:
+    * 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ
+                    ^
+    Parsing error:
+    * 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))
+                    ^
+    Parsing error:
+    * 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))
+                    ^
+    Parsing error:
+    * SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)
+                                       ^
+    Parsing error:
+    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292
+            ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+           ^
+    Parsing error:
+    * ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236
+             ^
+    Parsing error:
+    * ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236
+             ^
+    Parsing error:
+    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
+                                            ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
+           ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
+           ^
+    Parsing error:
+    * VANISHED (EARLIER) 41,43:116,118,120:211,214:540
+              ^
+    Parsing error:
+    * 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ
+                             ^
+    Parsing error:
+    * 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ
+                             ^
+    Parsing error:
+    * 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ
+                             ^
+    Parsing error:
+    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
+           ^
+    Parsing error:
+    * VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],
+              ^
+    Parsing error:
+    * 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ
+                          ^ |}]
