@@ -645,679 +645,1330 @@ let parse s =
       Printf.eprintf "Parsing error:\n%s\n%s^\n" line (String.make pos ' ')
 
 let%expect_test _ =
-  let tests =
-    [
-      {|+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC|};
-      {|+ YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe|};
-      {|+|};
-      {|+ Ready for literal data|};
-      {|+ Ready for additional command text|};
-      {|abcd OK CAPABILITY completed|};
-      {|efgh OK STARTLS completed|};
-      {|ijkl OK CAPABILITY completed|};
-      {|a002 OK NOOP completed|};
-      {|a047 OK NOOP completed|};
-      {|A023 OK LOGOUT completed|};
-      {|a001 OK CAPABILITY completed|};
-      {|a002 OK Begin TLS negotiation now|};
-      {|a003 OK CAPABILITY completed|};
-      {|a004 OK LOGIN completed|};
-      {|A001 OK GSSAPI authentication successful|};
-      {|a001 OK LOGIN completed|};
-      {|A142 OK [READ-WRITE] SELECT completed|};
-      {|A932 OK [READ-ONLY] EXAMINE completed|};
-      {|A003 OK CREATE completed|};
-      {|A004 OK CREATE completed|};
-      {|A682 OK LIST completed|};
-      {|A683 OK DELETE completed|};
-      {|A684 NO Name "foo" has inferior hierarchical names|};
-      {|A685 OK DELETE Completed|};
-      {|A686 OK LIST completed|};
-      {|A687 OK DELETE Completed|};
-      {|A82 OK LIST completed|};
-      {|A83 OK DELETE completed|};
-      {|A84 OK DELETE Completed|};
-      {|* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI|};
-      {|* CAPABILITY IMAP4rev1 AUTH=GSSAPI AUTH=PLAIN|};
-      {|* 22 EXPUNGE|};
-      {|* 23 EXISTS|};
-      {|* 3 RECENT|};
-      {|* 14 FETCH (FLAGS (\Seen \Deleted))|};
-      {|* BYE IMAP4rev1 Server logging out|};
-      {|* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED|};
-      {|* CAPABILITY IMAP4rev1 AUTH=PLAIN|};
-      {|* OK IMAP4rev1 Server|};
-      {|* 172 EXISTS|};
-      {|* 1 RECENT|};
-      {|* OK [UNSEEN 12] Message 12 is first unseen|};
-      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
-      {|* OK [UIDNEXT 4392] Predicted next UID|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
-      {|* 17 EXISTS|};
-      {|* 2 RECENT|};
-      {|* OK [UNSEEN 8] Message 8 is first unseen|};
-      {|* OK [UIDNEXT 4392] Predicted next UID|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS ()] No permanent flags permitted|};
-      {|* LIST () "/" blurdybloop|};
-      {|* LIST (\Noselect) "/" foo|};
-      {|* LIST () "/" foo/bar|};
-      {|* LIST (\Noselect) "/" foo|};
-      {|* LIST () "." blurdybloop|};
-      {|* LIST () "." foo|};
-      {|* LIST () "." foo.bar|};
-      {|* LIST () "." foo.bar|};
-      {|A85 OK LIST completed|};
-      {|* LIST (\Noselect) "." foo|};
-      {|A86 OK LIST completed|};
-      {|* LIST () "/" blurdybloop|};
-      {|* LIST (\Noselect) "/" foo|};
-      {|* LIST () "/" foo/bar|};
-      {|A682 OK LIST completed|};
-      {|A683 OK RENAME completed|};
-      {|A684 OK RENAME Completed|};
-      {|* LIST () "/" sarasoop|};
-      {|* LIST (\Noselect) "/" zowie|};
-      {|* LIST () "/" zowie/bar|};
-      {|A685 OK LIST completed|};
-      {|* LIST () "." INBOX|};
-      {|* LIST () "." INBOX.bar|};
-      {|Z432 OK LIST completed|};
-      {|Z433 OK RENAME completed|};
-      {|* LIST () "." INBOX|};
-      {|* LIST () "." INBOX.bar|};
-      {|* LIST () "." old-mail|};
-      {|Z434 OK LIST completed|};
-      {|A002 OK SUBSCRIBE completed|};
-      {|A002 OK UNSUBSCRIBE completed|};
-      {|* LIST (\Noselect) "/" ""|};
-      {|A101 OK LIST Completed|};
-      {|* LIST (\Noselect) "." #news.|};
-      {|A102 OK LIST Completed|};
-      {|* LIST (\Noselect) "/" /|};
-      {|A103 OK LIST Completed|};
-      {|* LIST (\Noselect) "/" ~/Mail/foo|};
-      {|* LIST () "/" ~/Mail/meetings|};
-      {|A202 OK LIST completed|};
-      {|* LSUB () "." #news.comp.mail.mime|};
-      {|* LSUB () "." #news.comp.mail.misc|};
-      {|A002 OK LSUB completed|};
-      {|* LSUB (\NoSelect) "." #news.comp.mail|};
-      {|A003 OK LSUB completed|};
-      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
-      {|A042 OK STATUS completed|};
-      {|A003 OK APPEND completed|};
-      {|FXXZ OK CHECK Completed|};
-      {|A341 OK CLOSE completed|};
-      {|* 3 EXPUNGE|};
-      {|* 3 EXPUNGE|};
-      {|* 5 EXPUNGE|};
-      {|* 8 EXPUNGE|};
-      {|A202 OK EXPUNGE completed|};
-      {|* SEARCH 2 84 882|};
-      {|A282 OK SEARCH completed|};
-      {|* SEARCH|};
-      {|A283 OK SEARCH completed|};
-      {|* SEARCH 43|};
-      {|A284 OK SEARCH completed|};
-      {|A654 OK FETCH completed|};
-      {|* 2 FETCH (FLAGS (\Deleted \Seen))|};
-      {|* 3 FETCH (FLAGS (\Deleted))|};
-      {|* 4 FETCH (FLAGS (\Deleted \Flagged \Seen))|};
-      {|A003 OK STORE completed|};
-      {|A003 OK COPY completed|};
-      {|* 23 FETCH (FLAGS (\Seen) UID 4827313)|};
-      {|* 24 FETCH (FLAGS (\Seen) UID 4827943)|};
-      {|* 25 FETCH (FLAGS (\Seen) UID 4828442)|};
-      {|A999 OK UID FETCH completed|};
-      {|* CAPABILITY IMAP4rev1 XPIG-LATIN|};
-      {|a441 OK CAPABILITY completed|};
-      {|A442 OK XPIG-LATIN ompleted-cay|};
-      {|* OK IMAP4rev1 server ready|};
-      {|* OK [ALERT] System shutdown in 10 minutes|};
-      {|A001 OK LOGIN Completed|};
-      {|* NO Disk is 98% full, please delete unnecessary data|};
-      {|A222 OK COPY completed|};
-      {|* NO Disk is 98% full, please delete unnecessary data|};
-      {|* NO Disk is 99% full, please delete unnecessary data|};
-      {|A223 NO COPY failed: disk is full|};
-      {|* BAD Command line too long|};
-      {|* BAD Empty command line|};
-      {|* BAD Disk crash, attempting salvage to a new disk!|};
-      {|* OK Salvage successful, no data lost|};
-      {|A443 OK Expunge completed|};
-      {|* PREAUTH IMAP4rev1 server logged in as Smith|};
-      {|* BYE Autologout; idle for too long|};
-      {|* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI XPIG-LATIN|};
-      {|* LIST (\Noselect) "/" ~/Mail/foo|};
-      {|* LSUB () "." #news.comp.mail.misc|};
-      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
-      {|* SEARCH 2 3 6|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* 23 EXISTS|};
-      {|* 5 RECENT|};
-      {|* 44 EXPUNGE|};
-      {|* 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)|};
-      {|A001 OK LOGIN completed|};
-      {|A044 BAD No such command as "BLURDYBLOOP"|};
-      {|* OK IMAP4rev1 Service Ready|};
-      {|a001 OK LOGIN completed|};
-      {|* 18 EXISTS|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* 2 RECENT|};
-      {|* OK [UNSEEN 17] Message 17 is the first unseen message|};
-      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
-      {|a002 OK [READ-WRITE] SELECT completed|};
-      {|* 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"|};
-      {|a003 OK FETCH completed|};
-      {|* 172 EXISTS|};
-      {|* 1 RECENT|};
-      {|* OK [UNSEEN 12] Message 12 is first unseen|};
-      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
-      {|* OK [UIDNEXT 4392] Predicted next UID|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
-      {|* OK [HIGHESTMODSEQ 715194045007]|};
-      {|A142 OK [READ-WRITE] SELECT completed|};
-      {|* 172 EXISTS|};
-      {|* 1 RECENT|};
-      {|* OK [UNSEEN 12] Message 12 is first unseen|};
-      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
-      {|* OK [UIDNEXT 4392] Predicted next UID|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
-      {|* OK [NOMODSEQ] Sorry, this mailbox format doesn't support|};
-      {|A142 OK [READ-WRITE] SELECT completed|};
-      {|* 1 FETCH (UID 4 MODSEQ (12121231000))|};
-      {|* 2 FETCH (UID 6 MODSEQ (12121230852))|};
-      {|* 4 FETCH (UID 8 MODSEQ (12121230956))|};
-      {|a103 OK Conditional Store completed|};
-      {|* 50 FETCH (MODSEQ (12111230047))|};
-      {|a104 OK Store (conditional) completed|};
-      {|* OK [HIGHESTMODSEQ 12111230047]|};
-      {|* 50 FETCH (MODSEQ (12111230048))|};
-      {|c101 OK Store (conditional) completed|};
-      {|* 5 FETCH (MODSEQ (320162350))|};
-      {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
-      {|* 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))|};
-      {|* 5 FETCH (MODSEQ (320162350))|};
-      {|* 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))|};
-      {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
-      {|a102 OK [MODIFIED 12] Conditional STORE failed|};
-      {|* 100 FETCH (MODSEQ (303181230852))|};
-      {|* 102 FETCH (MODSEQ (303181230852))|};
-      {|* 150 FETCH (MODSEQ (303181230852))|};
-      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
-      {|a107 OK|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
-      {|b107 OK|};
-      {|* 101 FETCH (MODSEQ (303181230852))|};
-      {|b108 OK Conditional Store completed|};
-      {|* 100 FETCH (MODSEQ (303181230852))|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
-      {|* 102 FETCH (MODSEQ (303181230852))|};
-      {|* 150 FETCH (MODSEQ (303181230852))|};
-      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-      {|* 100 FETCH (MODSEQ (303181230852))|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
-      {|* 102 FETCH (MODSEQ (303181230852))|};
-      {|* 150 FETCH (MODSEQ (303181230852))|};
-      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-      {|* 101 FETCH (MODSEQ (303181230852))|};
-      {|b108 OK Conditional Store completed|};
-      {|* 100 FETCH (MODSEQ (303181230852))|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
-      {|* 102 FETCH (MODSEQ (303181230852))|};
-      {|* 150 FETCH (MODSEQ (303181230852))|};
-      {|a106 OK Conditional STORE completed|};
-      {|* 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
-      {|* 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
-      {|B001 NO [MODIFIED 2] Some of the messages no longer exist.|};
-      {|* 4 EXPUNGE|};
-      {|* 4 EXPUNGE|};
-      {|* 4 EXPUNGE|};
-      {|* 4 EXPUNGE|};
-      {|* 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))|};
-      {|B002 OK NOOP Completed.|};
-      {|* 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))|};
-      {|b003 OK Conditional Store completed|};
-      {|* 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))|};
-      {|* 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))|};
-      {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk))|};
-      {|s100 OK FETCH completed|};
-      {|* 1 FETCH (MODSEQ (624140003))|};
-      {|* 2 FETCH (MODSEQ (624140007))|};
-      {|* 3 FETCH (MODSEQ (624140005))|};
-      {|a OK Fetch complete|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS (\Answered \Deleted \Seen \*)] Limited|};
-      {|* 7 FETCH (MODSEQ (2121231000))|};
-      {|A160 OK Store completed|};
-      {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
-      {|C180 OK Noop completed|};
-      {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
-      {|D210 OK Noop completed|};
-      {|* 7 FETCH (MODSEQ (12121231777))|};
-      {|A240 OK Store completed|};
-      {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ (12))|};
-      {|C270 OK Noop completed|};
-      {|D300 OK Noop completed|};
-      {|* 7 FETCH (MODSEQ (12121245160))|};
-      {|A330 OK Store completed|};
-      {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
-      {|C360 OK Noop completed|};
-      {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
-      {|D390 OK Noop completed|};
-      {|* SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)|};
-      {|a OK Search complete|};
-      {|* SEARCH|};
-      {|t OK Search complete, nothing found|};
-      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
-      {|A042 OK STATUS completed|};
-      {|* 172 EXISTS|};
-      {|* 1 RECENT|};
-      {|* OK [UNSEEN 12] Message 12 is first unseen|};
-      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
-      {|* OK [UIDNEXT 4392] Predicted next UID|};
-      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
-      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
-      {|* OK [HIGHESTMODSEQ 715194045007]|};
-      {|A142 OK [READ-WRITE] SELECT completed, CONDSTORE is now enabled|};
-      {|* ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236|};
-      {|a OK Extended SEARCH completed|};
-      {|* ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236|};
-      {|a OK Extended SORT completed|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
-      {|* 464 EXISTS|};
-      {|* 3 RECENT|};
-      {|* OK [UIDVALIDITY 3857529045] UIDVALIDITY|};
-      {|* OK [UIDNEXT 550] Predicted next UID|};
-      {|* OK [HIGHESTMODSEQ 90060128194045007] Highest mailbox|};
-      {|* OK [UNSEEN 12] Message 12 is first unseen|};
-      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
-      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
-      {|A02 OK [READ-WRITE] Sorry, UIDVALIDITY mismatch|};
-      {|* OK [CLOSED]|};
-      {|* 100 EXISTS|};
-      {|* 11 RECENT|};
-      {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
-      {|* OK [UIDNEXT 600] Predicted next UID|};
-      {|* OK [HIGHESTMODSEQ 90060115205545359] Highest|};
-      {|* OK [UNSEEN 7] There are some unseen|};
-      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
-      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
-      {|* VANISHED (EARLIER) 41,43:116,118,120:211,214:540|};
-      {|* 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ (12111230047))|};
-      {|* 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ (12111230047))|};
-      {|* 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ (12111230047))|};
-      {|A03 OK [READ-WRITE] mailbox selected|};
-      {|* 10003 EXISTS|};
-      {|* 4 RECENT|};
-      {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
-      {|* OK [UIDNEXT 30013] Predicted next UID|};
-      {|* OK [HIGHESTMODSEQ 90060115205545359] Highest mailbox|};
-      {|* OK [UNSEEN 7] There are some unseen messages in the mailbox|};
-      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
-      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
-      {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,89|};
-      {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ (90060115194045027))|};
-    ]
-  in
-  List.iter parse tests;
+  parse {|+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC|};
+  [%expect {| (Cont YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC) |}]
+
+let%expect_test _ =
+  parse {|+ YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe|};
+  [%expect {| (Cont YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe) |}]
+
+let%expect_test _ =
+  parse {|+|};
+  [%expect {| (Cont "") |}]
+
+let%expect_test _ =
+  parse {|+ Ready for literal data|};
+  [%expect {| (Cont "Ready for literal data") |}]
+
+let%expect_test _ =
+  parse {|+ Ready for additional command text|};
+  [%expect {| (Cont "Ready for additional command text") |}]
+
+let%expect_test _ =
+  parse {|abcd OK CAPABILITY completed|};
+  [%expect {| (Tagged abcd (OK () "CAPABILITY completed")) |}]
+
+let%expect_test _ =
+  parse {|efgh OK STARTLS completed|};
+  [%expect {| (Tagged efgh (OK () "STARTLS completed")) |}]
+
+let%expect_test _ =
+  parse {|ijkl OK CAPABILITY completed|};
+  [%expect {| (Tagged ijkl (OK () "CAPABILITY completed")) |}]
+
+let%expect_test _ =
+  parse {|a002 OK NOOP completed|};
+  [%expect {| (Tagged a002 (OK () "NOOP completed")) |}]
+
+let%expect_test _ =
+  parse {|a047 OK NOOP completed|};
+  [%expect {| (Tagged a047 (OK () "NOOP completed")) |}]
+
+let%expect_test _ =
+  parse {|A023 OK LOGOUT completed|};
+  [%expect {| (Tagged A023 (OK () "LOGOUT completed")) |}]
+
+let%expect_test _ =
+  parse {|a001 OK CAPABILITY completed|};
+  [%expect {| (Tagged a001 (OK () "CAPABILITY completed")) |}]
+
+let%expect_test _ =
+  parse {|a002 OK Begin TLS negotiation now|};
+  [%expect {| (Tagged a002 (OK () "Begin TLS negotiation now")) |}]
+
+let%expect_test _ =
+  parse {|a003 OK CAPABILITY completed|};
+  [%expect {| (Tagged a003 (OK () "CAPABILITY completed")) |}]
+
+let%expect_test _ =
+  parse {|a004 OK LOGIN completed|};
+  [%expect {| (Tagged a004 (OK () "LOGIN completed")) |}]
+
+let%expect_test _ =
+  parse {|A001 OK GSSAPI authentication successful|};
+  [%expect {| (Tagged A001 (OK () "GSSAPI authentication successful")) |}]
+
+let%expect_test _ =
+  parse {|a001 OK LOGIN completed|};
+  [%expect {| (Tagged a001 (OK () "LOGIN completed")) |}]
+
+let%expect_test _ =
+  parse {|A142 OK [READ-WRITE] SELECT completed|};
+  [%expect {| (Tagged A142 (OK (READ_WRITE) "SELECT completed")) |}]
+
+let%expect_test _ =
+  parse {|A932 OK [READ-ONLY] EXAMINE completed|};
+  [%expect {| (Tagged A932 (OK (READ_ONLY) "EXAMINE completed")) |}]
+
+let%expect_test _ =
+  parse {|A003 OK CREATE completed|};
+  [%expect {| (Tagged A003 (OK () "CREATE completed")) |}]
+
+let%expect_test _ =
+  parse {|A004 OK CREATE completed|};
+  [%expect {| (Tagged A004 (OK () "CREATE completed")) |}]
+
+let%expect_test _ =
+  parse {|A682 OK LIST completed|};
+  [%expect {| (Tagged A682 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|A683 OK DELETE completed|};
+  [%expect {| (Tagged A683 (OK () "DELETE completed")) |}]
+
+let%expect_test _ =
+  parse {|A684 NO Name "foo" has inferior hierarchical names|};
+  [%expect {| (Tagged A684 (NO () "Name \"foo\" has inferior hierarchical names")) |}]
+
+let%expect_test _ =
+  parse {|A685 OK DELETE Completed|};
+  [%expect {| (Tagged A685 (OK () "DELETE Completed")) |}]
+
+let%expect_test _ =
+  parse {|A686 OK LIST completed|};
+  [%expect {| (Tagged A686 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|A687 OK DELETE Completed|};
+  [%expect {| (Tagged A687 (OK () "DELETE Completed")) |}]
+
+let%expect_test _ =
+  parse {|A82 OK LIST completed|};
+  [%expect {| (Tagged A82 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|A83 OK DELETE completed|};
+  [%expect {| (Tagged A83 (OK () "DELETE completed")) |}]
+
+let%expect_test _ =
+  parse {|A84 OK DELETE Completed|};
+  [%expect {| (Tagged A84 (OK () "DELETE Completed")) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI|};
   [%expect {|
-    (Cont YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC)
-    (Cont YDMGCSqGSIb3EgECAgIBAAD/////6jcyG4GE3KkTzBeBiVHe)
-    (Cont "")
-    (Cont "Ready for literal data")
-    (Cont "Ready for additional command text")
-    (Tagged abcd (OK () "CAPABILITY completed"))
-    (Tagged efgh (OK () "STARTLS completed"))
-    (Tagged ijkl (OK () "CAPABILITY completed"))
-    (Tagged a002 (OK () "NOOP completed"))
-    (Tagged a047 (OK () "NOOP completed"))
-    (Tagged A023 (OK () "LOGOUT completed"))
-    (Tagged a001 (OK () "CAPABILITY completed"))
-    (Tagged a002 (OK () "Begin TLS negotiation now"))
-    (Tagged a003 (OK () "CAPABILITY completed"))
-    (Tagged a004 (OK () "LOGIN completed"))
-    (Tagged A001 (OK () "GSSAPI authentication successful"))
-    (Tagged a001 (OK () "LOGIN completed"))
-    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
-    (Tagged A932 (OK (READ_ONLY) "EXAMINE completed"))
-    (Tagged A003 (OK () "CREATE completed"))
-    (Tagged A004 (OK () "CREATE completed"))
-    (Tagged A682 (OK () "LIST completed"))
-    (Tagged A683 (OK () "DELETE completed"))
-    (Tagged A684 (NO () "Name \"foo\" has inferior hierarchical names"))
-    (Tagged A685 (OK () "DELETE Completed"))
-    (Tagged A686 (OK () "LIST completed"))
-    (Tagged A687 (OK () "DELETE Completed"))
-    (Tagged A82 (OK () "LIST completed"))
-    (Tagged A83 (OK () "DELETE completed"))
-    (Tagged A84 (OK () "DELETE Completed"))
     (Untagged
-     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI))))
-    (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER AUTH=GSSAPI) AUTH_PLAIN)))
-    (Untagged (EXPUNGE 22))
-    (Untagged (EXISTS 23))
-    (Untagged (RECENT 3))
-    (Untagged (FETCH 14 ((FLAGS (Seen Deleted)))))
-    (Untagged (BYE () "IMAP4rev1 Server logging out"))
+     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI)))) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 AUTH=GSSAPI AUTH=PLAIN|};
+  [%expect {| (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER AUTH=GSSAPI) AUTH_PLAIN))) |}]
+
+let%expect_test _ =
+  parse {|* 22 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 22)) |}]
+
+let%expect_test _ =
+  parse {|* 23 EXISTS|};
+  [%expect {| (Untagged (EXISTS 23)) |}]
+
+let%expect_test _ =
+  parse {|* 3 RECENT|};
+  [%expect {| (Untagged (RECENT 3)) |}]
+
+let%expect_test _ =
+  parse {|* 14 FETCH (FLAGS (\Seen \Deleted))|};
+  [%expect {| (Untagged (FETCH 14 ((FLAGS (Seen Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* BYE IMAP4rev1 Server logging out|};
+  [%expect {| (Untagged (BYE () "IMAP4rev1 Server logging out")) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED|};
+  [%expect {|
     (Untagged
-     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER LOGINDISABLED))))
-    (Untagged (CAPABILITY ((OTHER IMAP4rev1) AUTH_PLAIN)))
-    (Untagged (State (OK () "IMAP4rev1 Server")))
-    (Untagged (EXISTS 172))
-    (Untagged (RECENT 1))
-    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
-    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+     (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER LOGINDISABLED)))) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 AUTH=PLAIN|};
+  [%expect {| (Untagged (CAPABILITY ((OTHER IMAP4rev1) AUTH_PLAIN))) |}]
+
+let%expect_test _ =
+  parse {|* OK IMAP4rev1 Server|};
+  [%expect {| (Untagged (State (OK () "IMAP4rev1 Server"))) |}]
+
+let%expect_test _ =
+  parse {|* 172 EXISTS|};
+  [%expect {| (Untagged (EXISTS 172)) |}]
+
+let%expect_test _ =
+  parse {|* 1 RECENT|};
+  [%expect {| (Untagged (RECENT 1)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 12] Message 12 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 4392] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+  [%expect {|
     (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
-    (Untagged (EXISTS 17))
-    (Untagged (RECENT 2))
-    (Untagged (State (OK ((UNSEEN 8)) "Message 8 is first unseen")))
-    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+
+let%expect_test _ =
+  parse {|* 17 EXISTS|};
+  [%expect {| (Untagged (EXISTS 17)) |}]
+
+let%expect_test _ =
+  parse {|* 2 RECENT|};
+  [%expect {| (Untagged (RECENT 2)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 8] Message 8 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 8)) "Message 8 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 4392] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS ()] No permanent flags permitted|};
+  [%expect {|
     (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" ()"))) "No permanent flags permitted")))
-    (Untagged (LIST () (/) blurdybloop))
-    (Untagged (LIST (Noselect) (/) foo))
-    (Untagged (LIST () (/) foo/bar))
-    (Untagged (LIST (Noselect) (/) foo))
-    (Untagged (LIST () (.) blurdybloop))
-    (Untagged (LIST () (.) foo))
-    (Untagged (LIST () (.) foo.bar))
-    (Untagged (LIST () (.) foo.bar))
-    (Tagged A85 (OK () "LIST completed"))
-    (Untagged (LIST (Noselect) (.) foo))
-    (Tagged A86 (OK () "LIST completed"))
-    (Untagged (LIST () (/) blurdybloop))
-    (Untagged (LIST (Noselect) (/) foo))
-    (Untagged (LIST () (/) foo/bar))
-    (Tagged A682 (OK () "LIST completed"))
-    (Tagged A683 (OK () "RENAME completed"))
-    (Tagged A684 (OK () "RENAME Completed"))
-    (Untagged (LIST () (/) sarasoop))
-    (Untagged (LIST (Noselect) (/) zowie))
-    (Untagged (LIST () (/) zowie/bar))
-    (Tagged A685 (OK () "LIST completed"))
-    (Untagged (LIST () (.) INBOX))
-    (Untagged (LIST () (.) INBOX.bar))
-    (Tagged Z432 (OK () "LIST completed"))
-    (Tagged Z433 (OK () "RENAME completed"))
-    (Untagged (LIST () (.) INBOX))
-    (Untagged (LIST () (.) INBOX.bar))
-    (Untagged (LIST () (.) old-mail))
-    (Tagged Z434 (OK () "LIST completed"))
-    (Tagged A002 (OK () "SUBSCRIBE completed"))
-    (Tagged A002 (OK () "UNSUBSCRIBE completed"))
-    (Untagged (LIST (Noselect) (/) ""))
-    (Tagged A101 (OK () "LIST Completed"))
-    (Untagged (LIST (Noselect) (.) #news.))
-    (Tagged A102 (OK () "LIST Completed"))
-    (Untagged (LIST (Noselect) (/) /))
-    (Tagged A103 (OK () "LIST Completed"))
-    (Untagged (LIST (Noselect) (/) ~/Mail/foo))
-    (Untagged (LIST () (/) ~/Mail/meetings))
-    (Tagged A202 (OK () "LIST completed"))
-    (Untagged (LSUB () (.) #news.comp.mail.mime))
-    (Untagged (LSUB () (.) #news.comp.mail.misc))
-    (Tagged A002 (OK () "LSUB completed"))
-    (Untagged (LSUB (Noselect) (.) #news.comp.mail))
-    (Tagged A003 (OK () "LSUB completed"))
-    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
-    (Tagged A042 (OK () "STATUS completed"))
-    (Tagged A003 (OK () "APPEND completed"))
-    (Tagged FXXZ (OK () "CHECK Completed"))
-    (Tagged A341 (OK () "CLOSE completed"))
-    (Untagged (EXPUNGE 3))
-    (Untagged (EXPUNGE 3))
-    (Untagged (EXPUNGE 5))
-    (Untagged (EXPUNGE 8))
-    (Tagged A202 (OK () "EXPUNGE completed"))
-    (Untagged (SEARCH (2 84 882) ()))
-    (Tagged A282 (OK () "SEARCH completed"))
-    (Untagged (SEARCH () ()))
-    (Tagged A283 (OK () "SEARCH completed"))
-    (Untagged (SEARCH (43) ()))
-    (Tagged A284 (OK () "SEARCH completed"))
-    (Tagged A654 (OK () "FETCH completed"))
-    (Untagged (FETCH 2 ((FLAGS (Deleted Seen)))))
-    (Untagged (FETCH 3 ((FLAGS (Deleted)))))
-    (Untagged (FETCH 4 ((FLAGS (Deleted Flagged Seen)))))
-    (Tagged A003 (OK () "STORE completed"))
-    (Tagged A003 (OK () "COPY completed"))
-    (Untagged (FETCH 23 ((FLAGS (Seen)) (UID 4827313))))
-    (Untagged (FETCH 24 ((FLAGS (Seen)) (UID 4827943))))
-    (Untagged (FETCH 25 ((FLAGS (Seen)) (UID 4828442))))
-    (Tagged A999 (OK () "UID FETCH completed"))
-    (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER XPIG-LATIN))))
-    (Tagged a441 (OK () "CAPABILITY completed"))
-    (Tagged A442 (OK () "XPIG-LATIN ompleted-cay"))
-    (Untagged (State (OK () "IMAP4rev1 server ready")))
-    (Untagged (State (OK (ALERT) "System shutdown in 10 minutes")))
-    (Tagged A001 (OK () "LOGIN Completed"))
-    (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data")))
-    (Tagged A222 (OK () "COPY completed"))
-    (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data")))
-    (Untagged (State (NO () "Disk is 99% full, please delete unnecessary data")))
-    (Tagged A223 (NO () "COPY failed: disk is full"))
-    (Untagged (State (BAD () "Command line too long")))
-    (Untagged (State (BAD () "Empty command line")))
-    (Untagged (State (BAD () "Disk crash, attempting salvage to a new disk!")))
-    (Untagged (State (OK () "Salvage successful, no data lost")))
-    (Tagged A443 (OK () "Expunge completed"))
-    (Untagged (PREAUTH () "IMAP4rev1 server logged in as Smith"))
-    (Untagged (BYE () "Autologout; idle for too long"))
+     (State (OK ((OTHER PERMANENTFLAGS (" ()"))) "No permanent flags permitted"))) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" blurdybloop|};
+  [%expect {| (Untagged (LIST () (/) blurdybloop)) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" foo|};
+  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" foo/bar|};
+  [%expect {| (Untagged (LIST () (/) foo/bar)) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" foo|};
+  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." blurdybloop|};
+  [%expect {| (Untagged (LIST () (.) blurdybloop)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." foo|};
+  [%expect {| (Untagged (LIST () (.) foo)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." foo.bar|};
+  [%expect {| (Untagged (LIST () (.) foo.bar)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." foo.bar|};
+  [%expect {| (Untagged (LIST () (.) foo.bar)) |}]
+
+let%expect_test _ =
+  parse {|A85 OK LIST completed|};
+  [%expect {| (Tagged A85 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "." foo|};
+  [%expect {| (Untagged (LIST (Noselect) (.) foo)) |}]
+
+let%expect_test _ =
+  parse {|A86 OK LIST completed|};
+  [%expect {| (Tagged A86 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" blurdybloop|};
+  [%expect {| (Untagged (LIST () (/) blurdybloop)) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" foo|};
+  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" foo/bar|};
+  [%expect {| (Untagged (LIST () (/) foo/bar)) |}]
+
+let%expect_test _ =
+  parse {|A682 OK LIST completed|};
+  [%expect {| (Tagged A682 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|A683 OK RENAME completed|};
+  [%expect {| (Tagged A683 (OK () "RENAME completed")) |}]
+
+let%expect_test _ =
+  parse {|A684 OK RENAME Completed|};
+  [%expect {| (Tagged A684 (OK () "RENAME Completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" sarasoop|};
+  [%expect {| (Untagged (LIST () (/) sarasoop)) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" zowie|};
+  [%expect {| (Untagged (LIST (Noselect) (/) zowie)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" zowie/bar|};
+  [%expect {| (Untagged (LIST () (/) zowie/bar)) |}]
+
+let%expect_test _ =
+  parse {|A685 OK LIST completed|};
+  [%expect {| (Tagged A685 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." INBOX|};
+  [%expect {| (Untagged (LIST () (.) INBOX)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." INBOX.bar|};
+  [%expect {| (Untagged (LIST () (.) INBOX.bar)) |}]
+
+let%expect_test _ =
+  parse {|Z432 OK LIST completed|};
+  [%expect {| (Tagged Z432 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|Z433 OK RENAME completed|};
+  [%expect {| (Tagged Z433 (OK () "RENAME completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." INBOX|};
+  [%expect {| (Untagged (LIST () (.) INBOX)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." INBOX.bar|};
+  [%expect {| (Untagged (LIST () (.) INBOX.bar)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "." old-mail|};
+  [%expect {| (Untagged (LIST () (.) old-mail)) |}]
+
+let%expect_test _ =
+  parse {|Z434 OK LIST completed|};
+  [%expect {| (Tagged Z434 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|A002 OK SUBSCRIBE completed|};
+  [%expect {| (Tagged A002 (OK () "SUBSCRIBE completed")) |}]
+
+let%expect_test _ =
+  parse {|A002 OK UNSUBSCRIBE completed|};
+  [%expect {| (Tagged A002 (OK () "UNSUBSCRIBE completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" ""|};
+  [%expect {| (Untagged (LIST (Noselect) (/) "")) |}]
+
+let%expect_test _ =
+  parse {|A101 OK LIST Completed|};
+  [%expect {| (Tagged A101 (OK () "LIST Completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "." #news.|};
+  [%expect {| (Untagged (LIST (Noselect) (.) #news.)) |}]
+
+let%expect_test _ =
+  parse {|A102 OK LIST Completed|};
+  [%expect {| (Tagged A102 (OK () "LIST Completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" /|};
+  [%expect {| (Untagged (LIST (Noselect) (/) /)) |}]
+
+let%expect_test _ =
+  parse {|A103 OK LIST Completed|};
+  [%expect {| (Tagged A103 (OK () "LIST Completed")) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" ~/Mail/foo|};
+  [%expect {| (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
+
+let%expect_test _ =
+  parse {|* LIST () "/" ~/Mail/meetings|};
+  [%expect {| (Untagged (LIST () (/) ~/Mail/meetings)) |}]
+
+let%expect_test _ =
+  parse {|A202 OK LIST completed|};
+  [%expect {| (Tagged A202 (OK () "LIST completed")) |}]
+
+let%expect_test _ =
+  parse {|* LSUB () "." #news.comp.mail.mime|};
+  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.mime)) |}]
+
+let%expect_test _ =
+  parse {|* LSUB () "." #news.comp.mail.misc|};
+  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
+
+let%expect_test _ =
+  parse {|A002 OK LSUB completed|};
+  [%expect {| (Tagged A002 (OK () "LSUB completed")) |}]
+
+let%expect_test _ =
+  parse {|* LSUB (\NoSelect) "." #news.comp.mail|};
+  [%expect {| (Untagged (LSUB (Noselect) (.) #news.comp.mail)) |}]
+
+let%expect_test _ =
+  parse {|A003 OK LSUB completed|};
+  [%expect {| (Tagged A003 (OK () "LSUB completed")) |}]
+
+let%expect_test _ =
+  parse {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
+  [%expect {| (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292)))) |}]
+
+let%expect_test _ =
+  parse {|A042 OK STATUS completed|};
+  [%expect {| (Tagged A042 (OK () "STATUS completed")) |}]
+
+let%expect_test _ =
+  parse {|A003 OK APPEND completed|};
+  [%expect {| (Tagged A003 (OK () "APPEND completed")) |}]
+
+let%expect_test _ =
+  parse {|FXXZ OK CHECK Completed|};
+  [%expect {| (Tagged FXXZ (OK () "CHECK Completed")) |}]
+
+let%expect_test _ =
+  parse {|A341 OK CLOSE completed|};
+  [%expect {| (Tagged A341 (OK () "CLOSE completed")) |}]
+
+let%expect_test _ =
+  parse {|* 3 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 3)) |}]
+
+let%expect_test _ =
+  parse {|* 3 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 3)) |}]
+
+let%expect_test _ =
+  parse {|* 5 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 5)) |}]
+
+let%expect_test _ =
+  parse {|* 8 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 8)) |}]
+
+let%expect_test _ =
+  parse {|A202 OK EXPUNGE completed|};
+  [%expect {| (Tagged A202 (OK () "EXPUNGE completed")) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH 2 84 882|};
+  [%expect {| (Untagged (SEARCH (2 84 882) ())) |}]
+
+let%expect_test _ =
+  parse {|A282 OK SEARCH completed|};
+  [%expect {| (Tagged A282 (OK () "SEARCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH|};
+  [%expect {| (Untagged (SEARCH () ())) |}]
+
+let%expect_test _ =
+  parse {|A283 OK SEARCH completed|};
+  [%expect {| (Tagged A283 (OK () "SEARCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH 43|};
+  [%expect {| (Untagged (SEARCH (43) ())) |}]
+
+let%expect_test _ =
+  parse {|A284 OK SEARCH completed|};
+  [%expect {| (Tagged A284 (OK () "SEARCH completed")) |}]
+
+let%expect_test _ =
+  parse {|A654 OK FETCH completed|};
+  [%expect {| (Tagged A654 (OK () "FETCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (FLAGS (\Deleted \Seen))|};
+  [%expect {| (Untagged (FETCH 2 ((FLAGS (Deleted Seen))))) |}]
+
+let%expect_test _ =
+  parse {|* 3 FETCH (FLAGS (\Deleted))|};
+  [%expect {| (Untagged (FETCH 3 ((FLAGS (Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* 4 FETCH (FLAGS (\Deleted \Flagged \Seen))|};
+  [%expect {| (Untagged (FETCH 4 ((FLAGS (Deleted Flagged Seen))))) |}]
+
+let%expect_test _ =
+  parse {|A003 OK STORE completed|};
+  [%expect {| (Tagged A003 (OK () "STORE completed")) |}]
+
+let%expect_test _ =
+  parse {|A003 OK COPY completed|};
+  [%expect {| (Tagged A003 (OK () "COPY completed")) |}]
+
+let%expect_test _ =
+  parse {|* 23 FETCH (FLAGS (\Seen) UID 4827313)|};
+  [%expect {| (Untagged (FETCH 23 ((FLAGS (Seen)) (UID 4827313)))) |}]
+
+let%expect_test _ =
+  parse {|* 24 FETCH (FLAGS (\Seen) UID 4827943)|};
+  [%expect {| (Untagged (FETCH 24 ((FLAGS (Seen)) (UID 4827943)))) |}]
+
+let%expect_test _ =
+  parse {|* 25 FETCH (FLAGS (\Seen) UID 4828442)|};
+  [%expect {| (Untagged (FETCH 25 ((FLAGS (Seen)) (UID 4828442)))) |}]
+
+let%expect_test _ =
+  parse {|A999 OK UID FETCH completed|};
+  [%expect {| (Tagged A999 (OK () "UID FETCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 XPIG-LATIN|};
+  [%expect {| (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER XPIG-LATIN)))) |}]
+
+let%expect_test _ =
+  parse {|a441 OK CAPABILITY completed|};
+  [%expect {| (Tagged a441 (OK () "CAPABILITY completed")) |}]
+
+let%expect_test _ =
+  parse {|A442 OK XPIG-LATIN ompleted-cay|};
+  [%expect {| (Tagged A442 (OK () "XPIG-LATIN ompleted-cay")) |}]
+
+let%expect_test _ =
+  parse {|* OK IMAP4rev1 server ready|};
+  [%expect {| (Untagged (State (OK () "IMAP4rev1 server ready"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [ALERT] System shutdown in 10 minutes|};
+  [%expect {| (Untagged (State (OK (ALERT) "System shutdown in 10 minutes"))) |}]
+
+let%expect_test _ =
+  parse {|A001 OK LOGIN Completed|};
+  [%expect {| (Tagged A001 (OK () "LOGIN Completed")) |}]
+
+let%expect_test _ =
+  parse {|* NO Disk is 98% full, please delete unnecessary data|};
+  [%expect {| (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data"))) |}]
+
+let%expect_test _ =
+  parse {|A222 OK COPY completed|};
+  [%expect {| (Tagged A222 (OK () "COPY completed")) |}]
+
+let%expect_test _ =
+  parse {|* NO Disk is 98% full, please delete unnecessary data|};
+  [%expect {| (Untagged (State (NO () "Disk is 98% full, please delete unnecessary data"))) |}]
+
+let%expect_test _ =
+  parse {|* NO Disk is 99% full, please delete unnecessary data|};
+  [%expect {| (Untagged (State (NO () "Disk is 99% full, please delete unnecessary data"))) |}]
+
+let%expect_test _ =
+  parse {|A223 NO COPY failed: disk is full|};
+  [%expect {| (Tagged A223 (NO () "COPY failed: disk is full")) |}]
+
+let%expect_test _ =
+  parse {|* BAD Command line too long|};
+  [%expect {| (Untagged (State (BAD () "Command line too long"))) |}]
+
+let%expect_test _ =
+  parse {|* BAD Empty command line|};
+  [%expect {| (Untagged (State (BAD () "Empty command line"))) |}]
+
+let%expect_test _ =
+  parse {|* BAD Disk crash, attempting salvage to a new disk!|};
+  [%expect {| (Untagged (State (BAD () "Disk crash, attempting salvage to a new disk!"))) |}]
+
+let%expect_test _ =
+  parse {|* OK Salvage successful, no data lost|};
+  [%expect {| (Untagged (State (OK () "Salvage successful, no data lost"))) |}]
+
+let%expect_test _ =
+  parse {|A443 OK Expunge completed|};
+  [%expect {| (Tagged A443 (OK () "Expunge completed")) |}]
+
+let%expect_test _ =
+  parse {|* PREAUTH IMAP4rev1 server logged in as Smith|};
+  [%expect {| (Untagged (PREAUTH () "IMAP4rev1 server logged in as Smith")) |}]
+
+let%expect_test _ =
+  parse {|* BYE Autologout; idle for too long|};
+  [%expect {| (Untagged (BYE () "Autologout; idle for too long")) |}]
+
+let%expect_test _ =
+  parse {|* CAPABILITY IMAP4rev1 STARTTLS AUTH=GSSAPI XPIG-LATIN|};
+  [%expect {|
     (Untagged
      (CAPABILITY
-      ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI) (OTHER XPIG-LATIN))))
-    (Untagged (LIST (Noselect) (/) ~/Mail/foo))
-    (Untagged (LSUB () (.) #news.comp.mail.misc))
-    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
-    (Untagged (SEARCH (2 3 6) ()))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
-    (Untagged (EXISTS 23))
-    (Untagged (RECENT 5))
-    (Untagged (EXPUNGE 44))
-    (Untagged (FETCH 23 ((FLAGS (Seen)) (RFC822_SIZE 44827))))
-    (Tagged A001 (OK () "LOGIN completed"))
-    (Tagged A044 (BAD () "No such command as \"BLURDYBLOOP\""))
-    (Untagged (State (OK () "IMAP4rev1 Service Ready")))
-    (Tagged a001 (OK () "LOGIN completed"))
-    (Untagged (EXISTS 18))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
-    (Untagged (RECENT 2))
+      ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI) (OTHER XPIG-LATIN)))) |}]
+
+let%expect_test _ =
+  parse {|* LIST (\Noselect) "/" ~/Mail/foo|};
+  [%expect {| (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
+
+let%expect_test _ =
+  parse {|* LSUB () "." #news.comp.mail.misc|};
+  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
+
+let%expect_test _ =
+  parse {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
+  [%expect {| (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292)))) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH 2 3 6|};
+  [%expect {| (Untagged (SEARCH (2 3 6) ())) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* 23 EXISTS|};
+  [%expect {| (Untagged (EXISTS 23)) |}]
+
+let%expect_test _ =
+  parse {|* 5 RECENT|};
+  [%expect {| (Untagged (RECENT 5)) |}]
+
+let%expect_test _ =
+  parse {|* 44 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 44)) |}]
+
+let%expect_test _ =
+  parse {|* 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)|};
+  [%expect {| (Untagged (FETCH 23 ((FLAGS (Seen)) (RFC822_SIZE 44827)))) |}]
+
+let%expect_test _ =
+  parse {|A001 OK LOGIN completed|};
+  [%expect {| (Tagged A001 (OK () "LOGIN completed")) |}]
+
+let%expect_test _ =
+  parse {|A044 BAD No such command as "BLURDYBLOOP"|};
+  [%expect {| (Tagged A044 (BAD () "No such command as \"BLURDYBLOOP\"")) |}]
+
+let%expect_test _ =
+  parse {|* OK IMAP4rev1 Service Ready|};
+  [%expect {| (Untagged (State (OK () "IMAP4rev1 Service Ready"))) |}]
+
+let%expect_test _ =
+  parse {|a001 OK LOGIN completed|};
+  [%expect {| (Tagged a001 (OK () "LOGIN completed")) |}]
+
+let%expect_test _ =
+  parse {|* 18 EXISTS|};
+  [%expect {| (Untagged (EXISTS 18)) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* 2 RECENT|};
+  [%expect {| (Untagged (RECENT 2)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 17] Message 17 is the first unseen message|};
+  [%expect {|
     (Untagged
-     (State (OK ((UNSEEN 17)) "Message 17 is the first unseen message")))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
-    (Tagged a002 (OK (READ_WRITE) "SELECT completed"))
-    (Tagged a003 (OK () "FETCH completed"))
-    (Untagged (EXISTS 172))
-    (Untagged (RECENT 1))
-    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
-    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+     (State (OK ((UNSEEN 17)) "Message 17 is the first unseen message"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid"))) |}]
+
+let%expect_test _ =
+  parse {|a002 OK [READ-WRITE] SELECT completed|};
+  [%expect {| (Tagged a002 (OK (READ_WRITE) "SELECT completed")) |}]
+
+let%expect_test _ =
+  parse {|* 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"|};
+  [%expect {|
+    Parsing error:
+    * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
+                                          ^ |}]
+
+let%expect_test _ =
+  parse {|a003 OK FETCH completed|};
+  [%expect {| (Tagged a003 (OK () "FETCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* 172 EXISTS|};
+  [%expect {| (Untagged (EXISTS 172)) |}]
+
+let%expect_test _ =
+  parse {|* 1 RECENT|};
+  [%expect {| (Untagged (RECENT 1)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 12] Message 12 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 4392] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+  [%expect {|
     (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
-    (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) "")))
-    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
-    (Untagged (EXISTS 172))
-    (Untagged (RECENT 1))
-    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
-    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 715194045007]|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) ""))) |}]
+
+let%expect_test _ =
+  parse {|A142 OK [READ-WRITE] SELECT completed|};
+  [%expect {| (Tagged A142 (OK (READ_WRITE) "SELECT completed")) |}]
+
+let%expect_test _ =
+  parse {|* 172 EXISTS|};
+  [%expect {| (Untagged (EXISTS 172)) |}]
+
+let%expect_test _ =
+  parse {|* 1 RECENT|};
+  [%expect {| (Untagged (RECENT 1)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 12] Message 12 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 4392] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+  [%expect {|
     (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+
+let%expect_test _ =
+  parse {|* OK [NOMODSEQ] Sorry, this mailbox format doesn't support|};
+  [%expect {|
     (Untagged
-     (State (OK (NOMODSEQ) "Sorry, this mailbox format doesn't support")))
-    (Tagged A142 (OK (READ_WRITE) "SELECT completed"))
-    (Untagged (FETCH 1 ((UID 4) (MODSEQ 12121231000))))
-    (Untagged (FETCH 2 ((UID 6) (MODSEQ 12121230852))))
-    (Untagged (FETCH 4 ((UID 8) (MODSEQ 12121230956))))
-    (Tagged a103 (OK () "Conditional Store completed"))
-    (Untagged (FETCH 50 ((MODSEQ 12111230047))))
-    (Tagged a104 (OK () "Store (conditional) completed"))
-    (Untagged (State (OK ((HIGHESTMODSEQ 12111230047)) "")))
-    (Untagged (FETCH 50 ((MODSEQ 12111230048))))
-    (Tagged c101 (OK () "Store (conditional) completed"))
-    (Untagged (FETCH 5 ((MODSEQ 320162350))))
-    (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
-    (Untagged (FETCH 7 ((MODSEQ 320162342) (FLAGS (Seen Deleted)))))
-    (Untagged (FETCH 5 ((MODSEQ 320162350))))
-    (Untagged (FETCH 9 ((MODSEQ 320162349) (FLAGS (Answered)))))
-    (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
-    (Tagged a102 (OK ((OTHER MODIFIED (" 12"))) "Conditional STORE failed"))
-    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
-    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
-    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed))))))
-    (Tagged a107 (OK () ""))
-    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered)))))
-    (Tagged b107 (OK () ""))
-    (Untagged (FETCH 101 ((MODSEQ 303181230852))))
-    (Tagged b108 (OK () "Conditional Store completed"))
-    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed))))))
-    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
-    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
-    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered)))))
-    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
-    (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
-    (Untagged (FETCH 101 ((MODSEQ 303181230852))))
-    (Tagged b108 (OK () "Conditional Store completed"))
-    (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+     (State (OK (NOMODSEQ) "Sorry, this mailbox format doesn't support"))) |}]
+
+let%expect_test _ =
+  parse {|A142 OK [READ-WRITE] SELECT completed|};
+  [%expect {| (Tagged A142 (OK (READ_WRITE) "SELECT completed")) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (UID 4 MODSEQ (12121231000))|};
+  [%expect {| (Untagged (FETCH 1 ((UID 4) (MODSEQ 12121231000)))) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (UID 6 MODSEQ (12121230852))|};
+  [%expect {| (Untagged (FETCH 2 ((UID 6) (MODSEQ 12121230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 4 FETCH (UID 8 MODSEQ (12121230956))|};
+  [%expect {| (Untagged (FETCH 4 ((UID 8) (MODSEQ 12121230956)))) |}]
+
+let%expect_test _ =
+  parse {|a103 OK Conditional Store completed|};
+  [%expect {| (Tagged a103 (OK () "Conditional Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 50 FETCH (MODSEQ (12111230047))|};
+  [%expect {| (Untagged (FETCH 50 ((MODSEQ 12111230047)))) |}]
+
+let%expect_test _ =
+  parse {|a104 OK Store (conditional) completed|};
+  [%expect {| (Tagged a104 (OK () "Store (conditional) completed")) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 12111230047]|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 12111230047)) ""))) |}]
+
+let%expect_test _ =
+  parse {|* 50 FETCH (MODSEQ (12111230048))|};
+  [%expect {| (Untagged (FETCH 50 ((MODSEQ 12111230048)))) |}]
+
+let%expect_test _ =
+  parse {|c101 OK Store (conditional) completed|};
+  [%expect {| (Tagged c101 (OK () "Store (conditional) completed")) |}]
+
+let%expect_test _ =
+  parse {|* 5 FETCH (MODSEQ (320162350))|};
+  [%expect {| (Untagged (FETCH 5 ((MODSEQ 320162350)))) |}]
+
+let%expect_test _ =
+  parse {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
+  [%expect {| (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))|};
+  [%expect {| (Untagged (FETCH 7 ((MODSEQ 320162342) (FLAGS (Seen Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* 5 FETCH (MODSEQ (320162350))|};
+  [%expect {| (Untagged (FETCH 5 ((MODSEQ 320162350)))) |}]
+
+let%expect_test _ =
+  parse {|* 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))|};
+  [%expect {| (Untagged (FETCH 9 ((MODSEQ 320162349) (FLAGS (Answered))))) |}]
+
+let%expect_test _ =
+  parse {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
+  [%expect {| (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|a102 OK [MODIFIED 12] Conditional STORE failed|};
+  [%expect {| (Tagged a102 (OK ((OTHER MODIFIED (" 12"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|* 100 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 100 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 102 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 102 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 150 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 150 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
+
+let%expect_test _ =
+  parse {|a107 OK|};
+  [%expect {| (Tagged a107 (OK () "")) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
+
+let%expect_test _ =
+  parse {|b107 OK|};
+  [%expect {| (Tagged b107 (OK () "")) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|b108 OK Conditional Store completed|};
+  [%expect {| (Tagged b108 (OK () "Conditional Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 100 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 100 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
+
+let%expect_test _ =
+  parse {|* 102 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 102 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 150 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 150 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|* 100 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 100 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
+
+let%expect_test _ =
+  parse {|* 102 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 102 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 150 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 150 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|b108 OK Conditional Store completed|};
+  [%expect {| (Tagged b108 (OK () "Conditional Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 100 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 100 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
+  [%expect {|
     (Untagged
-     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted)))))
-    (Untagged (FETCH 102 ((MODSEQ 303181230852))))
-    (Untagged (FETCH 150 ((MODSEQ 303181230852))))
-    (Tagged a106 (OK () "Conditional STORE completed"))
-    (Untagged (FETCH 1 ((MODSEQ 320172342) (FLAGS (Seen)))))
-    (Untagged (FETCH 3 ((MODSEQ 320172342) (FLAGS (Seen)))))
+     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* 102 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 102 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|* 150 FETCH (MODSEQ (303181230852))|};
+  [%expect {| (Untagged (FETCH 150 ((MODSEQ 303181230852)))) |}]
+
+let%expect_test _ =
+  parse {|a106 OK Conditional STORE completed|};
+  [%expect {| (Tagged a106 (OK () "Conditional STORE completed")) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
+  [%expect {| (Untagged (FETCH 1 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
+
+let%expect_test _ =
+  parse {|* 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
+  [%expect {| (Untagged (FETCH 3 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
+
+let%expect_test _ =
+  parse {|B001 NO [MODIFIED 2] Some of the messages no longer exist.|};
+  [%expect {|
     (Tagged B001
-     (NO ((OTHER MODIFIED (" 2"))) "Some of the messages no longer exist."))
-    (Untagged (EXPUNGE 4))
-    (Untagged (EXPUNGE 4))
-    (Untagged (EXPUNGE 4))
-    (Untagged (EXPUNGE 4))
-    (Untagged (FETCH 2 ((MODSEQ 320172340) (FLAGS (Deleted Answered)))))
-    (Tagged B002 (OK () "NOOP Completed."))
-    (Untagged (FETCH 2 ((MODSEQ 320180050) (FLAGS (Seen Flagged)))))
-    (Tagged b003 (OK () "Conditional Store completed"))
-    (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen)))))
-    (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted)))))
+     (NO ((OTHER MODIFIED (" 2"))) "Some of the messages no longer exist.")) |}]
+
+let%expect_test _ =
+  parse {|* 4 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 4)) |}]
+
+let%expect_test _ =
+  parse {|* 4 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 4)) |}]
+
+let%expect_test _ =
+  parse {|* 4 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 4)) |}]
+
+let%expect_test _ =
+  parse {|* 4 EXPUNGE|};
+  [%expect {| (Untagged (EXPUNGE 4)) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))|};
+  [%expect {| (Untagged (FETCH 2 ((MODSEQ 320172340) (FLAGS (Deleted Answered))))) |}]
+
+let%expect_test _ =
+  parse {|B002 OK NOOP Completed.|};
+  [%expect {| (Tagged B002 (OK () "NOOP Completed.")) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))|};
+  [%expect {| (Untagged (FETCH 2 ((MODSEQ 320180050) (FLAGS (Seen Flagged))))) |}]
+
+let%expect_test _ =
+  parse {|b003 OK Conditional Store completed|};
+  [%expect {| (Tagged b003 (OK () "Conditional Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))|};
+  [%expect {| (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen))))) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))|};
+  [%expect {| (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk))|};
+  [%expect {|
     (Untagged
      (FETCH 4
-      ((UID 8) (MODSEQ 29738) (FLAGS ((Keyword $NoJunk) (Keyword $AutoJunk))))))
-    (Tagged s100 (OK () "FETCH completed"))
-    (Untagged (FETCH 1 ((MODSEQ 624140003))))
-    (Untagged (FETCH 2 ((MODSEQ 624140007))))
-    (Untagged (FETCH 3 ((MODSEQ 624140005))))
-    (Tagged a (OK () "Fetch complete"))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+      ((UID 8) (MODSEQ 29738) (FLAGS ((Keyword $NoJunk) (Keyword $AutoJunk)))))) |}]
+
+let%expect_test _ =
+  parse {|s100 OK FETCH completed|};
+  [%expect {| (Tagged s100 (OK () "FETCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (MODSEQ (624140003))|};
+  [%expect {| (Untagged (FETCH 1 ((MODSEQ 624140003)))) |}]
+
+let%expect_test _ =
+  parse {|* 2 FETCH (MODSEQ (624140007))|};
+  [%expect {| (Untagged (FETCH 2 ((MODSEQ 624140007)))) |}]
+
+let%expect_test _ =
+  parse {|* 3 FETCH (MODSEQ (624140005))|};
+  [%expect {| (Untagged (FETCH 3 ((MODSEQ 624140005)))) |}]
+
+let%expect_test _ =
+  parse {|a OK Fetch complete|};
+  [%expect {| (Tagged a (OK () "Fetch complete")) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Answered \Deleted \Seen \*)] Limited|};
+  [%expect {|
     (Untagged
      (State
       (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Deleted \\Seen \\*)")))
-       Limited)))
-    (Untagged (FETCH 7 ((MODSEQ 2121231000))))
-    (Tagged A160 (OK () "Store completed"))
-    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000))))
-    (Tagged C180 (OK () "Noop completed"))
-    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000))))
-    (Tagged D210 (OK () "Noop completed"))
-    (Untagged (FETCH 7 ((MODSEQ 12121231777))))
-    (Tagged A240 (OK () "Store completed"))
-    (Untagged (FETCH 7 ((FLAGS (Deleted Answered Seen)) (MODSEQ 12))))
-    (Tagged C270 (OK () "Noop completed"))
-    (Tagged D300 (OK () "Noop completed"))
-    (Untagged (FETCH 7 ((MODSEQ 12121245160))))
-    (Tagged A330 (OK () "Store completed"))
-    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160))))
-    (Tagged C360 (OK () "Noop completed"))
-    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160))))
-    (Tagged D390 (OK () "Noop completed"))
-    (Untagged (SEARCH (2 5 6 7 11 12 18 19 20 23) (917162500)))
-    (Tagged a (OK () "Search complete"))
-    (Untagged (SEARCH () ()))
-    (Tagged t (OK () "Search complete, nothing found"))
-    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
-    (Tagged A042 (OK () "STATUS completed"))
-    (Untagged (EXISTS 172))
-    (Untagged (RECENT 1))
-    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
-    (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
-    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
+       Limited))) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (MODSEQ (2121231000))|};
+  [%expect {| (Untagged (FETCH 7 ((MODSEQ 2121231000)))) |}]
+
+let%expect_test _ =
+  parse {|A160 OK Store completed|};
+  [%expect {| (Tagged A160 (OK () "Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
+  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
+
+let%expect_test _ =
+  parse {|C180 OK Noop completed|};
+  [%expect {| (Tagged C180 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
+  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
+
+let%expect_test _ =
+  parse {|D210 OK Noop completed|};
+  [%expect {| (Tagged D210 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (MODSEQ (12121231777))|};
+  [%expect {| (Untagged (FETCH 7 ((MODSEQ 12121231777)))) |}]
+
+let%expect_test _ =
+  parse {|A240 OK Store completed|};
+  [%expect {| (Tagged A240 (OK () "Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ (12))|};
+  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered Seen)) (MODSEQ 12)))) |}]
+
+let%expect_test _ =
+  parse {|C270 OK Noop completed|};
+  [%expect {| (Tagged C270 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|D300 OK Noop completed|};
+  [%expect {| (Tagged D300 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (MODSEQ (12121245160))|};
+  [%expect {| (Untagged (FETCH 7 ((MODSEQ 12121245160)))) |}]
+
+let%expect_test _ =
+  parse {|A330 OK Store completed|};
+  [%expect {| (Tagged A330 (OK () "Store completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
+  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
+
+let%expect_test _ =
+  parse {|C360 OK Noop completed|};
+  [%expect {| (Tagged C360 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
+  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
+
+let%expect_test _ =
+  parse {|D390 OK Noop completed|};
+  [%expect {| (Tagged D390 (OK () "Noop completed")) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)|};
+  [%expect {| (Untagged (SEARCH (2 5 6 7 11 12 18 19 20 23) (917162500))) |}]
+
+let%expect_test _ =
+  parse {|a OK Search complete|};
+  [%expect {| (Tagged a (OK () "Search complete")) |}]
+
+let%expect_test _ =
+  parse {|* SEARCH|};
+  [%expect {| (Untagged (SEARCH () ())) |}]
+
+let%expect_test _ =
+  parse {|t OK Search complete, nothing found|};
+  [%expect {| (Tagged t (OK () "Search complete, nothing found")) |}]
+
+let%expect_test _ =
+  parse {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
+  [%expect {| (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292)))) |}]
+
+let%expect_test _ =
+  parse {|A042 OK STATUS completed|};
+  [%expect {| (Tagged A042 (OK () "STATUS completed")) |}]
+
+let%expect_test _ =
+  parse {|* 172 EXISTS|};
+  [%expect {| (Untagged (EXISTS 172)) |}]
+
+let%expect_test _ =
+  parse {|* 1 RECENT|};
+  [%expect {| (Untagged (RECENT 1)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 12] Message 12 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 4392] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Deleted Seen Draft))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+  [%expect {|
     (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
-    (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) "")))
-    (Tagged A142 (OK (READ_WRITE) "SELECT completed, CONDSTORE is now enabled"))
-    (Tagged a (OK () "Extended SEARCH completed"))
-    (Tagged a (OK () "Extended SORT completed"))
-    (Untagged
-     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted)))))
-    (Untagged (EXISTS 464))
-    (Untagged (RECENT 3))
-    (Untagged (State (OK ((UIDVALIDITY -437438251)) UIDVALIDITY)))
-    (Untagged (State (OK ((UIDNEXT 550)) "Predicted next UID")))
-    (Untagged (State (OK ((HIGHESTMODSEQ 90060128194045007)) "Highest mailbox")))
-    (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
-    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
-    (Tagged A02 (OK (READ_WRITE) "Sorry, UIDVALIDITY mismatch"))
-    (Untagged (State (OK (CLOSED) "")))
-    (Untagged (EXISTS 100))
-    (Untagged (RECENT 11))
-    (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
-    (Untagged (State (OK ((UIDNEXT 600)) "Predicted next UID")))
-    (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) Highest)))
-    (Untagged (State (OK ((UNSEEN 7)) "There are some unseen")))
-    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
-    (Untagged
-     (VANISHED_EARLIER ((41 41) (43 116) (118 118) (120 211) (214 540))))
-    (Untagged
-     (FETCH 49 ((UID 117) (FLAGS (Seen Answered)) (MODSEQ 12111230047))))
-    (Untagged
-     (FETCH 50
-      ((UID 119) (FLAGS (Draft (Keyword $MDNSent))) (MODSEQ 12111230047))))
-    (Untagged
-     (FETCH 51
-      ((UID 541) (FLAGS (Seen (Keyword $Forwarded))) (MODSEQ 12111230047))))
-    (Tagged A03 (OK (READ_WRITE) "mailbox selected"))
-    (Untagged (EXISTS 10003))
-    (Untagged (RECENT 4))
-    (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY)))
-    (Untagged (State (OK ((UIDNEXT 30013)) "Predicted next UID")))
-    (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) "Highest mailbox")))
-    (Untagged
-     (State (OK ((UNSEEN 7)) "There are some unseen messages in the mailbox")))
-    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
-    (Untagged (VANISHED_EARLIER ((1 2) (4 5) (7 8) (10 11) (13 14) (89 89))))
-    (Untagged
-     (FETCH 1
-      ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
-       (MODSEQ 90060115194045027))))
-    Parsing error:
-    * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
-                                          ^
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 715194045007]|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 715194045007)) ""))) |}]
+
+let%expect_test _ =
+  parse {|A142 OK [READ-WRITE] SELECT completed, CONDSTORE is now enabled|};
+  [%expect {| (Tagged A142 (OK (READ_WRITE) "SELECT completed, CONDSTORE is now enabled")) |}]
+
+let%expect_test _ =
+  parse {|* ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236|};
+  [%expect {|
     Parsing error:
     * ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236
-             ^
+             ^ |}]
+
+let%expect_test _ =
+  parse {|a OK Extended SEARCH completed|};
+  [%expect {| (Tagged a (OK () "Extended SEARCH completed")) |}]
+
+let%expect_test _ =
+  parse {|* ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236|};
+  [%expect {|
     Parsing error:
     * ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236
              ^ |}]
+
+let%expect_test _ =
+  parse {|a OK Extended SORT completed|};
+  [%expect {| (Tagged a (OK () "Extended SORT completed")) |}]
+
+let%expect_test _ =
+  parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
+  [%expect {|
+    (Untagged
+     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted))))) |}]
+
+let%expect_test _ =
+  parse {|* 464 EXISTS|};
+  [%expect {| (Untagged (EXISTS 464)) |}]
+
+let%expect_test _ =
+  parse {|* 3 RECENT|};
+  [%expect {| (Untagged (RECENT 3)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 3857529045] UIDVALIDITY|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY -437438251)) UIDVALIDITY))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 550] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 550)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 90060128194045007] Highest mailbox|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 90060128194045007)) "Highest mailbox"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 12] Message 12 is first unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Draft Deleted Seen))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
+  [%expect {|
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+
+let%expect_test _ =
+  parse {|A02 OK [READ-WRITE] Sorry, UIDVALIDITY mismatch|};
+  [%expect {| (Tagged A02 (OK (READ_WRITE) "Sorry, UIDVALIDITY mismatch")) |}]
+
+let%expect_test _ =
+  parse {|* OK [CLOSED]|};
+  [%expect {| (Untagged (State (OK (CLOSED) ""))) |}]
+
+let%expect_test _ =
+  parse {|* 100 EXISTS|};
+  [%expect {| (Untagged (EXISTS 100)) |}]
+
+let%expect_test _ =
+  parse {|* 11 RECENT|};
+  [%expect {| (Untagged (RECENT 11)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 600] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 600)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 90060115205545359] Highest|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) Highest))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 7] There are some unseen|};
+  [%expect {| (Untagged (State (OK ((UNSEEN 7)) "There are some unseen"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Draft Deleted Seen))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
+  [%expect {|
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+
+let%expect_test _ =
+  parse {|* VANISHED (EARLIER) 41,43:116,118,120:211,214:540|};
+  [%expect {|
+    (Untagged
+     (VANISHED_EARLIER ((41 41) (43 116) (118 118) (120 211) (214 540)))) |}]
+
+let%expect_test _ =
+  parse {|* 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ (12111230047))|};
+  [%expect {|
+    (Untagged
+     (FETCH 49 ((UID 117) (FLAGS (Seen Answered)) (MODSEQ 12111230047)))) |}]
+
+let%expect_test _ =
+  parse {|* 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ (12111230047))|};
+  [%expect {|
+    (Untagged
+     (FETCH 50
+      ((UID 119) (FLAGS (Draft (Keyword $MDNSent))) (MODSEQ 12111230047)))) |}]
+
+let%expect_test _ =
+  parse {|* 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ (12111230047))|};
+  [%expect {|
+    (Untagged
+     (FETCH 51
+      ((UID 541) (FLAGS (Seen (Keyword $Forwarded))) (MODSEQ 12111230047)))) |}]
+
+let%expect_test _ =
+  parse {|A03 OK [READ-WRITE] mailbox selected|};
+  [%expect {| (Tagged A03 (OK (READ_WRITE) "mailbox selected")) |}]
+
+let%expect_test _ =
+  parse {|* 10003 EXISTS|};
+  [%expect {| (Untagged (EXISTS 10003)) |}]
+
+let%expect_test _ =
+  parse {|* 4 RECENT|};
+  [%expect {| (Untagged (RECENT 4)) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
+  [%expect {| (Untagged (State (OK ((UIDVALIDITY 67890007)) UIDVALIDITY))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UIDNEXT 30013] Predicted next UID|};
+  [%expect {| (Untagged (State (OK ((UIDNEXT 30013)) "Predicted next UID"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [HIGHESTMODSEQ 90060115205545359] Highest mailbox|};
+  [%expect {| (Untagged (State (OK ((HIGHESTMODSEQ 90060115205545359)) "Highest mailbox"))) |}]
+
+let%expect_test _ =
+  parse {|* OK [UNSEEN 7] There are some unseen messages in the mailbox|};
+  [%expect {|
+    (Untagged
+     (State (OK ((UNSEEN 7)) "There are some unseen messages in the mailbox"))) |}]
+
+let%expect_test _ =
+  parse {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+  [%expect {| (Untagged (FLAGS (Answered Flagged Draft Deleted Seen))) |}]
+
+let%expect_test _ =
+  parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
+  [%expect {|
+    (Untagged
+     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+
+let%expect_test _ =
+  parse {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,89|};
+  [%expect {| (Untagged (VANISHED_EARLIER ((1 2) (4 5) (7 8) (10 11) (13 14) (89 89)))) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ (90060115194045027))|};
+  [%expect {|
+    (Untagged
+     (FETCH 1
+      ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
+       (MODSEQ 90060115194045027)))) |}]
