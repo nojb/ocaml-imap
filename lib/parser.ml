@@ -127,13 +127,13 @@ let is_text_char = function
   | _ -> false
 
 let text buf =
-  take_while1 is_text_char buf
+  if is_eol buf then "" else take_while1 is_text_char buf
 
 let is_text_other_char c =
   is_text_char c && (c <> ']')
 
-let text_1 =
-  take_while1 is_text_other_char
+let text_1 buf =
+  if is_eol buf then "" else take_while1 is_text_other_char buf
 
 let is_digit = function
   | '0'..'9' -> true
@@ -235,7 +235,7 @@ let capability buf =
 
 let resp_text_code buf k =
   let open Code in
-  let k code = char ']' buf; char ' ' buf; k code in
+  let k code = char ']' buf; k code in
   char '[' buf;
   match atom buf with
   | "ALERT" ->
@@ -297,7 +297,21 @@ let resp_text buf k =
     | '[' -> resp_text_code buf (fun code -> k (Some code))
     | _ -> k None
   in
-  code buf (fun code -> k code (text buf))
+  code buf (fun code -> if curr buf = ' ' then next buf; k code (text buf))
+
+let mod_sequence_value buf =
+  Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
+
+let search_sort_mod_seq buf =
+  char '(' buf;
+  match atom buf with
+  | "MODSEQ" ->
+      char ' ' buf;
+      let n = mod_sequence_value buf in
+      char ')' buf;
+      n
+  | _ ->
+      error buf
 
 let response_data buf k =
   char '*' buf;
@@ -326,16 +340,16 @@ let response_data buf k =
   | _ ->
       begin match atom buf with
       | "OK" ->
-          char ' ' buf;
+          if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (State (OK (code, text))))
       | "NO" ->
-          char ' ' buf;
+          if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (State (NO (code, text))))
       | "BAD" ->
-          char ' ' buf;
+          if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (State (BAD (code, text))))
       | "BYE" ->
-          char ' ' buf;
+          if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (BYE (code, text)))
       (* | "FLAGS" ->
        *     sp *> psep_by sp flag >>| (fun l -> FLAGS l) *)
@@ -345,9 +359,22 @@ let response_data buf k =
       | "LSUB" ->
           char ' ' buf;
           mailbox_list buf (fun xs c m -> k (LSUB (xs, c, m)))
-      (* | "SEARCH" ->
-       *     pair (return ()) (many (sp *> nz_number)) (option None (sp *> some search_sort_mod_seq)) >>| (fun (acc, n) -> SEARCH (acc, n))
-       * | "STATUS" ->
+      | "SEARCH" ->
+          let rec loop acc buf =
+            if curr buf = ' ' then
+              (next buf; loop (nz_number buf :: acc) buf)
+            else
+              List.rev acc
+          in
+          let nums = loop [] buf in
+          let modseq =
+            if curr buf = ' ' then
+              (next buf; Some (search_sort_mod_seq buf))
+            else
+              None
+          in
+          k (SEARCH (nums, modseq))
+      (* | "STATUS" ->
        *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l)) *)
       | "CAPABILITY" ->
           let rec loop acc buf =
@@ -366,7 +393,7 @@ let response_data buf k =
           in
           loop [] buf
       | "PREAUTH" ->
-          char ' ' buf;
+          if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (PREAUTH (code, text)))
       | _ ->
           error buf
@@ -383,13 +410,13 @@ let resp_cond_state buf k =
   let open Response.State in
   match atom buf with
   | "OK" ->
-      char ' ' buf;
+      if curr buf = ' ' then next buf;
       resp_text buf (fun code text -> k (OK (code, text)))
   | "NO" ->
-      char ' ' buf;
+      if curr buf = ' ' then next buf;
       resp_text buf (fun code text -> k (NO (code, text)))
   | "BAD" ->
-      char ' ' buf;
+      if curr buf = ' ' then next buf;
       resp_text buf (fun code text -> k (BAD (code, text)))
   | _ ->
       error buf
@@ -399,8 +426,7 @@ let response buf k =
   | '+' ->
       next buf;
       if curr buf = ' ' then next buf;
-      if not (is_eol buf) then resp_text buf (fun _ x -> k (Cont x))
-      else k (Cont "")
+      resp_text buf (fun _ x -> k (Cont x))
   | '*' ->
       response_data buf (fun u -> k (Untagged u))
   | _ ->
@@ -588,6 +614,158 @@ let%expect_test _ =
       {|a002 OK [READ-WRITE] SELECT completed|};
       {|* 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"|};
       {|a003 OK FETCH completed|};
+      {|* 172 EXISTS|};
+      {|* 1 RECENT|};
+      {|* OK [UNSEEN 12] Message 12 is first unseen|};
+      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+      {|* OK [UIDNEXT 4392] Predicted next UID|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+      {|* OK [HIGHESTMODSEQ 715194045007]|};
+      {|A142 OK [READ-WRITE] SELECT completed|};
+      {|* 172 EXISTS|};
+      {|* 1 RECENT|};
+      {|* OK [UNSEEN 12] Message 12 is first unseen|};
+      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+      {|* OK [UIDNEXT 4392] Predicted next UID|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+      {|* OK [NOMODSEQ] Sorry, this mailbox format doesn't support|};
+      {|A142 OK [READ-WRITE] SELECT completed|};
+      {|* 1 FETCH (UID 4 MODSEQ (12121231000))|};
+      {|* 2 FETCH (UID 6 MODSEQ (12121230852))|};
+      {|* 4 FETCH (UID 8 MODSEQ (12121230956))|};
+      {|a103 OK Conditional Store completed|};
+      {|* 50 FETCH (MODSEQ (12111230047))|};
+      {|a104 OK Store (conditional) completed|};
+      {|* OK [HIGHESTMODSEQ 12111230047]|};
+      {|* 50 FETCH (MODSEQ (12111230048))|};
+      {|c101 OK Store (conditional) completed|};
+      {|* 5 FETCH (MODSEQ (320162350))|};
+      {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
+      {|* 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))|};
+      {|* 5 FETCH (MODSEQ (320162350))|};
+      {|* 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))|};
+      {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
+      {|a102 OK [MODIFIED 12] Conditional STORE failed|};
+      {|* 100 FETCH (MODSEQ (303181230852))|};
+      {|* 102 FETCH (MODSEQ (303181230852))|};
+      {|* 150 FETCH (MODSEQ (303181230852))|};
+      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
+      {|a107 OK|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
+      {|b107 OK|};
+      {|* 101 FETCH (MODSEQ (303181230852))|};
+      {|b108 OK Conditional Store completed|};
+      {|* 100 FETCH (MODSEQ (303181230852))|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
+      {|* 102 FETCH (MODSEQ (303181230852))|};
+      {|* 150 FETCH (MODSEQ (303181230852))|};
+      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+      {|* 100 FETCH (MODSEQ (303181230852))|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
+      {|* 102 FETCH (MODSEQ (303181230852))|};
+      {|* 150 FETCH (MODSEQ (303181230852))|};
+      {|a106 OK [MODIFIED 101] Conditional STORE failed|};
+      {|* 101 FETCH (MODSEQ (303181230852))|};
+      {|b108 OK Conditional Store completed|};
+      {|* 100 FETCH (MODSEQ (303181230852))|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted|};
+      {|* 102 FETCH (MODSEQ (303181230852))|};
+      {|* 150 FETCH (MODSEQ (303181230852))|};
+      {|a106 OK Conditional STORE completed|};
+      {|* 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
+      {|* 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
+      {|B001 NO [MODIFIED 2] Some of the messages no longer exist.|};
+      {|* 4 EXPUNGE|};
+      {|* 4 EXPUNGE|};
+      {|* 4 EXPUNGE|};
+      {|* 4 EXPUNGE|};
+      {|* 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))|};
+      {|B002 OK NOOP Completed.|};
+      {|* 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))|};
+      {|b003 OK Conditional Store completed|};
+      {|* 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))|};
+      {|* 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))|};
+      {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk|};
+      {|s100 OK FETCH completed|};
+      {|* 1 FETCH (MODSEQ (624140003))|};
+      {|* 2 FETCH (MODSEQ (624140007))|};
+      {|* 3 FETCH (MODSEQ (624140005))|};
+      {|a OK Fetch complete|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS (\Answered \Deleted \Seen \*)] Limited|};
+      {|* 7 FETCH (MODSEQ (2121231000))|};
+      {|A160 OK Store completed|};
+      {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
+      {|C180 OK Noop completed|};
+      {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
+      {|D210 OK Noop completed|};
+      {|* 7 FETCH (MODSEQ (12121231777))|};
+      {|A240 OK Store completed|};
+      {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ|};
+      {|C270 OK Noop completed|};
+      {|D300 OK Noop completed|};
+      {|* 7 FETCH (MODSEQ (12121245160))|};
+      {|A330 OK Store completed|};
+      {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
+      {|C360 OK Noop completed|};
+      {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
+      {|D390 OK Noop completed|};
+      {|* SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)|};
+      {|a OK Search complete|};
+      {|* SEARCH|};
+      {|t OK Search complete, nothing found|};
+      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292|};
+      {|A042 OK STATUS completed|};
+      {|* 172 EXISTS|};
+      {|* 1 RECENT|};
+      {|* OK [UNSEEN 12] Message 12 is first unseen|};
+      {|* OK [UIDVALIDITY 3857529045] UIDs valid|};
+      {|* OK [UIDNEXT 4392] Predicted next UID|};
+      {|* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)|};
+      {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
+      {|* OK [HIGHESTMODSEQ 715194045007]|};
+      {|A142 OK [READ-WRITE] SELECT completed, CONDSTORE is now enabled|};
+      {|* ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236|};
+      {|a OK Extended SEARCH completed|};
+      {|* ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236|};
+      {|a OK Extended SORT completed|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted|};
+      {|* 464 EXISTS|};
+      {|* 3 RECENT|};
+      {|* OK [UIDVALIDITY 3857529045] UIDVALIDITY|};
+      {|* OK [UIDNEXT 550] Predicted next UID|};
+      {|* OK [HIGHESTMODSEQ 90060128194045007] Highest mailbox|};
+      {|* OK [UNSEEN 12] Message 12 is first unseen|};
+      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft|};
+      {|A02 OK [READ-WRITE] Sorry, UIDVALIDITY mismatch|};
+      {|* OK [CLOSED]|};
+      {|* 100 EXISTS|};
+      {|* 11 RECENT|};
+      {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
+      {|* OK [UIDNEXT 600] Predicted next UID|};
+      {|* OK [HIGHESTMODSEQ 90060115205545359] Highest|};
+      {|* OK [UNSEEN 7] There are some unseen|};
+      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
+      {|* VANISHED (EARLIER) 41,43:116,118,120:211,214:540|};
+      {|* 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ|};
+      {|* 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ|};
+      {|* 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ|};
+      {|A03 OK [READ-WRITE] mailbox selected|};
+      {|* 10003 EXISTS|};
+      {|* 4 RECENT|};
+      {|* OK [UIDVALIDITY 67890007] UIDVALIDITY|};
+      {|* OK [UIDNEXT 30013] Predicted next UID|};
+      {|* OK [HIGHESTMODSEQ 90060115205545359] Highest mailbox|};
+      {|* OK [UNSEEN 7] There are some unseen messages in the mailbox|};
+      {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
+      {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
+      {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],|};
+      {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ|};
     ]
   in
   List.iter parse tests;
