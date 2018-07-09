@@ -841,7 +841,7 @@ let%expect_test _ =
       {|a OK Extended SEARCH completed|};
       {|* ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236|};
       {|a OK Extended SORT completed|};
-      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted|};
+      {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted))|};
       {|* 464 EXISTS|};
       {|* 3 RECENT|};
       {|* OK [UIDVALIDITY 3857529045] UIDVALIDITY|};
@@ -861,9 +861,9 @@ let%expect_test _ =
       {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
       {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
       {|* VANISHED (EARLIER) 41,43:116,118,120:211,214:540|};
-      {|* 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ|};
-      {|* 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ|};
-      {|* 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ|};
+      {|* 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ (12111230047))|};
+      {|* 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ (12111230047))|};
+      {|* 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ (12111230047))|};
       {|A03 OK [READ-WRITE] mailbox selected|};
       {|* 10003 EXISTS|};
       {|* 4 RECENT|};
@@ -874,7 +874,7 @@ let%expect_test _ =
       {|* FLAGS (\Answered \Flagged \Draft \Deleted \Seen)|};
       {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
       {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],|};
-      {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ|};
+      {|* 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ (90060115194045027))|};
     ]
   in
   List.iter parse tests;
@@ -1165,6 +1165,8 @@ let%expect_test _ =
     (Tagged A142 (OK (READ_WRITE) "SELECT completed, CONDSTORE is now enabled"))
     (Tagged a (OK () "Extended SEARCH completed"))
     (Tagged a (OK () "Extended SORT completed"))
+    (Untagged
+     (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed) Deleted)))))
     (Untagged (EXISTS 464))
     (Untagged (RECENT 3))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) UIDVALIDITY)))
@@ -1188,6 +1190,14 @@ let%expect_test _ =
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    (Untagged
+     (FETCH 49 ((UID 117) (FLAGS (Seen Answered)) (MODSEQ 12111230047))))
+    (Untagged
+     (FETCH 50
+      ((UID 119) (FLAGS (Draft (Keyword $MDNSent))) (MODSEQ 12111230047))))
+    (Untagged
+     (FETCH 51
+      ((UID 541) (FLAGS (Seen (Keyword $Forwarded))) (MODSEQ 12111230047))))
     (Tagged A03 (OK (READ_WRITE) "mailbox selected"))
     (Untagged (EXISTS 10003))
     (Untagged (RECENT 4))
@@ -1201,6 +1211,10 @@ let%expect_test _ =
     (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
+    (Untagged
+     (FETCH 1
+      ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
+       (MODSEQ 90060115194045027))))
     Parsing error:
     * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
             ^
@@ -1235,23 +1249,8 @@ let%expect_test _ =
     * ESEARCH (TAG "a") ALL 5,3,2,1 MODSEQ 1236
              ^
     Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
-                                                                 ^
-    Parsing error:
     * VANISHED (EARLIER) 41,43:116,118,120:211,214:540
               ^
     Parsing error:
-    * 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ
-                                                      ^
-    Parsing error:
-    * 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ
-                                                      ^
-    Parsing error:
-    * 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ
-                                                       ^
-    Parsing error:
     * VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],
-              ^
-    Parsing error:
-    * 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ
-                                                              ^ |}]
+              ^ |}]
