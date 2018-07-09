@@ -407,6 +407,33 @@ let msg_att buf k =
   in
   msg_att buf (fun att -> loop [att] buf k)
 
+let mod_sequence_valzer buf =
+  Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
+
+let status_att buf =
+  let open Status.MailboxAttribute in
+  match atom buf with
+  | "MESSAGES" ->
+      char ' ' buf;
+      MESSAGES (Int32.to_int (number buf))
+  | "RECENT" ->
+      char ' ' buf;
+      RECENT (Int32.to_int (number buf))
+  | "UIDNEXT" ->
+      char ' ' buf;
+      UIDNEXT (number buf)
+  | "UIDVALIDITY" ->
+      char ' ' buf;
+      UIDVALIDITY (number buf)
+  | "UNSEEN" ->
+      char ' ' buf;
+      UNSEEN (Int32.to_int (number buf))
+  | "HIGHESTMODSEQ" ->
+      char ' ' buf;
+      HIGHESTMODSEQ (mod_sequence_valzer buf)
+  | _ ->
+      error buf
+
 let response_data buf k =
   char '*' buf;
   char ' ' buf;
@@ -483,8 +510,25 @@ let response_data buf k =
               None
           in
           k (SEARCH (nums, modseq))
-      (* | "STATUS" ->
-       *     sp *> pair sp mailbox (psep_by sp status_att) >>| (fun (m, l) -> STATUS (m, l)) *)
+      | "STATUS" ->
+          char ' ' buf;
+          mailbox buf (fun mbox ->
+              char ' ' buf;
+              char '(' buf;
+              let l =
+                if curr buf = ')' then
+                  (next buf; [])
+                else
+                  let rec loop acc buf =
+                    if curr buf = ' ' then
+                      (next buf; loop (status_att buf :: acc) buf)
+                    else
+                      (char ')' buf; List.rev acc)
+                  in
+                  loop [status_att buf] buf
+              in
+              k (STATUS (mbox, l))
+            )
       | "CAPABILITY" ->
           let rec loop acc buf =
             if curr buf = ' ' then
@@ -826,7 +870,7 @@ let%expect_test _ =
       {|a OK Search complete|};
       {|* SEARCH|};
       {|t OK Search complete, nothing found|};
-      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292|};
+      {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
       {|A042 OK STATUS completed|};
       {|* 172 EXISTS|};
       {|* 1 RECENT|};
@@ -981,6 +1025,7 @@ let%expect_test _ =
     (Tagged A002 (OK () "LSUB completed"))
     (Untagged (LSUB (Noselect) (.) #news.comp.mail))
     (Tagged A003 (OK () "LSUB completed"))
+    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
     (Tagged A042 (OK () "STATUS completed"))
     (Tagged A003 (OK () "APPEND completed"))
     (Tagged FXXZ (OK () "CHECK Completed"))
@@ -1029,6 +1074,7 @@ let%expect_test _ =
       ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER AUTH=GSSAPI) (OTHER XPIG-LATIN))))
     (Untagged (LIST (Noselect) (/) ~/Mail/foo))
     (Untagged (LSUB () (.) #news.comp.mail.misc))
+    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
     (Untagged (SEARCH (2 3 6) ()))
     (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged (EXISTS 23))
@@ -1152,6 +1198,7 @@ let%expect_test _ =
     (Tagged a (OK () "Search complete"))
     (Untagged (SEARCH () ()))
     (Tagged t (OK () "Search complete, nothing found"))
+    (Untagged (STATUS blurdybloop ((MESSAGES 231) (UIDNEXT 44292))))
     (Tagged A042 (OK () "STATUS completed"))
     (Untagged (EXISTS 172))
     (Untagged (RECENT 1))
@@ -1216,12 +1263,6 @@ let%expect_test _ =
       ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
        (MODSEQ 90060115194045027))))
     Parsing error:
-    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
-            ^
-    Parsing error:
-    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
-            ^
-    Parsing error:
     * 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)
                                          ^
     Parsing error:
@@ -1239,9 +1280,6 @@ let%expect_test _ =
     Parsing error:
     * SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)
                                        ^
-    Parsing error:
-    * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292
-            ^
     Parsing error:
     * ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236
              ^
