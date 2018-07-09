@@ -64,8 +64,8 @@ module MessageAttribute = struct
     | ENVELOPE of Envelope.t
     | INTERNALDATE of Date.t * Time.t
     | RFC822 of string
-    (* | RFC822_HEADER of string option
-     * | RFC822_TEXT of string option *)
+    | RFC822_HEADER of string
+    | RFC822_TEXT of string
     | RFC822_SIZE of int
     | BODY of MIME.Response.t
     | BODYSTRUCTURE of MIME.Response.t
@@ -108,6 +108,8 @@ module Response = struct
       flags: Flag.t list;
       envelope: Envelope.t option;
       internaldate: (Date.t * Time.t) option;
+      rfc822_header: string;
+      rfc822_text: string;
       rfc822_size: int option;
       rfc822: string;
       body: MIME.Response.t option;
@@ -125,6 +127,8 @@ module Response = struct
       flags = [];
       envelope = None;
       internaldate = None;
+      rfc822_header = "";
+      rfc822_text = "";
       rfc822_size = None;
       rfc822 = "";
       body = None;

@@ -340,6 +340,16 @@ let flag =
 let flag_fetch =
   flag_with_recent true
 
+let nstring buf k =
+  match curr buf with
+  | '"' | '{' ->
+      imap_string buf k
+  | _ ->
+      char 'N' buf;
+      char 'I' buf;
+      char 'L' buf;
+      k ""
+
 let msg_att buf k =
   let open Fetch.MessageAttribute in
   match atom buf with
@@ -371,8 +381,12 @@ let msg_att buf k =
    *     sp *> envelope >>| (fun e -> ENVELOPE e) *)
   (* | "INTERNALDATE" ->
    *     sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t)) *)
-  (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
-    (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
+  | "RFC822.HEADER" ->
+      char ' ' buf;
+      nstring buf (fun s -> k (RFC822_HEADER s));
+  | "RFC822.TEXT" ->
+      char ' ' buf;
+      nstring buf (fun s -> k (RFC822_TEXT s));
   | "RFC822.SIZE" ->
       char ' ' buf;
       k (RFC822_SIZE (Int32.to_int (number buf)))

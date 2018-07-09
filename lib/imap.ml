@@ -413,10 +413,8 @@ let fetch_gen cmd imap ?changed_since nums att =
           | ENVELOPE e -> {res with envelope = Some e}
           | INTERNALDATE (d, t) -> {res with internaldate = Some (d, t)}
           | RFC822 rfc822 -> {res with rfc822}
-          (* | RFC822_HEADER (Some s) -> {res with rfc822_header = Some s} *)
-          (* | RFC822_HEADER None -> {res with rfc822_header = Some ""} *)
-          (* | RFC822_TEXT (Some s) -> {res with rfc822_text = Some s} *)
-          (* | RFC822_TEXT None -> {res with rfc822_text = Some ""} *)
+          | RFC822_HEADER rfc822_header -> {res with rfc822_header}
+          | RFC822_TEXT rfc822_text -> {res with rfc822_text}
           | RFC822_SIZE n -> {res with rfc822_size = Some n}
           | BODY x -> {res with body = Some x}
           | BODYSTRUCTURE x -> {res with bodystructure = Some x}
