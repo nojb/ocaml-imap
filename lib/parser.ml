@@ -316,11 +316,49 @@ let search_sort_mod_seq buf =
 let permsg_modsequence =
   mod_sequence_value
 
+let flag_with_recent with_recent buf =
+  let open Flag in
+  match curr buf with
+  | '\\' ->
+      next buf;
+      let a = atom buf in
+      begin match String.lowercase_ascii a with
+      | "recent" when with_recent -> Recent
+      | "answered" -> Answered
+      | "flagged" -> Flagged
+      | "deleted" -> Deleted
+      | "seen" -> Seen
+      | "draft" -> Draft
+      | _ -> Extension a
+      end
+  | _ ->
+      Keyword (atom buf)
+
+let flag =
+  flag_with_recent false
+
+let flag_fetch =
+  flag_with_recent true
+
 let msg_att buf k =
   let open Fetch.MessageAttribute in
   match atom buf with
-  (* | "FLAGS" ->
-   *     sp *> psep_by sp flag_fetch >>| (fun l -> FLAGS l) *)
+  | "FLAGS" ->
+      char ' ' buf;
+      char '(' buf;
+      let flags =
+        if curr buf = ')' then
+          (next buf; [])
+        else
+          let rec loop acc buf =
+            if curr buf = ' ' then
+              (next buf; loop (flag_fetch buf :: acc) buf)
+            else
+              (char ')' buf; List.rev acc)
+          in
+          loop [flag_fetch buf] buf
+      in
+      k (FLAGS flags)
   | "MODSEQ" ->
       char ' ' buf;
       char '(' buf;
@@ -408,8 +446,22 @@ let response_data buf k =
       | "BYE" ->
           if curr buf = ' ' then next buf;
           resp_text buf (fun code text -> k (BYE (code, text)))
-      (* | "FLAGS" ->
-       *     sp *> psep_by sp flag >>| (fun l -> FLAGS l) *)
+      | "FLAGS" ->
+          char ' ' buf;
+          char '(' buf;
+          let l =
+            if curr buf = ')' then
+              (next buf; [])
+            else
+              let rec loop acc buf =
+                if curr buf = ' ' then
+                  (next buf; loop (flag buf :: acc) buf)
+                else
+                  (char ')' buf; List.rev acc)
+              in
+              loop [flag buf] buf
+          in
+          k (FLAGS l)
       | "LIST" ->
           char ' ' buf;
           mailbox_list buf (fun xs c m -> k (LIST (xs, c, m)))
@@ -863,6 +915,7 @@ let%expect_test _ =
     (Untagged (EXPUNGE 22))
     (Untagged (EXISTS 23))
     (Untagged (RECENT 3))
+    (Untagged (FETCH 14 ((FLAGS (Seen Deleted)))))
     (Untagged (BYE () "IMAP4rev1 Server logging out"))
     (Untagged
      (CAPABILITY ((OTHER IMAP4rev1) (OTHER STARTTLS) (OTHER LOGINDISABLED))))
@@ -873,12 +926,14 @@ let%expect_test _ =
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
     (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
     (Untagged (EXISTS 17))
     (Untagged (RECENT 2))
     (Untagged (State (OK ((UNSEEN 8)) "Message 8 is first unseen")))
     (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" ()"))) "No permanent flags permitted")))
     (Untagged (LIST () (/) blurdybloop))
@@ -942,8 +997,14 @@ let%expect_test _ =
     (Untagged (SEARCH (43) ()))
     (Tagged A284 (OK () "SEARCH completed"))
     (Tagged A654 (OK () "FETCH completed"))
+    (Untagged (FETCH 2 ((FLAGS (Deleted Seen)))))
+    (Untagged (FETCH 3 ((FLAGS (Deleted)))))
+    (Untagged (FETCH 4 ((FLAGS (Deleted Flagged Seen)))))
     (Tagged A003 (OK () "STORE completed"))
     (Tagged A003 (OK () "COPY completed"))
+    (Untagged (FETCH 23 ((FLAGS (Seen)) (UID 4827313))))
+    (Untagged (FETCH 24 ((FLAGS (Seen)) (UID 4827943))))
+    (Untagged (FETCH 25 ((FLAGS (Seen)) (UID 4828442))))
     (Tagged A999 (OK () "UID FETCH completed"))
     (Untagged (CAPABILITY ((OTHER IMAP4rev1) (OTHER XPIG-LATIN))))
     (Tagged a441 (OK () "CAPABILITY completed"))
@@ -969,6 +1030,7 @@ let%expect_test _ =
     (Untagged (LIST (Noselect) (/) ~/Mail/foo))
     (Untagged (LSUB () (.) #news.comp.mail.misc))
     (Untagged (SEARCH (2 3 6) ()))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged (EXISTS 23))
     (Untagged (RECENT 5))
     (Untagged (EXPUNGE 44))
@@ -977,6 +1039,7 @@ let%expect_test _ =
     (Untagged (State (OK () "IMAP4rev1 Service Ready")))
     (Tagged a001 (OK () "LOGIN completed"))
     (Untagged (EXISTS 18))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged (RECENT 2))
     (Untagged
      (State (OK ((UNSEEN 17)) "Message 17 is the first unseen message")))
@@ -988,6 +1051,7 @@ let%expect_test _ =
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
     (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
     (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
@@ -997,6 +1061,7 @@ let%expect_test _ =
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
     (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
     (Untagged
@@ -1013,22 +1078,28 @@ let%expect_test _ =
     (Tagged c101 (OK () "Store (conditional) completed"))
     (Untagged (FETCH 5 ((MODSEQ 320162350))))
     (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
+    (Untagged (FETCH 7 ((MODSEQ 320162342) (FLAGS (Seen Deleted)))))
     (Untagged (FETCH 5 ((MODSEQ 320162350))))
+    (Untagged (FETCH 9 ((MODSEQ 320162349) (FLAGS (Answered)))))
     (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed"))
     (Tagged a102 (OK ((OTHER MODIFIED (" 12"))) "Conditional STORE failed"))
     (Untagged (FETCH 100 ((MODSEQ 303181230852))))
     (Untagged (FETCH 102 ((MODSEQ 303181230852))))
     (Untagged (FETCH 150 ((MODSEQ 303181230852))))
     (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed))))))
     (Tagged a107 (OK () ""))
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered)))))
     (Tagged b107 (OK () ""))
     (Untagged (FETCH 101 ((MODSEQ 303181230852))))
     (Tagged b108 (OK () "Conditional Store completed"))
     (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed))))))
     (Untagged (FETCH 102 ((MODSEQ 303181230852))))
     (Untagged (FETCH 150 ((MODSEQ 303181230852))))
     (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
     (Untagged (FETCH 100 ((MODSEQ 303181230852))))
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered)))))
     (Untagged (FETCH 102 ((MODSEQ 303181230852))))
     (Untagged (FETCH 150 ((MODSEQ 303181230852))))
     (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed"))
@@ -1038,26 +1109,35 @@ let%expect_test _ =
     (Untagged (FETCH 102 ((MODSEQ 303181230852))))
     (Untagged (FETCH 150 ((MODSEQ 303181230852))))
     (Tagged a106 (OK () "Conditional STORE completed"))
+    (Untagged (FETCH 1 ((MODSEQ 320172342) (FLAGS (Seen)))))
+    (Untagged (FETCH 3 ((MODSEQ 320172342) (FLAGS (Seen)))))
     (Tagged B001
      (NO ((OTHER MODIFIED (" 2"))) "Some of the messages no longer exist."))
     (Untagged (EXPUNGE 4))
     (Untagged (EXPUNGE 4))
     (Untagged (EXPUNGE 4))
     (Untagged (EXPUNGE 4))
+    (Untagged (FETCH 2 ((MODSEQ 320172340) (FLAGS (Deleted Answered)))))
     (Tagged B002 (OK () "NOOP Completed."))
+    (Untagged (FETCH 2 ((MODSEQ 320180050) (FLAGS (Seen Flagged)))))
     (Tagged b003 (OK () "Conditional Store completed"))
+    (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen)))))
+    (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted)))))
     (Tagged s100 (OK () "FETCH completed"))
     (Untagged (FETCH 1 ((MODSEQ 624140003))))
     (Untagged (FETCH 2 ((MODSEQ 624140007))))
     (Untagged (FETCH 3 ((MODSEQ 624140005))))
     (Tagged a (OK () "Fetch complete"))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State
       (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Deleted \\Seen \\*)")))
        Limited)))
     (Untagged (FETCH 7 ((MODSEQ 2121231000))))
     (Tagged A160 (OK () "Store completed"))
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000))))
     (Tagged C180 (OK () "Noop completed"))
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000))))
     (Tagged D210 (OK () "Noop completed"))
     (Untagged (FETCH 7 ((MODSEQ 12121231777))))
     (Tagged A240 (OK () "Store completed"))
@@ -1065,7 +1145,9 @@ let%expect_test _ =
     (Tagged D300 (OK () "Noop completed"))
     (Untagged (FETCH 7 ((MODSEQ 12121245160))))
     (Tagged A330 (OK () "Store completed"))
+    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160))))
     (Tagged C360 (OK () "Noop completed"))
+    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160))))
     (Tagged D390 (OK () "Noop completed"))
     (Tagged a (OK () "Search complete"))
     (Untagged (SEARCH () ()))
@@ -1076,6 +1158,7 @@ let%expect_test _ =
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
     (Untagged (State (OK ((UIDVALIDITY -437438251)) "UIDs valid")))
     (Untagged (State (OK ((UIDNEXT 4392)) "Predicted next UID")))
+    (Untagged (FLAGS (Answered Flagged Deleted Seen Draft)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited)))
     (Untagged (State (OK ((OTHER HIGHESTMODSEQ (" 715194045007"))) "")))
@@ -1090,6 +1173,7 @@ let%expect_test _ =
      (State
       (OK ((OTHER HIGHESTMODSEQ (" 90060128194045007"))) "Highest mailbox")))
     (Untagged (State (OK ((UNSEEN 12)) "Message 12 is first unseen")))
+    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
     (Tagged A02 (OK (READ_WRITE) "Sorry, UIDVALIDITY mismatch"))
@@ -1101,6 +1185,7 @@ let%expect_test _ =
     (Untagged
      (State (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) Highest)))
     (Untagged (State (OK ((UNSEEN 7)) "There are some unseen")))
+    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
     (Tagged A03 (OK (READ_WRITE) "mailbox selected"))
@@ -1113,128 +1198,36 @@ let%expect_test _ =
       (OK ((OTHER HIGHESTMODSEQ (" 90060115205545359"))) "Highest mailbox")))
     (Untagged
      (State (OK ((UNSEEN 7)) "There are some unseen messages in the mailbox")))
+    (Untagged (FLAGS (Answered Flagged Draft Deleted Seen)))
     (Untagged
      (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) "")))
     Parsing error:
-    * 14 FETCH (FLAGS (\Seen \Deleted))
-                     ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
-    Parsing error:
     * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
             ^
     Parsing error:
-    * 2 FETCH (FLAGS (\Deleted \Seen))
-                    ^
-    Parsing error:
-    * 3 FETCH (FLAGS (\Deleted))
-                    ^
-    Parsing error:
-    * 4 FETCH (FLAGS (\Deleted \Flagged \Seen))
-                    ^
-    Parsing error:
-    * 23 FETCH (FLAGS (\Seen) UID 4827313)
-                     ^
-    Parsing error:
-    * 24 FETCH (FLAGS (\Seen) UID 4827943)
-                     ^
-    Parsing error:
-    * 25 FETCH (FLAGS (\Seen) UID 4828442)
-                     ^
-    Parsing error:
     * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)
             ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
     Parsing error:
     * 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)
-                     ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
+                                         ^
     Parsing error:
     * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
-                     ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
-    Parsing error:
-    * 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))
-                                       ^
-    Parsing error:
-    * 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))
-                                       ^
-    Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))
-                                            ^
-    Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))
-                                            ^
-    Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))
-                                            ^
-    Parsing error:
-    * 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))
-                                            ^
+                                          ^
     Parsing error:
     * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
-                                            ^
-    Parsing error:
-    * 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))
-                                       ^
-    Parsing error:
-    * 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))
-                                       ^
-    Parsing error:
-    * 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))
-                                       ^
-    Parsing error:
-    * 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))
-                                       ^
-    Parsing error:
-    * 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))
-                                         ^
-    Parsing error:
-    * 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))
-                                         ^
+                                                                 ^
     Parsing error:
     * 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk
-                                         ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
-    Parsing error:
-    * 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))
-                    ^
-    Parsing error:
-    * 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))
-                    ^
+                                                            ^
     Parsing error:
     * 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ
-                    ^
-    Parsing error:
-    * 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))
-                    ^
-    Parsing error:
-    * 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))
-                    ^
+                                                      ^
     Parsing error:
     * SEARCH 2 5 6 7 11 12 18 19 20 23 (MODSEQ 917162500)
                                        ^
     Parsing error:
     * STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292
             ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
-           ^
     Parsing error:
     * ESEARCH (TAG "a") ALL 1:3,5 MODSEQ 1236
              ^
@@ -1243,31 +1236,22 @@ let%expect_test _ =
              ^
     Parsing error:
     * 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed \Deleted
-                                            ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
-           ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
-           ^
+                                                                 ^
     Parsing error:
     * VANISHED (EARLIER) 41,43:116,118,120:211,214:540
               ^
     Parsing error:
     * 49 FETCH (UID 117 FLAGS (\Seen \Answered) MODSEQ
-                             ^
+                                                      ^
     Parsing error:
     * 50 FETCH (UID 119 FLAGS (\Draft $MDNSent) MODSEQ
-                             ^
+                                                      ^
     Parsing error:
     * 51 FETCH (UID 541 FLAGS (\Seen $Forwarded) MODSEQ
-                             ^
-    Parsing error:
-    * FLAGS (\Answered \Flagged \Draft \Deleted \Seen)
-           ^
+                                                       ^
     Parsing error:
     * VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,[...],
               ^
     Parsing error:
     * 1 FETCH (UID 3 FLAGS (\Seen \Answered $Important) MODSEQ
-                          ^ |}]
+                                                              ^ |}]
