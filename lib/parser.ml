@@ -473,8 +473,9 @@ let msg_att buf k =
   | "RFC822.SIZE" ->
       char ' ' buf;
       k (RFC822_SIZE (Int32.to_int (number buf)))
-  (* | "RFC822" ->
-   *     sp *> nstring' >>| (fun s -> RFC822 s) *)
+  | "RFC822" ->
+      char ' ' buf;
+      nstring buf (fun s -> k(RFC822 s))
   (* | "BODYSTRUCTURE" ->
    *     sp *> body >>| (fun b -> BODYSTRUCTURE b) *)
   (* | "BODY" ->
