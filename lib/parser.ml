@@ -236,6 +236,30 @@ let capability buf =
 let mod_sequence_value buf =
   Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
 
+let uid_range buf =
+  let n = uniqueid buf in
+  if curr buf = ':' then
+    (next buf; (n, uniqueid buf))
+  else
+    (n, n)
+
+let uid_set buf =
+  let rec loop acc buf =
+    match curr buf with
+    | ',' ->
+        next buf;
+        loop (uid_range buf :: acc) buf
+    | _ ->
+        List.rev acc
+  in
+  loop [uid_range buf] buf
+
+let sequence_set =
+  uid_set
+
+let set =
+  sequence_set
+
 let resp_text_code buf k =
   let open Code in
   let k code = char ']' buf; k code in
@@ -279,11 +303,12 @@ let resp_text_code buf k =
       k (HIGHESTMODSEQ (mod_sequence_value buf))
   | "NOMODSEQ" ->
       k NOMODSEQ
-  (* | "MODIFIED" ->
-   *     sp *> set >>| (fun l -> MODIFIED l)
-   * | "APPENDUID" ->
-   *     sp *> pair sp nz_number append_uid >>| (fun (n, uid) -> APPENDUID (n, uid))
-   * | "COPYUID" ->
+  | "MODIFIED" ->
+      char ' ' buf;
+      k (MODIFIED (set buf))
+  (* | "APPENDUID" ->
+   *     sp *> pair sp nz_number append_uid >>| (fun (n, uid) -> APPENDUID (n, uid)) *)
+  (* | "COPYUID" ->
    *     sp *> triple sp nz_number set set >>| (fun (n, s1, s2) -> COPYUID (n, s1, s2)) *)
   | "UIDNOTSTICKY" ->
       k UIDNOTSTICKY
@@ -449,24 +474,6 @@ let status_att buf =
       HIGHESTMODSEQ (mod_sequence_valzer buf)
   | _ ->
       error buf
-
-let uid_range buf =
-  let n = uniqueid buf in
-  if curr buf = ':' then
-    (next buf; (n, uniqueid buf))
-  else
-    (n, n)
-
-let uid_set buf =
-  let rec loop acc buf =
-    match curr buf with
-    | ',' ->
-        next buf;
-        loop (uid_range buf :: acc) buf
-    | _ ->
-        List.rev acc
-  in
-  loop [uid_range buf] buf
 
 let known_ids =
   uid_set
@@ -1436,7 +1443,7 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
-  [%expect {| (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged d105 (OK ((MODIFIED ((7 7) (9 9)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|* 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))|};
@@ -1452,11 +1459,11 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
-  [%expect {| (Tagged d105 (OK ((OTHER MODIFIED (" 7,9"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged d105 (OK ((MODIFIED ((7 7) (9 9)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|a102 OK [MODIFIED 12] Conditional STORE failed|};
-  [%expect {| (Tagged a102 (OK ((OTHER MODIFIED (" 12"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged a102 (OK ((MODIFIED ((12 12)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|* 100 FETCH (MODSEQ (303181230852))|};
@@ -1472,7 +1479,7 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged a106 (OK ((MODIFIED ((101 101)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
@@ -1516,7 +1523,7 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged a106 (OK ((MODIFIED ((101 101)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|* 100 FETCH (MODSEQ (303181230852))|};
@@ -1536,7 +1543,7 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|a106 OK [MODIFIED 101] Conditional STORE failed|};
-  [%expect {| (Tagged a106 (OK ((OTHER MODIFIED (" 101"))) "Conditional STORE failed")) |}]
+  [%expect {| (Tagged a106 (OK ((MODIFIED ((101 101)))) "Conditional STORE failed")) |}]
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303181230852))|};
@@ -1580,7 +1587,7 @@ let%expect_test _ =
   parse {|B001 NO [MODIFIED 2] Some of the messages no longer exist.|};
   [%expect {|
     (Tagged B001
-     (NO ((OTHER MODIFIED (" 2"))) "Some of the messages no longer exist.")) |}]
+     (NO ((MODIFIED ((2 2)))) "Some of the messages no longer exist.")) |}]
 
 let%expect_test _ =
   parse {|* 4 EXPUNGE|};
