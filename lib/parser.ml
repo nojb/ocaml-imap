@@ -422,6 +422,82 @@ let nstring buf k =
       char 'L' buf;
       k ""
 
+let address buf k =
+  char '(' buf;
+  nstring buf (fun ad_name ->
+      char ' ' buf;
+      nstring buf (fun ad_adl ->
+          char ' ' buf;
+          nstring buf (fun ad_mailbox ->
+              char ' ' buf;
+              nstring buf (fun ad_host ->
+                  char ')' buf;
+                  k {Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host}
+                )
+            )
+        )
+    )
+
+let address_list buf k =
+  if curr buf = '(' then begin
+    next buf;
+    let rec loop acc buf k =
+      if curr buf = ')' then
+        (next buf; k (List.rev acc))
+      else
+        address buf (fun ad -> loop (ad :: acc) buf k)
+    in
+    loop [] buf k
+  end else begin
+    char 'N' buf;
+    char 'I' buf;
+    char 'L' buf;
+    k []
+  end
+
+let envelope buf k =
+  char '(' buf;
+  nstring buf (fun env_date ->
+      char ' ' buf;
+      nstring buf (fun env_subject ->
+          char ' ' buf;
+          address_list buf (fun env_from ->
+              char ' ' buf;
+              address_list buf (fun env_sender ->
+                  char ' ' buf;
+                  address_list buf (fun env_reply_to ->
+                      char ' ' buf;
+                      address_list buf (fun env_to ->
+                          char ' ' buf;
+                          address_list buf (fun env_cc ->
+                              char ' ' buf;
+                              address_list buf (fun env_bcc ->
+                                  char ' ' buf;
+                                  nstring buf (fun env_in_reply_to ->
+                                      char ' ' buf;
+                                      nstring buf (fun env_message_id ->
+                                          char ')' buf;
+                                          k {Envelope.env_date;
+                                             env_subject;
+                                             env_from;
+                                             env_sender;
+                                             env_reply_to;
+                                             env_to;
+                                             env_cc;
+                                             env_bcc;
+                                             env_in_reply_to;
+                                             env_message_id}
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+        )
+    )
+
 let msg_att buf k =
   let open Fetch.MessageAttribute in
   match atom buf with
@@ -467,8 +543,9 @@ let msg_att buf k =
         char 'L' buf;
         k (X_GM_LABELS [])
       end
-  (* | "ENVELOPE" ->
-   *     sp *> envelope >>| (fun e -> ENVELOPE e) *)
+  | "ENVELOPE" ->
+      char ' ' buf;
+      envelope buf (fun env -> k (ENVELOPE env))
   | "INTERNALDATE" ->
       char ' ' buf;
       char '"' buf;
