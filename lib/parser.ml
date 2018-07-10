@@ -260,6 +260,39 @@ let sequence_set =
 let set =
   sequence_set
 
+let append_uid =
+  uniqueid
+
+let flag_gen recent any buf =
+  let open Flag in
+  match curr buf with
+  | '\\' ->
+      next buf;
+      if curr buf = '*' && any then
+        (next buf; Any)
+      else begin
+        let a = atom buf in
+        match String.lowercase_ascii a with
+        | "recent" when recent -> Recent
+        | "answered" -> Answered
+        | "flagged" -> Flagged
+        | "deleted" -> Deleted
+        | "seen" -> Seen
+        | "draft" -> Draft
+        | _ -> Extension a
+      end
+  | _ ->
+      Keyword (atom buf)
+
+let flag =
+  flag_gen false false
+
+let flag_fetch =
+  flag_gen true false
+
+let flag_perm =
+  flag_gen false true
+
 let resp_text_code buf k =
   let open Code in
   let k code = char ']' buf; k code in
@@ -267,8 +300,14 @@ let resp_text_code buf k =
   match atom buf with
   | "ALERT" ->
       k ALERT
-  (* | "BADCHARSET" ->
-   *     many (sp *> astring) >>| (fun l -> BADCHARSET l) *)
+  | "BADCHARSET" ->
+      let rec loop acc buf k =
+        if curr buf = ' ' then
+          (next buf; astring buf (fun s -> loop (s :: acc) buf k))
+        else
+          k (BADCHARSET (List.rev acc))
+      in
+      loop [] buf k
   | "CAPABILITY" ->
       let rec loop acc buf =
         if curr buf = ' ' then
@@ -279,8 +318,22 @@ let resp_text_code buf k =
       loop [] buf
   | "PARSE" ->
       k PARSE
-  (* | "PERMANENTFLAGS" ->
-   *     sp *> psep_by sp flag_perm >>| (fun l -> PERMANENTFLAGS l) *)
+  | "PERMANENTFLAGS" ->
+      char ' ' buf;
+      char '(' buf;
+      let l =
+        if curr buf = ')' then
+          (next buf; [])
+        else
+          let rec loop acc buf =
+            if curr buf = ' ' then
+              (next buf; loop (flag_perm buf :: acc) buf)
+            else
+              (char ')' buf; List.rev acc)
+          in
+          loop [flag_perm buf] buf
+      in
+      k (PERMANENTFLAGS l)
   | "READ-ONLY" ->
       k READ_ONLY
   | "READ-WRITE" ->
@@ -306,10 +359,20 @@ let resp_text_code buf k =
   | "MODIFIED" ->
       char ' ' buf;
       k (MODIFIED (set buf))
-  (* | "APPENDUID" ->
-   *     sp *> pair sp nz_number append_uid >>| (fun (n, uid) -> APPENDUID (n, uid)) *)
-  (* | "COPYUID" ->
-   *     sp *> triple sp nz_number set set >>| (fun (n, s1, s2) -> COPYUID (n, s1, s2)) *)
+  | "APPENDUID" ->
+      char ' ' buf;
+      let n = nz_number buf in
+      char ' ' buf;
+      let uid = append_uid buf in
+      k (APPENDUID (n, uid))
+  | "COPYUID" ->
+      char ' ' buf;
+      let n = nz_number buf in
+      char ' ' buf;
+      let s1 = set buf in
+      char ' ' buf;
+      let s2 = set buf in
+      k (COPYUID (n, s1, s2))
   | "UIDNOTSTICKY" ->
       k UIDNOTSTICKY
   | "COMPRESSIONACTIVE" ->
@@ -341,30 +404,6 @@ let search_sort_mod_seq buf =
 
 let permsg_modsequence =
   mod_sequence_value
-
-let flag_with_recent with_recent buf =
-  let open Flag in
-  match curr buf with
-  | '\\' ->
-      next buf;
-      let a = atom buf in
-      begin match String.lowercase_ascii a with
-      | "recent" when with_recent -> Recent
-      | "answered" -> Answered
-      | "flagged" -> Flagged
-      | "deleted" -> Deleted
-      | "seen" -> Seen
-      | "draft" -> Draft
-      | _ -> Extension a
-      end
-  | _ ->
-      Keyword (atom buf)
-
-let flag =
-  flag_with_recent false
-
-let flag_fetch =
-  flag_with_recent true
 
 let nstring buf k =
   match curr buf with
@@ -842,8 +881,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Deleted Seen Any))) Limited))) |}]
 
 let%expect_test _ =
   parse {|* 17 EXISTS|};
@@ -868,8 +906,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS ()] No permanent flags permitted|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" ()"))) "No permanent flags permitted"))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS ())) "No permanent flags permitted"))) |}]
 
 let%expect_test _ =
   parse {|* LIST () "/" blurdybloop|};
@@ -1350,8 +1387,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Deleted Seen Any))) Limited))) |}]
 
 let%expect_test _ =
   parse {|* OK [HIGHESTMODSEQ 715194045007]|};
@@ -1388,8 +1424,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Deleted Seen Any))) Limited))) |}]
 
 let%expect_test _ =
   parse {|* OK [NOMODSEQ] Sorry, this mailbox format doesn't support|};
@@ -1664,9 +1699,7 @@ let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Answered \Deleted \Seen \*)] Limited|};
   [%expect {|
     (Untagged
-     (State
-      (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Deleted \\Seen \\*)")))
-       Limited))) |}]
+     (State (OK ((PERMANENTFLAGS (Answered Deleted Seen Any))) Limited))) |}]
 
 let%expect_test _ =
   parse {|* 7 FETCH (MODSEQ (2121231000))|};
@@ -1787,8 +1820,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Deleted \Seen \*)] Limited|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Deleted \\Seen \\*)"))) Limited))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Deleted Seen Any))) Limited))) |}]
 
 let%expect_test _ =
   parse {|* OK [HIGHESTMODSEQ 715194045007]|};
@@ -1857,8 +1889,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Answered Flagged Draft))) ""))) |}]
 
 let%expect_test _ =
   parse {|A02 OK [READ-WRITE] Sorry, UIDVALIDITY mismatch|};
@@ -1899,8 +1930,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Answered Flagged Draft))) ""))) |}]
 
 let%expect_test _ =
   parse {|* VANISHED (EARLIER) 41,43:116,118,120:211,214:540|};
@@ -1965,8 +1995,7 @@ let%expect_test _ =
 let%expect_test _ =
   parse {|* OK [PERMANENTFLAGS (\Answered \Flagged \Draft)]|};
   [%expect {|
-    (Untagged
-     (State (OK ((OTHER PERMANENTFLAGS (" (\\Answered \\Flagged \\Draft)"))) ""))) |}]
+    (Untagged (State (OK ((PERMANENTFLAGS (Answered Flagged Draft))) ""))) |}]
 
 let%expect_test _ =
   parse {|* VANISHED (EARLIER) 1:2,4:5,7:8,10:11,13:14,89|};
