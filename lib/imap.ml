@@ -411,7 +411,7 @@ let fetch_gen cmd imap ?changed_since nums att =
         let aux res = function
           | (FLAGS flags : Fetch.MessageAttribute.t) -> {res with Fetch.Response.flags}
           | ENVELOPE e -> {res with envelope = Some e}
-          | INTERNALDATE (d, t) -> {res with internaldate = Some (d, t)}
+          | INTERNALDATE internaldate -> {res with internaldate}
           | RFC822 rfc822 -> {res with rfc822}
           | RFC822_HEADER rfc822_header -> {res with rfc822_header}
           | RFC822_TEXT rfc822_text -> {res with rfc822_text}

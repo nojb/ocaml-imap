@@ -62,7 +62,7 @@ module MessageAttribute = struct
   type t =
     | FLAGS of Flag.t list
     | ENVELOPE of Envelope.t
-    | INTERNALDATE of Date.t * Time.t
+    | INTERNALDATE of string (* Date.t * Time.t *)
     | RFC822 of string
     | RFC822_HEADER of string
     | RFC822_TEXT of string
@@ -107,7 +107,7 @@ module Response = struct
     {
       flags: Flag.t list;
       envelope: Envelope.t option;
-      internaldate: (Date.t * Time.t) option;
+      internaldate: string;
       rfc822_header: string;
       rfc822_text: string;
       rfc822_size: int option;
@@ -126,7 +126,7 @@ module Response = struct
     {
       flags = [];
       envelope = None;
-      internaldate = None;
+      internaldate = "";
       rfc822_header = "";
       rfc822_text = "";
       rfc822_size = None;

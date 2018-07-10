@@ -1069,7 +1069,7 @@ let msg_att_static =
   let cases =
     [
       "ENVELOPE", sp *> envelope >>| (fun e -> ENVELOPE e);
-      "INTERNALDATE", sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t));
+      (* "INTERNALDATE", sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t)); *)
       (* "RFC822.HEADER", sp *> nstring >>| (fun s -> RFC822_HEADER s); *)
       (* "RFC822.TEXT", sp *> nstring >>| (fun s -> RFC822_TEXT s); *)
       "RFC822.SIZE", sp *> number >>| (fun n -> RFC822_SIZE (Int32.to_int n));

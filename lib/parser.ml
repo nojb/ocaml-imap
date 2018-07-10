@@ -47,6 +47,13 @@ let next buf =
 let error buf =
   raise (Error (buf.line, buf.pos))
 
+let take n buf =
+  if buf.pos + n > String.length buf.line then
+    (buf.pos <- String.length buf.line; error buf);
+  let s = String.sub buf.line buf.pos n in
+  buf.pos <- buf.pos + n;
+  s
+
 let char c buf =
   if curr buf = c then next buf else error buf
 
@@ -462,8 +469,12 @@ let msg_att buf k =
       end
   (* | "ENVELOPE" ->
    *     sp *> envelope >>| (fun e -> ENVELOPE e) *)
-  (* | "INTERNALDATE" ->
-   *     sp *> date_time >>| (fun (d, t) -> INTERNALDATE (d, t)) *)
+  | "INTERNALDATE" ->
+      char ' ' buf;
+      char '"' buf;
+      let dt = take 26 buf in (* DD-MMM-YYYY HH:MM:SS +ZZZZ *)
+      char '"' buf;
+      k (INTERNALDATE dt)
   | "RFC822.HEADER" ->
       char ' ' buf;
       nstring buf (fun s -> k (RFC822_HEADER s));
@@ -1369,11 +1380,10 @@ let%expect_test _ =
   [%expect {| (Tagged a002 (OK (READ_WRITE) "SELECT completed")) |}]
 
 let%expect_test _ =
-  parse {|* 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"|};
+  parse {|* 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700")|};
   [%expect {|
-    Parsing error:
-    * 12 FETCH (FLAGS (\Seen) INTERNALDATE "17-Jul-1996 02:44:25 -0700"
-                                          ^ |}]
+    (Untagged
+     (FETCH 12 ((FLAGS (Seen)) (INTERNALDATE "17-Jul-1996 02:44:25 -0700")))) |}]
 
 let%expect_test _ =
   parse {|a003 OK FETCH completed|};
