@@ -440,8 +440,26 @@ let msg_att buf k =
       let n = permsg_modsequence buf in
       char ')' buf;
       k (MODSEQ n)
-  (* | "X-GM-LABELS" ->
-   *     sp *> choice [psep_by sp astring; nil *> return []] >>| (fun l -> X_GM_LABELS l) *)
+  | "X-GM-LABELS" ->
+      char ' ' buf;
+      if curr buf = '(' then begin
+        next buf;
+        if curr buf = ')' then
+          (next buf; k (X_GM_LABELS []))
+        else
+          let rec loop acc buf k =
+            if curr buf = ' ' then
+              (next buf; astring buf (fun s -> loop (s :: acc) buf k))
+            else
+              (char ')' buf; k (X_GM_LABELS (List.rev acc)))
+          in
+          astring buf (fun s -> loop [s] buf k)
+      end else begin
+        char 'N' buf;
+        char 'I' buf;
+        char 'L' buf;
+        k (X_GM_LABELS [])
+      end
   (* | "ENVELOPE" ->
    *     sp *> envelope >>| (fun e -> ENVELOPE e) *)
   (* | "INTERNALDATE" ->
