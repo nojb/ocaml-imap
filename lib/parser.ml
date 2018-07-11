@@ -22,11 +22,12 @@
 
 open Response
 
-exception Error of string * int
+(* exception Error of string * int *)
 
 type buffer =
   {
     read_line: (string -> unit) -> unit;
+    read_count: int -> (string -> unit) -> unit;
     mutable line: string;
     mutable pos: int;
   }
@@ -41,30 +42,34 @@ let curr buf =
     buf.line.[buf.pos]
 
 let next buf =
+  assert (buf.pos < String.length buf.line);
   buf.pos <- buf.pos + 1
 
-let error buf =
-  raise (Error (buf.line, buf.pos))
+let error buf k =
+  k (Error (buf.line, buf.pos))
 
-let take n buf =
-  if buf.pos + n > String.length buf.line then
-    (buf.pos <- String.length buf.line; error buf);
-  let s = String.sub buf.line buf.pos n in
-  buf.pos <- buf.pos + n;
-  s
+(* let take n buf =
+ *   if buf.pos + n > String.length buf.line then
+ *     (buf.pos <- String.length buf.line; error buf);
+ *   let s = String.sub buf.line buf.pos n in
+ *   buf.pos <- buf.pos + n;
+ *   s *)
 
-let char c buf =
-  if curr buf = c then next buf else error buf
+let char c buf k =
+  if curr buf = c then next buf else error buf k
 
-let take_while1 f buf =
+let take_while1 f buf k =
   let pos0 = buf.pos in
   let pos = ref pos0 in
   while !pos < String.length buf.line && f buf.line.[!pos] do
     incr pos
   done;
-  if pos0 = !pos then error buf;
-  buf.pos <- !pos;
-  String.sub buf.line pos0 (!pos - pos0)
+  if pos0 = !pos then
+    error buf k
+  else begin
+    buf.pos <- !pos;
+    k (Ok (String.sub buf.line pos0 (!pos - pos0)))
+  end
 
 let is_atom_char = function
   | '(' | ')' | '{' | ' '
@@ -97,13 +102,21 @@ let quoted_char r buf =
   | _ ->
       error buf
 
-let quoted buf =
-  char '"' buf;
-  let b = Buffer.create 17 in
-  let r = ref '\000' in
-  while quoted_char r buf do Buffer.add_char b !r done;
-  char '"' buf;
-  Buffer.contents b
+let quoted buf k =
+  char '"' buf (function
+      | Ok () ->
+          let b = Buffer.create 17 in
+          let r = ref '\000' in
+          while quoted_char r buf do Buffer.add_char b !r done;
+          char '"' buf (function
+              | Ok () ->
+                  k (Ok (Buffer.contents b))
+              | Error _ as e ->
+                  k e
+            )
+      | Error _ as e ->
+          k e
+    )
 
 let literal buf _k =
   error buf
@@ -111,7 +124,7 @@ let literal buf _k =
 let imap_string buf k =
   match curr buf with
   | '"' ->
-      k (quoted buf)
+      quoted buf
   | '{' ->
       literal buf k
   | _ ->
@@ -132,21 +145,26 @@ let is_text_char = function
   | '\x01' .. '\x7F' -> true
   | _ -> false
 
-let text buf =
-  if is_eol buf then "" else take_while1 is_text_char buf
+let text buf k =
+  if is_eol buf then k (Ok "") else take_while1 is_text_char buf k
 
 let is_text_other_char c =
   is_text_char c && (c <> ']')
 
-let text_1 buf =
-  if is_eol buf then "" else take_while1 is_text_other_char buf
+let text_1 buf k =
+  if is_eol buf then k (Ok "") else take_while1 is_text_other_char buf k
 
 let is_digit = function
   | '0'..'9' -> true
   | _ -> false
 
-let number buf =
-  Scanf.sscanf (take_while1 is_digit buf) "%lu" (fun n -> n)
+let number buf k =
+  take_while1 is_digit buf (function
+      | Ok s ->
+          Scanf.sscanf s "%lu" (fun n -> k (Ok n))
+      | Error _ as e ->
+          k e
+    )
 
 let nz_number =
   number
@@ -154,111 +172,199 @@ let nz_number =
 let uniqueid =
   number
 
-let mbx_flag buf =
+let mbx_flag buf k =
   let open MailboxFlag in
-  char '\\' buf;
-  let a = atom buf in
-  match String.lowercase_ascii a with
-  | "noselect" -> Noselect
-  | "marked" -> Marked
-  | "unmarked" -> Unmarked
-  | "noinferiors" -> Noinferiors
-  | "haschildren" -> HasChildren
-  | "hasnochildren" -> HasNoChildren
-  | "all" -> All
-  | "archive" -> Archive
-  | "drafts" -> Drafts
-  | "flagged" -> Flagged
-  | "junk" -> Junk
-  | "sent" -> Sent
-  | "trash" -> Trash
-  | _ -> Extension a
+  char '\\' buf (function
+      | Ok () ->
+          atom buf (function
+              | Ok a ->
+                  begin match String.lowercase_ascii a with
+                  | "noselect" -> k (Ok Noselect)
+                  | "marked" -> k (Ok Marked)
+                  | "unmarked" -> k (Ok Unmarked)
+                  | "noinferiors" -> k (Ok Noinferiors)
+                  | "haschildren" -> k (Ok HasChildren)
+                  | "hasnochildren" -> k (Ok HasNoChildren)
+                  | "all" -> k (Ok All)
+                  | "archive" -> k (Ok Archive)
+                  | "drafts" -> k (Ok Drafts)
+                  | "flagged" -> k (Ok Flagged)
+                  | "junk" -> k (Ok Junk)
+                  | "sent" -> k (Ok Sent)
+                  | "trash" -> k (Ok Trash)
+                  | _ -> k (Ok (Extension a))
+                  end
+              | Error _ as e ->
+                  k e
+            )
+      | Error _ as e ->
+          k e
+    )
 
-let delim buf =
+let delim buf k =
   match curr buf with
   | '"' ->
       next buf;
       let r = ref '\000' in
       if quoted_char r buf then
-        (char '"' buf; Some !r)
+        char '"' buf (function
+            | Ok () -> k (Ok (Some !r))
+            | Error _ as e -> k e
+          )
       else
-        error buf
+        error buf k
   | _ ->
-      char 'N' buf;
-      char 'I' buf;
-      char 'L' buf;
-      None
+      char 'N' buf (function
+          | Ok () ->
+              char 'I' buf (function
+                  | Ok () ->
+                      char 'L' buf (function
+                          | Ok () -> k (Ok None)
+                          | Error _ as e -> k e
+                        )
+                  | Error _ as e ->
+                      k e
+                )
+          | Error _ as e ->
+              k e
+        )
 
 let is_inbox s =
   String.length s = String.length "INBOX" &&
   String.uppercase_ascii s = "INBOX"
 
 let mailbox buf k =
-  astring buf (fun s -> if is_inbox s then k "INBOX" else k s)
+  astring buf (function
+      | Ok s when is_inbox s ->
+          k (Ok "INBOX")
+      | _ as r ->
+          k r
+    )
 
 let mailbox_list buf k =
-  char '(' buf;
-  let flags =
-    if curr buf = ')' then []
-    else
-      let rec loop acc buf =
-        if curr buf = ' ' then
-          (next buf; loop (mbx_flag buf :: acc) buf)
-        else
-          List.rev acc
-      in
-      loop [mbx_flag buf] buf
-  in
-  char ')' buf;
-  char ' ' buf;
-  let delim = delim buf in
-  char ' ' buf;
-  mailbox buf (k flags delim)
+  char '(' buf (function
+      | Ok () ->
+          let flags =
+            if curr buf = ')' then []
+            else
+              let rec loop acc buf k =
+                if curr buf = ' ' then begin
+                  next buf;
+                  mbx_flag buf (function
+                      | Ok flag ->
+                          loop (flag :: acc) buf k
+                      | Error _ as e ->
+                          k e
+                    )
+                end else
+                  k (Ok (List.rev acc))
+              in
+              mbx_flag buf (function
+                  | Ok flag ->
+                      loop [flag] buf k
+                  | Error _ as e ->
+                      k e
+                )
+          in
+          char ')' buf (function
+              | Ok () ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          delim buf (function
+                              | Ok delim ->
+                                  char ' ' buf (function
+                                      | Ok () ->
+                                          mailbox buf (k flags delim)
+                                      | Error _ as e ->
+                                          k e
+                                    )
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Error _ as e ->
+                  k e
+            )
+      | Error _ as e ->
+          k e
+    )
 
-let capability buf =
+let capability buf k =
   let open Capability in
-  match atom buf with
-  | "COMPRESS=DEFLATE" -> COMPRESS_DEFLATE
-  | "CONDSTORE" -> CONDSTORE
-  | "ESEARCH" -> ESEARCH
-  | "ENABLE" -> ENABLE
-  | "IDLE" -> IDLE
-  | "LITERAL+" -> LITERALPLUS
-  | "LITERAL-" -> LITERALMINUS
-  | "UTF8=ACCEPT" -> UTF8_ACCEPT
-  | "UTF8=ONLY" -> UTF8_ONLY
-  | "NAMESPACE" -> NAMESPACE
-  | "ID" -> ID
-  | "QRESYNC" -> QRESYNC
-  | "UIDPLUS" -> UIDPLUS
-  | "UNSELECT" -> UNSELECT
-  | "XLIST" -> XLIST
-  | "AUTH=PLAIN" -> AUTH_PLAIN
-  | "AUTH=LOGIN" -> AUTH_LOGIN
-  | "XOAUTH2" -> XOAUTH2
-  | "X-GM-EXT-1"  -> X_GM_EXT_1
-  | a -> OTHER a
+  atom buf (fun a ->
+      let c =
+        match a with
+        | "COMPRESS=DEFLATE" -> COMPRESS_DEFLATE
+        | "CONDSTORE" -> CONDSTORE
+        | "ESEARCH" -> ESEARCH
+        | "ENABLE" -> ENABLE
+        | "IDLE" -> IDLE
+        | "LITERAL+" -> LITERALPLUS
+        | "LITERAL-" -> LITERALMINUS
+        | "UTF8=ACCEPT" -> UTF8_ACCEPT
+        | "UTF8=ONLY" -> UTF8_ONLY
+        | "NAMESPACE" -> NAMESPACE
+        | "ID" -> ID
+        | "QRESYNC" -> QRESYNC
+        | "UIDPLUS" -> UIDPLUS
+        | "UNSELECT" -> UNSELECT
+        | "XLIST" -> XLIST
+        | "AUTH=PLAIN" -> AUTH_PLAIN
+        | "AUTH=LOGIN" -> AUTH_LOGIN
+        | "XOAUTH2" -> XOAUTH2
+        | "X-GM-EXT-1"  -> X_GM_EXT_1
+        | a -> OTHER a
+      in
+      k (Ok c)
+    )
 
 let mod_sequence_value buf =
-  Scanf.sscanf (take_while1 is_digit buf) "%Lu" (fun n -> n)
+  take_while1 is_digit buf (function
+      | Ok s ->
+          Scanf.sscanf s "%Lu" (fun n -> k (Ok n))
+      | Error _ as e ->
+          k e
+    )
 
-let uid_range buf =
-  let n = uniqueid buf in
-  if curr buf = ':' then
-    (next buf; (n, uniqueid buf))
-  else
-    (n, n)
+let uid_range buf k =
+  uniqueid buf (function
+      | Ok n ->
+          if curr buf = ':' then begin
+            next buf;
+            uniqueid buf (function
+                | Ok m ->
+                    k (Ok (n, m))
+                | Error _ as e ->
+                    k e
+              )
+          end else
+            k (Ok (n, n))
+      | Error _ as e ->
+          k e
+    )
 
-let uid_set buf =
-  let rec loop acc buf =
+let uid_set buf k =
+  let rec loop acc buf k =
     match curr buf with
     | ',' ->
         next buf;
-        loop (uid_range buf :: acc) buf
+        uid_range buf (function
+            | Ok r ->
+                loop (r :: acc) buf k
+            | Error _ as e ->
+                k e
+          )
     | _ ->
-        List.rev acc
+        k (Ok (List.rev acc))
   in
-  loop [uid_range buf] buf
+  uid_range buf (function
+      | Ok r ->
+          loop [r] buf k
+      | Error _ as e ->
+          k e
+    )
 
 let sequence_set =
   uid_set
@@ -269,26 +375,38 @@ let set =
 let append_uid =
   uniqueid
 
-let flag_gen recent any buf =
+let flag_gen recent any buf k =
   let open Flag in
   match curr buf with
   | '\\' ->
       next buf;
       if curr buf = '*' && any then
-        (next buf; Any)
+        (next buf; k (Ok Any))
       else begin
-        let a = atom buf in
-        match String.lowercase_ascii a with
-        | "recent" when recent -> Recent
-        | "answered" -> Answered
-        | "flagged" -> Flagged
-        | "deleted" -> Deleted
-        | "seen" -> Seen
-        | "draft" -> Draft
-        | _ -> Extension a
+        atom buf (function
+            | Ok a ->
+                let r =
+                  match String.lowercase_ascii a with
+                  | "recent" when recent -> Recent
+                  | "answered" -> Answered
+                  | "flagged" -> Flagged
+                  | "deleted" -> Deleted
+                  | "seen" -> Seen
+                  | "draft" -> Draft
+                  | _ -> Extension a
+                in
+                k (Ok r)
+            | Error _ as e ->
+                k e
+          )
       end
   | _ ->
-      Keyword (atom buf)
+      atom buf (function
+          | Ok a ->
+              k (Ok (Keyword a))
+          | Error _ as e ->
+              k e
+        )
 
 let flag =
   flag_gen false false
@@ -301,93 +419,204 @@ let flag_perm =
 
 let resp_text_code buf k =
   let open Code in
-  let k code = char ']' buf; k code in
-  char '[' buf;
-  match atom buf with
-  | "ALERT" ->
-      k ALERT
-  | "BADCHARSET" ->
-      let rec loop acc buf k =
-        if curr buf = ' ' then
-          (next buf; astring buf (fun s -> loop (s :: acc) buf k))
-        else
-          k (BADCHARSET (List.rev acc))
-      in
-      loop [] buf k
-  | "CAPABILITY" ->
-      let rec loop acc buf =
-        if curr buf = ' ' then
-          (next buf; loop (capability buf :: acc) buf)
-        else
-          k (CAPABILITY (List.rev acc))
-      in
-      loop [] buf
-  | "PARSE" ->
-      k PARSE
-  | "PERMANENTFLAGS" ->
-      char ' ' buf;
-      char '(' buf;
-      let l =
-        if curr buf = ')' then
-          (next buf; [])
-        else
-          let rec loop acc buf =
-            if curr buf = ' ' then
-              (next buf; loop (flag_perm buf :: acc) buf)
-            else
-              (char ')' buf; List.rev acc)
-          in
-          loop [flag_perm buf] buf
-      in
-      k (PERMANENTFLAGS l)
-  | "READ-ONLY" ->
-      k READ_ONLY
-  | "READ-WRITE" ->
-      k READ_WRITE
-  | "TRYCREATE" ->
-      k TRYCREATE
-  | "UIDNEXT" ->
-      char ' ' buf;
-      k (UIDNEXT (nz_number buf))
-  | "UIDVALIDITY" ->
-      char ' ' buf;
-      k (UIDVALIDITY (nz_number buf))
-  | "UNSEEN" ->
-      char ' ' buf;
-      k (UNSEEN (nz_number buf))
-  | "CLOSED" ->
-      k CLOSED
-  | "HIGHESTMODSEQ" ->
-      char ' ' buf;
-      k (HIGHESTMODSEQ (mod_sequence_value buf))
-  | "NOMODSEQ" ->
-      k NOMODSEQ
-  | "MODIFIED" ->
-      char ' ' buf;
-      k (MODIFIED (set buf))
-  | "APPENDUID" ->
-      char ' ' buf;
-      let n = nz_number buf in
-      char ' ' buf;
-      let uid = append_uid buf in
-      k (APPENDUID (n, uid))
-  | "COPYUID" ->
-      char ' ' buf;
-      let n = nz_number buf in
-      char ' ' buf;
-      let s1 = set buf in
-      char ' ' buf;
-      let s2 = set buf in
-      k (COPYUID (n, s1, s2))
-  | "UIDNOTSTICKY" ->
-      k UIDNOTSTICKY
-  | "COMPRESSIONACTIVE" ->
-      k COMPRESSIONACTIVE
-  | "USEATTR" ->
-      k USEATTR
-  | a ->
-      let x = if curr buf = ' ' then Some (text_1 buf) else None in
-      k (OTHER (a, x))
+  let k code =
+    char ']' buf (function
+        | Ok () ->
+            k (Ok code)
+        | Error _ as e ->
+            k e
+      )
+  in
+  char '[' buf (function
+      | Ok () ->
+          atom buf (function
+              | Ok "ALERT" ->
+                  k (Ok ALERT)
+              | Ok "BADCHARSET" ->
+                  let rec loop acc buf k =
+                    if curr buf = ' ' then
+                      (next buf; astring buf (fun s -> loop (s :: acc) buf k))
+                    else
+                      k (BADCHARSET (List.rev acc))
+                  in
+                  loop [] buf k
+              | Ok "CAPABILITY" ->
+                  let rec loop acc buf k =
+                    if curr buf = ' ' then begin
+                      next buf;
+                      capability buf (function
+                          | Ok c ->
+                              loop (c :: acc) buf k
+                          | Error _ as e ->
+                              k e
+                        )
+                    end else
+                      k (Ok (CAPABILITY (List.rev acc)))
+                  in
+                  loop [] buf k
+              | Ok "PARSE" ->
+                  k (Ok PARSE)
+              | Ok "PERMANENTFLAGS" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          char '(' buf (function
+                              | Ok () ->
+                                  if curr buf = ')' then begin
+                                    next buf;
+                                    k (Ok (PERMANENTFLAGS []))
+                                  end else
+                                    let rec loop acc buf k =
+                                      if curr buf = ' ' then begin
+                                        next buf;
+                                        flag_perm buf (function
+                                            | Ok flag ->
+                                                loop (flag :: acc) buf
+                                            | Error _ as e ->
+                                                k e
+                                          )
+                                      end else begin
+                                        char ')' buf (function
+                                            | Ok () ->
+                                                k (Ok (List.rev acc))
+                                            | Error _ as e ->
+                                                k e
+                                          )
+                                      end
+                                    in
+                                    flag_perm buf (function
+                                        | Ok flag ->
+                                            loop [flag] buf k
+                                        | Error _ as e ->
+                                            k e
+                                      )
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "READ-ONLY" ->
+                  k (Ok READ_ONLY)
+              | Ok "READ-WRITE" ->
+                  k (Ok READ_WRITE)
+              | Ok "TRYCREATE" ->
+                  k (Ok TRYCREATE)
+              | Ok "UIDNEXT" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          nz_number buf (function
+                              | Ok n ->
+                                  k (Ok (UIDNEXT n))
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "UIDVALIDITY" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          nz_number buf (function
+                              | Ok n ->
+                                  k (UIDVALIDITY n)
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "UNSEEN" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          nz_number buf (function
+                              | Ok n ->
+                                  k (Ok (UNSEEN n))
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "CLOSED" ->
+                  k (Ok CLOSED)
+              | Ok "HIGHESTMODSEQ" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          mod_sequence_value buf (function
+                              | Ok n ->
+                                  k (Ok (HIGHESTMODSEQ n))
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "NOMODSEQ" ->
+                  k (Ok NOMODSEQ)
+              | Ok "MODIFIED" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          set buf (function
+                              | Ok set ->
+                                  k (Ok (MODIFIED set))
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "APPENDUID" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          nz_number buf (function
+                              | Ok n ->
+                                  char ' ' buf (function
+                                      | Ok () ->
+                                          append_uid buf (function
+                                              | Ok uid ->
+                                                  k (Ok (APPENDUID (n, uid)))
+                                              | Error _ as e ->
+                                                  k e
+                                            )
+                                      | Error _ as e ->
+                                          k e
+                                    )
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok "COPYUID" ->
+                  char ' ' buf;
+                  let n = nz_number buf in
+                  char ' ' buf;
+                  let s1 = set buf in
+                  char ' ' buf;
+                  let s2 = set buf in
+                  k (COPYUID (n, s1, s2))
+              | Ok "UIDNOTSTICKY" ->
+                  k (Ok UIDNOTSTICKY)
+              | Ok "COMPRESSIONACTIVE" ->
+                  k (Ok COMPRESSIONACTIVE)
+              | Ok "USEATTR" ->
+                  k (Ok USEATTR)
+              | Ok a ->
+                  if curr buf = ' ' then
+                    text_1 buf (function
+                        | Ok x ->
+                            k (Ok (OTHER (a, Some x)))
+                        | Error _ as e ->
+                            k e
+                      )
+                  else
+                    k (Ok (OTHER (a, None)))
+              | Error _ as e ->
+                  k e
+            )
+      | Error _ as e ->
+          k e
+    )
 
 let resp_text buf k =
   let code buf k =
@@ -398,15 +627,34 @@ let resp_text buf k =
   code buf (fun code -> if curr buf = ' ' then next buf; k code (text buf))
 
 let search_sort_mod_seq buf =
-  char '(' buf;
-  match atom buf with
-  | "MODSEQ" ->
-      char ' ' buf;
-      let n = mod_sequence_value buf in
-      char ')' buf;
-      n
-  | _ ->
-      error buf
+  char '(' buf (function
+      | Ok () ->
+          atom buf (function
+              | "MODSEQ" ->
+                  char ' ' buf (function
+                      | Ok () ->
+                          mod_sequence_value buf (function
+                              | Ok n ->
+                                  char ')' buf (function
+                                      | Ok () ->
+                                          k (Ok n)
+                                      | Error _ as e ->
+                                          k e
+                                    )
+                              | Error _ as e ->
+                                  k e
+                            )
+                      | Error _ as e ->
+                          k e
+                    )
+              | Ok _ ->
+                  error buf k
+              | Error _ as e ->
+                  k e
+            )
+      | Error _ as e ->
+          k e
+    )
 
 let permsg_modsequence =
   mod_sequence_value
@@ -416,25 +664,60 @@ let nstring buf k =
   | '"' | '{' ->
       imap_string buf k
   | _ ->
-      char 'N' buf;
-      char 'I' buf;
-      char 'L' buf;
-      k ""
+      char 'N' buf (function
+          | Ok () ->
+              char 'I' buf (function
+                  | Ok () ->
+                      char 'L' buf (function
+                          | Ok () ->
+                              k (Ok "")
+                          | Error _ as e ->
+                              k e
+                        )
+                  | Error _ as e ->
+                      k e
+                )
+          | Error _ as e ->
+              k e
+        )
 
 let address buf k =
-  char '(' buf;
-  nstring buf (fun ad_name ->
-      char ' ' buf;
-      nstring buf (fun ad_adl ->
-          char ' ' buf;
-          nstring buf (fun ad_mailbox ->
-              char ' ' buf;
-              nstring buf (fun ad_host ->
-                  char ')' buf;
-                  k {Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host}
+  char '(' buf (function
+      | Ok () ->
+          nstring buf (fun ad_name ->
+              char ' ' buf (function
+                  | Ok () ->
+                      nstring buf (fun ad_adl ->
+                          char ' ' buf (function
+                              | Ok () ->
+                                  nstring buf (fun ad_mailbox ->
+                                      char ' ' buf (function
+                                          | Ok () ->
+                                              nstring buf (fun ad_host ->
+                                                  char ')' buf (function
+                                                      | Ok () ->
+                                                          k (Ok {Envelope.Address.ad_name;
+                                                                 ad_adl;
+                                                                 ad_mailbox;
+                                                                 ad_host})
+                                                      | Error _ as e ->
+                                                          k e
+                                                    )
+                                                )
+                                          | Error _ as e ->
+                                              k e
+                                        )
+                                    )
+                              | Error _ as e ->
+                                  k e
+                            )
+                        )
+                  | Error _ as e ->
+                      k e
                 )
             )
-        )
+      | Error _ as e ->
+          k e
     )
 
 let address_list buf k =
@@ -786,6 +1069,7 @@ let response buf k =
 let parse s =
   let buf =
     { read_line = (fun _k -> assert false);
+      read_count = (fun _ _ -> assert false);
       line = s;
       pos = 0 }
   in
