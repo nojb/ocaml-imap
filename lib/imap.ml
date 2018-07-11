@@ -57,16 +57,6 @@ type t =
 
     mutable tag: int;
     mutable unconsumed: A.unconsumed;
-
-    mutable uidnext: uid option;
-    mutable messages: int option;
-    mutable recent: int option;
-    mutable unseen: int option;
-    mutable uidvalidity: uid option;
-    mutable highestmodseq: modseq option;
-
-    mutable capabilities: Capability.t list;
-
     mutable stop_poll: (unit -> unit) option;
   }
 
@@ -77,41 +67,14 @@ let create_connection sock unconsumed =
     sock;
     ic;
     oc;
-
     debug = false;
-
     tag = 0;
     unconsumed;
-    uidnext = None;
-    uidvalidity = None;
-    recent = None;
-    messages = None;
-    unseen = None;
-    highestmodseq = None;
-    capabilities = [];
     stop_poll = None;
   }
 
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
-
-let uidnext {uidnext; _} =
-  uidnext
-
-let messages {messages; _} =
-  messages
-
-let recent {recent; _} =
-  recent
-
-let unseen {unseen; _} =
-  unseen
-
-let uidvalidity {uidvalidity; _} =
-  uidvalidity
-
-let highestmodseq {highestmodseq; _} =
-  highestmodseq
 
 let unconsumed_to_string {A.buf; off; len} =
   let b = Bytes.create len in
@@ -151,8 +114,8 @@ let rec send imap r process res =
       send imap r1 process res >>= fun res ->
       send imap r2 process res
   | Literal s ->
-      if List.mem Capability.LITERALPLUS imap.capabilities ||
-         (List.mem Capability.LITERALMINUS imap.capabilities && String.length s <= 4096)
+      if false (* List.mem Capability.LITERALPLUS imap.capabilities ||
+                  (List.mem Capability.LITERALMINUS imap.capabilities && String.length s <= 4096) *)
       then
         Lwt_io.fprintf imap.oc "{%d+}\r\n" (String.length s) >>= fun () ->
         Lwt_io.write imap.oc s >>= fun () ->
@@ -189,35 +152,6 @@ let wrap_process f imap res u =
       raise (Error (No s))
   | State (BAD (_, s)) ->
       raise (Error (Bad s))
-  | State (OK (Some (UIDNEXT n), _)) ->
-      imap.uidnext <- Some n
-  | State (OK (Some (UIDVALIDITY n), _)) ->
-      imap.uidvalidity <- Some n;
-  | State (OK (Some (CAPABILITY caps), _)) ->
-      imap.capabilities <- caps
-  | State (OK (Some (HIGHESTMODSEQ n), _)) ->
-      imap.highestmodseq <- Some n
-  | RECENT n ->
-      imap.recent <- Some n
-  | EXISTS n ->
-      imap.messages <- Some n
-  | STATUS (_, items) ->
-      List.iter (function
-          | Status.MailboxAttribute.MESSAGES n ->
-              imap.messages <- Some n
-          | RECENT n ->
-              imap.recent <- Some n
-          | UIDNEXT n ->
-              imap.uidnext <- Some n
-          | UIDVALIDITY n ->
-              imap.uidvalidity <- Some n
-          | UNSEEN n ->
-              imap.unseen <- Some n
-          | HIGHESTMODSEQ n ->
-              imap.highestmodseq <- Some n
-        ) items
-  | CAPABILITY caps ->
-      imap.capabilities <- caps
   | _ ->
       ()
   end;
@@ -239,10 +173,6 @@ let run imap format res process =
         | res ->
             loop res
         end
-    | Tagged (_, OK (Some (CAPABILITY caps), _)) ->
-        imap.capabilities <- caps;
-        imap.tag <- imap.tag + 1;
-        Lwt.return res
     | Tagged _ ->
         imap.tag <- imap.tag + 1;
         Lwt.return res
@@ -277,10 +207,7 @@ let stop_poll imap =
   | None -> ()
 
 let poll imap =
-  if List.mem Capability.IDLE imap.capabilities then
-    idle imap
-  else
-    Lwt.fail (Failure "IDLE not supported")
+  idle imap
 
 let login imap username password =
   let format = Encoder.(str "LOGIN" ++ str username ++ str password) in
@@ -382,7 +309,7 @@ let uid_search =
 
 let select imap ?(read_only = false) m =
   let cmd = if read_only then "EXAMINE" else "SELECT" in
-  let arg = if List.mem Capability.CONDSTORE imap.capabilities then " (CONDSTORE)" else "" in
+  let arg = if false (* List.mem Capability.CONDSTORE imap.capabilities *) then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
   run imap format () (fun _ r _ -> r)
 

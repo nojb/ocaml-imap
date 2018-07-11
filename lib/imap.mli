@@ -74,18 +74,6 @@ type error =
 type t
 (** The type for connections. *)
 
-val uidnext: t -> uid option
-
-val messages: t -> int option
-
-val recent: t -> int option
-
-val unseen: t -> int option
-
-val uidvalidity: t -> uid option
-
-val highestmodseq: t -> modseq option
-
 val connect: string -> ?port:int -> string -> string -> ?read_only:bool -> string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
