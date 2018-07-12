@@ -254,14 +254,14 @@ let mailbox =
 let plist p =
   char '(' *> curr >>= function
   | ')' ->
-      return []
+      next *> return []
   | _ ->
       let rec loop acc =
         curr >>= function
         | ' ' ->
             next *> p >>= fun x -> loop (x :: acc)
         | ')' ->
-            return (List.rev acc)
+            next *> return (List.rev acc)
         | _ ->
             error
       in
@@ -496,7 +496,7 @@ let msg_att =
   let open Fetch.MessageAttribute in
   atom >>= function
   | "FLAGS" ->
-      char ' ' *> char '(' *> plist flag_fetch >|= fun l -> FLAGS l
+      char ' ' *> plist flag_fetch >|= fun l -> FLAGS l
   | "MODSEQ" ->
       char ' ' *> char '(' *> permsg_modsequence >>= fun n -> char ')' *> return (MODSEQ n)
   | "X-GM-LABELS" ->
@@ -820,7 +820,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 14 FETCH (FLAGS (\Seen \Deleted))|};
-  [%expect {| (Untagged (FETCH 14 ((FLAGS (Seen Deleted))))) |}]
+  [%expect {|
+    (Untagged (FETCH 14 ((FLAGS (Seen Deleted))))) |}]
 
 let%expect_test _ =
   parse {|* BYE IMAP4rev1 Server logging out|};
@@ -896,35 +897,43 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST () "/" blurdybloop|};
-  [%expect {| (Untagged (LIST () (/) blurdybloop)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) blurdybloop)) |}]
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" foo|};
-  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) foo)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "/" foo/bar|};
-  [%expect {| (Untagged (LIST () (/) foo/bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) foo/bar)) |}]
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" foo|};
-  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) foo)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." blurdybloop|};
-  [%expect {| (Untagged (LIST () (.) blurdybloop)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) blurdybloop)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." foo|};
-  [%expect {| (Untagged (LIST () (.) foo)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) foo)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." foo.bar|};
-  [%expect {| (Untagged (LIST () (.) foo.bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) foo.bar)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." foo.bar|};
-  [%expect {| (Untagged (LIST () (.) foo.bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) foo.bar)) |}]
 
 let%expect_test _ =
   parse {|A85 OK LIST completed|};
@@ -932,7 +941,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "." foo|};
-  [%expect {| (Untagged (LIST (Noselect) (.) foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (.) foo)) |}]
 
 let%expect_test _ =
   parse {|A86 OK LIST completed|};
@@ -940,15 +950,18 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST () "/" blurdybloop|};
-  [%expect {| (Untagged (LIST () (/) blurdybloop)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) blurdybloop)) |}]
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" foo|};
-  [%expect {| (Untagged (LIST (Noselect) (/) foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) foo)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "/" foo/bar|};
-  [%expect {| (Untagged (LIST () (/) foo/bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) foo/bar)) |}]
 
 let%expect_test _ =
   parse {|A682 OK LIST completed|};
@@ -964,15 +977,18 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST () "/" sarasoop|};
-  [%expect {| (Untagged (LIST () (/) sarasoop)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) sarasoop)) |}]
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" zowie|};
-  [%expect {| (Untagged (LIST (Noselect) (/) zowie)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) zowie)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "/" zowie/bar|};
-  [%expect {| (Untagged (LIST () (/) zowie/bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) zowie/bar)) |}]
 
 let%expect_test _ =
   parse {|A685 OK LIST completed|};
@@ -980,11 +996,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST () "." INBOX|};
-  [%expect {| (Untagged (LIST () (.) INBOX)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) INBOX)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." INBOX.bar|};
-  [%expect {| (Untagged (LIST () (.) INBOX.bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) INBOX.bar)) |}]
 
 let%expect_test _ =
   parse {|Z432 OK LIST completed|};
@@ -996,15 +1014,18 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST () "." INBOX|};
-  [%expect {| (Untagged (LIST () (.) INBOX)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) INBOX)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." INBOX.bar|};
-  [%expect {| (Untagged (LIST () (.) INBOX.bar)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) INBOX.bar)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "." old-mail|};
-  [%expect {| (Untagged (LIST () (.) old-mail)) |}]
+  [%expect {|
+    (Untagged (LIST () (.) old-mail)) |}]
 
 let%expect_test _ =
   parse {|Z434 OK LIST completed|};
@@ -1020,7 +1041,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" ""|};
-  [%expect {| (Untagged (LIST (Noselect) (/) "")) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) "")) |}]
 
 let%expect_test _ =
   parse {|A101 OK LIST Completed|};
@@ -1028,7 +1050,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "." #news.|};
-  [%expect {| (Untagged (LIST (Noselect) (.) #news.)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (.) #news.)) |}]
 
 let%expect_test _ =
   parse {|A102 OK LIST Completed|};
@@ -1036,7 +1059,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" /|};
-  [%expect {| (Untagged (LIST (Noselect) (/) /)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) /)) |}]
 
 let%expect_test _ =
   parse {|A103 OK LIST Completed|};
@@ -1044,11 +1068,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" ~/Mail/foo|};
-  [%expect {| (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
 
 let%expect_test _ =
   parse {|* LIST () "/" ~/Mail/meetings|};
-  [%expect {| (Untagged (LIST () (/) ~/Mail/meetings)) |}]
+  [%expect {|
+    (Untagged (LIST () (/) ~/Mail/meetings)) |}]
 
 let%expect_test _ =
   parse {|A202 OK LIST completed|};
@@ -1056,11 +1082,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LSUB () "." #news.comp.mail.mime|};
-  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.mime)) |}]
+  [%expect {|
+    (Untagged (LSUB () (.) #news.comp.mail.mime)) |}]
 
 let%expect_test _ =
   parse {|* LSUB () "." #news.comp.mail.misc|};
-  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
+  [%expect {|
+    (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
 
 let%expect_test _ =
   parse {|A002 OK LSUB completed|};
@@ -1068,7 +1096,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LSUB (\NoSelect) "." #news.comp.mail|};
-  [%expect {| (Untagged (LSUB (Noselect) (.) #news.comp.mail)) |}]
+  [%expect {|
+    (Untagged (LSUB (Noselect) (.) #news.comp.mail)) |}]
 
 let%expect_test _ =
   parse {|A003 OK LSUB completed|};
@@ -1144,15 +1173,18 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 2 FETCH (FLAGS (\Deleted \Seen))|};
-  [%expect {| (Untagged (FETCH 2 ((FLAGS (Deleted Seen))))) |}]
+  [%expect {|
+    (Untagged (FETCH 2 ((FLAGS (Deleted Seen))))) |}]
 
 let%expect_test _ =
   parse {|* 3 FETCH (FLAGS (\Deleted))|};
-  [%expect {| (Untagged (FETCH 3 ((FLAGS (Deleted))))) |}]
+  [%expect {|
+    (Untagged (FETCH 3 ((FLAGS (Deleted))))) |}]
 
 let%expect_test _ =
   parse {|* 4 FETCH (FLAGS (\Deleted \Flagged \Seen))|};
-  [%expect {| (Untagged (FETCH 4 ((FLAGS (Deleted Flagged Seen))))) |}]
+  [%expect {|
+    (Untagged (FETCH 4 ((FLAGS (Deleted Flagged Seen))))) |}]
 
 let%expect_test _ =
   parse {|A003 OK STORE completed|};
@@ -1164,15 +1196,18 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 23 FETCH (FLAGS (\Seen) UID 4827313)|};
-  [%expect {| (Untagged (FETCH 23 ((FLAGS (Seen)) (UID 4827313)))) |}]
+  [%expect {|
+    (Untagged (FETCH 23 ((FLAGS (Seen)) (UID 4827313)))) |}]
 
 let%expect_test _ =
   parse {|* 24 FETCH (FLAGS (\Seen) UID 4827943)|};
-  [%expect {| (Untagged (FETCH 24 ((FLAGS (Seen)) (UID 4827943)))) |}]
+  [%expect {|
+    (Untagged (FETCH 24 ((FLAGS (Seen)) (UID 4827943)))) |}]
 
 let%expect_test _ =
   parse {|* 25 FETCH (FLAGS (\Seen) UID 4828442)|};
-  [%expect {| (Untagged (FETCH 25 ((FLAGS (Seen)) (UID 4828442)))) |}]
+  [%expect {|
+    (Untagged (FETCH 25 ((FLAGS (Seen)) (UID 4828442)))) |}]
 
 let%expect_test _ =
   parse {|A999 OK UID FETCH completed|};
@@ -1259,11 +1294,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* LIST (\Noselect) "/" ~/Mail/foo|};
-  [%expect {| (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
+  [%expect {|
+    (Untagged (LIST (Noselect) (/) ~/Mail/foo)) |}]
 
 let%expect_test _ =
   parse {|* LSUB () "." #news.comp.mail.misc|};
-  [%expect {| (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
+  [%expect {|
+    (Untagged (LSUB () (.) #news.comp.mail.misc)) |}]
 
 let%expect_test _ =
   parse {|* STATUS blurdybloop (MESSAGES 231 UIDNEXT 44292)|};
@@ -1291,7 +1328,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 23 FETCH (FLAGS (\Seen) RFC822.SIZE 44827)|};
-  [%expect {| (Untagged (FETCH 23 ((FLAGS (Seen)) (RFC822_SIZE 44827)))) |}]
+  [%expect {|
+    (Untagged (FETCH 23 ((FLAGS (Seen)) (RFC822_SIZE 44827)))) |}]
 
 let%expect_test _ =
   parse {|A001 OK LOGIN completed|};
@@ -1467,7 +1505,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (MODSEQ (320162342) FLAGS (\Seen \Deleted))|};
-  [%expect {| (Untagged (FETCH 7 ((MODSEQ 320162342) (FLAGS (Seen Deleted))))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((MODSEQ 320162342) (FLAGS (Seen Deleted))))) |}]
 
 let%expect_test _ =
   parse {|* 5 FETCH (MODSEQ (320162350))|};
@@ -1475,7 +1514,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 9 FETCH (MODSEQ (320162349) FLAGS (\Answered))|};
-  [%expect {| (Untagged (FETCH 9 ((MODSEQ 320162349) (FLAGS (Answered))))) |}]
+  [%expect {|
+    (Untagged (FETCH 9 ((MODSEQ 320162349) (FLAGS (Answered))))) |}]
 
 let%expect_test _ =
   parse {|d105 OK [MODIFIED 7,9] Conditional STORE failed|};
@@ -1503,7 +1543,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
-  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
+  [%expect {|
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
 
 let%expect_test _ =
   parse {|a107 OK|};
@@ -1511,7 +1552,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
-  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
+  [%expect {|
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
 
 let%expect_test _ =
   parse {|b107 OK|};
@@ -1531,7 +1573,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS ($Processed))|};
-  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
+  [%expect {|
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS ((Keyword $Processed)))))) |}]
 
 let%expect_test _ =
   parse {|* 102 FETCH (MODSEQ (303181230852))|};
@@ -1551,7 +1594,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 101 FETCH (MODSEQ (303011130956) FLAGS (\Deleted \Answered))|};
-  [%expect {| (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
+  [%expect {|
+    (Untagged (FETCH 101 ((MODSEQ 303011130956) (FLAGS (Deleted Answered))))) |}]
 
 let%expect_test _ =
   parse {|* 102 FETCH (MODSEQ (303181230852))|};
@@ -1597,11 +1641,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 1 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
-  [%expect {| (Untagged (FETCH 1 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
+  [%expect {|
+    (Untagged (FETCH 1 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
 
 let%expect_test _ =
   parse {|* 3 FETCH (MODSEQ (320172342) FLAGS (\SEEN))|};
-  [%expect {| (Untagged (FETCH 3 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
+  [%expect {|
+    (Untagged (FETCH 3 ((MODSEQ 320172342) (FLAGS (Seen))))) |}]
 
 let%expect_test _ =
   parse {|B001 NO [MODIFIED 2] Some of the messages no longer exist.|};
@@ -1627,7 +1673,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 2 FETCH (MODSEQ (320172340) FLAGS (\Deleted \Answered))|};
-  [%expect {| (Untagged (FETCH 2 ((MODSEQ 320172340) (FLAGS (Deleted Answered))))) |}]
+  [%expect {|
+    (Untagged (FETCH 2 ((MODSEQ 320172340) (FLAGS (Deleted Answered))))) |}]
 
 let%expect_test _ =
   parse {|B002 OK NOOP Completed.|};
@@ -1635,7 +1682,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 2 FETCH (MODSEQ (320180050) FLAGS (\SEEN \Flagged))|};
-  [%expect {| (Untagged (FETCH 2 ((MODSEQ 320180050) (FLAGS (Seen Flagged))))) |}]
+  [%expect {|
+    (Untagged (FETCH 2 ((MODSEQ 320180050) (FLAGS (Seen Flagged))))) |}]
 
 let%expect_test _ =
   parse {|b003 OK Conditional Store completed|};
@@ -1643,11 +1691,13 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 1 FETCH (UID 4 MODSEQ (65402) FLAGS (\Seen))|};
-  [%expect {| (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen))))) |}]
+  [%expect {|
+    (Untagged (FETCH 1 ((UID 4) (MODSEQ 65402) (FLAGS (Seen))))) |}]
 
 let%expect_test _ =
   parse {|* 2 FETCH (UID 6 MODSEQ (75403) FLAGS (\Deleted))|};
-  [%expect {| (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted))))) |}]
+  [%expect {|
+    (Untagged (FETCH 2 ((UID 6) (MODSEQ 75403) (FLAGS (Deleted))))) |}]
 
 let%expect_test _ =
   parse {|* 4 FETCH (UID 8 MODSEQ (29738) FLAGS ($NoJunk $AutoJunk))|};
@@ -1696,7 +1746,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
-  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
 
 let%expect_test _ =
   parse {|C180 OK Noop completed|};
@@ -1704,7 +1755,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (FLAGS (\Deleted \Answered) MODSEQ (12121231000))|};
-  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered)) (MODSEQ 12121231000)))) |}]
 
 let%expect_test _ =
   parse {|D210 OK Noop completed|};
@@ -1720,7 +1772,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (FLAGS (\Deleted \Answered \Seen) MODSEQ (12))|};
-  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted Answered Seen)) (MODSEQ 12)))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((FLAGS (Deleted Answered Seen)) (MODSEQ 12)))) |}]
 
 let%expect_test _ =
   parse {|C270 OK Noop completed|};
@@ -1740,7 +1793,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
-  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
 
 let%expect_test _ =
   parse {|C360 OK Noop completed|};
@@ -1748,7 +1802,8 @@ let%expect_test _ =
 
 let%expect_test _ =
   parse {|* 7 FETCH (FLAGS (\Deleted) MODSEQ (12121245160))|};
-  [%expect {| (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
+  [%expect {|
+    (Untagged (FETCH 7 ((FLAGS (Deleted)) (MODSEQ 12121245160)))) |}]
 
 let%expect_test _ =
   parse {|D390 OK Noop completed|};
