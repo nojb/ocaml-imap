@@ -128,6 +128,28 @@ let take_while1 f buf k =
     k (Ok (String.sub buf.line pos0 (!pos - pos0)))
   end
 
+(*
+   CHAR           =  %x01-7F
+                          ; any 7-bit US-ASCII character,
+                            excluding NUL
+
+   CTL            =  %x00-1F / %x7F
+                          ; controls
+
+   ATOM-CHAR       = <any CHAR except atom-specials>
+
+   atom-specials   = "(" / ")" / "{" / SP / CTL / list-wildcards /
+                     quoted-specials / resp-specials
+
+   quoted-specials = DQUOTE / "\\"
+
+   resp-specials   = "]"
+
+   list-wildcards  = "%" / "*"
+
+   atom            = 1*ATOM-CHAR
+*)
+
 let is_atom_char = function
   | '(' | ')' | '{' | ' '
   | '\x00' .. '\x1F' | '\x7F'
@@ -137,6 +159,13 @@ let is_atom_char = function
 
 let atom =
   take_while1 is_atom_char
+
+(*
+   quoted          = DQUOTE *QUOTED-CHAR DQUOTE
+
+   QUOTED-CHAR     = <any TEXT-CHAR except quoted-specials> /
+                     '\\' quoted-specials
+*)
 
 let quoted_char =
   curr >>= function
@@ -164,6 +193,19 @@ let quoted =
   in
   char '"' >>= fun () -> loop (Buffer.create 17)
 
+(*
+   number          = 1*DIGIT
+                       ; Unsigned 32-bit integer
+                       ; (0 <= n < 4,294,967,296)
+
+   nz-number       = digit-nz *DIGIT
+                       ; Non-zero unsigned 32-bit integer
+                       ; (0 < n < 4,294,967,296)
+
+   uniqueid        = nz-number
+                       ; Strictly ascending
+*)
+
 let is_digit = function
   | '0'..'9' -> true
   | _ -> false
@@ -171,6 +213,19 @@ let is_digit = function
 let number =
   let f s = Scanf.sscanf s "%lu" (fun n -> n) in
   f <$> take_while1 is_digit
+
+let nz_number =
+  number
+
+let uniqueid =
+  number
+
+(*
+   literal         = "{" number "}" CRLF *CHAR8
+                       ; Number represents the number of CHAR8s
+
+   string          = quoted / literal
+*)
 
 let get_exactly n buf k =
   buf.get_exactly n (fun s -> k (Ok s))
@@ -192,6 +247,12 @@ let imap_string =
   | _ ->
       error
 
+(*
+   ASTRING-CHAR   = ATOM-CHAR / resp-specials
+
+   astring         = 1*ASTRING-CHAR / string
+*)
+
 let is_astring_char c =
   is_atom_char c || c = ']'
 
@@ -201,6 +262,25 @@ let astring =
       imap_string
   | _ ->
       take_while1 is_astring_char
+
+(*
+   nil             = "NIL"
+
+   nstring         = string / nil
+*)
+
+let nstring =
+  curr >>= function
+  | '"' | '{' ->
+      imap_string
+  | _ ->
+      char 'N' *> char 'I' *> char 'L' *> return ""
+
+(*
+   TEXT-CHAR       = <any CHAR except CR and LF>
+
+   text            = 1*TEXT-CHAR
+*)
 
 let is_text_char = function
   | '\r' | '\n' -> false
@@ -225,11 +305,35 @@ let text_1 =
   | false ->
       take_while1 is_text_other_char
 
-let nz_number =
-  number
+(*
+   mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
+                       ; Selectability flags; only one per LIST response
 
-let uniqueid =
-  number
+   mbx-list-oflag  = "\Noinferiors" / flag-extension
+                       ; Other flags; multiple possible per LIST response
+
+   mbx-list-flags  = *(mbx-list-oflag SP) mbx-list-sflag
+                     *(SP mbx-list-oflag) /
+                     mbx-list-oflag *(SP mbx-list-oflag)
+
+   HasChildren = "\HasChildren"
+
+   HasNoChildren = "\HasNoChildren"
+
+   mbx-list-oflag =/  use-attr
+                    ; Extends "mbx-list-oflag" from IMAP base [RFC3501]
+
+   use-attr        =  "\All" / "\Archive" / "\Drafts" / "\Flagged" /
+                      "\Junk" / "\Sent" / "\Trash" / use-attr-ext
+
+   use-attr-ext    =  '\\' atom
+                       ; Reserved for future extensions.  Clients
+                       ; MUST ignore list attributes they do not understand
+                       ; Server implementations MUST NOT generate
+                       ; extension attributes except as defined by
+                       ; future Standards-Track revisions of or
+                       ; extensions to this specification.
+*)
 
 let mbx_flag =
   let open MailboxFlag in
@@ -258,12 +362,28 @@ let delim =
   | _ ->
       char 'N' *> char 'I' *> char 'L' *> return None
 
+(*
+   mailbox         = "INBOX" / astring
+                       ; INBOX is case-insensitive.  All case variants of
+                       ; INBOX (e.g., "iNbOx") MUST be interpreted as INBOX
+                       ; not as an astring.  An astring which consists of
+                       ; the case-insensitive sequence "I" "N" "B" "O" "X"
+                       ; is considered to be INBOX and not an astring.
+                       ;  Refer to section 5.1 for further
+                       ; semantic details of mailbox names.
+*)
+
 let is_inbox s =
   String.length s = String.length "INBOX" &&
   String.uppercase_ascii s = "INBOX"
 
 let mailbox =
   astring >|= fun s -> if is_inbox s then "INBOX" else s
+
+(*
+   mailbox-list    = "(" [mbx-list-flags] ")" SP
+                      (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
+*)
 
 let plist p =
   char '(' *> curr >>= function
@@ -286,6 +406,16 @@ let mailbox_list =
   char ' ' *> delim >>= fun delim ->
   char ' ' *> mailbox >>= fun mbox ->
   return (flags, delim, mbox)
+
+(*
+   auth-type       = atom
+                       ; Defined by [SASL]
+
+   capability      = ("AUTH=" auth-type) / atom
+                       ; New capabilities MUST begin with "X" or be
+                       ; registered with IANA as standard or
+                       ; standards-track
+*)
 
 let capability =
   let open Capability in
@@ -310,6 +440,53 @@ let capability =
   | "XOAUTH2" -> XOAUTH2
   | "X-GM-EXT-1"  -> X_GM_EXT_1
   | a -> OTHER a
+
+(*
+   seq-number      = nz-number / "*"
+                       ; message sequence number (COPY, FETCH, STORE
+                       ; commands) or unique identifier (UID COPY,
+                       ; UID FETCH, UID STORE commands).
+                       ; * represents the largest number in use.  In
+                       ; the case of message sequence numbers, it is
+                       ; the number of messages in a non-empty mailbox.
+                       ; In the case of unique identifiers, it is the
+                       ; unique identifier of the last message in the
+                       ; mailbox or, if the mailbox is empty, the
+                       ; mailbox's current UIDNEXT value.
+                       ; The server should respond with a tagged BAD
+                       ; response to a command that uses a message
+                       ; sequence number greater than the number of
+                       ; messages in the selected mailbox.  This
+                       ; includes "*" if the selected mailbox is empty.
+
+   seq-range       = seq-number ":" seq-number
+                       ; two seq-number values and all values between
+                       ; these two regardless of order.
+                       ; Example: 2:4 and 4:2 are equivalent and indicate
+                       ; values 2, 3, and 4.
+                       ; Example: a unique identifier sequence range of
+                       ; 3291:* includes the UID of the last message in
+                       ; the mailbox, even if that value is less than 3291.
+
+   sequence-set    = (seq-number / seq-range) *("," sequence-set)
+                       ; set of seq-number values, regardless of order.
+                       ; Servers MAY coalesce overlaps and/or execute the
+                       ; sequence in any order.
+                       ; Example: a message sequence number set of
+                       ; 2,4:7,9,12:* for a mailbox with 15 messages is
+                       ; equivalent to 2,4,5,6,7,9,12,13,14,15
+                       ; Example: a message sequence number set of *:4,5:7
+                       ; for a mailbox with 10 messages is equivalent to
+                       ; 10,9,8,7,6,5,4,5,6,7 and MAY be reordered and
+                       ; overlap coalesced to be 4,5,6,7,8,9,10.
+
+   uid-set         = (uniqueid / uid-range) *("," uid-set)
+
+   uid-range       = (uniqueid ":" uniqueid)
+                     ; two uniqueid values and all values
+                     ; between these two regards of order.
+                     ; Example: 2:4 and 4:2 are equivalent.
+*)
 
 let mod_sequence_value =
   let f s = Scanf.sscanf s "%Lu" (fun n -> n) in
@@ -338,8 +515,25 @@ let sequence_set =
 let set =
   sequence_set
 
-let append_uid =
-  uniqueid
+(*
+   flag-extension  = "\\" atom
+                       ; Future expansion.  Client implementations
+                       ; MUST accept flag-extension flags.  Server
+                       ; implementations MUST NOT generate
+                       ; flag-extension flags except as defined by
+                       ; future standard or standards-track
+                       ; revisions of this specification.
+
+   flag-keyword    = atom
+
+   flag            = "\Answered" / "\Flagged" / "\Deleted" /
+                     "\Seen" / "\Draft" / flag-keyword / flag-extension
+                       ; Does not include "\Recent"
+
+   flag-perm       = flag / "\*"
+
+   flag-fetch      = flag / "\Recent"
+*)
 
 let flag_gen recent any =
   let open Flag in
@@ -371,6 +565,52 @@ let flag_fetch =
 
 let flag_perm =
   flag_gen false true
+
+(*
+   capability-data = "CAPABILITY" *(SP capability) SP "IMAP4rev1"
+                     *(SP capability)
+                       ; Servers MUST implement the STARTTLS, AUTH=PLAIN,
+                       ; and LOGINDISABLED capabilities
+                       ; Servers which offer RFC 1730 compatibility MUST
+                       ; list "IMAP4" as the first capability.
+
+   resp-text-code  = "ALERT" /
+                     "BADCHARSET" [SP "(" astring *(SP astring) ")" ] /
+                     capability-data / "PARSE" /
+                     "PERMANENTFLAGS" SP "("
+                     [flag-perm *(SP flag-perm)] ")" /
+                     "READ-ONLY" / "READ-WRITE" / "TRYCREATE" /
+                     "UIDNEXT" SP nz-number / "UIDVALIDITY" SP nz-number /
+                     "UNSEEN" SP nz-number /
+                     atom [SP 1*<any TEXT-CHAR except "]">]
+
+   resp-text-code      =/ "HIGHESTMODSEQ" SP mod-sequence-value /
+                          "NOMODSEQ" /
+                          "MODIFIED" SP set
+
+   resp-text-code      =/ "CLOSED"
+
+   append-uid      = uniqueid
+
+   resp-code-apnd  = "APPENDUID" SP nz-number SP append-uid
+
+   resp-code-copy  = "COPYUID" SP nz-number SP uid-set SP uid-set
+
+   resp-text-code  =/ resp-code-apnd / resp-code-copy / "UIDNOTSTICKY"
+                     ; incorporated before the expansion rule of
+                     ;  atom [SP 1*<any TEXT-CHAR except "]">]
+                     ; that appears in [IMAP]
+
+   resp-text-code =/ "COMPRESSIONACTIVE"
+
+
+   resp-text-code =/  "USEATTR"
+                    ; Extends "resp-text-code" from
+                    ; IMAP [RFC3501]
+*)
+
+let append_uid =
+  uniqueid
 
 let slist p =
   let rec loop acc =
@@ -443,6 +683,10 @@ let resp_text_code =
       end
   end <* char ']'
 
+(*
+   resp-text       = ["[" resp-text-code "]" SP] text
+*)
+
 let resp_text =
   curr >>= begin function ' ' -> next | _ -> return () end >>= fun () ->
   curr >>= begin function '[' -> resp_text_code | _ -> return Response.Code.NONE end >>= fun c ->
@@ -457,15 +701,29 @@ let search_sort_mod_seq =
       error
   end <* char ')'
 
-let permsg_modsequence =
-  mod_sequence_value
+(*
+   address         = "(" addr-name SP addr-adl SP addr-mailbox SP
+                     addr-host ")"
 
-let nstring =
-  curr >>= function
-  | '"' | '{' ->
-      imap_string
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return ""
+   addr-adl        = nstring
+                       ; Holds route from [RFC-2822] route-addr if
+                       ; non-NIL
+
+   addr-host       = nstring
+                       ; NIL indicates [RFC-2822] group syntax.
+                       ; Otherwise, holds [RFC-2822] domain name
+
+   addr-mailbox    = nstring
+                       ; NIL indicates end of [RFC-2822] group; if
+                       ; non-NIL and addr-host is NIL, holds
+                       ; [RFC-2822] group name.
+                       ; Otherwise, holds [RFC-2822] local-part
+                       ; after removing [RFC-2822] quoting
+
+   addr-name       = nstring
+                       ; If non-NIL, holds phrase from [RFC-2822]
+                       ; mailbox after removing [RFC-2822] quoting
+*)
 
 let address =
   char '(' *> nstring >>= fun ad_name ->
@@ -473,6 +731,32 @@ let address =
   char ' ' *> nstring >>= fun ad_mailbox ->
   char ' ' *> nstring >>= fun ad_host ->
   char ')' *> return {Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host}
+
+(*
+   envelope        = "(" env-date SP env-subject SP env-from SP
+                     env-sender SP env-reply-to SP env-to SP env-cc SP
+                     env-bcc SP env-in-reply-to SP env-message-id ")"
+
+   env-bcc         = "(" 1*address ")" / nil
+
+   env-cc          = "(" 1*address ")" / nil
+
+   env-date        = nstring
+
+   env-from        = "(" 1*address ")" / nil
+
+   env-in-reply-to = nstring
+
+   env-message-id  = nstring
+
+   env-reply-to    = "(" 1*address ")" / nil
+
+   env-sender      = "(" 1*address ")" / nil
+
+   env-subject     = nstring
+
+   env-to          = "(" 1*address ")" / nil
+*)
 
 let address_list =
   curr >>= function
@@ -510,6 +794,37 @@ let envelope =
                       env_in_reply_to;
                       env_message_id}
 
+
+(*
+   body-extension  = nstring / number /
+                      "(" body-extension *(SP body-extension) ")"
+                       ; Future expansion.  Client implementations
+                       ; MUST accept body-extension fields.  Server
+                       ; implementations MUST NOT generate
+                       ; body-extension fields except as defined by
+                       ; future standard or standards-track
+                       ; revisions of this specification.
+*)
+
+let _body_extension =
+  error
+
+(*
+   body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
+
+   body-fld-enc    = (DQUOTE ("7BIT" / "8BIT" / "BINARY" / "BASE64"/
+                     "QUOTED-PRINTABLE") DQUOTE) / string
+
+   body-fld-id     = nstring
+
+   body-fld-desc   = nstring
+
+   body-fld-octets = number
+
+   body-fields     = body-fld-param SP body-fld-id SP body-fld-desc SP
+                     body-fld-enc SP body-fld-octets
+*)
+
 let body_fld_param =
   curr >>= function
   | '(' ->
@@ -528,6 +843,82 @@ let body_fields =
   char ' ' *> imap_string >>= fun fld_enc ->
   char ' ' *> body_fld_octets >|= fun fld_octets ->
   {fld_params; fld_id; fld_desc; fld_enc; fld_octets}
+
+(*
+   body-fld-md5    = nstring
+
+   body-fld-dsp    = "(" string SP body-fld-param ")" / nil
+
+   body-fld-lang   = nstring / "(" string *(SP string) ")"
+
+   body-fld-loc    = nstring
+
+   body-ext-1part  = body-fld-md5 [SP body-fld-dsp [SP body-fld-lang
+                     [SP body-fld-loc *(SP body-extension)]]]
+                       ; MUST NOT be returned on non-extensible
+                       ; "BODY" fetch
+
+   body-ext-mpart  = body-fld-param [SP body-fld-dsp [SP body-fld-lang
+                     [SP body-fld-loc *(SP body-extension)]]]
+                       ; MUST NOT be returned on non-extensible
+                       ; "BODY" fetch
+*)
+
+let body_fld_md5 =
+  nstring
+
+let body_fld_dsp =
+  curr >>= function
+  | '(' ->
+      next *> imap_string >>= fun s ->
+      char ' ' *> body_fld_param >>= fun l ->
+      char ')' *> return (Some (s, l))
+  | _ ->
+      char 'N' *> char 'I' *> char 'L' *> return None
+
+let body_fld_lang =
+  curr >>= function
+  | '(' ->
+      plist imap_string
+  | _ ->
+      nstring >|= function "" -> [] | s -> [s]
+
+let body_fld_loc =
+  nstring
+
+(*
+   body-fld-lines  = number
+
+   media-subtype   = string
+                       ; Defined in [MIME-IMT]
+
+   media-basic     = ((DQUOTE ("APPLICATION" / "AUDIO" / "IMAGE" /
+                     "MESSAGE" / "VIDEO") DQUOTE) / string) SP
+                     media-subtype
+                       ; Defined in [MIME-IMT]
+
+   media-message   = DQUOTE "MESSAGE" DQUOTE SP DQUOTE "RFC822" DQUOTE
+                       ; Defined in [MIME-IMT]
+
+   media-text      = DQUOTE "TEXT" DQUOTE SP media-subtype
+                       ; Defined in [MIME-IMT]
+
+   body-type-basic = media-basic SP body-fields
+                       ; MESSAGE subtype MUST NOT be "RFC822"
+
+   body-type-msg   = media-message SP body-fields SP envelope
+                     SP body SP body-fld-lines
+
+   body-type-text  = media-text SP body-fields SP body-fld-lines
+
+   body-type-1part = (body-type-basic / body-type-msg / body-type-text)
+                     [SP body-ext-1part]
+
+   body-type-mpart = 1*body SP media-subtype
+                     [SP body-ext-mpart]
+
+   body            = "(" (body-type-1part / body-type-mpart) ")"
+*)
 
 let fix f =
   let rec p buf k = f p buf k in
@@ -552,30 +943,7 @@ let body_type_basic media_type media_subtype =
   body_fields >|= fun fields ->
   MIME.Response.Basic (media_type, media_subtype, fields)
 
-let body_fld_md5 =
-  nstring
-
-let body_fld_dsp =
-  curr >>= function
-  | '(' ->
-      next *> imap_string >>= fun s ->
-      char ' ' *> body_fld_param >>= fun l ->
-      char ')' *> return (Some (s, l))
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return None
-
-let body_fld_lang =
-  curr >>= function
-  | '(' ->
-      plist imap_string
-  | _ ->
-      nstring >|= function "" -> [] | s -> [s]
-
-let body_fld_loc =
-  nstring
-
 let body_ext_1part =
-  let open MIME.Response in
   let open MIME.Response.Extension in
   body_fld_md5 >>= fun _md5 ->
   curr >>= function
@@ -646,6 +1014,99 @@ let body body =
 let body =
   fix body
 
+(*
+   DIGIT           =  %x30-39
+                          ; 0-9
+
+   date-day-fixed  = (SP DIGIT) / 2DIGIT
+                       ; Fixed-format version of date-day
+
+   date-month      = "Jan" / "Feb" / "Mar" / "Apr" / "May" / "Jun" /
+                     "Jul" / "Aug" / "Sep" / "Oct" / "Nov" / "Dec"
+
+   time            = 2DIGIT ":" 2DIGIT ":" 2DIGIT
+                       ; Hours minutes seconds
+
+   zone            = ("+" / "-") 4DIGIT
+                       ; Signed four-digit value of hhmm representing
+                       ; hours and minutes east of Greenwich (that is,
+                       ; the amount that the given time differs from
+                       ; Universal Time).  Subtracting the timezone
+                       ; from the given time will give the UT form.
+                       ; The Universal Time zone is "+0000".
+
+   date-year       = 4DIGIT
+
+   date-time       = DQUOTE date-day-fixed "-" date-month "-" date-year
+                     SP time SP zone DQUOTE
+*)
+
+(* DD-MMM-YYYY HH:MM:SS +ZZZZ *)
+let date_time =
+  char '"' *> take 26 <* char '"'
+
+
+(*
+   header-fld-name = astring
+
+   header-list     = "(" header-fld-name *(SP header-fld-name) ")"
+
+   section-msgtext = "HEADER" / "HEADER.FIELDS" [".NOT"] SP header-list /
+                     "TEXT"
+                       ; top-level or MESSAGE/RFC822 part
+
+   section-part    = nz-number *("." nz-number)
+                       ; body part nesting
+
+   section-spec    = section-msgtext / (section-part ["." section-text])
+
+   section-text    = section-msgtext / "MIME"
+                       ; text other than actual body part (headers, etc.)
+
+   section         = "[" [section-spec] "]"
+*)
+
+let _section =
+  error (* TODO *)
+
+(*
+   msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
+                     "RFC822" [".HEADER" / ".TEXT"] SP nstring /
+                     "RFC822.SIZE" SP number /
+                     "BODY" ["STRUCTURE"] SP body /
+                     "BODY" section ["<" number ">"] SP nstring /
+                     "UID" SP uniqueid
+                       ; MUST NOT change for a message
+
+   msg-att-dynamic = "FLAGS" SP "(" [flag-fetch *(SP flag-fetch)] ")"
+                       ; MAY change for a message
+
+   msg-att         = "(" (msg-att-dynamic / msg-att-static)
+                      *(SP (msg-att-dynamic / msg-att-static)) ")"
+
+   permsg-modsequence  = mod-sequence-value
+                          ;; per message mod-sequence
+
+   mod-sequence-value  = 1*DIGIT
+                          ;; Positive unsigned 64-bit integer
+                          ;; (mod-sequence)
+                          ;; (1 <= n < 18,446,744,073,709,551,615)
+
+   fetch-mod-resp      = "MODSEQ" SP "(" permsg-modsequence ")"
+
+   msg-att-dynamic     =/ fetch-mod-resp
+
+   msg-att-dynamic     =/ "X-GM-LABELS" SP "(" [astring 0*(SP astring)] ")" / nil
+                          ; https://developers.google.com/gmail/imap_extensions
+
+   msg-att-static      =/ "X-GM-MSGID" SP mod-sequence-value /
+                          "X-GM-THRID" SP mod-sequecne-value
+                          ; https://developers.google.com/gmail/imap_extensions
+*)
+
+let permsg_modsequence =
+  mod_sequence_value
+
 let msg_att =
   let open Fetch.MessageAttribute in
   atom >>= function
@@ -663,8 +1124,7 @@ let msg_att =
   | "ENVELOPE" ->
       char ' ' *> envelope >|= fun e -> ENVELOPE e
   | "INTERNALDATE" ->
-      (* DD-MMM-YYYY HH:MM:SS +ZZZZ *)
-      char ' ' *> char '"' *> take 26 >>= fun s -> char '"' *> return (INTERNALDATE s)
+      char ' ' *> date_time >|= fun s -> INTERNALDATE s
   | "RFC822.HEADER" ->
       char ' ' *> nstring >|= fun s -> RFC822_HEADER s
   | "RFC822.TEXT" ->
@@ -690,6 +1150,24 @@ let msg_att =
   | _ ->
       error
 
+(*
+   status          = "STATUS" SP mailbox SP
+                     "(" status-att *(SP status-att) ")"
+
+   status-att      = "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
+                     "UNSEEN"
+
+   status-att-list =  status-att SP number *(SP status-att SP number)
+
+   mod-sequence-valzer = "0" / mod-sequence-value
+
+   status-att-val      =/ "HIGHESTMODSEQ" SP mod-sequence-valzer
+                          ;; extends non-terminal defined in [IMAPABNF].
+                          ;; Value 0 denotes that the mailbox doesn't
+                          ;; support persistent mod-sequences
+                          ;; as described in Section 3.1.2
+*)
+
 let mod_sequence_valzer =
   let f s = Scanf.sscanf s "%Lu" (fun n -> n) in
   f <$> take_while1 is_digit
@@ -714,6 +1192,45 @@ let status_att =
 
 let known_ids =
   uid_set
+
+
+(*
+   resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
+                       ; Status condition
+
+   mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
+                      "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
+                      "STATUS" SP mailbox SP "(" [status-att-list] ")" /
+                      number SP "EXISTS" / number SP "RECENT"
+
+   message-data    = nz-number SP ("EXPUNGE" / ("FETCH" SP msg-att))
+
+   resp-cond-bye   = "BYE" SP resp-text
+
+   response-data   = "*" SP (resp-cond-state / resp-cond-bye /
+                     mailbox-data / message-data / capability-data) CRLF
+
+   search-sort-mod-seq = "(" "MODSEQ" SP mod-sequence-value ")"
+
+   mailbox-data        =/ "SEARCH" [1*(SP nz-number) SP
+                          search-sort-mod-seq]
+
+   known-uids          =  sequence-set
+                          ;; sequence of UIDs, "*" is not allowed
+
+   expunged-resp       =  "VANISHED" [SP "(EARLIER)"] SP known-uids
+
+   message-data        =/ expunged-resp
+
+   enable-data   = "ENABLED" *(SP capability)
+
+   resp-cond-bye   = "BYE" SP resp-text
+
+   resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
+                       ; Authentication condition
+
+   response-data =/ "*" SP enable-data CRLF
+*)
 
 let response_data =
   let open Response.Untagged in
@@ -785,6 +1302,21 @@ let response_data =
       | _ ->
           error
       end
+
+(*
+   greeting        = "*" SP (resp-cond-auth / resp-cond-bye) CRLF
+
+   continue-req    = "+" SP (resp-text / base64) CRLF
+
+   tag             = 1*<any ASTRING-CHAR except "+">
+
+   response-tagged = tag SP resp-cond-state CRLF
+
+   response-fatal  = "*" SP resp-cond-bye CRLF
+                       ; Server closes connection immediately
+
+   response-done   = response-tagged / response-fatal
+*)
 
 let is_tag_char = function
   | '+' -> false
