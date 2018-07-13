@@ -158,7 +158,7 @@ let quoted =
   let rec loop b =
     curr >>= function
     | '"' ->
-        return (Buffer.contents b)
+        next *> return (Buffer.contents b)
     | _ ->
         quoted_char >>= fun c -> Buffer.add_char b c; loop b
   in
@@ -538,23 +538,68 @@ let body_fld_lines =
 
 let body_type_msg body =
   body_fields >>= fun fields ->
-  envelope >>= fun envelope ->
-  body >>= fun b ->
-  body_fld_lines >|= fun fld_lines ->
+  char ' ' *> envelope >>= fun envelope ->
+  char ' ' *> body >>= fun b ->
+  char ' ' *> body_fld_lines >|= fun fld_lines ->
   MIME.Response.Message (fields, envelope, b, fld_lines)
 
 let body_type_text media_subtype =
   body_fields >>= fun fields ->
-  body_fld_lines >|= fun fld_lines ->
+  char ' ' *> body_fld_lines >|= fun fld_lines ->
   MIME.Response.Text (media_subtype, fields, fld_lines)
 
 let body_type_basic media_type media_subtype =
   body_fields >|= fun fields ->
   MIME.Response.Basic (media_type, media_subtype, fields)
 
+let body_fld_md5 =
+  nstring
+
+let body_fld_dsp =
+  curr >>= function
+  | '(' ->
+      next *> imap_string >>= fun s ->
+      char ' ' *> body_fld_param >>= fun l ->
+      char ')' *> return (Some (s, l))
+  | _ ->
+      char 'N' *> char 'I' *> char 'L' *> return None
+
+let body_fld_lang =
+  curr >>= function
+  | '(' ->
+      plist imap_string
+  | _ ->
+      nstring >|= function "" -> [] | s -> [s]
+
+let body_fld_loc =
+  nstring
+
+let body_ext_1part =
+  let open MIME.Response in
+  let open MIME.Response.Extension in
+  body_fld_md5 >>= fun _md5 ->
+  curr >>= function
+  | ' ' ->
+      next *> body_fld_dsp >>= fun ext_dsp ->
+      curr >>= begin function
+      | ' ' ->
+          next *> body_fld_lang >>= fun ext_lang ->
+          curr >>= begin function
+          | ' ' ->
+              next *> body_fld_loc >|= fun ext_loc ->
+              {ext_dsp; ext_lang; ext_loc; ext_ext = []}
+          | _ ->
+              return {ext_dsp; ext_lang; ext_loc = ""; ext_ext = []}
+          end
+      | _ ->
+          return {ext_dsp; ext_lang = []; ext_loc = ""; ext_ext = []}
+      end
+  | _ ->
+      return {ext_dsp = None; ext_lang = []; ext_loc = ""; ext_ext = []}
+
 let body_type_1part body =
   imap_string >>= fun media_type ->
-  imap_string >>= fun media_subtype ->
+  char ' ' *> imap_string >>= fun media_subtype ->
   begin match media_type, media_subtype with
   | "MESSAGE", "RFC822" ->
       char ' ' *> body_type_msg body
@@ -563,23 +608,28 @@ let body_type_1part body =
   | _ ->
       char ' ' *> body_type_basic media_type media_subtype
   end >>= fun body ->
-  curr >>= function
-  | ' ' -> (* body-ext-1part *)
-      error
+  begin curr >>= function
+  | ' ' ->
+      next *> body_ext_1part >>= fun _ -> return ()
   | _ ->
-      return body
+      return ()
+  end *> return body
+
+let body_ext_mpart =
+  body_fld_param
 
 let body_type_mpart body =
   let rec loop acc =
     curr >>= function
     | ' ' ->
-        imap_string >>= fun media_subtype ->
+        next *> imap_string >>= fun media_subtype ->
         begin curr >>= function
         | ' ' ->
-            error (* body-ext-mpart *)
+            next *> body_ext_mpart
         | _ ->
-            return (MIME.Response.Multipart (List.rev acc, media_subtype))
-        end
+            return []
+        end >|= fun params ->
+        MIME.Response.Multipart (List.rev acc, media_subtype, params)
     | _ ->
         body >>= fun b -> loop (b :: acc)
   in
@@ -2173,3 +2223,10 @@ holachau12 {3}
 abc)]|};
   [%expect {|
     (Untagged (State (OK (BADCHARSET (holachau12 abc)) ""))) |}]
+
+let%expect_test _ =
+  parse {|* 1 FETCH (BODYSTRUCTURE (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 274 5 NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "7BIT" 1916 11 NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "--==_mimepart_58c9502f27460_5ee23f9b5d4edc381239aa" "CHARSET" "UTF-8") NIL NIL))|};
+  [%expect {|
+    Parsing error:
+    * 1 FETCH (BODYSTRUCTURE (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" 274 5 NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "7BIT" 1916 11 NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "--==_mimepart_58c9502f27460_5ee23f9b5d4edc381239aa" "CHARSET" "UTF-8") NIL NIL))
+                                                                                                                                                                                                                                                                           ^ |}]

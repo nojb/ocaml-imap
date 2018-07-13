@@ -43,6 +43,14 @@ type error =
 
 exception Error of error
 
+let () =
+  Printexc.register_printer (function
+      | Error (Decode_error (s, pos)) ->
+          Some (Printf.sprintf "Parsing error:\n%s\n%s^\n" s (String.make pos ' '))
+      | _ ->
+          None
+    )
+
 open Lwt.Infix
 
 type t =

@@ -50,7 +50,7 @@ type modseq = private int64
 type uid = private int32
 (** Message unique identification numbers. *)
 
-type seq = private int32
+type seq = int32
 (** Message sequence numbers. *)
 
 module MIME = MIME

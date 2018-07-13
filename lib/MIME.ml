@@ -85,7 +85,7 @@ module Response = struct
       {
         ext_dsp: (string * (string * string) list) option;
         ext_lang: string list;
-        ext_loc: string option;
+        ext_loc: string;
         ext_ext: BodyExtension.t list;
       } [@@deriving sexp]
   end
@@ -94,5 +94,5 @@ module Response = struct
     | Text of string * Fields.t * int
     | Message of Fields.t * Envelope.t * t * int
     | Basic of string * string * Fields.t
-    | Multipart of t list * string [@@deriving sexp]
+    | Multipart of t list * string * (string * string) list [@@deriving sexp]
 end
