@@ -510,6 +510,76 @@ let envelope =
                       env_in_reply_to;
                       env_message_id}
 
+let body_fields =
+  error
+
+let fix f =
+  let rec p buf k = f p buf k in
+  f p
+
+let body_fld_lines =
+  Int32.to_int <$> number
+
+let body_type_msg body =
+  body_fields >>= fun fields ->
+  envelope >>= fun envelope ->
+  body >>= fun b ->
+  body_fld_lines >|= fun fld_lines ->
+  MIME.Response.Message (fields, envelope, b, fld_lines)
+
+let body_type_text media_subtype =
+  body_fields >>= fun fields ->
+  body_fld_lines >|= fun fld_lines ->
+  MIME.Response.Text (media_subtype, fields, fld_lines)
+
+let body_type_basic media_type media_subtype =
+  body_fields >|= fun fields ->
+  MIME.Response.Basic (media_type, media_subtype, fields)
+
+let body_type_1part body =
+  imap_string >>= fun media_type ->
+  imap_string >>= fun media_subtype ->
+  begin match media_type, media_subtype with
+  | "MESSAGE", "RFC822" ->
+      char ' ' *> body_type_msg body
+  | "TEXT", _ ->
+      char ' ' *> body_type_text media_subtype
+  | _ ->
+      char ' ' *> body_type_basic media_type media_subtype
+  end >>= fun body ->
+  curr >>= function
+  | ' ' -> (* body-ext-1part *)
+      error
+  | _ ->
+      return body
+
+let body_type_mpart body =
+  let rec loop acc =
+    curr >>= function
+    | ' ' ->
+        imap_string >>= fun media_subtype ->
+        begin curr >>= function
+        | ' ' ->
+            error (* body-ext-mpart *)
+        | _ ->
+            return (MIME.Response.Multipart (List.rev acc, media_subtype))
+        end
+    | _ ->
+        body >>= fun b -> loop (b :: acc)
+  in
+  loop []
+
+let body body =
+  char '(' *> curr >>= begin function
+  | '(' ->
+      body_type_mpart body
+  | _ ->
+      body_type_1part body
+  end <* char ')'
+
+let body =
+  fix body
+
 let msg_att =
   let open Fetch.MessageAttribute in
   atom >>= function
