@@ -64,7 +64,7 @@ module Search = Search
 
 type error =
   | Incorrect_tag of string * string (** An unknown response tag was received. *)
-  | Decode_error of string * string list * string (** Decoding error. *)
+  | Decode_error of string * int (** Decoding error. *)
   | Unexpected_cont (** A continuation request '+' is received at an unexpected time. *)
   | Bad_greeting (** The server did not send a valid greeting message. *)
   | Auth_error of string (** A SASL authentication error ocurred. *)

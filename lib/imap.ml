@@ -32,11 +32,9 @@ module Fetch = Fetch
 module Status = Status
 module Search = Search
 
-module A = Angstrom.Buffered
-
 type error =
   | Incorrect_tag of string * string
-  | Decode_error of string * string list * string
+  | Decode_error of string * int
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
@@ -52,15 +50,12 @@ type t =
     sock: Lwt_ssl.socket;
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
-
     mutable debug: bool;
-
     mutable tag: int;
-    mutable unconsumed: A.unconsumed;
     mutable stop_poll: (unit -> unit) option;
   }
 
-let create_connection sock unconsumed =
+let create_connection sock =
   let ic = Lwt_ssl.in_channel_of_descr sock in
   let oc = Lwt_ssl.out_channel_of_descr sock in
   {
@@ -69,44 +64,30 @@ let create_connection sock unconsumed =
     oc;
     debug = false;
     tag = 0;
-    unconsumed;
     stop_poll = None;
   }
 
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
-let unconsumed_to_string {A.buf; off; len} =
-  let b = Bytes.create len in
-  for i = 0 to len - 1 do
-    Bytes.set b i (Bigarray.Array1.get buf (off + i))
-  done;
-  Bytes.unsafe_to_string b
-
-let parse unconsumed p =
-  let input = `String (unconsumed_to_string unconsumed) in
-  A.feed (A.parse p) input
-
-let recv imap =
-  let rec loop = function
-    | A.Partial f ->
-        Lwt_io.read_line imap.ic >>= fun line ->
-        (if imap.debug then Lwt_io.eprintlf "> %s" line else Lwt.return_unit) >>= fun () ->
-        loop (f (`String (line ^ "\r\n")))
-    | Done (unconsumed, r) ->
-        imap.unconsumed <- unconsumed;
-        begin if imap.debug then
-          Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (Response.sexp_of_t r))
-        else
-          Lwt.return_unit end >>= fun () ->
-        Lwt.return r
-    | Fail (unconsumed, backtrace, f) ->
-        Lwt_io.eprintlf "** Parse error at `%s':" f >>= fun () ->
-        Lwt_list.iter_s Lwt_io.eprintl backtrace >>= fun () ->
-        Lwt_io.eprintlf "** Unconsumed: %S" (unconsumed_to_string unconsumed) >>= fun () ->
-        Lwt.fail (Error (Decode_error (unconsumed_to_string unconsumed, backtrace, f)))
+let parse ic =
+  let get_line k = Lwt.on_success (Lwt_io.read_line ic) k in
+  let get_exactly n k =
+    let b = Bytes.create n in
+    Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
   in
-  loop (parse imap.unconsumed Decoder.response)
+  let buf = {Parser.line = ""; pos = 0; get_line; get_exactly} in
+  let t, u = Lwt.wait () in
+  Parser.response buf (function
+      | Ok x ->
+          Lwt.wakeup u x
+      | Pervasives.Error (s, pos) ->
+          Lwt.wakeup_exn u (Error (Decode_error (s, pos)))
+    );
+  t
+
+let recv {ic; _} =
+  parse ic
 
 let rec send imap r process res =
   match r with
@@ -423,9 +404,7 @@ let connect server ?(port = 993) username password ?read_only mailbox =
   let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
-  let imap =
-    create_connection sock {A.buf = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0; off = 0; len = 0}
-  in
+  let imap = create_connection sock in
   recv imap >>= function
   | Response.Untagged _ ->
       login imap username password >>= fun () ->
