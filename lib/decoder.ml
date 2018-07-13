@@ -444,8 +444,8 @@ let resp_text_code =
 *)
 
 let resp_text =
-  let resp_text_code = char '[' *> some resp_text_code <* char ']' <* maybe sp in
-  pair (return ()) (option None resp_text_code) text <?> "resp-text"
+  let resp_text_code = char '[' *> resp_text_code <* char ']' <* maybe sp in
+  pair (return ()) (option Response.Code.NONE resp_text_code) text <?> "resp-text"
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text

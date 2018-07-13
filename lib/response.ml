@@ -44,21 +44,22 @@ module Code = struct
     | COPYUID of int32 * (int32 * int32) list * (int32 * int32) list
     | UIDNOTSTICKY
     | COMPRESSIONACTIVE
-    | USEATTR [@@deriving sexp]
+    | USEATTR
+    | NONE [@@deriving sexp]
 end
 
 module State = struct
   type t =
-    | OK of Code.t option * string
-    | NO of Code.t option * string
-    | BAD of Code.t option * string [@@deriving sexp]
+    | OK of Code.t * string
+    | NO of Code.t * string
+    | BAD of Code.t * string [@@deriving sexp]
 end
 
 module Untagged = struct
   type t =
     | State of State.t
-    | BYE of Code.t option * string
-    | PREAUTH of Code.t option * string
+    | BYE of Code.t * string
+    | PREAUTH of Code.t * string
     | FLAGS of Flag.t list
     | LIST of MailboxFlag.t list * char option * string
     | LSUB of MailboxFlag.t list * char option * string
