@@ -510,8 +510,24 @@ let envelope =
                       env_in_reply_to;
                       env_message_id}
 
+let body_fld_param =
+  curr >>= function
+  | '(' ->
+      plist (imap_string >>= fun x -> char ' ' *> imap_string >|= fun y -> (x, y))
+  | _ ->
+      char 'N' *> char 'I' *> char 'L' *> return []
+
+let body_fld_octets =
+  Int32.to_int <$> number
+
 let body_fields =
-  error
+  let open MIME.Response.Fields in
+  body_fld_param >>= fun fld_params ->
+  char ' ' *> (some <$> nstring) >>= fun fld_id ->
+  char ' ' *> (some <$> nstring) >>= fun fld_desc ->
+  char ' ' *> imap_string >>= fun fld_enc ->
+  char ' ' *> body_fld_octets >|= fun fld_octets ->
+  {fld_params; fld_id; fld_desc; fld_enc; fld_octets}
 
 let fix f =
   let rec p buf k = f p buf k in
@@ -607,8 +623,8 @@ let msg_att =
       char ' ' *> number >|= fun n -> RFC822_SIZE (Int32.to_int n)
   | "RFC822" ->
       char ' ' *> nstring >|= fun s -> RFC822 s
-  (* | "BODYSTRUCTURE" ->
-   *     sp *> body >>| (fun b -> BODYSTRUCTURE b) *)
+  | "BODYSTRUCTURE" ->
+      char ' ' *> body >|= (fun b -> BODYSTRUCTURE b)
   (* | "BODY" ->
    *     let section =
    *       section >>= fun s -> sp *> nstring >>| fun x ->
