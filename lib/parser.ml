@@ -24,8 +24,8 @@ open Response
 
 type buffer =
   {
-    read_line: (string -> unit) -> unit;
-    read_count: int -> (string -> unit) -> unit;
+    get_line: (string -> unit) -> unit;
+    get_exactly: int -> (string -> unit) -> unit;
     mutable line: string;
     mutable pos: int;
   }
@@ -83,8 +83,16 @@ let ( >|= ) p f buf k =
           k e
     )
 
+let error buf k =
+  k (Error (buf.line, buf.pos))
+
 let is_eol buf k =
   k (Ok (buf.pos >= String.length buf.line))
+
+let eol =
+  is_eol >>= function
+  | true -> return ()
+  | false -> error
 
 let curr buf k =
   if buf.pos >= String.length buf.line then
@@ -96,9 +104,6 @@ let next buf k =
   assert (buf.pos < String.length buf.line);
   buf.pos <- buf.pos + 1;
   k (Ok ())
-
-let error buf k =
-  k (Error (buf.line, buf.pos))
 
 let take n buf k =
   if buf.pos + n > String.length buf.line then
@@ -159,8 +164,24 @@ let quoted =
   in
   char '"' >>= fun () -> loop (Buffer.create 17)
 
+let is_digit = function
+  | '0'..'9' -> true
+  | _ -> false
+
+let number =
+  let f s = Scanf.sscanf s "%lu" (fun n -> n) in
+  f <$> take_while1 is_digit
+
+let get_exactly n buf k =
+  buf.get_exactly n (fun s -> k (Ok s))
+
+let get_line buf k =
+  buf.get_line (fun s -> buf.line <- s; buf.pos <- 0; k (Ok ()))
+
 let literal =
-  error
+  char '{' *> number >>= fun n ->
+  char '}' *> eol *> get_exactly (Int32.to_int n) >>= fun s ->
+  get_line *> return s
 
 let imap_string =
   curr >>= function
@@ -193,8 +214,9 @@ let text =
   | false ->
       take_while1 is_text_char
 
-let is_text_other_char c =
-  is_text_char c && (c <> ']')
+let is_text_other_char = function
+  | ']' -> false
+  | c -> is_text_char c
 
 let text_1 =
   is_eol >>= function
@@ -202,14 +224,6 @@ let text_1 =
       return ""
   | false ->
       take_while1 is_text_other_char
-
-let is_digit = function
-  | '0'..'9' -> true
-  | _ -> false
-
-let number =
-  let f s = Scanf.sscanf s "%lu" (fun n -> n) in
-  f <$> take_while1 is_digit
 
 let nz_number =
   number
@@ -374,7 +388,12 @@ let resp_text_code =
   | "ALERT" ->
       return ALERT
   | "BADCHARSET" ->
-      slist astring >|= fun l -> BADCHARSET l
+      curr >>= begin function
+      | ' ' ->
+          next *> plist astring >|= fun l -> BADCHARSET l
+      | _ ->
+          return (BADCHARSET [])
+      end
   | "CAPABILITY" ->
       slist capability >|= fun l -> CAPABILITY l
   | "PARSE" ->
@@ -651,7 +670,7 @@ let resp_cond_state =
       error
 
 let response =
-  curr >>= function
+  get_line *> curr >>= function
   | '+' ->
       next *> resp_text >|= fun (_, x) -> Cont x
   | '*' ->
@@ -662,12 +681,24 @@ let response =
 exception F of string * int
 
 let parse s =
-  let buf =
-    { read_line = (fun _k -> assert false);
-      read_count = (fun _ _ -> assert false);
-      line = s;
-      pos = 0 }
+  let off = ref 0 in
+  let get_line k =
+    let i =
+      match String.index_from s !off '\n' with
+      | i -> i
+      | exception Not_found -> String.length s
+    in
+    let s = String.sub s !off (i - !off) in
+    off := i + 1;
+    k s
   in
+  let get_exactly n k =
+    assert (!off + n <= String.length s);
+    let s = String.sub s !off n in
+    off := !off + n;
+    k s
+  in
+  let buf = {get_line; get_exactly; line = ""; pos = 0} in
   let result = ref (Cont "") in
   match response buf (function Ok u -> result := u | Error (s, pos) -> raise (F (s, pos))) with
   | () ->
@@ -2049,3 +2080,10 @@ let%expect_test _ =
      (FETCH 1
       ((UID 3) (FLAGS (Seen Answered (Keyword $Important)))
        (MODSEQ 90060115194045027)))) |}]
+
+let%expect_test _ =
+  parse {|* OK [BADCHARSET ({10}
+holachau12 {3}
+abc)]|};
+  [%expect {|
+    (Untagged (State (OK (BADCHARSET (holachau12 abc)) ""))) |}]
