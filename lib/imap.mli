@@ -74,7 +74,7 @@ type error =
 type t
 (** The type for connections. *)
 
-val connect: string -> ?port:int -> string -> string -> ?read_only:bool -> string -> t Lwt.t
+val connect: host:string -> ?port:int -> username:string -> password:string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
 val disconnect: t -> unit Lwt.t
@@ -126,7 +126,10 @@ val search: t -> Search.key -> (seq list * modseq option) Lwt.t
 
 val uid_search: t -> Search.key -> (uid list * modseq option) Lwt.t
 
-val select: t -> ?read_only:bool -> string -> unit Lwt.t
+val examine: t -> string -> unit Lwt.t
+(** [select imap m] selects the mailbox [m] for access. *)
+
+val select: t -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
 
 val append: t -> string -> ?flags:Flag.t list -> string -> unit Lwt.t

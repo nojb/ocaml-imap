@@ -296,11 +296,16 @@ let search =
 let uid_search =
   search_gen "UID SEARCH"
 
-let select imap ?(read_only = false) m =
-  let cmd = if read_only then "EXAMINE" else "SELECT" in
+let select_gen cmd imap m =
   let arg = if false (* List.mem Capability.CONDSTORE imap.capabilities *) then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
   run imap format () (fun _ r _ -> r)
+
+let select =
+  select_gen "SELECT"
+
+let examine =
+  select_gen "EXAMINE"
 
 let append imap m ?(flags = []) data =
   let format = Encoder.(raw "APPEND" ++ mutf7 m ++ p (list Flag.encode flags) ++ literal data) in
@@ -405,19 +410,17 @@ let _enable imap caps =
 let () =
   Ssl.init ()
 
-let connect server ?(port = 993) username password ?read_only mailbox =
+let connect ~host ?(port = 993) ~username ~password =
   let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
   let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
-  Lwt_unix.gethostbyname server >>= fun he ->
+  Lwt_unix.gethostbyname host >>= fun he ->
   let addr = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
   let imap = create_connection sock in
   recv imap >>= function
   | Response.Untagged _ ->
-      login imap username password >>= fun () ->
-      select imap ?read_only mailbox >>= fun () ->
-      Lwt.return imap
+      login imap username password >|= fun () -> imap
   | Tagged _ | Cont _ ->
       Lwt.fail (Failure "unexpected response")
 
