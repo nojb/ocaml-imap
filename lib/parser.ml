@@ -886,6 +886,49 @@ let body_fld_lang =
 let body_fld_loc =
   nstring
 
+let body_ext_1part =
+  let open MIME.Response.Extension in
+  body_fld_md5 >>= fun _md5 ->
+  curr >>= function
+  | ' ' ->
+      next *> body_fld_dsp >>= fun ext_dsp ->
+      curr >>= begin function
+      | ' ' ->
+          next *> body_fld_lang >>= fun ext_lang ->
+          curr >>= begin function
+          | ' ' ->
+              next *> body_fld_loc >|= fun ext_loc ->
+              {ext_dsp; ext_lang; ext_loc; ext_ext = []}
+          | _ ->
+              return {ext_dsp; ext_lang; ext_loc = ""; ext_ext = []}
+          end
+      | _ ->
+          return {ext_dsp; ext_lang = []; ext_loc = ""; ext_ext = []}
+      end
+  | _ ->
+      return {ext_dsp = None; ext_lang = []; ext_loc = ""; ext_ext = []}
+
+let body_ext_mpart =
+  body_fld_param >>= fun p ->
+  begin curr >>= function
+    | ' ' ->
+        next *> body_fld_dsp >>= fun _ ->
+        curr >>= begin function
+        | ' ' ->
+            next *> body_fld_lang >>= fun _ ->
+            curr >>= begin function
+            | ' ' ->
+                next *> body_fld_loc >|= ignore
+            | _ ->
+                return ()
+            end
+        | _ ->
+            return ()
+        end
+    | _ ->
+        return ()
+  end *> return p
+
 (*
    body-fld-lines  = number
 
@@ -943,28 +986,6 @@ let body_type_basic media_type media_subtype =
   body_fields >|= fun fields ->
   MIME.Response.Basic (media_type, media_subtype, fields)
 
-let body_ext_1part =
-  let open MIME.Response.Extension in
-  body_fld_md5 >>= fun _md5 ->
-  curr >>= function
-  | ' ' ->
-      next *> body_fld_dsp >>= fun ext_dsp ->
-      curr >>= begin function
-      | ' ' ->
-          next *> body_fld_lang >>= fun ext_lang ->
-          curr >>= begin function
-          | ' ' ->
-              next *> body_fld_loc >|= fun ext_loc ->
-              {ext_dsp; ext_lang; ext_loc; ext_ext = []}
-          | _ ->
-              return {ext_dsp; ext_lang; ext_loc = ""; ext_ext = []}
-          end
-      | _ ->
-          return {ext_dsp; ext_lang = []; ext_loc = ""; ext_ext = []}
-      end
-  | _ ->
-      return {ext_dsp = None; ext_lang = []; ext_loc = ""; ext_ext = []}
-
 let body_type_1part body =
   imap_string >>= fun media_type ->
   char ' ' *> imap_string >>= fun media_subtype ->
@@ -982,9 +1003,6 @@ let body_type_1part body =
   | _ ->
       return ()
   end *> return body
-
-let body_ext_mpart =
-  body_fld_param
 
 let body_type_mpart body =
   let rec loop acc =
