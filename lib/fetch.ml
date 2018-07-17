@@ -84,6 +84,7 @@ module Request = struct
 
   let envelope = raw "ENVELOPE"
   let internaldate = raw "INTERNALDATE"
+  let rfc822_header = raw "RFC822.HEADER"
   let rfc822_size = raw "RFC822.SIZE"
   let rfc822 = raw "RFC822"
   let body = raw "BODY"
