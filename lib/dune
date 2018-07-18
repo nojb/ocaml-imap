@@ -1,0 +1,6 @@
+(library
+ (name imap)
+ (public_name imap)
+ (inline_tests)
+ (preprocess (pps ppx_expect ppx_sexp_conv))
+ (libraries uutf base64 sexplib re lwt lwt_ssl))
