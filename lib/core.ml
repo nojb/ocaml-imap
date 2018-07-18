@@ -71,8 +71,12 @@ let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
 let parse ic =
-  let get_line k = Lwt.on_success (Lwt_io.read_line ic) k in
+  let get_line k =
+    let k s = prerr_string "> "; prerr_endline s; k s in
+    Lwt.on_success (Lwt_io.read_line ic) k
+  in
   let get_exactly n k =
+    let k s = Printf.eprintf "> [%d bytes]" (String.length s); k s in
     let b = Bytes.create n in
     Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
   in
@@ -154,7 +158,11 @@ let run imap format res process =
         | res ->
             loop res
         end
-    | Tagged _ ->
+    | Tagged (_, NO (_code, s)) ->
+        Lwt.fail (Error (No s))
+    | Tagged (_, BAD (_code, s)) ->
+        Lwt.fail (Error (Bad s))
+    | Tagged (_, OK _) ->
         imap.tag <- imap.tag + 1;
         Lwt.return res
   in
