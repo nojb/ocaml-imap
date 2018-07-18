@@ -77,7 +77,7 @@ let p f =
   Cat (Raw "(", Cat (f, Raw ")"))
 
 let mutf7 s =
-  raw (Mutf7.encode s)
+  str (Mutf7.encode s)
 
 let int n =
   raw (string_of_int n)
