@@ -86,10 +86,15 @@ class message_set acc mailbox query =
 class mailbox acc mailbox =
   object
     inherit message_set acc mailbox Search.all
+    method name = mailbox
   end
 
 class account ~host ?port ~username ~password () =
   let acc = {host; port; username; password} in
   object
     method inbox = new mailbox acc "INBOX"
+    method list_all =
+      let mk (_, _, name) = new mailbox acc name in
+      Core.connect ~host ?port ~username ~password >>= fun imap ->
+      Core.list imap "%" >|= List.map mk
   end

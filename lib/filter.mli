@@ -17,9 +17,11 @@ class type message_set =
 class type mailbox =
   object
     inherit message_set
+    method name: string
   end
 
 class account: host:string -> ?port:int -> username:string -> password:string -> unit ->
   object
     method inbox: mailbox
+    method list_all: mailbox list Lwt.t
   end
