@@ -1,22 +1,22 @@
 all:
-	jbuilder build --dev @install # @examples/examples
+	dune build --dev @install # @examples/examples
 
 test:
-	jbuilder runtest
+	dune runtest
 
 clean:
-	jbuilder clean
+	dune clean
 
 install:
-	jbuilder install
+	dune install
 
 uninstall:
-	jbuilder uninstall
+	dune uninstall
 
 reinstall: uninstall install
 
 doc:
-	jbuilder build @doc
+	dune build @doc
 
 publish-doc: doc
 	rm -rf .gh-pages
