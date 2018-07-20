@@ -1,5 +1,5 @@
 all:
-	dune build --dev @install # @examples/examples
+	dune build @install # @examples/examples
 
 test:
 	dune runtest
