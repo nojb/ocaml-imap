@@ -38,21 +38,15 @@ type mb =
 
 (*
 module Pool = struct
-  type slot =
-    {
-      target: mb;
-      conn: Core.t;
-    }
-
   let waiters : slot Lwt.u Queue.t = Queue.create ()
 
-  let conns = ref []
+  let conns : Imap.t list ref = ref []
 
   (* val use: mb -> (Imap.t -> 'a Lwt.t) -> 'a Lwt.t *)
   let use mb f =
     let rec loop = function
-      | {target; conn} :: rest ->
-          if Imap.state = AVAILABLE && target = mb then
+      | conn :: rest ->
+          if Imap.state = AVAILABLE target  && target = mb then
             ...
           else
             loop rest
@@ -62,7 +56,7 @@ module Pool = struct
     match loop with
     | None ->
         let rec loop = function
-          | {target; conn} :: rest ->
+          | conn :: rest ->
               if Imap.state conn = AVAILABLE && target.acc = mb.acc then
                 ..
               else

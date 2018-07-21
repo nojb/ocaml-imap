@@ -22,8 +22,6 @@
 
 open Sexplib.Std
 
-include Common
-
 type error =
   | Incorrect_tag of string * string
   | Decode_error of string * int
