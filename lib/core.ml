@@ -109,6 +109,7 @@ let rec send imap r process res =
         let rec loop res =
           recv imap >>= function
           | Response.Cont _ ->
+              Lwt_io.write imap.oc s >>= fun () ->
               Lwt.return res
           | Untagged u ->
               loop (process imap res u)
