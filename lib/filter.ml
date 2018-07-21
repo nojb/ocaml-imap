@@ -36,6 +36,53 @@ type mb =
     mutable mailbox: string;
   }
 
+(*
+module Pool = struct
+  type slot =
+    {
+      target: mb;
+      conn: Core.t;
+    }
+
+  let waiters : slot Lwt.u Queue.t = Queue.create ()
+
+  let conns = ref []
+
+  (* val use: mb -> (Imap.t -> 'a Lwt.t) -> 'a Lwt.t *)
+  let use mb f =
+    let rec loop = function
+      | {target; conn} :: rest ->
+          if Imap.state = AVAILABLE && target = mb then
+            ...
+          else
+            loop rest
+      | [] ->
+          None
+    in
+    match loop with
+    | None ->
+        let rec loop = function
+          | {target; conn} :: rest ->
+              if Imap.state conn = AVAILABLE && target.acc = mb.acc then
+                ..
+              else
+                loop rest
+          | [] ->
+              NOne
+        in
+        begin match loop with
+        | None ->
+            let t, u = Lwt.wait () in
+            Queue.push waiters u;
+            t >>= f
+        | Some x ->
+            x
+        end
+    | Some x ->
+        x
+end
+*)
+
 let connect {account = {host; port; username; password}; _} =
   Core.connect ~host ?port ~username ~password
 
