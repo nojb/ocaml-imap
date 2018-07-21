@@ -76,7 +76,7 @@ let parse ic =
     Lwt.on_success (Lwt_io.read_line ic) k
   in
   let get_exactly n k =
-    let k s = Printf.eprintf "> [%d bytes]" (String.length s); k s in
+    let k s = Printf.eprintf "> [%d bytes]\n" (String.length s); k s in
     let b = Bytes.create n in
     Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
   in

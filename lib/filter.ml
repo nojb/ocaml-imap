@@ -80,8 +80,8 @@ class message rep uid =
       connect rep >>= fun imap ->
       Core.examine imap (mailbox rep) >>= fun () ->
       let strm = Core.uid_fetch imap [uid] [Fetch.Request.rfc822] in
-      Lwt_stream.next strm >>= fun (_, {Fetch.Response.rfc822_text; _}) ->
-      Lwt.return rfc822_text
+      Lwt_stream.next strm >>= fun (_, {Fetch.Response.rfc822; _}) ->
+      Lwt.return rfc822
 
     method rep = rep
   end
