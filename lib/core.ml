@@ -91,36 +91,36 @@ let parse ic =
 let recv {ic; _} =
   parse ic
 
-let rec send imap r process res =
+let rec send imap r process =
   match r with
   | Encoder.End ->
-      Lwt.return res
+      Lwt.return_unit
   | Wait r ->
-      let rec loop res =
+      let rec loop () =
         recv imap >>= function
         | Response.Cont _ ->
-            send imap r process res
+            send imap r process
         | Untagged u ->
-            loop (process imap res u)
+            process u;
+            loop ()
         | Tagged _ ->
             Lwt.fail (Failure "not expected")
       in
-      Lwt_io.flush imap.oc >>= fun () -> loop res
+      Lwt_io.flush imap.oc >>= loop
   | Crlf r ->
       Lwt_io.write imap.oc "\r\n" >>= fun () ->
-      send imap r process res
+      send imap r process
   | Raw (s, r) ->
       Lwt_io.write imap.oc s >>= fun () ->
-      send imap r process res
+      send imap r process
 
-let send imap r process res =
+let send imap r process =
   let r = r Encoder.End in
   Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_s r));
-  send imap r process res >>= fun res ->
-  Lwt_io.flush imap.oc >>= fun () ->
-  Lwt.return res
+  send imap r process >>= fun () ->
+  Lwt_io.flush imap.oc
 
-let wrap_process f imap res u =
+let wrap_process f u =
   begin match u with
   | Response.Untagged.State (NO (_, s)) ->
       raise (Error (No s))
@@ -129,23 +129,22 @@ let wrap_process f imap res u =
   | _ ->
       ()
   end;
-  f imap res u
+  f u
 
-let run imap format res process =
+let run imap format process =
   let process = wrap_process process in
   let tag = tag imap in
   let r = Encoder.(raw tag ++ format & crlf) in
-  send imap r process res >>= fun res ->
   let rec loop res =
     recv imap >>= function
     | Response.Cont _ ->
         Lwt.fail (Failure "unexpected")
     | Untagged u ->
-        begin match process imap res u with
+        begin match process u with
         | exception e ->
             Lwt.fail e
-        | res ->
-            loop res
+        | () ->
+            loop ()
         end
     | Tagged (_, NO (_code, s)) ->
         Lwt.fail (Error (No s))
@@ -155,46 +154,51 @@ let run imap format res process =
         imap.tag <- imap.tag + 1;
         Lwt.return res
   in
-  loop res
+  send imap r process >>= loop
 
-let idle imap =
-  let process = wrap_process (fun _ r _ -> r) in
-  let tag = tag imap in
-  let r = Encoder.(raw tag ++ raw "IDLE" & crlf) in
-  let t, u = Lwt.wait () in
-  let t = t >>= fun () -> send imap Encoder.(raw "DONE" & crlf) process () in
-  let stop () = imap.stop_poll <- None; Lwt.wakeup u () in
-  send imap r process () >>= fun () ->
-  let rec loop () =
-    recv imap >>= function
-    | Response.Cont _ ->
-        imap.stop_poll <- Some stop;
-        loop ()
-    | Untagged _ ->
-        stop ();
-        loop ()
-    | Tagged (_t, _) -> (* FIXME *)
-        imap.tag <- imap.tag + 1;
-        Lwt.return_unit
-  in
-  Lwt.join [loop (); t]
+let run imap format res process =
+  let res = ref res in
+  run imap format (fun u -> res := process !res u) >>= fun () ->
+  Lwt.return !res
 
-let stop_poll imap =
-  match imap.stop_poll with
-  | Some f -> f ()
-  | None -> ()
+(* let idle imap = *)
+(*   let process = wrap_process (fun _ r _ -> r) in *)
+(*   let tag = tag imap in *)
+(*   let r = Encoder.(raw tag ++ raw "IDLE" & crlf) in *)
+(*   let t, u = Lwt.wait () in *)
+(*   let t = t >>= fun () -> send imap Encoder.(raw "DONE" & crlf) process () in *)
+(*   let stop () = imap.stop_poll <- None; Lwt.wakeup u () in *)
+(*   send imap r process () >>= fun () -> *)
+(*   let rec loop () = *)
+(*     recv imap >>= function *)
+(*     | Response.Cont _ -> *)
+(*         imap.stop_poll <- Some stop; *)
+(*         loop () *)
+(*     | Untagged _ -> *)
+(*         stop (); *)
+(*         loop () *)
+(*     | Tagged (_t, _) -> (\* FIXME *\) *)
+(*         imap.tag <- imap.tag + 1; *)
+(*         Lwt.return_unit *)
+(*   in *)
+(*   Lwt.join [loop (); t] *)
 
-let poll imap =
-  idle imap
+(* let stop_poll imap = *)
+(*   match imap.stop_poll with *)
+(*   | Some f -> f () *)
+(*   | None -> () *)
+
+(* let poll imap = *)
+(*   idle imap *)
 
 let login imap username password =
   let format = Encoder.(str "LOGIN" ++ str username ++ str password) in
-  let process _ res _ = res in
+  let process res _ = res in
   run imap format () process
 
 let _capability imap =
   let format = Encoder.(str "CAPABILITY") in
-  let process _ caps = function
+  let process caps = function
     | Response.Untagged.CAPABILITY caps1 -> caps @ caps1
     | _ -> caps
   in
@@ -202,27 +206,27 @@ let _capability imap =
 
 let create imap m =
   let format = Encoder.(str "CREATE" ++ mutf7 m) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let delete imap m =
   let format = Encoder.(str "DELETE" ++ mutf7 m) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let rename imap m1 m2 =
   let format = Encoder.(str "RENAME" ++ mutf7 m1 ++ mutf7 m2) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let logout imap =
   let format = Encoder.(str "LOGOUT") in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let noop imap =
   let format = Encoder.(str "NOOP") in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let list imap ?(ref = "") s =
   let format = Encoder.(str "LIST" ++ mutf7 ref ++ str s) in
-  let process _ r = function
+  let process r = function
     | Response.Untagged.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: r
     | _ -> List.rev r
   in
@@ -230,7 +234,7 @@ let list imap ?(ref = "") s =
 
 let status imap m att =
   let format = Encoder.(str "STATUS" ++ mutf7 m ++ p (list (fun x -> x) att)) in
-  let process _ res = function
+  let process res = function
     | Response.Untagged.STATUS (mbox, items) when m = mbox ->
         let aux res = function
           | (MESSAGES n : Status.MailboxAttribute.t) -> {res with Status.Response.messages = Some n}
@@ -248,7 +252,7 @@ let status imap m att =
 
 let copy_gen cmd imap nums mbox =
   let format = Encoder.(raw cmd ++ eset (Uint32.Set.of_list nums) ++ mutf7 mbox) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let copy =
   copy_gen "COPY"
@@ -258,22 +262,22 @@ let uid_copy =
 
 let _check imap =
   let format = Encoder.(str "CHECK") in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let _close imap =
-  run imap Encoder.(raw "CLOSE") () (fun _ r _ -> r)
+  run imap Encoder.(raw "CLOSE") () (fun r _ -> r)
 
 let expunge imap =
   let format = Encoder.(str "EXPUNGE") in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let uid_expunge imap nums =
   let format = Encoder.(str "UID EXPUNGE" ++ eset (Uint32.Set.of_list nums)) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let search_gen cmd imap sk =
   let format = Encoder.(raw cmd ++ Search.encode sk) in
-  let process _ (res, m) = function
+  let process (res, m) = function
     | Response.Untagged.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)
   in
@@ -288,7 +292,7 @@ let uid_search =
 let select_gen cmd imap m =
   let arg = if false (* List.mem Capability.CONDSTORE imap.capabilities *) then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let select =
   select_gen "SELECT"
@@ -308,7 +312,7 @@ let append imap m ?flags ?internaldate data =
     | Some s -> Encoder.(raw " " & str s)
   in
   let format = Encoder.(raw "APPEND" ++ mutf7 m & flags & internaldate ++ literal data) in
-  let process _ () _ = () in
+  let process () _ = () in
   run imap format () process
 
 module Int32Map = Map.Make (Int32)
@@ -330,7 +334,7 @@ let fetch_gen cmd imap ?changed_since nums att =
   in
   let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ att & changed_since in
   let strm, push = Lwt_stream.create () in
-  let process _ () = function
+  let process () = function
     | Response.Untagged.FETCH (num, items) ->
         let aux res = function
           | (FLAGS flags : Fetch.MessageAttribute.t) -> {res with Fetch.Response.flags}
@@ -394,7 +398,7 @@ let store_gen cmd imap ?unchanged_since mode nums att =
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ unchanged_since ++ raw base ++ p att in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let store =
   store_gen "STORE"
@@ -404,7 +408,7 @@ let uid_store =
 
 let _enable imap caps =
   let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in
-  run imap format () (fun _ r _ -> r)
+  run imap format () (fun r _ -> r)
 
 let () =
   Ssl.init ()
