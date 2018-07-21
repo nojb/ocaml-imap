@@ -22,33 +22,38 @@
 
 open Sexplib.Std
 
+type s =
+  | End
+  | Wait of s
+  | Crlf of s
+  | Raw of string * s [@@deriving sexp]
+
 type t =
-  | Cat of t * t
-  | Literal of string
-  | Raw of string [@@deriving sexp]
+  s -> s
 
-let rec is_empty = function
-  | Cat (f, g) -> is_empty f && is_empty g
-  | Literal _ -> false
-  | Raw "" -> true
-  | Raw _ -> false
+let raw s k =
+  Raw (s, k)
 
-let raw s =
-  Raw s
+let empty k =
+  k
 
-let empty =
-  raw ""
+let char c =
+  raw (String.make 1 c)
 
-let (&) f g =
-  if is_empty f then g
-  else if is_empty g then f
-  else Cat (f, g)
+let (&) f g k =
+  f (g k)
 
 let (++) f g =
-  f & raw " " & g
+  f & char ' ' & g
+
+let wait k =
+  Wait k
+
+let crlf k =
+  Crlf k
 
 let literal s =
-  Literal s
+  char '{' & raw (string_of_int (String.length s)) & char '}' & crlf & wait & raw s
 
 let str s =
   let literal_chars = function
@@ -74,7 +79,7 @@ let str s =
     raw s
 
 let p f =
-  Cat (Raw "(", Cat (f, Raw ")"))
+  char '(' & f & char ')'
 
 let mutf7 s =
   str (Mutf7.encode s)
@@ -92,12 +97,12 @@ let list ?(sep = ' ') f l =
   let rec loop = function
     | [] -> empty
     | [x] -> f x
-    | x :: xs -> Cat (f x, Cat (Raw (String.make 1 sep), loop xs))
+    | x :: xs -> f x & char sep & loop xs
   in
   loop l
 
 let plist ?sep f l =
-  Cat (Raw "(", Cat (list ?sep f l, Raw ")"))
+  char '(' & list ?sep f l & char ')'
 
 let eset s =
   let elt = function 0l -> "*" | n -> Printf.sprintf "%lu" n in

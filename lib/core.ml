@@ -95,39 +95,29 @@ let recv {ic; _} =
 
 let rec send imap r process res =
   match r with
-  | Encoder.Cat (r1, r2) ->
-      send imap r1 process res >>= fun res ->
-      send imap r2 process res
-  | Literal s ->
-      if false (* List.mem Capability.LITERALPLUS imap.capabilities ||
-                  (List.mem Capability.LITERALMINUS imap.capabilities && String.length s <= 4096) *)
-      then
-        Lwt_io.fprintf imap.oc "{%d+}\r\n" (String.length s) >>= fun () ->
-        Lwt_io.write imap.oc s >>= fun () ->
-        Lwt.return res
-      else
-        let rec loop res =
-          recv imap >>= function
-          | Response.Cont _ ->
-              Lwt_io.write imap.oc s >>= fun () ->
-              Lwt.return res
-          | Untagged u ->
-              loop (process imap res u)
-          | Tagged _ ->
-              Lwt.fail (Failure "not expected")
-        in
-        Lwt_io.fprintf imap.oc "{%d}\r\n" (String.length s) >>= fun () ->
-        Lwt_io.flush imap.oc >>= fun () ->
-        loop res
-  | Raw s ->
-      Lwt_io.write imap.oc s >>= fun () ->
+  | Encoder.End ->
       Lwt.return res
+  | Wait r ->
+      let rec loop res =
+        recv imap >>= function
+        | Response.Cont _ ->
+            send imap r process res
+        | Untagged u ->
+            loop (process imap res u)
+        | Tagged _ ->
+            Lwt.fail (Failure "not expected")
+      in
+      Lwt_io.flush imap.oc >>= fun () -> loop res
+  | Crlf r ->
+      Lwt_io.write imap.oc "\r\n" >>= fun () ->
+      send imap r process res
+  | Raw (s, r) ->
+      Lwt_io.write imap.oc s >>= fun () ->
+      send imap r process res
 
 let send imap r process res =
-  begin if imap.debug then
-    Lwt_io.eprintl (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_t r))
-  else
-    Lwt.return_unit end >>= fun () ->
+  let r = r Encoder.End in
+  Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_s r));
   send imap r process res >>= fun res ->
   Lwt_io.flush imap.oc >>= fun () ->
   Lwt.return res
@@ -146,7 +136,7 @@ let wrap_process f imap res u =
 let run imap format res process =
   let process = wrap_process process in
   let tag = tag imap in
-  let r = Encoder.(raw tag ++ format & raw "\r\n") in
+  let r = Encoder.(raw tag ++ format & crlf) in
   send imap r process res >>= fun res ->
   let rec loop res =
     recv imap >>= function
@@ -172,9 +162,9 @@ let run imap format res process =
 let idle imap =
   let process = wrap_process (fun _ r _ -> r) in
   let tag = tag imap in
-  let r = Encoder.(raw tag ++ raw "IDLE\r\n") in
+  let r = Encoder.(raw tag ++ raw "IDLE" & crlf) in
   let t, u = Lwt.wait () in
-  let t = t >>= fun () -> send imap Encoder.(raw "DONE\r\n") process () in
+  let t = t >>= fun () -> send imap Encoder.(raw "DONE" & crlf) process () in
   let stop () = imap.stop_poll <- None; Lwt.wakeup u () in
   send imap r process () >>= fun () ->
   let rec loop () =
@@ -284,7 +274,7 @@ let uid_expunge imap nums =
   run imap format () (fun _ r _ -> r)
 
 let search_gen cmd imap sk =
-  let format = Encoder.(raw cmd ++ sk) in
+  let format = Encoder.(raw cmd ++ Search.encode sk) in
   let process _ (res, m) = function
     | Response.Untagged.SEARCH (ids, m1) -> ids @ res, m1
     | _ -> (res, m)

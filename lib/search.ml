@@ -22,7 +22,7 @@
 
 open Encoder
 
-type key = t [@@deriving sexp]
+type key = t
 
 let all = raw "ALL"
 let seq s = eset (Uint32.Set.of_list s)
@@ -66,3 +66,5 @@ let x_gm_raw s = raw "X-GM-RAW" ++ str s
 let x_gm_msgid n = raw "X-GM-MSGID" ++ uint64 n
 let x_gm_thrid n = raw "X-GM-THRID" ++ uint64 n
 let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
+
+let encode x = x

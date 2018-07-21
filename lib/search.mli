@@ -23,7 +23,7 @@
 open Common
 
 (** Message search *)
-type key = Encoder.t [@@deriving sexp]
+type key
 
 val all: key
 (** All messages in the mailbox. *)
@@ -163,3 +163,5 @@ val x_gm_thrid: modseq -> key
 
 val x_gm_labels: string list -> key
 (** Messages with given Gmail labels. *)
+
+val encode: key -> Encoder.t
