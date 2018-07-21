@@ -36,6 +36,15 @@ exception Error of error
 type t
 (** The type for connections. *)
 
+type state =
+  | NON_AUTHENTICATED
+  | AUTHENTICATED
+  | SELECTED of string
+  | IN_PROGRESS of string
+  | LOGGED_OUT
+
+val state: t -> state
+
 val connect: host:string -> ?port:int -> username:string -> password:string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
