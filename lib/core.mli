@@ -79,7 +79,7 @@ val examine: t -> string -> unit Lwt.t
 val select: t -> string -> unit Lwt.t
 (** [select imap m] selects the mailbox [m] for access. *)
 
-val append: t -> string -> ?flags:Flag.t list -> string -> unit Lwt.t
+val append: t -> string -> ?flags:Flag.t list -> ?internaldate:string -> string -> unit Lwt.t
 (** [append imap mbox flags id data] appends [data] as a new message to the end
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)

@@ -22,7 +22,7 @@
 
 open Lwt.Infix
 
-type imap_account =
+type acc =
   {
     host: string;
     port: int option;
@@ -30,12 +30,23 @@ type imap_account =
     password: string;
   }
 
-class message acc mailbox uid =
-  let {host; port; username; password} = acc in
-  object
+type mb =
+  {
+    account: acc;
+    mutable mailbox: string;
+  }
+
+let connect {account = {host; port; username; password}; _} =
+  Core.connect ~host ?port ~username ~password
+
+let mailbox {mailbox; _} =
+  mailbox
+
+class message rep uid =
+  object (self)
     method fetch_headers =
-      Core.connect ~host ?port ~username ~password >>= fun imap ->
-      Core.examine imap mailbox >>= fun () ->
+      connect self # rep >>= fun imap ->
+      Core.examine imap (mailbox self # rep) >>= fun () ->
       let strm = Core.uid_fetch imap [uid] [Fetch.Request.rfc822_header] in
       Lwt_stream.next strm >|= fun (_, {Fetch.Response.rfc822_header; _}) ->
       let parts = Re.split Re.(compile (str "\r\n")) rfc822_header in
@@ -66,48 +77,56 @@ class message acc mailbox uid =
         ) parts
 
     method fetch_body =
-      Core.connect ~host ?port ~username ~password >>= fun imap ->
-      Core.examine imap mailbox >>= fun () ->
+      connect rep >>= fun imap ->
+      Core.examine imap (mailbox rep) >>= fun () ->
       let strm = Core.uid_fetch imap [uid] [Fetch.Request.rfc822] in
       Lwt_stream.next strm >>= fun (_, {Fetch.Response.rfc822_text; _}) ->
       Lwt.return rfc822_text
+
+    method rep = rep
   end
 
-class message_set acc mailbox query =
-  let {host; port; username; password} = acc in
-  object
+class message_set rep query =
+  object (self)
     method count =
-      Core.connect ~host ?port ~username ~password >>= fun imap ->
-      Core.examine imap mailbox >>= fun () ->
+      connect rep >>= fun imap ->
+      Core.examine imap (mailbox rep) >>= fun () ->
       Core.uid_search imap query >|= fun (uids, _) ->
       List.length uids
 
     method get uid =
-      new message acc mailbox uid
-      (* Core.connect ~host ?port ~username ~password >>= fun imap ->
-       * Core.examine imap mailbox >>= fun () ->
-       * Core.search imap (Search.uid [uid]) >>= function
-       * | (_ :: _), _ ->
-       *     Lwt.return (new message acc mailbox uid)
-       * | [], _ ->
-       *     Lwt.fail (Failure "no such message") *)
+      new message rep uid
 
     method uids =
-      Core.connect ~host ?port ~username ~password >>= fun imap ->
-      Core.examine imap mailbox >>= fun () ->
+      connect rep >>= fun imap ->
+      Core.examine imap (mailbox rep) >>= fun () ->
       Core.uid_search imap query >|= fun (uids, _) ->
       uids
 
     method contain_from s =
-      new message_set acc mailbox Search.(query && from s)
+      new message_set rep Search.(query && from s)
 
     method is_unseen =
-      new message_set acc mailbox Search.(query && unseen)
+      new message_set rep Search.(query && unseen)
+
+    method copy (dst : mailbox) =
+      connect rep >>= fun src_imap ->
+      connect dst # rep >>= fun dst_imap ->
+      Core.examine src_imap (mailbox self # rep) >>= fun () ->
+      Core.select dst_imap (mailbox dst # rep) >>= fun () ->
+      Core.uid_search src_imap query >>= fun (uids, _) ->
+      let strm = Core.uid_fetch src_imap uids Fetch.Request.[rfc822; flags; internaldate] in
+      Lwt_stream.iter_s (fun (_, {Fetch.Response.internaldate; flags; rfc822; _}) ->
+          Core.append dst_imap (dst # name) ~flags ~internaldate rfc822
+        ) strm
+
+    method rep = rep
   end
 
-class mailbox acc mailbox =
+and mailbox account mailbox =
+  let rep = {account; mailbox} in
   object
-    inherit message_set acc mailbox Search.all
+    inherit message_set rep Search.all
     method name = mailbox
   end
 

@@ -20,10 +20,13 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+type mb
+
 class type message =
   object
     method fetch_headers: (string * string) list Lwt.t
     method fetch_body: string Lwt.t
+    method rep: mb
   end
 
 class type message_set =
@@ -34,9 +37,13 @@ class type message_set =
 
     method contain_from: string -> message_set
     method is_unseen: message_set
+
+    method copy: mailbox -> unit Lwt.t
+
+    method rep: mb
   end
 
-class type mailbox =
+and mailbox =
   object
     inherit message_set
     method name: string

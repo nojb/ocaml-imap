@@ -307,8 +307,18 @@ let select =
 let examine =
   select_gen "EXAMINE"
 
-let append imap m ?(flags = []) data =
-  let format = Encoder.(raw "APPEND" ++ mutf7 m ++ p (list Flag.encode flags) ++ literal data) in
+let append imap m ?flags ?internaldate data =
+  let flags =
+    match flags with
+    | None -> Encoder.empty
+    | Some l -> Encoder.(raw " " & p (list Flag.encode l))
+  in
+  let internaldate =
+    match internaldate with
+    | None -> Encoder.empty
+    | Some s -> Encoder.(raw " " & str s)
+  in
+  let format = Encoder.(raw "APPEND" ++ mutf7 m & flags & internaldate ++ literal data) in
   let process _ () _ = () in
   run imap format () process
 
