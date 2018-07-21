@@ -86,43 +86,48 @@ let mailbox {mailbox; _} =
 class message rep uid =
   object (self)
     method fetch_headers =
+      let resp = ref [] in
+      let push _ {Fetch.Response.rfc822_header; _} =
+        let parts = Re.split Re.(compile (str "\r\n")) rfc822_header in
+        let parts = List.filter (function "" -> false | _ -> true) parts in
+        let rec loop acc curr = function
+          | s :: rest ->
+              if s.[0] = '\t' || s.[0] = ' ' then
+                loop acc (curr ^ " " ^ String.trim s) rest
+              else
+                loop (curr :: acc) (String.trim s) rest
+          | [] ->
+              if curr <> "" then
+                List.rev (curr :: acc)
+              else
+                List.rev acc
+        in
+        let parts = loop [] "" parts in
+        let parts = List.filter (function "" -> false | _ -> true) parts in
+        (* List.iter (fun s -> Printf.eprintf "%S\n%!" s) parts; *)
+        resp :=
+          List.map (fun part ->
+              let i =
+                match String.index part ':' with
+                | i -> i
+                | exception Not_found -> String.length part
+              in
+              String.trim (String.sub part 0 i),
+              String.trim (String.sub part (i+1) (String.length part - i - 1))
+            ) parts
+      in
       connect self # rep >>= fun imap ->
       Core.examine imap (mailbox self # rep) >>= fun () ->
-      let strm = Core.uid_fetch imap [uid] [Fetch.Request.rfc822_header] in
-      Lwt_stream.next strm >|= fun (_, {Fetch.Response.rfc822_header; _}) ->
-      let parts = Re.split Re.(compile (str "\r\n")) rfc822_header in
-      let parts = List.filter (function "" -> false | _ -> true) parts in
-      let rec loop acc curr = function
-        | s :: rest ->
-            if s.[0] = '\t' || s.[0] = ' ' then
-              loop acc (curr ^ " " ^ String.trim s) rest
-            else
-              loop (curr :: acc) (String.trim s) rest
-        | [] ->
-            if curr <> "" then
-              List.rev (curr :: acc)
-            else
-              List.rev acc
-      in
-      let parts = loop [] "" parts in
-      let parts = List.filter (function "" -> false | _ -> true) parts in
-      (* List.iter (fun s -> Printf.eprintf "%S\n%!" s) parts; *)
-      List.map (fun part ->
-          let i =
-            match String.index part ':' with
-            | i -> i
-            | exception Not_found -> String.length part
-          in
-          String.trim (String.sub part 0 i),
-          String.trim (String.sub part (i+1) (String.length part - i - 1))
-        ) parts
+      Core.uid_fetch imap [uid] [Fetch.Request.rfc822_header] push >>= fun () ->
+      Lwt.return !resp
 
     method fetch_body =
+      let resp = ref "" in
+      let push _ {Fetch.Response.rfc822; _} = resp := rfc822 in
       connect rep >>= fun imap ->
       Core.examine imap (mailbox rep) >>= fun () ->
-      let strm = Core.uid_fetch imap [uid] [Fetch.Request.rfc822] in
-      Lwt_stream.next strm >>= fun (_, {Fetch.Response.rfc822; _}) ->
-      Lwt.return rfc822
+      Core.uid_fetch imap [uid] [Fetch.Request.rfc822] push >>= fun () ->
+      Lwt.return !resp
 
     method rep = rep
   end
@@ -156,10 +161,13 @@ class message_set rep query =
       Core.examine src_imap (mailbox self # rep) >>= fun () ->
       Core.select dst_imap (mailbox dst # rep) >>= fun () ->
       Core.uid_search src_imap query >>= fun (uids, _) ->
-      let strm = Core.uid_fetch src_imap uids Fetch.Request.[rfc822; flags; internaldate] in
-      Lwt_stream.iter_s (fun (_, {Fetch.Response.internaldate; flags; rfc822; _}) ->
-          Core.append dst_imap (dst # name) ~flags ~internaldate rfc822
-        ) strm
+      let appends = ref Lwt.return_unit in
+      let push _ {Fetch.Response.internaldate; flags; rfc822; _} =
+        appends :=
+          !appends >>= fun () -> Core.append dst_imap (dst # name) ~flags ~internaldate rfc822
+      in
+      Core.uid_fetch src_imap uids Fetch.Request.[rfc822; flags; internaldate] push >>= fun () ->
+      !appends
 
     method rep = rep
   end
