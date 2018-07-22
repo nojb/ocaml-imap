@@ -23,7 +23,7 @@
 type acc =
   {
     host: string;
-    port: int option;
+    port: int;
     username: string;
     password: string;
   }

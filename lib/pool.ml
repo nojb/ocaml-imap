@@ -25,7 +25,7 @@ open Lwt.Infix
 type acc =
   {
     host: string;
-    port: int option;
+    port: int;
     username: string;
     password: string;
   }
@@ -54,7 +54,7 @@ let rec use ({account = {host; port; username; password}; mailbox} as state) f =
           if List.length !conns < !max_conns then begin
             incr max_conns;
             Printf.eprintf "[Starting new connection to %s]\n%!" host;
-            Core.connect ~host ?port ~username ~password >>= fun x ->
+            Core.connect ~host ~port ~username ~password >>= fun x ->
             conns := x :: !conns;
             Core.select x mailbox >>= fun () ->
             wrap (f x)

@@ -440,7 +440,7 @@ let _enable imap caps =
 let () =
   Ssl.init ()
 
-let connect ~host ?(port = 993) ~username ~password =
+let connect ~host ~port ~username ~password =
   let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
   let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
   Lwt_unix.gethostbyname host >>= fun he ->

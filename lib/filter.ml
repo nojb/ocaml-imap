@@ -25,7 +25,7 @@ open Lwt.Infix
 type acc = Pool.acc =
   {
     host: string;
-    port: int option;
+    port: int;
     username: string;
     password: string;
   }
@@ -37,7 +37,7 @@ type mb = Pool.mb =
   }
 
 let connect {account = {host; port; username; password}; _} =
-  Core.connect ~host ?port ~username ~password
+  Core.connect ~host ~port ~username ~password
 
 let mailbox {mailbox; _} =
   mailbox
@@ -132,12 +132,12 @@ and mailbox account mailbox =
     method name = mailbox
   end
 
-class account ~host ?port ~username ~password () =
+class account ~host ?(port = 993) ~username ~password () =
   let acc = {host; port; username; password} in
   object
     method inbox = new mailbox acc "INBOX"
     method list_all =
       let mk (_, _, name) = new mailbox acc name in
-      Core.connect ~host ?port ~username ~password >>= fun imap ->
+      Core.connect ~host ~port ~username ~password >>= fun imap ->
       Core.list imap "%" >|= List.map mk
   end

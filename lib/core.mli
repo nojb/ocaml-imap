@@ -46,7 +46,7 @@ type state =
 val state_to_string: state -> string
 val state: t -> state
 
-val connect: host:string -> ?port:int -> username:string -> password:string -> t Lwt.t
+val connect: host:string -> port:int -> username:string -> password:string -> t Lwt.t
 (** [connect server username password mailbox]. *)
 
 val disconnect: t -> unit Lwt.t
