@@ -43,6 +43,7 @@ type state =
   | IN_PROGRESS of string
   | LOGGED_OUT
 
+val state_to_string: state -> string
 val state: t -> state
 
 val connect: host:string -> ?port:int -> username:string -> password:string -> t Lwt.t

@@ -34,5 +34,4 @@ type mb =
     mutable mailbox: string;
   }
 
-val select: mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t
-val examine: mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t
+val uid_search: mb -> Search.key -> (Common.uid list * Common.modseq option) Lwt.t

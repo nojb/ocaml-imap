@@ -50,6 +50,13 @@ type state =
   | IN_PROGRESS of string
   | LOGGED_OUT
 
+let state_to_string = function
+  | NON_AUTHENTICATED -> "non_authenticated"
+  | AUTHENTICATED -> "authenticated"
+  | SELECTED s -> Printf.sprintf "selected:%S" s
+  | IN_PROGRESS s -> Printf.sprintf "in_progress:%s" s
+  | LOGGED_OUT -> "logged_out"
+
 let id = ref (-1)
 
 type t =

@@ -52,8 +52,11 @@ let rec use ~read_only ({account = {host; port; username; password}; mailbox} as
       begin match List.find_opt (fun imap -> Core.state imap = Core.AUTHENTICATED) !conns with
       | None ->
           if List.length !conns < !max_conns then begin
+            incr max_conns;
             Printf.eprintf "[Starting new connection to %s]\n%!" host;
             Core.connect ~host ?port ~username ~password >>= fun x ->
+            conns := x :: !conns;
+            (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
             wrap (f x)
           end else
             Lwt_condition.wait waiters >>= fun () -> use ~read_only state f
@@ -67,8 +70,11 @@ let rec use ~read_only ({account = {host; port; username; password}; mailbox} as
       (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
       wrap (f x)
 
-let select mb f =
+let _select mb f =
   use ~read_only:false mb f
 
 let examine mb f =
   use ~read_only:true mb f
+
+let uid_search mb query =
+  examine mb (fun imap -> Core.uid_search imap query)

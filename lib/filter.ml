@@ -94,19 +94,13 @@ class message rep uid =
 class message_set rep query =
   object (self)
     method count =
-      connect rep >>= fun imap ->
-      Core.examine imap (mailbox rep) >>= fun () ->
-      Core.uid_search imap query >|= fun (uids, _) ->
-      List.length uids
+      Pool.uid_search rep query >|= fst >|= List.length
 
     method get uid =
       new message rep uid
 
     method uids =
-      connect rep >>= fun imap ->
-      Core.examine imap (mailbox rep) >>= fun () ->
-      Core.uid_search imap query >|= fun (uids, _) ->
-      uids
+      Pool.uid_search rep query >|= fst
 
     method contain_from s =
       new message_set rep Search.(query && from s)
