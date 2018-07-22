@@ -43,7 +43,8 @@ let conns : Core.t list ref = ref []
 let max_conns = ref 5
 
 let wrap t =
-  t >|= fun x -> Lwt_condition.signal waiters (); x
+  Lwt.on_success t (Lwt_condition.signal waiters);
+  t
 
 let rec use ~read_only ({account = {host; port; username; password}; mailbox} as state) f =
   match List.find_opt (fun imap -> Core.state imap = Core.SELECTED mailbox) !conns with
@@ -63,6 +64,7 @@ let rec use ~read_only ({account = {host; port; username; password}; mailbox} as
       end
   | Some x ->
       Printf.eprintf "[Reusing new connection to %s]\n%!" host;
+      (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
       wrap (f x)
 
 let select mb f =
