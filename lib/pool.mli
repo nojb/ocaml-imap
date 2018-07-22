@@ -34,4 +34,5 @@ type mb =
     mutable mailbox: string;
   }
 
-val use: read_only:bool -> mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t
+val select: mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t
+val examine: mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t

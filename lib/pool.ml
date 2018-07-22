@@ -64,3 +64,9 @@ let rec use ~read_only ({account = {host; port; username; password}; mailbox} as
   | Some x ->
       Printf.eprintf "[Reusing new connection to %s]\n%!" host;
       wrap (f x)
+
+let select mb f =
+  use ~read_only:false mb f
+
+let examine mb f =
+  use ~read_only:true mb f
