@@ -50,8 +50,11 @@ type state =
   | IN_PROGRESS of string
   | LOGGED_OUT
 
+let id = ref (-1)
+
 type t =
   {
+    id: int;
     sock: Lwt_ssl.socket;
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
@@ -68,6 +71,7 @@ let create_connection sock =
   let ic = Lwt_ssl.in_channel_of_descr sock in
   let oc = Lwt_ssl.out_channel_of_descr sock in
   {
+    id = (incr id; !id);
     sock;
     ic;
     oc;
@@ -80,13 +84,13 @@ let create_connection sock =
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
-let parse ic =
+let parse {id; ic; _} =
   let get_line k =
-    let k s = prerr_string "> "; prerr_endline s; k s in
+    let k s = Printf.eprintf "{%03d} > %s\n%!" id s; k s in
     Lwt.on_success (Lwt_io.read_line ic) k
   in
   let get_exactly n k =
-    let k s = Printf.eprintf "> [%d bytes]\n" (String.length s); k s in
+    let k s = Printf.eprintf "{%03d} > [%d bytes]\n%!" id (String.length s); k s in
     let b = Bytes.create n in
     Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
   in
@@ -100,16 +104,13 @@ let parse ic =
     );
   t
 
-let recv {ic; _} =
-  parse ic
-
 let rec send imap r process =
   match r with
   | Encoder.End ->
       Lwt.return_unit
   | Wait r ->
       let rec loop () =
-        recv imap >>= function
+        parse imap >>= function
         | Response.Cont _ ->
             send imap r process
         | Untagged u ->
@@ -151,7 +152,7 @@ let run imap ?next_state format process =
   imap.state <- IN_PROGRESS tag;
   let r = Encoder.(raw tag ++ format & crlf) in
   let rec loop res =
-    recv imap >>= function
+    parse imap >>= function
     | Response.Cont _ ->
         Lwt.fail (Failure "unexpected")
     | Untagged u ->
@@ -440,7 +441,7 @@ let connect ~host ?(port = 993) ~username ~password =
   Lwt_unix.connect sock addr >>= fun () ->
   Lwt_ssl.ssl_connect sock ctx >>= fun sock ->
   let imap = create_connection sock in
-  recv imap >>= function
+  parse imap >>= function
   | Response.Untagged _ ->
       login imap username password >|= fun () -> imap
   | Tagged _ | Cont _ ->
