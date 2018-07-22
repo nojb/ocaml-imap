@@ -139,14 +139,11 @@ let send imap r process =
   send imap r process >>= fun () ->
   Lwt_io.flush imap.oc
 
-let wrap_process f u =
-  begin match u with
+let wrap_process f = function
   | Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
       raise (Error (Server_error s))
-  | _ ->
-      ()
-  end;
-  f u
+  | u ->
+      f u
 
 let run imap ?next_state format process =
   let process = wrap_process process in
@@ -158,7 +155,7 @@ let run imap ?next_state format process =
   let rec loop res =
     parse imap >>= function
     | Response.Cont _ ->
-        Lwt.fail (Failure "unexpected")
+        Lwt.fail_with "unexpected"
     | Untagged u ->
         Lwt.wrap1 process u >>= loop
     | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
@@ -440,7 +437,7 @@ let connect ~host ~port ~username ~password =
   | Response.Untagged _ ->
       login imap username password >|= fun () -> imap
   | Tagged _ | Cont _ ->
-      Lwt.fail (Failure "unexpected response")
+      Lwt.fail_with "unexpected response"
 
 let disconnect imap =
   logout imap >>= fun () -> Lwt_ssl.ssl_shutdown imap.sock
