@@ -46,7 +46,7 @@ let wrap t =
   Lwt.on_success t (fun _ -> Lwt_condition.signal waiters ());
   t
 
-let rec use ~read_only ({account = {host; port; username; password}; mailbox} as state) f =
+let rec use ({account = {host; port; username; password}; mailbox} as state) f =
   match List.find_opt (fun imap -> Core.state imap = Core.SELECTED mailbox) !conns with
   | None ->
       begin match List.find_opt (fun imap -> Core.state imap = Core.AUTHENTICATED) !conns with
@@ -56,25 +56,18 @@ let rec use ~read_only ({account = {host; port; username; password}; mailbox} as
             Printf.eprintf "[Starting new connection to %s]\n%!" host;
             Core.connect ~host ?port ~username ~password >>= fun x ->
             conns := x :: !conns;
-            (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
+            Core.select x mailbox >>= fun () ->
             wrap (f x)
           end else
-            Lwt_condition.wait waiters >>= fun () -> use ~read_only state f
+            Lwt_condition.wait waiters >>= fun () -> use state f
       | Some x ->
           Printf.eprintf "[Reusing new connection to %s]\n%!" host;
-          (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
+          Core.select x mailbox >>= fun () ->
           wrap (f x)
       end
   | Some x ->
       Printf.eprintf "[Reusing new connection to %s]\n%!" host;
-      (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
       wrap (f x)
 
-let _select mb f =
-  use ~read_only:false mb f
-
-let examine mb f =
-  use ~read_only:true mb f
-
 let uid_search mb query =
-  examine mb (fun imap -> Core.uid_search imap query)
+  use mb (fun imap -> Core.uid_search imap query)
