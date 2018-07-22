@@ -95,8 +95,11 @@ class message_set rep query =
     method contain_from s =
       new message_set rep Search.(query && from s)
 
-    method is_unseen =
+    method unseen =
       new message_set rep Search.(query && unseen)
+
+    method answered =
+      new message_set rep Search.(query && answered)
 
     method copy (dst : mailbox) =
       let appends = ref [] in

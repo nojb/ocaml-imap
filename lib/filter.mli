@@ -36,7 +36,8 @@ class type message_set =
     method uids: int32 list Lwt.t
 
     method contain_from: string -> message_set
-    method is_unseen: message_set
+    method unseen: message_set
+    method answered: message_set
 
     method copy: mailbox -> unit Lwt.t
 
