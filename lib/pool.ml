@@ -43,7 +43,7 @@ let conns : Core.t list ref = ref []
 let max_conns = ref 5
 
 let wrap t =
-  Lwt.on_success t (Lwt_condition.signal waiters);
+  Lwt.on_success t (fun _ -> Lwt_condition.signal waiters ());
   t
 
 let rec use ~read_only ({account = {host; port; username; password}; mailbox} as state) f =
