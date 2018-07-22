@@ -40,7 +40,7 @@ class message rep uid =
   object
     method fetch_headers =
       let resp = ref [] in
-      let push _ {Fetch.Response.rfc822_header; _} =
+      let push {Fetch.Response.rfc822_header; _} =
         let parts = Re.split Re.(compile (str "\r\n")) rfc822_header in
         let parts = List.filter (function "" -> false | _ -> true) parts in
         let rec loop acc curr = function
@@ -74,7 +74,7 @@ class message rep uid =
 
     method fetch_body =
       let resp = ref "" in
-      let push _ {Fetch.Response.rfc822; _} = resp := rfc822 in
+      let push {Fetch.Response.rfc822; _} = resp := rfc822 in
       Pool.uid_fetch rep [uid] Fetch.Request.[rfc822] push >>= fun () ->
       Lwt.return !resp
 
@@ -103,7 +103,7 @@ class message_set rep query =
 
     method copy (dst : mailbox) =
       let appends = ref [] in
-      let push _ {Fetch.Response.internaldate; flags; rfc822; _} =
+      let push {Fetch.Response.internaldate; flags; rfc822; _} =
         appends := Pool.append dst # rep ~flags ~internaldate rfc822 :: !appends
       in
       Pool.uid_search rep query >>= fun (uids, _) ->

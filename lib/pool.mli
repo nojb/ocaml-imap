@@ -35,5 +35,5 @@ type mb =
   }
 
 val uid_search: mb -> Search.key -> (Common.uid list * Common.modseq option) Lwt.t
-val uid_fetch: mb -> Common.uid list -> Fetch.Request.t list -> (Common.seq -> Fetch.Response.t -> unit) -> unit Lwt.t
+val uid_fetch: mb -> Common.uid list -> Fetch.Request.t list -> (Fetch.Response.t -> unit) -> unit Lwt.t
 val append: mb -> ?flags:Flag.t list -> ?internaldate:string -> string -> unit Lwt.t

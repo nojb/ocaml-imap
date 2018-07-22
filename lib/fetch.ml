@@ -106,6 +106,7 @@ end
 module Response = struct
   type t =
     {
+      seq: seq;
       flags: Flag.t list;
       envelope: Envelope.t option;
       internaldate: string;
@@ -125,6 +126,7 @@ module Response = struct
 
   let default =
     {
+      seq = 0l;
       flags = [];
       envelope = None;
       internaldate = "";

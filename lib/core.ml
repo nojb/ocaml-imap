@@ -363,7 +363,7 @@ let fetch_gen cmd imap ?changed_since nums att push =
   in
   let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ att & changed_since in
   let process = function
-    | Response.Untagged.FETCH (num, items) ->
+    | Response.Untagged.FETCH (seq, items) ->
         let aux res = function
           | (FLAGS flags : Fetch.MessageAttribute.t) -> {res with Fetch.Response.flags}
           | ENVELOPE e -> {res with envelope = Some e}
@@ -382,8 +382,7 @@ let fetch_gen cmd imap ?changed_since nums att push =
           | X_GM_THRID x_gm_thrid -> {res with x_gm_thrid}
           | X_GM_LABELS x_gm_labels -> {res with x_gm_labels}
         in
-        let info = List.fold_left aux Fetch.Response.default items in
-        push num info
+        push (List.fold_left aux {Fetch.Response.default with seq} items)
     | _ ->
         ()
   in
