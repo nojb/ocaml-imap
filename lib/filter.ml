@@ -36,46 +36,38 @@ type mb =
     mutable mailbox: string;
   }
 
-(*
-module Pool = struct
-  let waiters : slot Lwt.u Queue.t = Queue.create ()
+module Pool : sig
+  val use: read_only:bool -> mb -> (Core.t -> 'a Lwt.t) -> 'a Lwt.t
+end = struct
+  let waiters = Lwt_condition.create ()
 
-  let conns : Imap.t list ref = ref []
+  let conns : Core.t list ref = ref []
 
-  (* val use: mb -> (Imap.t -> 'a Lwt.t) -> 'a Lwt.t *)
-  let use mb f =
-    let rec loop = function
-      | conn :: rest ->
-          if Imap.state = AVAILABLE target  && target = mb then
-            ...
-          else
-            loop rest
-      | [] ->
-          None
-    in
-    match loop with
+  let max_conns = ref 5
+
+  let wrap t =
+    t >|= fun x -> Lwt_condition.signal waiters (); x
+
+  let rec use ~read_only ({account = {host; port; username; password}; mailbox} as state) f =
+    match List.find_opt (fun imap -> Core.state imap = Core.SELECTED mailbox) !conns with
     | None ->
-        let rec loop = function
-          | conn :: rest ->
-              if Imap.state conn = AVAILABLE && target.acc = mb.acc then
-                ..
-              else
-                loop rest
-          | [] ->
-              NOne
-        in
-        begin match loop with
+        begin match List.find_opt (fun imap -> Core.state imap = Core.AUTHENTICATED) !conns with
         | None ->
-            let t, u = Lwt.wait () in
-            Queue.push waiters u;
-            t >>= f
+            if List.length !conns < !max_conns then begin
+              Printf.eprintf "[Starting new connection to %s]\n%!" host;
+              Core.connect ~host ?port ~username ~password >>= fun x ->
+              wrap (f x)
+            end else
+              Lwt_condition.wait waiters >>= fun () -> use ~read_only state f
         | Some x ->
-            x
+            Printf.eprintf "[Reusing new connection to %s]\n%!" host;
+            (if read_only then Core.examine else Core.select) x mailbox >>= fun () ->
+            wrap (f x)
         end
     | Some x ->
-        x
+        Printf.eprintf "[Reusing new connection to %s]\n%!" host;
+        wrap (f x)
 end
-*)
 
 let connect {account = {host; port; username; password}; _} =
   Core.connect ~host ?port ~username ~password
