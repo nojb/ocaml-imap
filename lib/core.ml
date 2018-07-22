@@ -28,8 +28,7 @@ type error =
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
-  | No of string
-  | Bad of string [@@deriving sexp]
+  | Server_error of string [@@deriving sexp]
 
 exception Error of error
 
@@ -142,10 +141,8 @@ let send imap r process =
 
 let wrap_process f u =
   begin match u with
-  | Response.Untagged.State (NO (_, s)) ->
-      raise (Error (No s))
-  | State (BAD (_, s)) ->
-      raise (Error (Bad s))
+  | Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
+      raise (Error (Server_error s))
   | _ ->
       ()
   end;
@@ -169,12 +166,9 @@ let run imap ?next_state format process =
         | () ->
             loop ()
         end
-    | Tagged (_, NO (_code, s)) ->
+    | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
         imap.state <- prev_state;
-        Lwt.fail (Error (No s))
-    | Tagged (_, BAD (_code, s)) ->
-        imap.state <- prev_state;
-        Lwt.fail (Error (Bad s))
+        Lwt.fail (Error (Server_error s))
     | Tagged (_, OK _) ->
         imap.tag <- imap.tag + 1;
         imap.state <- next_state;
