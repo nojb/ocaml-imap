@@ -160,12 +160,7 @@ let run imap ?next_state format process =
     | Response.Cont _ ->
         Lwt.fail (Failure "unexpected")
     | Untagged u ->
-        begin match process u with
-        | exception e ->
-            Lwt.fail e
-        | () ->
-            loop ()
-        end
+        Lwt.wrap1 process u >>= loop
     | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
         imap.state <- prev_state;
         Lwt.fail (Error (Server_error s))
