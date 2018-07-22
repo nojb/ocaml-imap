@@ -36,14 +36,8 @@ type mb = Pool.mb =
     mutable mailbox: string;
   }
 
-let connect {account = {host; port; username; password}; _} =
-  Core.connect ~host ~port ~username ~password
-
-let mailbox {mailbox; _} =
-  mailbox
-
 class message rep uid =
-  object (self)
+  object
     method fetch_headers =
       let resp = ref [] in
       let push _ {Fetch.Response.rfc822_header; _} =
@@ -75,24 +69,20 @@ class message rep uid =
               String.trim (String.sub part (i+1) (String.length part - i - 1))
             ) parts
       in
-      connect self # rep >>= fun imap ->
-      Core.examine imap (mailbox self # rep) >>= fun () ->
-      Core.uid_fetch imap [uid] [Fetch.Request.rfc822_header] push >>= fun () ->
+      Pool.uid_fetch rep [uid] Fetch.Request.[rfc822_header] push >>= fun () ->
       Lwt.return !resp
 
     method fetch_body =
       let resp = ref "" in
       let push _ {Fetch.Response.rfc822; _} = resp := rfc822 in
-      connect rep >>= fun imap ->
-      Core.examine imap (mailbox rep) >>= fun () ->
-      Core.uid_fetch imap [uid] [Fetch.Request.rfc822] push >>= fun () ->
+      Pool.uid_fetch rep [uid] Fetch.Request.[rfc822] push >>= fun () ->
       Lwt.return !resp
 
     method rep = rep
   end
 
 class message_set rep query =
-  object (self)
+  object
     method count =
       Pool.uid_search rep query >|= fst >|= List.length
 
@@ -109,18 +99,13 @@ class message_set rep query =
       new message_set rep Search.(query && unseen)
 
     method copy (dst : mailbox) =
-      connect rep >>= fun src_imap ->
-      connect dst # rep >>= fun dst_imap ->
-      Core.examine src_imap (mailbox self # rep) >>= fun () ->
-      Core.select dst_imap (mailbox dst # rep) >>= fun () ->
-      Core.uid_search src_imap query >>= fun (uids, _) ->
-      let appends = ref Lwt.return_unit in
+      let appends = ref [] in
       let push _ {Fetch.Response.internaldate; flags; rfc822; _} =
-        appends :=
-          !appends >>= fun () -> Core.append dst_imap (dst # name) ~flags ~internaldate rfc822
+        appends := Pool.append dst # rep ~flags ~internaldate rfc822 :: !appends
       in
-      Core.uid_fetch src_imap uids Fetch.Request.[rfc822; flags; internaldate] push >>= fun () ->
-      !appends
+      Pool.uid_search rep query >>= fun (uids, _) ->
+      Pool.uid_fetch rep uids Fetch.Request.[rfc822; flags; internaldate] push >>= fun () ->
+      Lwt.join !appends
 
     method rep = rep
   end

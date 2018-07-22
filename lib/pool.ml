@@ -71,3 +71,9 @@ let rec use ({account = {host; port; username; password}; mailbox} as state) f =
 
 let uid_search mb query =
   use mb (fun imap -> Core.uid_search imap query)
+
+let uid_fetch mb uids attrs push =
+  use mb (fun imap -> Core.uid_fetch imap uids attrs push)
+
+let append mb ?flags ?internaldate data =
+  use mb (fun imap -> Core.append imap mb.mailbox ?flags ?internaldate data)
