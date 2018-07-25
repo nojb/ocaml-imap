@@ -36,44 +36,80 @@ type mb =
     mutable mailbox: string;
   }
 
+type state =
+  | CONNECTED
+  | SELECTED of string
+  | EXAMINED of string
+  | IN_PROGRESS
+  | DISCONNECTED
+
+type conn =
+  {
+    c: Core.t;
+    mutable s: state;
+  }
+
+module H = Hashtbl.Make (struct type t = conn let equal = (==) let hash = Hashtbl.hash end)
+
 let waiters = Lwt_condition.create ()
-
-let conns : Core.t list ref = ref []
-
 let max_conns = ref 5
+let conns : unit H.t = H.create !max_conns
 
-let wrap t =
-  Lwt.on_success t (fun _ -> Lwt_condition.signal waiters ());
-  t
+let wrap f c =
+  let s = c.s in
+  c.s <- IN_PROGRESS;
+  Lwt.try_bind
+    (fun () -> f c.c)
+    (fun x -> c.s <- s; Lwt_condition.signal waiters (); Lwt.return x)
+    (fun e -> c.s <- DISCONNECTED; H.remove conns c; Lwt.fail e)
 
-let rec use ({account = {host; port; username; password}; mailbox} as state) f =
-  match List.find_opt (fun imap -> Core.state imap = Core.SELECTED mailbox) !conns with
-  | None ->
-      begin match List.find_opt (fun imap -> Core.state imap = Core.AUTHENTICATED) !conns with
-      | None ->
-          if List.length !conns < !max_conns then begin
-            incr max_conns;
+exception Found of conn
+
+let rec use ?examine ({account = {host; port; username; password}; mailbox} as state) f =
+  match
+    H.iter (fun c () ->
+        match c.s, examine with
+        | SELECTED m, (None | Some false) when m = mailbox ->
+            raise (Found c)
+        | EXAMINED m, (None | Some true) when m = mailbox ->
+            raise (Found c)
+        | _ ->
+            ()
+      ) conns
+  with
+  | exception Found c ->
+      Printf.eprintf "[Reusing connection to %s]\n%!" host;
+      wrap f c
+  | () ->
+      begin match
+        H.iter (fun c () ->
+            match c.s with
+            | CONNECTED | SELECTED _ | EXAMINED _ ->
+                raise (Found c)
+            | _ ->
+                ()
+          ) conns
+      with
+      | exception Found c ->
+          Printf.eprintf "[Reusing connection to %s]\n%!" host;
+          (if examine = Some true then Core.examine else Core.select) c.c mailbox >>= fun () ->
+          wrap f c
+      | () ->
+          let t = Lwt_condition.wait waiters >>= fun () -> use ?examine state f in
+          if H.length conns < !max_conns then begin
             Printf.eprintf "[Starting new connection to %s]\n%!" host;
-            Core.connect ~host ~port ~username ~password >>= fun x ->
-            conns := x :: !conns;
-            Core.select x mailbox >>= fun () ->
-            wrap (f x)
-          end else
-            Lwt_condition.wait waiters >>= fun () -> use state f
-      | Some x ->
-          Printf.eprintf "[Reusing new connection to %s]\n%!" host;
-          Core.select x mailbox >>= fun () ->
-          wrap (f x)
+            Lwt.on_any (Core.connect ~host ~port ~username ~password)
+              (fun c -> H.add conns {c; s = CONNECTED} (); Lwt_condition.signal waiters ())
+              (fun _ -> decr max_conns) (* MAYBE try connecting again? *)
+          end;
+          t
       end
-  | Some x ->
-      Printf.eprintf "[Reusing new connection to %s]\n%!" host;
-      wrap (f x)
 
 let uid_search mb query =
   use mb (fun imap -> Core.uid_search imap query)
 
 let uid_fetch mb uids attrs push =
-  use mb (fun imap -> Core.uid_fetch imap uids attrs push)
+  use ~examine:true mb (fun imap -> Core.uid_fetch imap uids attrs push)
 
 let append mb ?flags ?internaldate data =
-  use mb (fun imap -> Core.append imap mb.mailbox ?flags ?internaldate data)
+  use ~examine:false mb (fun imap -> Core.append imap mb.mailbox ?flags ?internaldate data)

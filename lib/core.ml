@@ -42,20 +42,6 @@ let () =
 
 open Lwt.Infix
 
-type state =
-  | NON_AUTHENTICATED
-  | AUTHENTICATED
-  | SELECTED of string
-  | IN_PROGRESS of string
-  | LOGGED_OUT
-
-let state_to_string = function
-  | NON_AUTHENTICATED -> "non_authenticated"
-  | AUTHENTICATED -> "authenticated"
-  | SELECTED s -> Printf.sprintf "selected:%S" s
-  | IN_PROGRESS s -> Printf.sprintf "in_progress:%s" s
-  | LOGGED_OUT -> "logged_out"
-
 let id = ref (-1)
 
 type t =
@@ -67,11 +53,7 @@ type t =
     mutable debug: bool;
     mutable tag: int;
     mutable stop_poll: (unit -> unit) option;
-    mutable state: state;
   }
-
-let state {state; _} =
-  state
 
 let create_connection sock =
   let ic = Lwt_ssl.in_channel_of_descr sock in
@@ -84,7 +66,6 @@ let create_connection sock =
     debug = (Sys.getenv_opt "IMAPDEBUG" <> None);
     tag = 0;
     stop_poll = None;
-    state = NON_AUTHENTICATED;
   }
 
 let tag {tag; _} =
@@ -145,12 +126,9 @@ let wrap_process f = function
   | u ->
       f u
 
-let run imap ?next_state format process =
+let run imap format process =
   let process = wrap_process process in
   let tag = tag imap in
-  let prev_state = imap.state in
-  let next_state = match next_state with Some state -> state | None -> prev_state in
-  imap.state <- IN_PROGRESS tag;
   let r = Encoder.(raw tag ++ format & crlf) in
   let rec loop res =
     parse imap >>= function
@@ -159,11 +137,9 @@ let run imap ?next_state format process =
     | Untagged u ->
         Lwt.wrap1 process u >>= loop
     | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
-        imap.state <- prev_state;
         Lwt.fail (Error (Server_error s))
     | Tagged (_, OK _) ->
         imap.tag <- imap.tag + 1;
-        imap.state <- next_state;
         Lwt.return res
   in
   send imap r process >>= loop
@@ -200,7 +176,7 @@ let run imap ?next_state format process =
 
 let login imap username password =
   let format = Encoder.(str "LOGIN" ++ str username ++ str password) in
-  run imap ~next_state:AUTHENTICATED format ignore
+  run imap format ignore
 
 let _capability imap =
   let format = Encoder.(str "CAPABILITY") in
@@ -276,7 +252,7 @@ let _check imap =
   run imap format ignore
 
 let _close imap =
-  run imap ~next_state:AUTHENTICATED Encoder.(raw "CLOSE") ignore
+  run imap Encoder.(raw "CLOSE") ignore
 
 let expunge imap =
   let format = Encoder.(str "EXPUNGE") in
@@ -308,7 +284,7 @@ let uid_search =
 let select_gen cmd imap m =
   let arg = if false (* List.mem Capability.CONDSTORE imap.capabilities *) then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
-  run imap ~next_state:(SELECTED m) format ignore
+  run imap format ignore
 
 let select =
   select_gen "SELECT"
