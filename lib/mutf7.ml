@@ -49,9 +49,12 @@ let encode s =
     let upto j =
       let str = String.sub s i (j - i) and buf = Buffer.create 32 in
       recode ~encoding:`UTF_8 `UTF_16BE (`String str) (`Buffer buf);
-      let str = B64.encode ~pad:false (Buffer.contents buf) in
-      let str = replace str '/' ',' in
-      Buffer.add_string b str; Buffer.add_char b '-'
+      match Base64.encode ~pad:false (Buffer.contents buf) with
+      | Ok str ->
+          let str = replace str '/' ',' in
+          Buffer.add_string b str; Buffer.add_char b '-'
+      | Error (`Msg s) ->
+          failwith s
     in
     let rec loop i =
       if i >= String.length s then
@@ -89,8 +92,12 @@ let decode s =
         | '-' ->
             let str = String.sub s start (i - start) in
             let str = replace str ',' '/' in
-            let str = B64.decode str in (* FIXME do we need to pad it with "===" ? *)
-            recode ~encoding:`UTF_16BE `UTF_8 (`String str) (`Buffer b);
+            begin match Base64.decode str with (* FIXME do we need to pad it with "===" ? *)
+            | Ok str ->
+                recode ~encoding:`UTF_16BE `UTF_8 (`String str) (`Buffer b);
+            | Error (`Msg s) ->
+                failwith s
+            end;
             a (i + 1)
         | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '+' | ',' ->
             loop (i+1)

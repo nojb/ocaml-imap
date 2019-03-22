@@ -38,8 +38,8 @@ type mb =
 
 type state =
   | CONNECTED
-  | SELECTED of string
-  | EXAMINED of string
+  (* | SELECTED of string *)
+  (* | EXAMINED of string *)
   | IN_PROGRESS
   | DISCONNECTED
 
@@ -69,10 +69,10 @@ let rec use ?examine ({account = {host; port; username; password}; mailbox} as s
   match
     H.iter (fun c () ->
         match c.s, examine with
-        | SELECTED m, (None | Some false) when m = mailbox ->
-            raise (Found c)
-        | EXAMINED m, (None | Some true) when m = mailbox ->
-            raise (Found c)
+        (* | SELECTED m, (None | Some false) when m = mailbox -> *)
+        (*     raise (Found c) *)
+        (* | EXAMINED m, (None | Some true) when m = mailbox -> *)
+        (*     raise (Found c) *)
         | _ ->
             ()
       ) conns
@@ -84,7 +84,7 @@ let rec use ?examine ({account = {host; port; username; password}; mailbox} as s
       begin match
         H.iter (fun c () ->
             match c.s with
-            | CONNECTED | SELECTED _ | EXAMINED _ ->
+            | CONNECTED (* | SELECTED _ | EXAMINED _ *) ->
                 raise (Found c)
             | _ ->
                 ()
