@@ -22,110 +22,167 @@
 
 open Lwt.Infix
 
-type acc = Pool.acc =
+(* module Options = struct *)
+(*   type t = *)
+(*     { *)
+(*       max_connections_by_host: int; *)
+(*       total_max_connections: int; *)
+(*     } *)
+(* end *)
+
+type account =
   {
-    host: string;
-    port: int;
     username: string;
     password: string;
+    host: string;
+    port: int;
   }
 
-type mb = Pool.mb =
+type mailbox =
   {
-    account: acc;
-    mutable mailbox: string;
+    account: account;
+    mutable name: string;
   }
 
-class message rep uid =
-  object
-    method fetch_headers =
-      let resp = ref [] in
-      let push {Fetch.Response.rfc822_header; _} =
-        let parts = Re.split Re.(compile (str "\r\n")) rfc822_header in
-        let parts = List.filter (function "" -> false | _ -> true) parts in
-        let rec loop acc curr = function
-          | s :: rest ->
-              if s.[0] = '\t' || s.[0] = ' ' then
-                loop acc (curr ^ " " ^ String.trim s) rest
-              else
-                loop (curr :: acc) (String.trim s) rest
-          | [] ->
-              if curr <> "" then
-                List.rev (curr :: acc)
-              else
-                List.rev acc
-        in
-        let parts = loop [] "" parts in
-        let parts = List.filter (function "" -> false | _ -> true) parts in
-        (* List.iter (fun s -> Printf.eprintf "%S\n%!" s) parts; *)
-        resp :=
-          List.map (fun part ->
-              let i =
-                match String.index part ':' with
-                | i -> i
-                | exception Not_found -> String.length part
-              in
-              String.trim (String.sub part 0 i),
-              String.trim (String.sub part (i+1) (String.length part - i - 1))
-            ) parts
-      in
-      Pool.uid_fetch rep [uid] Fetch.Request.[rfc822_header] push >>= fun () ->
-      Lwt.return !resp
+module MailboxMap = Map.Make (struct type t = mailbox let compare = Stdlib.compare end)
 
-    method fetch_body =
-      let resp = ref "" in
-      let push {Fetch.Response.rfc822; _} = resp := rfc822 in
-      Pool.uid_fetch rep [uid] Fetch.Request.[rfc822] push >>= fun () ->
-      Lwt.return !resp
+module Pool = struct
+  let mutex = Lwt_mutex.create ()
 
-    method rep = rep
-  end
+  let connect_ {username; password; host; port} f =
+    Lwt_mutex.with_lock mutex (fun () ->
+        Core.connect ~host ~port ~username ~password >>= fun conn ->
+        f conn >>= fun r ->
+        Core.disconnect conn >>= fun () ->
+        Lwt.return r
+      )
 
-class message_set rep query =
-  object
-    method count =
-      Pool.uid_search rep query >|= fst >|= List.length
+  let connect mb f =
+    connect_ mb.account (fun conn ->
+        Core.select conn mb.name >>= fun () -> f conn
+      )
+end
 
-    method get uid =
-      new message rep uid
+module Message_set = struct
+  type t = Search.key MailboxMap.t
 
-    method uids =
-      Pool.uid_search rep query >|= fst
+  let create mb q =
+    MailboxMap.singleton mb q
 
-    method contain_from s =
-      new message_set rep Search.(query && from s)
+  let perform ms =
+    let perform (mb, q) =
+      let perform conn = Core.uid_search conn q >|= Stdlib.fst in
+      Pool.connect mb perform >|= fun uids -> (mb, uids)
+    in
+    Lwt_list.map_p perform (MailboxMap.bindings ms)
 
-    method unseen =
-      new message_set rep Search.(query && unseen)
+  let count ms =
+    perform ms >|=
+    List.fold_left (fun acc l -> acc + List.length (Stdlib.snd l)) 0
 
-    method answered =
-      new message_set rep Search.(query && answered)
+  let unseen ms =
+    MailboxMap.map (fun q -> Search.(q && unseen)) ms
 
-    method copy (dst : mailbox) =
-      let appends = ref [] in
-      let push {Fetch.Response.internaldate; flags; rfc822; _} =
-        appends := Pool.append dst # rep ~flags ~internaldate rfc822 :: !appends
-      in
-      Pool.uid_search rep query >>= fun (uids, _) ->
-      Pool.uid_fetch rep uids Fetch.Request.[rfc822; flags; internaldate] push >>= fun () ->
-      Lwt.join !appends
+  let answered ms =
+    MailboxMap.map (fun q -> Search.(q && answered)) ms
 
-    method rep = rep
-  end
+  let new_ ms =
+    MailboxMap.map (fun q -> Search.(q && new_)) ms
 
-and mailbox account mailbox =
-  let rep = {account; mailbox} in
-  object
-    inherit message_set rep Search.all
-    method name = mailbox
-  end
+  let store_flags ms mode kind =
+    perform ms >>= fun l ->
+    Lwt_list.iter_p (fun (mb, uids) ->
+        Pool.connect mb (fun conn ->
+            Core.uid_store conn mode uids kind
+          )
+      ) l
 
-class account ~host ?(port = 993) ~username ~password () =
-  let acc = {host; port; username; password} in
-  object
-    method inbox = new mailbox acc "INBOX"
-    method list_all =
-      let mk (_, _, name) = new mailbox acc name in
-      Core.connect ~host ~port ~username ~password >>= fun imap ->
-      Core.list imap "%" >|= List.map mk
-  end
+  let add_labels ms labels =
+    store_flags ms `Add (`Labels labels)
+
+  let remove_labels ms labels =
+    store_flags ms `Remove (`Labels labels)
+
+  let set_labels ms labels =
+    store_flags ms `Set (`Labels labels)
+
+  let add_flags ms flags =
+    store_flags ms `Add (`Flags flags)
+
+  let remove_flags ms flags =
+    store_flags ms `Remove (`Flags flags)
+
+  let set_flags ms flags =
+    store_flags ms `Set (`Flags flags)
+
+  let mark_seen ms =
+    add_flags ms [Flag.Seen]
+
+  let mark_unseen ms =
+    remove_flags ms [Flag.Seen]
+
+  let delete ms =
+    perform ms >>= fun l ->
+    Lwt_list.iter_p
+      (fun (mb, uids) ->
+         Pool.connect mb
+           (fun conn -> Core.uid_store conn `Add uids (`Flags [Flag.Deleted]))
+      ) l >>= fun () ->
+    Lwt_list.iter_p
+      (fun (mb, uids) ->
+         Pool.connect mb (fun conn -> Core.uid_expunge conn uids)
+      ) l
+
+  let union ms1 ms2 =
+    MailboxMap.union (fun _ q1 q2 -> Some Search.(q1 || q2)) ms1 ms2
+
+  let inter ms1 ms2 =
+    MailboxMap.merge (fun _ q1 q2 ->
+        match q1, q2 with
+        | None, _ | _, None -> None
+        | Some q1, Some q2 -> Some Search.(q1 && q2)
+      ) ms1 ms2
+end
+
+module Mailbox = struct
+  type t = mailbox
+
+  let create account name =
+    {account; name}
+
+  module Map = MailboxMap
+
+  (* let account mb = *)
+  (*   mb.account *)
+
+  let name mb =
+    mb.name
+
+  let all mb =
+    Message_set.create mb Search.all
+
+  let rename mb name =
+    Pool.connect mb (fun conn -> Core.rename conn mb.name name) >|= fun () ->
+    mb.name <- name
+
+  let delete mb =
+    Pool.connect mb (fun conn -> Core.delete conn mb.name)
+end
+
+module Account = struct
+  type t = account
+
+  let create ~username ~password ~host ~port () =
+    {username; password; host; port}
+
+  let inbox account =
+    Mailbox.create account "INBOX"
+
+  let select account name =
+    Mailbox.create account name
+
+  let all account =
+    Pool.connect_ account (fun conn ->
+        Core.list conn "%" >|= List.map (fun (_, _, name) -> Mailbox.create account name)
+      )
+end

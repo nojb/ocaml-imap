@@ -20,38 +20,53 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type mb
+module Message_set : sig
+  type t
 
-class type message =
-  object
-    method fetch_headers: (string * string) list Lwt.t
-    method fetch_body: string Lwt.t
-    method rep: mb
-  end
+  val count: t -> int Lwt.t
 
-class type message_set =
-  object
-    method count: int Lwt.t
-    method get: int32 -> message
-    method uids: int32 list Lwt.t
+  val unseen: t -> t
+  val answered: t -> t
+  val new_: t -> t
+  (* val smaller: int -> t -> t *)
+  (* val subject: string -> t -> t *)
 
-    method contain_from: string -> message_set
-    method unseen: message_set
-    method answered: message_set
+  val mark_seen: t -> unit Lwt.t
+  val mark_unseen: t -> unit Lwt.t
 
-    method copy: mailbox -> unit Lwt.t
+  val add_labels: t -> string list -> unit Lwt.t
+  val remove_labels: t -> string list -> unit Lwt.t
+  val set_labels: t -> string list -> unit Lwt.t
 
-    method rep: mb
-  end
+  val add_flags: t -> Flag.t list -> unit Lwt.t
+  val remove_flags: t -> Flag.t list -> unit Lwt.t
+  val set_flags: t -> Flag.t list -> unit Lwt.t
 
-and mailbox =
-  object
-    inherit message_set
-    method name: string
-  end
+  val delete: t -> unit Lwt.t
 
-class account: host:string -> ?port:int -> username:string -> password:string -> unit ->
-  object
-    method inbox: mailbox
-    method list_all: mailbox list Lwt.t
-  end
+  val union: t -> t -> t
+  val inter: t -> t -> t
+
+  (* val fetch: t -> string Lwt_stream.t *)
+end
+
+module Mailbox : sig
+  type t
+
+  val name: t -> string
+  val all: t -> Message_set.t
+  val rename: t -> string -> unit Lwt.t
+  val delete: t -> unit Lwt.t
+
+  (* val copy_to: t -> Message_set.t -> unit Lwt.t *)
+  (* val move_to: t -> Message_set.t -> unit Lwt.t *)
+end
+
+module Account : sig
+  type t
+
+  val create: username:string -> password:string -> host:string -> port:int -> unit -> t
+  val inbox: t -> Mailbox.t
+  val select: t -> string -> Mailbox.t
+  val all: t -> Mailbox.t list Lwt.t
+end
