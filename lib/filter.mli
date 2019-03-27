@@ -20,10 +20,19 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+module Message : sig
+  type t
+
+  val uid: t -> int32
+
+  val fetch_labels: t -> string list Lwt.t
+end
+
 module Message_set : sig
   type t
 
   val count: t -> int Lwt.t
+  val uids: t -> Message.t list Lwt.t
 
   val unseen: t -> t
   val answered: t -> t
@@ -34,6 +43,7 @@ module Message_set : sig
   val mark_seen: t -> unit Lwt.t
   val mark_unseen: t -> unit Lwt.t
 
+  val fetch_labels: t -> Message.t Lwt_stream.t
   val add_labels: t -> string list -> unit Lwt.t
   val remove_labels: t -> string list -> unit Lwt.t
   val set_labels: t -> string list -> unit Lwt.t

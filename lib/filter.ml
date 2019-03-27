@@ -63,6 +63,31 @@ module Pool = struct
       )
 end
 
+module Message = struct
+  type t =
+    {
+      mailbox: mailbox;
+      uid: int32;
+      labels: string list option ref;
+    }
+
+  let uid {uid; _} = uid
+
+  let fetch_labels {mailbox; uid; labels} =
+    match !labels with
+    | None ->
+        Pool.connect mailbox (fun conn ->
+            let t, u = Lwt.wait () in
+            Core.uid_fetch conn [uid] [Fetch.Request.x_gm_labels]
+              (fun {Fetch.Response.x_gm_labels; _} ->
+                 labels := Some x_gm_labels;
+                 Lwt.wakeup u x_gm_labels
+              ) >>= fun () -> t
+          )
+    | Some labels ->
+        Lwt.return labels
+end
+
 module Message_set = struct
   type t = Search.key MailboxMap.t
 
@@ -79,6 +104,13 @@ module Message_set = struct
   let count ms =
     perform ms >|=
     List.fold_left (fun acc l -> acc + List.length (Stdlib.snd l)) 0
+
+  let uids ms =
+    perform ms >|= fun l ->
+    List.flatten
+      (List.map (fun (mailbox, uids) ->
+           List.map (fun uid -> {Message.mailbox; uid; labels = ref None}) uids
+         ) l)
 
   let unseen ms =
     MailboxMap.map (fun q -> Search.(q && unseen)) ms
@@ -114,6 +146,24 @@ module Message_set = struct
 
   let set_flags ms flags =
     store_flags ms `Set (`Flags flags)
+
+  let fetch_labels ms =
+    let stream, push = Lwt_stream.create () in
+    let th =
+      perform ms >|= fun l ->
+      Lwt_list.iter_p (fun (mailbox, uids) ->
+          Pool.connect mailbox (fun conn ->
+              Core.uid_fetch conn uids [Fetch.Request.x_gm_labels]
+                (fun {Fetch.Response.x_gm_labels; _} ->
+                   List.iter (fun uid ->
+                       push (Some {Message.mailbox; uid; labels = ref (Some x_gm_labels)})
+                     ) uids
+                )
+            )
+        ) l >|= fun () -> push None
+    in
+    Lwt.ignore_result th;
+    stream
 
   let mark_seen ms =
     add_flags ms [Flag.Seen]
