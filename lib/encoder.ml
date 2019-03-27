@@ -20,13 +20,11 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type s =
   | End
   | Wait of s
   | Crlf of s
-  | Raw of string * s [@@deriving sexp]
+  | Raw of string * s
 
 type t =
   s -> s
