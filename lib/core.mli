@@ -28,7 +28,7 @@ type error =
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
-  | Server_error of string [@@deriving sexp]
+  | Server_error of string
 
 exception Error of error
 

@@ -20,8 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type t =
   | Answered
   | Flagged
@@ -31,7 +29,7 @@ type t =
   | Keyword of string
   | Extension of string
   | Recent
-  | Any [@@deriving sexp]
+  | Any
 
 let to_string = function
   | Answered -> "\\Answered"

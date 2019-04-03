@@ -1387,8 +1387,7 @@ let parse s =
   let buf = {get_line; get_exactly; line = ""; pos = 0} in
   let result = ref (Cont "") in
   match response buf (function Ok u -> result := u | Error (s, pos) -> raise (F (s, pos))) with
-  | () ->
-      !result |> Response.sexp_of_t |> Sexplib.Sexp.to_string_hum |> print_endline
+  | () -> ()
   | exception F (line, pos) ->
       Printf.eprintf "Parsing error:\n%s\n%s^\n" line (String.make pos ' ')
 

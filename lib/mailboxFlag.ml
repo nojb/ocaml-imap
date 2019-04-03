@@ -20,8 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type t =
   | Noselect
   | Marked
@@ -36,4 +34,4 @@ type t =
   | Junk
   | Sent
   | Trash
-  | Extension of string [@@deriving sexp]
+  | Extension of string

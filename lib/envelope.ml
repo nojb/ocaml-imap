@@ -20,13 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
-(** {3 Envelope information}
-
-    Returned when fetching the {{!Fetch.envelope}envelope message attribute}
-    using the {!fetch} command. *)
-
 module Address = struct
   type t =
     {
@@ -34,7 +27,7 @@ module Address = struct
       ad_adl: string;
       ad_mailbox: string;
       ad_host: string;
-    } [@@deriving sexp]
+    }
 end
 
 type t =
@@ -49,4 +42,4 @@ type t =
     env_bcc: Address.t list;
     env_in_reply_to: string;
     env_message_id: string;
-  } [@@deriving sexp]
+  }

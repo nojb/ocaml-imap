@@ -20,8 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type t =
   | IMAP4rev1
   | ACL
@@ -52,7 +50,7 @@ type t =
   | AUTH_PLAIN
   | XOAUTH2
   | X_GM_EXT_1
-  | OTHER of string [@@deriving sexp]
+  | OTHER of string
 
 let to_string = function
   | IMAP4rev1 -> "IMAP4rev1"

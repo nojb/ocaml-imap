@@ -20,7 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
 open Common
 
 module MailboxAttribute = struct
@@ -30,7 +29,7 @@ module MailboxAttribute = struct
     | UIDNEXT of int32
     | UIDVALIDITY of int32
     | UNSEEN of int
-    | HIGHESTMODSEQ of int64 [@@deriving sexp]
+    | HIGHESTMODSEQ of int64
 end
 
 module Request = struct
@@ -60,7 +59,7 @@ module Response = struct
       uidvalidity: uid option;
       unseen: int option;
       highestmodseq: modseq option;
-    } [@@deriving sexp]
+    }
 
   let default =
     {

@@ -20,18 +20,16 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 module Section = struct
   type msgtext =
     | HEADER
     | HEADER_FIELDS of string list
     | HEADER_FIELDS_NOT of string list
     | TEXT
-    | MIME [@@deriving sexp]
+    | MIME
 
   type t =
-    int list * msgtext option [@@deriving sexp]
+    int list * msgtext option
 end
 
 module Request = struct
@@ -70,14 +68,14 @@ module Response = struct
         fld_desc : string option;
         fld_enc : string;
         fld_octets : int;
-      } [@@deriving sexp]
+      }
   end
 
   module BodyExtension = struct
     type t =
       | List of t list
       | Number of int32
-      | String of string [@@deriving sexp]
+      | String of string
   end
 
   module Extension = struct
@@ -87,12 +85,12 @@ module Response = struct
         ext_lang: string list;
         ext_loc: string;
         ext_ext: BodyExtension.t list;
-      } [@@deriving sexp]
+      }
   end
 
   type t =
     | Text of string * Fields.t * int
     | Message of Fields.t * Envelope.t * t * int
     | Basic of string * string * Fields.t
-    | Multipart of t list * string * (string * string) list [@@deriving sexp]
+    | Multipart of t list * string * (string * string) list
 end

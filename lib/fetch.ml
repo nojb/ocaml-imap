@@ -20,7 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
 open Common
 
 module Date = struct
@@ -29,7 +28,7 @@ module Date = struct
       day: int;
       month: int;
       year: int;
-    } [@@deriving sexp]
+    }
 
   let to_string {day; month; year} =
     let months =
@@ -51,7 +50,7 @@ module Time = struct
       minutes: int;
       seconds: int;
       zone: int;
-    } [@@deriving sexp]
+    }
 
   let to_string {hours; minutes; seconds; zone} =
     Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds
@@ -74,7 +73,7 @@ module MessageAttribute = struct
     | MODSEQ of int64
     | X_GM_MSGID of int64
     | X_GM_THRID of int64
-    | X_GM_LABELS of string list [@@deriving sexp]
+    | X_GM_LABELS of string list
 end
 
 type 'a t =

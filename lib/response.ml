@@ -20,8 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 module Code = struct
   type t =
     | ALERT
@@ -45,14 +43,14 @@ module Code = struct
     | UIDNOTSTICKY
     | COMPRESSIONACTIVE
     | USEATTR
-    | NONE [@@deriving sexp]
+    | NONE
 end
 
 module State = struct
   type t =
     | OK of Code.t * string
     | NO of Code.t * string
-    | BAD of Code.t * string [@@deriving sexp]
+    | BAD of Code.t * string
 end
 
 module Untagged = struct
@@ -72,10 +70,10 @@ module Untagged = struct
     | CAPABILITY of Capability.t list
     | VANISHED of Uint32.Set.t
     | VANISHED_EARLIER of Uint32.Set.t
-    | ENABLED of Capability.t list [@@deriving sexp]
+    | ENABLED of Capability.t list
 end
 
 type t =
   | Untagged of Untagged.t
   | Cont of string
-  | Tagged of string * State.t [@@deriving sexp]
+  | Tagged of string * State.t

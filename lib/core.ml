@@ -20,15 +20,13 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type error =
   | Incorrect_tag of string * string
   | Decode_error of string * int
   | Unexpected_cont
   | Bad_greeting
   | Auth_error of string
-  | Server_error of string [@@deriving sexp]
+  | Server_error of string
 
 exception Error of error
 

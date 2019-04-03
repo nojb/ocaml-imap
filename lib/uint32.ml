@@ -20,9 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
-type t = int32 [@@deriving sexp]
+type t = int32
 
 let msb n = Int32.(logand n (shift_left 1l 31)) <> 0l
 
@@ -45,7 +43,7 @@ let max n m = if n <= m then m else n
 
 module Set = struct
   type t =
-    (int32 * int32) list [@@deriving sexp] (* disjoint, sorted intervals *)
+    (int32 * int32) list (* disjoint, sorted intervals *)
 
   let empty = []
 

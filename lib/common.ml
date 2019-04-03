@@ -20,13 +20,11 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Sexplib.Std
-
 type modseq =
-  int64 [@@deriving sexp]
+  int64
 
 type uid =
-  int32 [@@deriving sexp]
+  int32
 
 type seq =
-  int32 [@@deriving sexp]
+  int32
