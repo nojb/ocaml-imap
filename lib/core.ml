@@ -310,61 +310,62 @@ module Int32Map = Map.Make (Int32)
 
 let fetch_gen cmd imap ?changed_since nums att push =
   let open Encoder in
-  let att =
-    match att with
-    (* | `Fast -> raw "FAST" *)
-    (* | `Full -> raw "FULL" *)
-    (* | `All -> raw "ALL" *)
-    | [x] -> x
-    | xs -> p (list (fun x -> x) xs)
-  in
+  let attx = Fetch.encode att in
   let changed_since =
     match changed_since with
     | None -> empty
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
-  let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ att & changed_since in
+  let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ attx & changed_since in
   let process = function
-    | Response.Untagged.FETCH (seq, items) ->
-        let rec go : 'a. 'a Fetch.t -> _ -> 'a option = fun att item ->
-          match att, item with
-          | Fetch.FLAGS, FLAGS l -> Some l
-          | UID, UID x -> Some x
-          | ENVELOPE, ENVELOPE e -> Some e
-          | INTERNALDATE, INTERNALDATE s -> Some s
-          | RFC822, RFC822 x -> Some x
-          | RFC822_HEADER, RFC822_HEADER x -> Some x
-          | RFC822_TEXT, RFC822_TEXT x -> Some x
-          | RFC822_SIZE, RFC822_SIZE n -> Some n
-          | BODY, BODY x -> Some x
-          | BODYSTRUCTURE x -> {res with bodystructure = Some x}
-          | BODY_SECTION (sec, None) -> {res with body_section = (sec, "") :: res.body_section}
-          | BODY_SECTION (sec, Some s) -> {res with body_section = (sec, s) :: res.body_section}
-          | UID, UID n -> Some n
-          | MODSEQ, MODSEQ n -> Some n
-          | X_GM_MSGID, X_GM_MSGID l -> Some l
-          | X_GM_THRID, X_GM_THRID l -> Some l
-          | X_GM_LABELS, X_GM_LABELS l -> Some l
-          | MAP (f, att), item ->
-              begin match go att item with Some x -> Some (f x) | None -> None end
-          | PAIR (att1, att2), item ->
-              begin match go att1 item with Some _ as x -> x | None -> go att2 item end
+    | Response.Untagged.FETCH (_seq, items) ->
+        let rec choose f = function [] -> None | x :: xs -> begin match f x with Some _ as x -> x | None -> choose f xs end in
+        let module FA = Fetch.MessageAttribute in
+        let rec go : type a. a Fetch.t -> a option = function
+          | Fetch.FLAGS ->
+              choose (function FA.FLAGS l -> Some l | _ -> None) items
+          | UID ->
+              choose (function FA.UID x -> Some x | _ -> None) items
+          | ENVELOPE ->
+	      choose (function FA.ENVELOPE e -> Some e | _ -> None) items
+          | INTERNALDATE ->
+	      choose (function FA.INTERNALDATE s -> Some s | _ -> None) items
+          | RFC822 ->
+	      choose (function FA.RFC822 x -> Some x | _ -> None) items
+          | RFC822_HEADER ->
+	      choose (function FA.RFC822_HEADER x -> Some x | _ -> None) items
+          | RFC822_TEXT ->
+	      choose (function FA.RFC822_TEXT x -> Some x | _ -> None) items
+          | RFC822_SIZE ->
+	      choose (function FA.RFC822_SIZE n -> Some n | _ -> None) items
+          | BODY ->
+	      choose (function FA.BODY x -> Some x | _ -> None) items
+          | BODYSTRUCTURE ->
+	      choose (function FA.BODYSTRUCTURE x -> Some x | _ -> None) items
+          | MODSEQ ->
+	      choose (function FA.MODSEQ n -> Some n | _ -> None) items
+          | X_GM_MSGID ->
+	      choose (function FA.X_GM_MSGID l -> Some l | _ -> None) items
+          | X_GM_THRID ->
+	      choose (function FA.X_GM_THRID l -> Some l | _ -> None) items
+          | X_GM_LABELS ->
+	      choose (function FA.X_GM_LABELS l -> Some l | _ -> None) items
+          | MAP (f, att) ->
+              begin match go att with Some x -> Some (f x) | None -> None end
+          | PAIR (att1, att2) ->
+              begin match go att1, go att2 with Some x, Some y -> Some (x, y) | _ -> None end
         in
-        let rec aux = function
-          | item :: items -> begin match go att item with Some x -> push x; aux items | None -> aux items end
-          | [] -> ()
-        in
-        aux items
+        begin match go att with Some x -> push x | None -> () end
     | _ ->
         ()
   in
   if nums = [] then Lwt.return_unit else run imap format process
 
-let fetch =
-  fetch_gen "FETCH"
+let fetch imap ?changed_since nums att push =
+  fetch_gen "FETCH" imap ?changed_since nums att push
 
-let uid_fetch =
-  fetch_gen "UID FETCH"
+let uid_fetch imap ?changed_since nums att push =
+  fetch_gen "UID FETCH" imap ?changed_since nums att push
 
 type store_mode =
   [ `Add

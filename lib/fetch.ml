@@ -80,84 +80,48 @@ end
 type 'a t =
   | FLAGS : Flag.t list t
   | ENVELOPE : Envelope.t t
+  | INTERNALDATE : string t
   | UID : uid t
   | X_GM_MSGID : int64 t
   | X_GM_THRID : int64 t
   | X_GM_LABELS : string list t
   | RFC822 : string t
+  | RFC822_TEXT : string t
   | RFC822_HEADER : string t
   | RFC822_SIZE : int t
+  | BODY : MIME.Response.t t
+  | BODYSTRUCTURE : MIME.Response.t t
+  | MODSEQ : int64 t
   | PAIR : 'a t * 'b t -> ('a * 'b) t
   | MAP : ('a -> 'b) * 'a t -> 'b t
 
 let flags = FLAGS
 let map f x = MAP (f, x)
-let tuple3 x y z = MAP ((fun (x, (y, z)) -> x, y, z), PAIR (x, PAIR (y, z)))
+let pair x y = PAIR (x, y)
 
-module Request = struct
-  open Encoder
+let rec encode : type a. a t -> Encoder.t = function
+  | ENVELOPE -> Encoder.raw "ENVELOPE"
+  | INTERNALDATE -> Encoder.raw "INTERNALDATE"
+  | RFC822_HEADER -> Encoder.raw "RFC822.HEADER"
+  | RFC822_SIZE -> Encoder.raw "RFC822.SIZE"
+  | RFC822_TEXT -> Encoder.raw "RFC822.TEXT"
+  | MODSEQ -> Encoder.raw "MODSEQ"
+  | RFC822 -> Encoder.raw "RFC822"
+  | BODY -> Encoder.raw "BODY"
+  | BODYSTRUCTURE -> Encoder.raw "BODYSTRUCTURE"
+  | UID -> Encoder.raw "UID"
+  | FLAGS -> Encoder.raw "FLAGS"
+  | X_GM_MSGID -> Encoder.raw "X-GM-MSGID"
+  | X_GM_THRID -> Encoder.raw "X-GM-THRID"
+  | X_GM_LABELS -> Encoder.raw "X-GM-LABELS"
+  | PAIR _ as x ->
+      let rec go : type a. _ -> a t -> _ = fun acc x ->
+        match x with
+        | PAIR (x, y) -> go (go acc x) y
+        | x -> encode x :: acc
+      in
+      Encoder.plist (fun x -> x) (List.rev (go [] x))
+  | MAP (_, x) -> encode x
 
-  type nonrec t = t
-
-  let envelope = raw "ENVELOPE"
-  let internaldate = raw "INTERNALDATE"
-  let rfc822_header = raw "RFC822.HEADER"
-  let rfc822_size = raw "RFC822.SIZE"
-  let rfc822 = raw "RFC822"
-  let body = raw "BODY"
-  let body_section ?(peek = true) ?section:(sec = [], None) () =
-    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Request.encode sec & raw "]"
-  let bodystructure = raw "BODYSTRUCTURE"
-  let uid = raw "UID"
-  let flags = raw "FLAGS"
-
-  let all = [flags; internaldate; rfc822_size; envelope]
-  let fast = [flags; internaldate; rfc822_size]
-  let full = [flags; internaldate; rfc822_size; envelope; body]
-
-  let x_gm_msgid = raw "X-GM-MSGID"
-  let x_gm_thrid = raw "X-GM-THRID"
-  let x_gm_labels = raw "X-GM-LABELS"
-end
-
-module Response = struct
-  type t =
-    {
-      seq: seq;
-      flags: Flag.t list;
-      envelope: Envelope.t option;
-      internaldate: string;
-      rfc822_header: string;
-      rfc822_text: string;
-      rfc822_size: int option;
-      rfc822: string;
-      body: MIME.Response.t option;
-      bodystructure: MIME.Response.t option;
-      body_section: (MIME.Section.t * string) list;
-      uid: uid;
-      modseq: modseq;
-      x_gm_msgid: modseq;
-      x_gm_thrid: modseq;
-      x_gm_labels: string list;
-    } [@@deriving sexp]
-
-  let default =
-    {
-      seq = 0l;
-      flags = [];
-      envelope = None;
-      internaldate = "";
-      rfc822_header = "";
-      rfc822_text = "";
-      rfc822_size = None;
-      rfc822 = "";
-      body = None;
-      bodystructure = None;
-      body_section = [];
-      uid = 0l;
-      modseq = 0L;
-      x_gm_msgid = 0L;
-      x_gm_thrid = 0L;
-      x_gm_labels = [];
-    }
-end
+(* let body_section ?(peek = true) ?section:(sec = [], None) () =
+   raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Request.encode sec & raw "]" *)
