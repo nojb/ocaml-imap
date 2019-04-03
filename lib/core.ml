@@ -326,25 +326,35 @@ let fetch_gen cmd imap ?changed_since nums att push =
   let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ att & changed_since in
   let process = function
     | Response.Untagged.FETCH (seq, items) ->
-        let aux res = function
-          | (FLAGS flags : Fetch.MessageAttribute.t) -> {res with Fetch.Response.flags}
-          | ENVELOPE e -> {res with envelope = Some e}
-          | INTERNALDATE internaldate -> {res with internaldate}
-          | RFC822 rfc822 -> {res with rfc822}
-          | RFC822_HEADER rfc822_header -> {res with rfc822_header}
-          | RFC822_TEXT rfc822_text -> {res with rfc822_text}
-          | RFC822_SIZE n -> {res with rfc822_size = Some n}
-          | BODY x -> {res with body = Some x}
+        let rec go : 'a. 'a Fetch.t -> _ -> 'a option = fun att item ->
+          match att, item with
+          | Fetch.FLAGS, FLAGS l -> Some l
+          | UID, UID x -> Some x
+          | ENVELOPE, ENVELOPE e -> Some e
+          | INTERNALDATE, INTERNALDATE s -> Some s
+          | RFC822, RFC822 x -> Some x
+          | RFC822_HEADER, RFC822_HEADER x -> Some x
+          | RFC822_TEXT, RFC822_TEXT x -> Some x
+          | RFC822_SIZE, RFC822_SIZE n -> Some n
+          | BODY, BODY x -> Some x
           | BODYSTRUCTURE x -> {res with bodystructure = Some x}
           | BODY_SECTION (sec, None) -> {res with body_section = (sec, "") :: res.body_section}
           | BODY_SECTION (sec, Some s) -> {res with body_section = (sec, s) :: res.body_section}
-          | UID uid -> {res with uid}
-          | MODSEQ modseq -> {res with modseq}
-          | X_GM_MSGID x_gm_msgid -> {res with x_gm_msgid}
-          | X_GM_THRID x_gm_thrid -> {res with x_gm_thrid}
-          | X_GM_LABELS x_gm_labels -> {res with x_gm_labels}
+          | UID, UID n -> Some n
+          | MODSEQ, MODSEQ n -> Some n
+          | X_GM_MSGID, X_GM_MSGID l -> Some l
+          | X_GM_THRID, X_GM_THRID l -> Some l
+          | X_GM_LABELS, X_GM_LABELS l -> Some l
+          | MAP (f, att), item ->
+              begin match go att item with Some x -> Some (f x) | None -> None end
+          | PAIR (att1, att2), item ->
+              begin match go att1 item with Some _ as x -> x | None -> go att2 item end
         in
-        push (List.fold_left aux {Fetch.Response.default with seq} items)
+        let rec aux = function
+          | item :: items -> begin match go att item with Some x -> push x; aux items | None -> aux items end
+          | [] -> ()
+        in
+        aux items
     | _ ->
         ()
   in

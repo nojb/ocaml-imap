@@ -78,10 +78,10 @@ module Message = struct
     | None ->
         Pool.connect mailbox (fun conn ->
             let t, u = Lwt.wait () in
-            Core.uid_fetch conn [uid] [Fetch.Request.x_gm_labels]
-              (fun {Fetch.Response.x_gm_labels; _} ->
-                 labels := Some x_gm_labels;
-                 Lwt.wakeup u x_gm_labels
+            Core.uid_fetch conn [uid] Fetch.X_GM_LABELS
+              (fun l ->
+                 labels := Some l;
+                 Lwt.wakeup u l
               ) >>= fun () -> t
           )
     | Some labels ->
@@ -153,10 +153,10 @@ module Message_set = struct
       perform ms >|= fun l ->
       Lwt_list.iter_p (fun (mailbox, uids) ->
           Pool.connect mailbox (fun conn ->
-              Core.uid_fetch conn uids [Fetch.Request.x_gm_labels]
-                (fun {Fetch.Response.x_gm_labels; _} ->
+              Core.uid_fetch conn uids Fetch.X_GM_LABELS
+                (fun l ->
                    List.iter (fun uid ->
-                       push (Some {Message.mailbox; uid; labels = ref (Some x_gm_labels)})
+                       push (Some {Message.mailbox; uid; labels = ref (Some l)})
                      ) uids
                 )
             )

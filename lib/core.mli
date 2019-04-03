@@ -98,7 +98,7 @@ val append: t -> string -> ?flags:Flag.t list -> ?internaldate:string -> string 
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: t -> ?changed_since:modseq -> seq list -> Fetch.Request.t list -> (Fetch.Response.t -> unit) -> unit Lwt.t
+val fetch: t -> ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> unit Lwt.t
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
@@ -106,7 +106,7 @@ val fetch: t -> ?changed_since:modseq -> seq list -> Fetch.Request.t list -> (Fe
     [CHANGEDSINCE] mod-sequence value at least the passed value are affected
     (requires the [CONDSTORE] extension). *)
 
-val uid_fetch: t -> ?changed_since:modseq -> uid list -> Fetch.Request.t list -> (Fetch.Response.t -> unit) -> unit Lwt.t
+val uid_fetch: t -> ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a -> unit) -> unit Lwt.t
 
 type store_mode =
   [ `Add

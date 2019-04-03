@@ -77,6 +77,23 @@ module MessageAttribute = struct
     | X_GM_LABELS of string list [@@deriving sexp]
 end
 
+type 'a t =
+  | FLAGS : Flag.t list t
+  | ENVELOPE : Envelope.t t
+  | UID : uid t
+  | X_GM_MSGID : int64 t
+  | X_GM_THRID : int64 t
+  | X_GM_LABELS : string list t
+  | RFC822 : string t
+  | RFC822_HEADER : string t
+  | RFC822_SIZE : int t
+  | PAIR : 'a t * 'b t -> ('a * 'b) t
+  | MAP : ('a -> 'b) * 'a t -> 'b t
+
+let flags = FLAGS
+let map f x = MAP (f, x)
+let tuple3 x y z = MAP ((fun (x, (y, z)) -> x, y, z), PAIR (x, PAIR (y, z)))
+
 module Request = struct
   open Encoder
 
