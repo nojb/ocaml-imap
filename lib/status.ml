@@ -20,8 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Common
-
 module MailboxAttribute = struct
   type t =
     | MESSAGES of int
@@ -32,42 +30,30 @@ module MailboxAttribute = struct
     | HIGHESTMODSEQ of int64
 end
 
-module Request = struct
-  open Encoder
+type 'a t =
+  | MESSAGES : int t
+  | RECENT : int t
+  | UIDNEXT : int32 t
+  | UIDVALIDITY : int32 t
+  | UNSEEN : int t
+  | HIGHESTMODSEQ : int64 t
+  | PAIR : 'a t * 'b t -> ('a * 'b) t
+  | MAP : ('a -> 'b) * 'a t -> 'b t
 
-  type nonrec t = t
+module E = Encoder
 
-  let messages = raw "MESSAGES"
-
-  let recent = raw "RECENT"
-
-  let uidnext = raw "UIDNEXT"
-
-  let uidvalidity = raw "UIDVALIDITY"
-
-  let unseen = raw "UNSEEN"
-
-  let highestmodseq = raw "HIGHESTMODSEQ"
-end
-
-module Response = struct
-  type t =
-    {
-      messages: int option;
-      recent: int option;
-      uidnext: uid option;
-      uidvalidity: uid option;
-      unseen: int option;
-      highestmodseq: modseq option;
-    }
-
-  let default =
-    {
-      messages = None;
-      recent = None;
-      uidnext = None;
-      uidvalidity = None;
-      unseen = None;
-      highestmodseq = None;
-    }
-end
+let rec encode : type a. a t -> E.t = function
+  | MESSAGES -> E.raw "MESSAGES"
+  | RECENT -> E.raw "RECENT"
+  | UIDNEXT -> E.raw "UIDNEXT"
+  | UIDVALIDITY -> E.raw "UIDVALIDITY"
+  | UNSEEN -> E.raw "UNSEEN"
+  | HIGHESTMODSEQ -> E.raw "HIGHESTMODSEQ"
+  | MAP (_, x) -> encode x
+  | PAIR _ as x ->
+      let rec go : type a. _ -> a t -> _ = fun acc x ->
+        match x with
+        | PAIR (x, y) -> go (go acc x) y
+        | x -> encode x :: acc
+      in
+      E.list (fun x -> x) (List.rev (go [] x))

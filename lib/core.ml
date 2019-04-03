@@ -216,20 +216,61 @@ let list imap ?(ref = "") s =
   in
   run imap format process >|= fun () -> List.rev !resp
 
+module Status_response = struct
+  type t =
+    {
+      messages: int option;
+      recent: int option;
+      uidnext: Common.uid option;
+      uidvalidity: Common.uid option;
+      unseen: int option;
+      highestmodseq: Common.modseq option;
+    }
+
+  let default =
+    {
+      messages = None;
+      recent = None;
+      uidnext = None;
+      uidvalidity = None;
+      unseen = None;
+      highestmodseq = None;
+    }
+end
+
 let status imap m att =
-  let format = Encoder.(str "STATUS" ++ mutf7 m ++ p (list (fun x -> x) att)) in
-  let res = ref Status.Response.default in
+  let format = Encoder.(str "STATUS" ++ mutf7 m ++ Status.encode att) in
+  let res = ref None in
   let process = function
     | Response.Untagged.STATUS (mbox, items) when m = mbox ->
         let aux res = function
-          | (MESSAGES n : Status.MailboxAttribute.t) -> {res with Status.Response.messages = Some n}
+          | (MESSAGES n : Status.MailboxAttribute.t) -> {res with Status_response.messages = Some n}
           | RECENT n -> {res with recent = Some n}
           | UIDNEXT n -> {res with uidnext = Some n}
           | UIDVALIDITY n -> {res with uidvalidity = Some n}
           | UNSEEN n -> {res with unseen = Some n}
           | HIGHESTMODSEQ n -> {res with highestmodseq = Some n}
         in
-        res := List.fold_left aux !res items
+        let r = List.fold_left aux Status_response.default items in
+        let rec go : type a. a Status.t -> a option = function
+          | Status.MESSAGES -> r.Status_response.messages
+          | RECENT -> r.recent
+          | UIDNEXT -> r.uidnext
+          | UIDVALIDITY -> r.uidvalidity
+          | UNSEEN -> r.unseen
+          | HIGHESTMODSEQ -> r.highestmodseq
+          | PAIR (x, y) ->
+              begin match go x, go y with
+              | Some x, Some y -> Some (x, y)
+              | _ -> None
+              end
+          | MAP (f, x) ->
+              begin match go x with
+              | Some x -> Some (f x)
+              | None -> None
+              end
+        in
+        res := go att
     | _ ->
         ()
   in

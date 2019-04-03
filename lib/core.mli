@@ -65,7 +65,7 @@ val list: t -> ?ref:string -> string -> (MailboxFlag.t list * char option * stri
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 
-val status: t -> string -> Status.Request.t list -> Status.Response.t Lwt.t
+val status: t -> string -> 'a Status.t -> 'a option Lwt.t
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
 val copy: t -> seq list -> string -> unit Lwt.t
