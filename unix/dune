@@ -1,0 +1,4 @@
+(library
+ (name imap_unix)
+ (public_name imap_unix)
+ (libraries imap unix ssl))

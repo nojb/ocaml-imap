@@ -77,3 +77,8 @@ type t =
   | Untagged of Untagged.t
   | Cont of string
   | Tagged of string * State.t
+
+type s =
+  | Untagged of string * (string * int)
+  | Continue of string
+  | Tagged of string * State.t

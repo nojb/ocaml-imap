@@ -68,3 +68,24 @@ let x_gm_thrid n = raw "X-GM-THRID" ++ uint64 n
 let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
 
 let encode x = x
+
+(* let parser s pos = *)
+(*   let rec loop acc pos = *)
+(*     match Parser.peek s pos with *)
+(*     | Some ' ' -> *)
+(*         let pos = succ pos in *)
+(*         begin match Parser.peek s pos with *)
+(*         | Some '(' -> *)
+(*             let n, pos = Parser.search_sort_mod_seq s pos in *)
+(*             (List.rev acc, Some n), pos *)
+(*         | _ -> *)
+(*             let n, pos = Parser.nz_number s pos in *)
+(*             loop (n :: acc) pos *)
+(*         end *)
+(*     | _ -> *)
+(*         (List.rev acc, None), pos *)
+(*   in *)
+(*   loop [] pos *)
+
+(* let v key = *)
+(*   Cmd.simple "SEARCH" key parser *)
