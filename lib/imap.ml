@@ -125,9 +125,9 @@ let parse {ic; _} =
 
 let rec send imap r process res =
   match r with
-  | Encoder.End ->
+  | [] ->
       Lwt.return res
-  | Wait r ->
+  | Encoder.Wait :: r ->
       let rec loop res =
         parse imap >>= function
         | Response.Cont _ ->
@@ -138,15 +138,15 @@ let rec send imap r process res =
             Lwt.fail (Failure "not expected")
       in
       Lwt_io.flush imap.oc >>= fun () -> loop res
-  | Crlf r ->
+  | Crlf :: r ->
       Lwt_io.write imap.oc "\r\n" >>= fun () ->
       send imap r process res
-  | Raw (s, r) ->
+  | Raw s :: r ->
       Lwt_io.write imap.oc s >>= fun () ->
       send imap r process res
 
 let send imap r process res =
-  let r = r Encoder.End in
+  let r = r [] in
   (* Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_s r)); *)
   send imap r process res >>= fun res ->
   Lwt_io.flush imap.oc >>= fun () ->

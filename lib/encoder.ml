@@ -21,16 +21,15 @@
    SOFTWARE. *)
 
 type s =
-  | End
-  | Wait of s
-  | Crlf of s
-  | Raw of string * s
+  | Wait
+  | Crlf
+  | Raw of string
 
 type t =
-  s -> s
+  s list -> s list
 
 let raw s k =
-  Raw (s, k)
+  Raw s :: k
 
 let empty k =
   k
@@ -45,10 +44,10 @@ let (++) f g =
   f & char ' ' & g
 
 let wait k =
-  Wait k
+  Wait :: k
 
 let crlf k =
-  Crlf k
+  Crlf :: k
 
 let literal s =
   char '{' & raw (string_of_int (String.length s)) & char '}' & crlf & wait & raw s

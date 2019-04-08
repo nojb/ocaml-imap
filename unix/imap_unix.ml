@@ -99,9 +99,9 @@ let really f ofs len =
 
 let rec send t r process res =
   match r with
-  | Imap.Encoder.End ->
+  | [] ->
       res
-  | Wait r ->
+  | Imap.Encoder.Wait :: r  ->
       let rec loop res =
         match parse t with
         | Imap.Response.Cont _ ->
@@ -112,16 +112,16 @@ let rec send t r process res =
             failwith "not expected"
       in
       loop res
-  | Crlf r ->
+  | Crlf :: r ->
       really (Ssl.write t.sock (Bytes.of_string "\r\n")) 0 2;
       send t r process res
-  | Raw (s, r) ->
+  | Raw s :: r ->
       let b = Bytes.unsafe_of_string s in
       really (Ssl.write t.sock b) 0 (Bytes.length b);
       send t r process res
 
 let send t r process res =
-  send t (r Imap.Encoder.End) process res
+  send t (r []) process res
 
 let wrap_process f res = function
   | Imap.Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
