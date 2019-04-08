@@ -24,10 +24,8 @@ open Response
 
 type buffer =
   {
-    get_line: (string -> unit) -> unit;
-    get_exactly: int -> (string -> unit) -> unit;
-    mutable line: string;
-    mutable pos: int;
+    s: string;
+    mutable p: int;
   }
 
 let some x = Some x
@@ -84,10 +82,10 @@ let ( >|= ) p f buf k =
     )
 
 let error buf k =
-  k (Error (buf.line, buf.pos))
+  k (Error (buf.s, buf.p))
 
 let is_eol buf k =
-  k (Ok (buf.pos >= String.length buf.line))
+  k (Ok (buf.p >= String.length buf.s))
 
 let eol =
   is_eol >>= function
@@ -95,37 +93,37 @@ let eol =
   | false -> error
 
 let curr buf k =
-  if buf.pos >= String.length buf.line then
+  if buf.p >= String.length buf.s then
     k (Ok '\000')
   else
-    k (Ok buf.line.[buf.pos])
+    k (Ok buf.s.[buf.p])
 
 let next buf k =
-  assert (buf.pos < String.length buf.line);
-  buf.pos <- buf.pos + 1;
+  assert (buf.p < String.length buf.s);
+  buf.p <- buf.p + 1;
   k (Ok ())
 
 let take n buf k =
-  if buf.pos + n > String.length buf.line then
-    (buf.pos <- String.length buf.line; error buf k);
-  let s = String.sub buf.line buf.pos n in
-  buf.pos <- buf.pos + n;
+  if buf.p + n > String.length buf.s then
+    (buf.p <- String.length buf.s; error buf k);
+  let s = String.sub buf.s buf.p n in
+  buf.p <- buf.p + n;
   k (Ok s)
 
 let char c =
   curr >>= fun c1 -> if c1 = c then next else error
 
 let take_while1 f buf k =
-  let pos0 = buf.pos in
+  let pos0 = buf.p in
   let pos = ref pos0 in
-  while !pos < String.length buf.line && f buf.line.[!pos] do
+  while !pos < String.length buf.s && f buf.s.[!pos] do
     incr pos
   done;
   if pos0 = !pos then
     error buf k
   else begin
-    buf.pos <- !pos;
-    k (Ok (String.sub buf.line pos0 (!pos - pos0)))
+    buf.p <- !pos;
+    k (Ok (String.sub buf.s pos0 (!pos - pos0)))
   end
 
 (*
@@ -228,15 +226,17 @@ let uniqueid =
 *)
 
 let get_exactly n buf k =
-  buf.get_exactly n (fun s -> k (Ok s))
-
-let get_line buf k =
-  buf.get_line (fun s -> buf.line <- s; buf.pos <- 0; k (Ok ()))
+  if n + buf.p > String.length buf.s then
+    error buf k
+  else begin
+    let s = String.sub buf.s buf.p n in
+    buf.p <- buf.p + n;
+    k (Ok s)
+  end
 
 let literal =
   char '{' *> number >>= fun n ->
-  char '}' *> eol *> get_exactly (Int32.to_int n) >>= fun s ->
-  get_line *> return s
+  char '}' *> eol *> get_exactly (Int32.to_int n)
 
 let imap_string =
   curr >>= function
@@ -1356,7 +1356,7 @@ let resp_cond_state =
       error
 
 let response =
-  get_line *> curr >>= function
+  curr >>= function
   | '+' ->
       next *> resp_text >|= fun (_, x) -> Cont x
   | '*' ->
@@ -1367,24 +1367,7 @@ let response =
 exception F of string * int
 
 let parse s =
-  let off = ref 0 in
-  let get_line k =
-    let i =
-      match String.index_from s !off '\n' with
-      | i -> i
-      | exception Not_found -> String.length s
-    in
-    let s = String.sub s !off (i - !off) in
-    off := i + 1;
-    k s
-  in
-  let get_exactly n k =
-    assert (!off + n <= String.length s);
-    let s = String.sub s !off n in
-    off := !off + n;
-    k s
-  in
-  let buf = {get_line; get_exactly; line = ""; pos = 0} in
+  let buf = {s; p = 0} in
   let result = ref (Cont "") in
   match response buf (function Ok u -> result := u | Error (s, pos) -> raise (F (s, pos))) with
   | () -> ()

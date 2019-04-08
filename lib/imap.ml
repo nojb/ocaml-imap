@@ -40,11 +40,8 @@ let () =
 
 open Lwt.Infix
 
-let id = ref (-1)
-
 type t =
   {
-    id: int;
     sock: Lwt_ssl.socket;
     ic: Lwt_io.input_channel;
     oc: Lwt_io.output_channel;
@@ -57,7 +54,6 @@ let create_connection sock =
   let ic = Lwt_ssl.in_channel_of_descr sock in
   let oc = Lwt_ssl.out_channel_of_descr sock in
   {
-    id = (incr id; !id);
     sock;
     ic;
     oc;
@@ -69,18 +65,60 @@ let create_connection sock =
 let tag {tag; _} =
   Printf.sprintf "%04d" tag
 
-let parse {id; ic; _} =
-  let get_line k =
-    let k s = Printf.eprintf "{%03d} > %s\n%!" id s; k s in
-    Lwt.on_success (Lwt_io.read_line ic) k
+module L : sig
+  type t = string
+  val is_literal: t -> int option
+end = struct
+  type t = string
+
+  type state =
+    | Begin
+    | Int of int
+    | Cr of int
+    | Lf of int
+
+  let is_literal s =
+    let rec loop state i =
+      if i >= String.length s then
+        None
+      else begin
+        match state, s.[i] with
+        | Begin, '{' ->
+            loop (Int 0) (i+1)
+        | Int n, ('0'..'9' as c) ->
+            loop (Int (10 * n + Char.code c - Char.code '0')) (i+1)
+        | Int n, '}' ->
+            loop (Cr n) (i+1)
+        | Cr n, '\r' ->
+            loop (Lf n) (i+1)
+        | Lf n, '\n' ->
+            assert (i+1 = String.length s);
+            Some n
+        | _ ->
+            loop Begin i
+      end
+    in
+    loop Begin 0
+end
+
+let parse {ic; _} =
+  let buf = Buffer.create 17 in
+  let rec loop () =
+    Lwt_io.read_line ic >>= fun s ->
+    let s = s ^ "\r\n" in
+    Buffer.add_string buf s;
+    match L.is_literal s with
+    | Some n ->
+        let b = Bytes.create n in
+        Lwt_io.read_into_exactly ic b 0 n >>= fun () ->
+        Buffer.add_bytes buf b;
+        loop ()
+    | None ->
+        Lwt.return (Buffer.contents buf)
   in
-  let get_exactly n k =
-    let k s = Printf.eprintf "{%03d} > [%d bytes]\n%!" id (String.length s); k s in
-    let b = Bytes.create n in
-    Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
-  in
-  let buf = {Parser.line = ""; pos = 0; get_line; get_exactly} in
   let t, u = Lwt.wait () in
+  loop () >>= fun s ->
+  let buf = {Parser.s; p = 0} in
   Parser.response buf (function
       | Ok x ->
           Lwt.wakeup u x
