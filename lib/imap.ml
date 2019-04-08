@@ -185,11 +185,11 @@ let simple format default =
   let finish res = res in
   {format; process; default; finish}
 
-let login imap username password =
+let login username password =
   let format = Encoder.(str "LOGIN" ++ str username ++ str password) in
-  run imap (simple format ())
+  simple format ()
 
-let _capability imap =
+let _capability =
   let format = Encoder.(str "CAPABILITY") in
   let process caps = function
     | Response.Untagged.CAPABILITY caps1 ->
@@ -198,36 +198,36 @@ let _capability imap =
         caps
   in
   let finish l = List.rev l |> List.flatten in
-  run imap {format; process; default = []; finish}
+  {format; process; default = []; finish}
 
-let create imap m =
+let create m =
   let format = Encoder.(str "CREATE" ++ mutf7 m) in
-  run imap (simple format ())
+  simple format ()
 
-let delete imap m =
+let delete m =
   let format = Encoder.(str "DELETE" ++ mutf7 m) in
-  run imap (simple format ())
+  simple format ()
 
-let rename imap m1 m2 =
+let rename m1 m2 =
   let format = Encoder.(str "RENAME" ++ mutf7 m1 ++ mutf7 m2) in
-  run imap (simple format ())
+  simple format ()
 
-let logout imap =
+let logout =
   let format = Encoder.(str "LOGOUT") in
-  run imap (simple format ())
+  simple format ()
 
-let noop imap =
+let noop =
   let format = Encoder.(str "NOOP") in
-  run imap (simple format ())
+  simple format ()
 
-let list imap ?(ref = "") s =
+let list ?(ref = "") s =
   let format = Encoder.(str "LIST" ++ mutf7 ref ++ str s) in
   let process res = function
     | Response.Untagged.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
     | _ -> res
   in
   let finish = List.rev in
-  run imap {format; process; default = []; finish}
+  {format; process; default = []; finish}
 
 module Status_response = struct
   type t =
@@ -251,7 +251,7 @@ module Status_response = struct
     }
 end
 
-let status imap m att =
+let status m att =
   let format = Encoder.(str "STATUS" ++ mutf7 m ++ Status.encode att) in
   let process res = function
     | Response.Untagged.STATUS (mbox, items) when m = mbox ->
@@ -287,11 +287,11 @@ let status imap m att =
         res
   in
   let finish res = res in
-  run imap {format; process; default = None; finish}
+  {format; process; default = None; finish}
 
-let copy_gen cmd imap nums mbox =
+let copy_gen cmd nums mbox =
   let format = Encoder.(raw cmd ++ eset (Uint32.Set.of_list nums) ++ mutf7 mbox) in
-  run imap (simple format ())
+  simple format ()
 
 let copy =
   copy_gen "COPY"
@@ -299,22 +299,22 @@ let copy =
 let uid_copy =
   copy_gen "UID COPY"
 
-let _check imap =
+let _check =
   let format = Encoder.(str "CHECK") in
-  run imap (simple format ())
+  simple format ()
 
-let _close imap =
-  run imap (simple Encoder.(raw "CLOSE") ())
+let _close =
+  simple Encoder.(raw "CLOSE") ()
 
-let expunge imap =
+let expunge =
   let format = Encoder.(str "EXPUNGE") in
-  run imap (simple format ())
+  simple format ()
 
-let uid_expunge imap nums =
+let uid_expunge nums =
   let format = Encoder.(str "UID EXPUNGE" ++ eset (Uint32.Set.of_list nums)) in
-  run imap (simple format ())
+  simple format ()
 
-let search_gen cmd imap sk =
+let search_gen cmd sk =
   let format = Encoder.(raw cmd ++ Search.encode sk) in
   let process res = function
     | Response.Untagged.SEARCH (ids, modseq) ->
@@ -323,7 +323,7 @@ let search_gen cmd imap sk =
         res
   in
   let finish (ids, modseq) = (List.(rev ids |> flatten), modseq) in
-  run imap {format; process; default = ([], None); finish}
+  {format; process; default = ([], None); finish}
 
 let search =
   search_gen "SEARCH"
@@ -331,10 +331,10 @@ let search =
 let uid_search =
   search_gen "UID SEARCH"
 
-let select_gen cmd imap m =
+let select_gen cmd m =
   let arg = if false (* List.mem Capability.CONDSTORE imap.capabilities *) then " (CONDSTORE)" else "" in
   let format = Encoder.(raw cmd ++ mutf7 m & raw arg) in
-  run imap (simple format ())
+  simple format ()
 
 let select =
   select_gen "SELECT"
@@ -342,7 +342,7 @@ let select =
 let examine =
   select_gen "EXAMINE"
 
-let append imap m ?flags ?internaldate data =
+let append m ?flags ?internaldate data =
   let flags =
     match flags with
     | None -> Encoder.empty
@@ -354,11 +354,11 @@ let append imap m ?flags ?internaldate data =
     | Some s -> Encoder.(raw " " & str s)
   in
   let format = Encoder.(raw "APPEND" ++ mutf7 m & flags & internaldate ++ literal data) in
-  run imap (simple format ())
+  simple format ()
 
 module Int32Map = Map.Make (Int32)
 
-let fetch_gen cmd imap ?changed_since nums att push =
+let fetch_gen cmd ?changed_since nums att push =
   let open Encoder in
   let attx = Fetch.encode att in
   let changed_since =
@@ -409,13 +409,13 @@ let fetch_gen cmd imap ?changed_since nums att push =
     | _ ->
         ()
   in
-  if nums = [] then Lwt.return_unit else run imap {format; process; default = (); finish = ignore}
+  {format; process; default = (); finish = ignore}
 
-let fetch imap ?changed_since nums att push =
-  fetch_gen "FETCH" imap ?changed_since nums att push
+let fetch ?changed_since nums att push =
+  fetch_gen "FETCH" ?changed_since nums att push
 
-let uid_fetch imap ?changed_since nums att push =
-  fetch_gen "UID FETCH" imap ?changed_since nums att push
+let uid_fetch ?changed_since nums att push =
+  fetch_gen "UID FETCH" ?changed_since nums att push
 
 type store_mode =
   [ `Add
@@ -426,7 +426,7 @@ type store_kind =
   [ `Flags of Flag.t list
   | `Labels of string list ]
 
-let store_gen cmd imap ?unchanged_since mode nums att =
+let store_gen cmd ?unchanged_since mode nums att =
   let open Encoder in
   let base =
     let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
@@ -447,7 +447,7 @@ let store_gen cmd imap ?unchanged_since mode nums att =
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format = raw cmd ++ eset (Uint32.Set.of_list nums) ++ unchanged_since ++ raw base ++ p att in
-  run imap (simple format ())
+  simple format ()
 
 let store =
   store_gen "STORE"
@@ -455,9 +455,9 @@ let store =
 let uid_store =
   store_gen "UID STORE"
 
-let _enable imap caps =
+let _enable caps =
   let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in
-  run imap (simple format ())
+  simple format ()
 
 let () =
   Ssl.init ()
@@ -472,9 +472,9 @@ let connect ~host ~port ~username ~password =
   let imap = create_connection sock in
   parse imap >>= function
   | Response.Untagged _ ->
-      login imap username password >|= fun () -> imap
+      run imap (login username password) >|= fun () -> imap
   | Tagged _ | Cont _ ->
       Lwt.fail_with "unexpected response"
 
 let disconnect imap =
-  logout imap >>= fun () -> Lwt_ssl.ssl_shutdown imap.sock
+  run imap logout >>= fun () -> Lwt_ssl.ssl_shutdown imap.sock
