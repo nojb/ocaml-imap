@@ -129,3 +129,7 @@ val uid_store: ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -
 module Parser   = Parser
 module Encoder  = Encoder
 module Response = Response
+
+module L : sig
+  val is_complete: Bytes.t -> int option
+end
