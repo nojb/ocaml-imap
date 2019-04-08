@@ -26,18 +26,59 @@ type t =
     mutable tag: int;
   }
 
-let parse {sock; _} =
-  let get_line k =
-    let k s = Printf.eprintf "{%03d} > %s\n%!" id s; k s in
-    Lwt.on_success (Lwt_io.read_line ic) k
+module L : sig
+  type t = string
+  val is_complete: t -> int option
+end = struct
+  type t = string
+
+  type state =
+    | Begin
+    | Int of int
+    | Cr of int
+    | Lf of int
+
+  let is_complete s =
+    let rec loop state i =
+      if i >= String.length s then
+        None
+      else begin
+        match state, s.[i] with
+        | Begin, '{' ->
+            loop (Int 0) (i+1)
+        | Int n, ('0'..'9' as c) ->
+            loop (Int (10 * n + Char.code c - Char.code '0')) (i+1)
+        | Int n, '}' ->
+            loop (Cr n) (i+1)
+        | Begin, '\r' ->
+            loop (Lf 0) (i+1)
+        | Cr n, '\r' ->
+            loop (Lf n) (i+1)
+        | Lf 0, '\n' ->
+            Some (i+1)
+        | Lf n, '\n' ->
+            loop Begin (i+1+n)
+        | _ ->
+            loop Begin i
+      end
+    in
+    loop Begin 0
+end
+
+let parse {sock; buf; len; _} =
+  let rec loop () =
+    let n = Ssl.read sock buf len (Bytes.length buf - len) in
+    match L.is_complete buf with
+    | Some (n, pos) ->
+        let line = Buffer.sub buf 0 pos in
+        Bytes.blit buf pos buf 0 (len - pos);
+        line
+    | None ->
+        loop ()
   in
-  let get_exactly n k =
-    let k s = Printf.eprintf "{%03d} > [%d bytes]\n%!" id (String.length s); k s in
-    let b = Bytes.create n in
-    Lwt.on_success (Lwt_io.read_into_exactly ic b 0 n) (fun () -> k (Bytes.unsafe_to_string b))
-  in
-  let buf = {Parser.line = ""; pos = 0; get_line; get_exactly} in
   let t, u = Lwt.wait () in
+  loop () >>= fun s ->
+  let buf = {Parser.s; p = 0} in
   Parser.response buf (function
       | Ok x ->
           Lwt.wakeup u x
