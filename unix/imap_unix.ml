@@ -30,9 +30,7 @@ type t =
 
 let parse t =
   let rec loop () =
-    let n = Ssl.read t.sock t.buf t.len (Bytes.length t.buf - t.len) in
-    t.len <- t.len + n;
-    match Imap.L.is_complete t.buf with
+    match Imap.L.is_complete t.buf t.len with
     | Some pos ->
         let s = Bytes.sub_string t.buf 0 pos in
         t.len <- t.len - pos;
@@ -40,6 +38,8 @@ let parse t =
         Printf.eprintf "S: %s\n%!" (String.sub s 0 (String.length s - 2));
         s
     | None ->
+        let n = Ssl.read t.sock t.buf t.len (Bytes.length t.buf - t.len) in
+        t.len <- t.len + n;
         loop ()
   in
   let s = loop () in

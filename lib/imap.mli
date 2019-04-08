@@ -121,5 +121,5 @@ module Encoder  = Encoder
 module Response = Response
 
 module L : sig
-  val is_complete: Bytes.t -> int option
+  val is_complete: Bytes.t -> int -> int option
 end

@@ -394,9 +394,10 @@ module L = struct
     | Cr of int
     | Lf of int
 
-  let is_complete s =
+  let is_complete s len =
+    assert (len <= Bytes.length s);
     let rec loop state i =
-      if i >= Bytes.length s then
+      if i >= len then
         None
       else begin
         match state, Bytes.get s i with
