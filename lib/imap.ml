@@ -512,3 +512,7 @@ let connect ~host ~port ~username ~password =
 
 let disconnect imap =
   run imap logout >>= fun () -> Lwt_ssl.ssl_shutdown imap.sock
+
+module Parser   = Parser
+module Encoder  = Encoder
+module Response = Response

@@ -24,13 +24,15 @@ type t =
   {
     sock: Ssl.socket;
     mutable tag: int;
+    mutable buf: Bytes.t;
+    mutable len: int;
   }
 
 module L : sig
-  type t = string
+  type t = Bytes.t
   val is_complete: t -> int option
 end = struct
-  type t = string
+  type t = Bytes.t
 
   type state =
     | Begin
@@ -40,10 +42,10 @@ end = struct
 
   let is_complete s =
     let rec loop state i =
-      if i >= String.length s then
+      if i >= Bytes.length s then
         None
       else begin
-        match state, s.[i] with
+        match state, Bytes.get s i with
         | Begin, '{' ->
             loop (Int 0) (i+1)
         | Int n, ('0'..'9' as c) ->
@@ -65,80 +67,84 @@ end = struct
     loop Begin 0
 end
 
-let parse {sock; buf; len; _} =
+let parse t =
   let rec loop () =
-    let n = Ssl.read sock buf len (Bytes.length buf - len) in
-    match L.is_complete buf with
-    | Some (n, pos) ->
-        let line = Buffer.sub buf 0 pos in
-        Bytes.blit buf pos buf 0 (len - pos);
-        line
+    let n = Ssl.read t.sock t.buf t.len (Bytes.length t.buf - t.len) in
+    t.len <- t.len + n;
+    match L.is_complete t.buf with
+    | Some pos ->
+        let s = Bytes.sub_string t.buf 0 pos in
+        t.len <- t.len - pos;
+        Bytes.blit t.buf pos t.buf 0 t.len;
+        s
     | None ->
         loop ()
   in
-  let t, u = Lwt.wait () in
-  loop () >>= fun s ->
-  let buf = {Parser.s; p = 0} in
-  Parser.response buf (function
-      | Ok x ->
-          Lwt.wakeup u x
-      | Pervasives.Error (s, pos) ->
-          Lwt.wakeup_exn u (Error (Decode_error (s, pos)))
-    );
-  t
+  let s = loop () in
+  match Imap.Parser.response {Imap.Parser.s; p = 0} with
+  | Ok x ->
+      x
+  | Pervasives.Error _ ->
+      failwith "parsing error"
 
-let rec send imap r process res =
+let really f ofs len =
+  let rec loop ofs len =
+    if len <= 0 then ()
+    else
+      let n = f ofs len in
+      loop (ofs + n) (len - n)
+  in
+  loop ofs len
+
+let rec send t r process res =
   match r with
-  | Encoder.End ->
-      Lwt.return res
+  | Imap.Encoder.End ->
+      res
   | Wait r ->
       let rec loop res =
-        parse imap >>= function
-        | Response.Cont _ ->
-            send imap r process res
+        match parse t with
+        | Imap.Response.Cont _ ->
+            send t r process res
         | Untagged u ->
             loop (process res u)
         | Tagged _ ->
-            Lwt.fail (Failure "not expected")
+            failwith "not expected"
       in
-      Lwt_io.flush imap.oc >>= fun () -> loop res
+      loop res
   | Crlf r ->
-      Lwt_io.write imap.oc "\r\n" >>= fun () ->
-      send imap r process res
+      really (Ssl.write t.sock (Bytes.of_string "\r\n")) 0 2;
+      send t r process res
   | Raw (s, r) ->
-      Lwt_io.write imap.oc s >>= fun () ->
-      send imap r process res
+      let b = Bytes.unsafe_of_string s in
+      really (Ssl.write t.sock b) 0 (Bytes.length b);
+      send t r process res
 
-let send imap r process res =
-  let r = r Encoder.End in
-  (* Printf.eprintf "%s\n%!" (Sexplib.Sexp.to_string_hum (Encoder.sexp_of_s r)); *)
-  send imap r process res >>= fun res ->
-  Lwt_io.flush imap.oc >>= fun () ->
-  Lwt.return res
+let send t r process res =
+  send t (r Imap.Encoder.End) process res
 
 let wrap_process f res = function
-  | Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
-      raise (Error (Server_error s))
+  | Imap.Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
+      failwith s
   | u ->
       f res u
 
 let run t {Imap.format; default; process; finish} =
   let process = wrap_process process in
-  let tag = tag imap in
-  let r = Encoder.(raw tag ++ format & crlf) in
+  let tag = Printf.sprintf "%04d" t.tag in
+  let r = Imap.Encoder.(raw tag ++ format & crlf) in
   let rec loop res =
-    parse imap >>= function
-    | Response.Cont _ ->
-        Lwt.fail_with "unexpected"
+    match parse t with
+    | Imap.Response.Cont _ ->
+        failwith "unexpected"
     | Untagged u ->
         loop (process res u)
     | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
-        Lwt.fail (Error (Server_error s))
+        failwith s
     | Tagged (_, OK _) ->
-        imap.tag <- imap.tag + 1;
-        Lwt.return res
+        t.tag <- t.tag + 1;
+        res
   in
-  send imap r process default >>= loop >|= finish
+  send t r process default |> loop |> finish
 
 let ssl_init =
   Lazy.from_fun Ssl.init
@@ -151,13 +157,12 @@ let connect ?(port = 993) host =
     let sa = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     Ssl.open_connection_with_context ctx sa
   in
-  let t = {sock; tag = 1} in
-  parse imap >>= function
-  | Response.Untagged _ ->
-      run imap (login username password) >|= fun () -> imap
+  let t = {sock; tag = 1; buf = Bytes.create 4096; len = 0} in
+  match parse t with
+  | Imap.Response.Untagged _ ->
+      t
   | Tagged _ | Cont _ ->
       failwith "unexpected response"
 
 let disconnect t =
-  run t Imap.logout;
   Ssl.shutdown_connection t.sock

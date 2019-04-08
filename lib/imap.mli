@@ -57,6 +57,9 @@ val run: t -> ('a, 'b) cmd -> 'b Lwt.t
 
 (* val stop_poll: t -> unit *)
 
+val login: string -> string -> (unit, unit) cmd
+val logout: (unit, unit) cmd
+
 val create: string -> (unit, unit) cmd
 (** [create imap name] creates a mailbox named [name]. *)
 
@@ -135,3 +138,7 @@ val store: ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> (u
     mod-sequence value at least the passed value are affected. *)
 
 val uid_store: ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -> (unit, unit) cmd
+
+module Parser   = Parser
+module Encoder  = Encoder
+module Response = Response
