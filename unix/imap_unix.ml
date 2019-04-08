@@ -53,15 +53,15 @@ end = struct
         | Int n, '}' ->
             loop (Cr n) (i+1)
         | Begin, '\r' ->
-            loop (Lf 0) (i+1)
+            loop (Lf (-1)) (i+1)
         | Cr n, '\r' ->
             loop (Lf n) (i+1)
-        | Lf 0, '\n' ->
+        | Lf (-1), '\n' ->
             Some (i+1)
         | Lf n, '\n' ->
             loop Begin (i+1+n)
         | _ ->
-            loop Begin i
+            loop Begin (i+1)
       end
     in
     loop Begin 0
@@ -76,6 +76,7 @@ let parse t =
         let s = Bytes.sub_string t.buf 0 pos in
         t.len <- t.len - pos;
         Bytes.blit t.buf pos t.buf 0 t.len;
+        Printf.eprintf "S: %s\n%!" (String.sub s 0 (String.length s - 2));
         s
     | None ->
         loop ()
