@@ -1,6 +1,4 @@
 (library
  (name imap)
  (public_name imap)
- (inline_tests)
- (preprocess (pps ppx_expect))
  (libraries uutf base64 re))
