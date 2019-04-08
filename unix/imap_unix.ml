@@ -60,9 +60,9 @@ let really f ofs len =
 
 let rec send t r cmd =
   match r with
-  | [] ->
+  | `End ->
       cmd
-  | Imap.Encoder.Wait :: r  ->
+  | `Wait r ->
       let rec loop cmd =
         match parse t with
         | Imap.Response.Cont _ ->
@@ -78,16 +78,13 @@ let rec send t r cmd =
             failwith "not expected"
       in
       loop cmd
-  | Crlf :: r ->
-      really (Ssl.write t.sock (Bytes.of_string "\r\n")) 0 2;
-      send t r cmd
-  | Raw s :: r ->
+  | `Next (s, r) ->
       let b = Bytes.unsafe_of_string s in
+      Printf.eprintf "C: %s\n%!" (Bytes.sub_string b 0 (Bytes.length b - 2));
       really (Ssl.write t.sock b) 0 (Bytes.length b);
       send t r cmd
 
 let run t cmd =
-  let tag = Printf.sprintf "%04d" t.tag in
   let rec loop cmd =
     match parse t with
     | Imap.Response.Cont _ ->
@@ -105,8 +102,8 @@ let run t cmd =
         t.tag <- t.tag + 1;
         Imap.finish cmd
   in
-  let r = Imap.(Encoder.(raw tag ++ encode cmd & crlf)) [] in
-  send t r cmd |> loop
+  let tag = Printf.sprintf "%04d" t.tag in
+  send t (Imap.encode tag cmd) cmd |> loop
 
 let ssl_init =
   Lazy.from_fun Ssl.init

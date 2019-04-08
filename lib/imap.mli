@@ -22,21 +22,11 @@
 
 open Common
 
-(* type error = *)
-(*   | Incorrect_tag of string * string *)
-(*   | Decode_error of string * int *)
-(*   | Unexpected_cont *)
-(*   | Bad_greeting *)
-(*   | Auth_error of string *)
-(*   | Server_error of string *)
-
-(* exception Error of error *)
-
 (** {1 Commands} *)
 
 type 'a cmd
 
-val encode: 'a cmd -> Encoder.t
+val encode: string -> 'a cmd -> ([ `Next of string * 'x | `Wait of 'x | `End ] as 'x)
 val process: 'a cmd -> Response.Untagged.t -> ('a cmd, string) result
 val finish: 'a cmd -> 'a
 

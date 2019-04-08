@@ -46,7 +46,24 @@ type 'a cmd =
     u: 'a u;
   }
 
-let encode {format; _} = format
+let encode tag {format; _} =
+  let rec loop acc = function
+    | Encoder.Wait :: k as k' ->
+        if acc = [] then
+          `Wait (loop [] k)
+        else
+          `Next (String.concat "" (List.rev acc), loop [] k')
+    | Raw s :: k ->
+        loop (s :: acc) k
+    | Crlf :: k ->
+        loop ("\r\n" :: acc) k
+    | [] ->
+        if acc = [] then
+          `End
+        else
+          `Next (String.concat "" (List.rev acc), `End)
+  in
+  loop [] (Encoder.(raw tag ++ format & crlf) [])
 
 let process {format; u = E (res, process, finish)} = function
   | Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
