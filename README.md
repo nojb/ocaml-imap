@@ -1,10 +1,10 @@
-# ocaml-imap -- Lwt-compatible IMAP4rev1 client library for OCaml
+# ocaml-imap -- IMAP4rev1 client library in OCaml
 
 [![Build Status](https://travis-ci.org/nojb/ocaml-imap.svg?branch=master)](https://travis-ci.org/nojb/ocaml-imap)
 
 Home page: https://github.com/nojb/ocaml-imap
 
-Contact: Nicolas Ojeda Bar `<n.oje.bar@gmail.com>`
+Contact: Nicolás Ojeda Bär `<n.oje.bar@gmail.com>`
 
 ## Installation
 
