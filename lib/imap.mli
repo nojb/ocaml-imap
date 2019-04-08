@@ -32,15 +32,6 @@ open Common
 
 (* exception Error of error *)
 
-(* type t *)
-(** The type for connections. *)
-
-(* val connect: host:string -> port:int -> username:string -> password:string -> t Lwt.t *)
-(** [connect server username password mailbox]. *)
-
-(* val disconnect: t -> unit Lwt.t *)
-(** Disconnect. *)
-
 (** {1 Commands} *)
 
 type 'a cmd
@@ -48,8 +39,6 @@ type 'a cmd
 val encode: 'a cmd -> Encoder.t
 val process: 'a cmd -> Response.Untagged.t -> ('a cmd, string) result
 val finish: 'a cmd -> 'a
-
-(* val run: t -> 'a cmd -> 'a Lwt.t *)
 
 (* val poll: t -> unit Lwt.t *)
 

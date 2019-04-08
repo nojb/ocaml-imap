@@ -155,7 +155,7 @@ let connect ?(port = 993) host =
   let sock =
     let ctx = Ssl.create_context Ssl.TLSv1_2 Ssl.Client_context in
     let he = Unix.gethostbyname host in
-    let sa = Lwt_unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
+    let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     Ssl.open_connection_with_context ctx sa
   in
   let t = {sock; tag = 1; buf = Bytes.create 4096; len = 0} in

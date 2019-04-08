@@ -3,4 +3,4 @@
  (public_name imap)
  (inline_tests)
  (preprocess (pps ppx_expect))
- (libraries uutf base64 re lwt lwt_ssl))
+ (libraries uutf base64 re))
