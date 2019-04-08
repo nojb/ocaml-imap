@@ -31,99 +31,96 @@ type buffer =
 let some x = Some x
 
 type 'a t =
-  buffer -> (('a, string * int) result -> unit) -> unit
+  buffer -> ('a, string * int) result
 
-let return x _ k =
-  k (Ok x)
+let return x _ =
+  Ok x
 
-let ( *> ) p q buf k =
-  p buf (function
+let ( *> ) p q buf =
+  match p buf with
+  | Ok () ->
+      q buf
+  | Error _ as e ->
+      e
+
+let ( <* ) p q buf =
+  match p buf with
+  | Ok _ as o ->
+      begin match q buf with
       | Ok () ->
-          q buf k
+          o
       | Error _ as e ->
-          k e
-    )
+          e
+      end
+  | Error _ as e ->
+      e
 
-let ( <* ) p q buf k =
-  p buf (function
-      | Ok _ as o ->
-          q buf (function
-              | Ok () ->
-                  k o
-              | Error _ as e ->
-                  k e
-            )
-      | Error _ as e ->
-          k e
-    )
+let ( <$> ) f p buf =
+  match p buf with
+  | Ok x ->
+      Ok (f x)
+  | Error _ as e ->
+      e
 
-let ( <$> ) f p buf k =
-  p buf (function
-      | Ok x ->
-          k (Ok (f x))
-      | Error _ as e ->
-          k e
-    )
+let ( >>= ) p f buf =
+  match p buf with
+  | Ok x ->
+      f x buf
+  | Error _ as e ->
+      e
 
-let ( >>= ) p f buf k =
-  p buf (function
-      | Ok x ->
-          f x buf k
-      | Error _ as e ->
-          k e
-    )
+let ( >|= ) p f buf =
+  match p buf with
+  | Ok x ->
+      Ok (f x)
+  | Error _ as e ->
+      e
 
-let ( >|= ) p f buf k =
-  p buf (function
-      | Ok x ->
-          k (Ok (f x))
-      | Error _ as e ->
-          k e
-    )
+let error buf =
+  Error (buf.s, buf.p)
 
-let error buf k =
-  k (Error (buf.s, buf.p))
-
-let is_eol buf k =
-  k (Ok (buf.p >= String.length buf.s))
+let is_eol buf =
+  Ok (buf.p >= String.length buf.s)
 
 let eol =
   is_eol >>= function
   | true -> return ()
   | false -> error
 
-let curr buf k =
+let curr buf =
   if buf.p >= String.length buf.s then
-    k (Ok '\000')
+    Ok '\000'
   else
-    k (Ok buf.s.[buf.p])
+    Ok buf.s.[buf.p]
 
-let next buf k =
+let next buf =
   assert (buf.p < String.length buf.s);
   buf.p <- buf.p + 1;
-  k (Ok ())
+  Ok ()
 
-let take n buf k =
+let take n buf =
   if buf.p + n > String.length buf.s then
-    (buf.p <- String.length buf.s; error buf k);
-  let s = String.sub buf.s buf.p n in
-  buf.p <- buf.p + n;
-  k (Ok s)
+    (buf.p <- String.length buf.s; error buf)
+  else begin
+    let s = String.sub buf.s buf.p n in
+    buf.p <- buf.p + n;
+    Ok s
+  end
 
 let char c =
   curr >>= fun c1 -> if c1 = c then next else error
 
-let take_while1 f buf k =
+let take_while1 f buf =
   let pos0 = buf.p in
   let pos = ref pos0 in
   while !pos < String.length buf.s && f buf.s.[!pos] do
     incr pos
   done;
   if pos0 = !pos then
-    error buf k
+    error buf
   else begin
     buf.p <- !pos;
-    k (Ok (String.sub buf.s pos0 (!pos - pos0)))
+    Ok (String.sub buf.s pos0 (!pos - pos0))
   end
 
 (*
@@ -225,13 +222,13 @@ let uniqueid =
    string          = quoted / literal
 *)
 
-let get_exactly n buf k =
+let get_exactly n buf =
   if n + buf.p > String.length buf.s then
-    error buf k
+    error buf
   else begin
     let s = String.sub buf.s buf.p n in
     buf.p <- buf.p + n;
-    k (Ok s)
+    Ok s
   end
 
 let literal =
@@ -964,7 +961,7 @@ let body_ext_mpart =
 *)
 
 let fix f =
-  let rec p buf k = f p buf k in
+  let rec p buf = f p buf in
   f p
 
 let body_fld_lines =
@@ -1364,15 +1361,13 @@ let response =
   | _ ->
       tag >>= fun tag -> char ' ' *> resp_cond_state >|= fun st -> Tagged (tag, st)
 
-exception F of string * int
-
 let parse s =
   let buf = {s; p = 0} in
-  let result = ref (Cont "") in
-  match response buf (function Ok u -> result := u | Error (s, pos) -> raise (F (s, pos))) with
-  | () -> ()
-  | exception F (line, pos) ->
-      Printf.eprintf "Parsing error:\n%s\n%s^\n" line (String.make pos ' ')
+  match response buf with
+  | Ok _u ->
+      ()
+  | Error (line, pos) ->
+      failwith (Printf.sprintf "Parsing error:\n%s\n%s^\n" line (String.make pos ' '))
 
 let%expect_test _ =
   parse {|+ YGgGCSqGSIb3EgECAgIAb1kwV6ADAgEFoQMCAQ+iSzBJoAMC|};

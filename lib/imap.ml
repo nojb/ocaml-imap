@@ -116,16 +116,12 @@ let parse {ic; _} =
     | None ->
         Lwt.return (Buffer.contents buf)
   in
-  let t, u = Lwt.wait () in
   loop () >>= fun s ->
-  let buf = {Parser.s; p = 0} in
-  Parser.response buf (function
-      | Ok x ->
-          Lwt.wakeup u x
-      | Pervasives.Error (s, pos) ->
-          Lwt.wakeup_exn u (Error (Decode_error (s, pos)))
-    );
-  t
+  match Parser.response {Parser.s; p = 0} with
+  | Ok x ->
+      Lwt.return x
+  | Pervasives.Error (s, pos) ->
+      Lwt.fail (Error (Decode_error (s, pos)))
 
 let rec send imap r process res =
   match r with
