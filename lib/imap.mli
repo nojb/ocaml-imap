@@ -22,96 +22,94 @@
 
 open Common
 
-type error =
-  | Incorrect_tag of string * string
-  | Decode_error of string * int
-  | Unexpected_cont
-  | Bad_greeting
-  | Auth_error of string
-  | Server_error of string
+(* type error = *)
+(*   | Incorrect_tag of string * string *)
+(*   | Decode_error of string * int *)
+(*   | Unexpected_cont *)
+(*   | Bad_greeting *)
+(*   | Auth_error of string *)
+(*   | Server_error of string *)
 
-exception Error of error
+(* exception Error of error *)
 
-type t
+(* type t *)
 (** The type for connections. *)
 
-val connect: host:string -> port:int -> username:string -> password:string -> t Lwt.t
+(* val connect: host:string -> port:int -> username:string -> password:string -> t Lwt.t *)
 (** [connect server username password mailbox]. *)
 
-val disconnect: t -> unit Lwt.t
+(* val disconnect: t -> unit Lwt.t *)
 (** Disconnect. *)
 
 (** {1 Commands} *)
 
-type ('a, 'b) cmd = private
-  {
-    format: Encoder.t;
-    default: 'a;
-    process: 'a -> Response.Untagged.t -> 'a;
-    finish: 'a -> 'b;
-  }
+type 'a cmd
 
-val run: t -> ('a, 'b) cmd -> 'b Lwt.t
+val encode: 'a cmd -> Encoder.t
+val process: 'a cmd -> Response.Untagged.t -> ('a cmd, string) result
+val finish: 'a cmd -> 'a
+
+(* val run: t -> 'a cmd -> 'a Lwt.t *)
 
 (* val poll: t -> unit Lwt.t *)
 
 (* val stop_poll: t -> unit *)
 
-val login: string -> string -> (unit, unit) cmd
-val logout: (unit, unit) cmd
+val login: string -> string -> unit cmd
+val logout: unit cmd
 
-val create: string -> (unit, unit) cmd
+val create: string -> unit cmd
 (** [create imap name] creates a mailbox named [name]. *)
 
-val delete: string -> (unit, unit) cmd
+val delete: string -> unit cmd
 (** [delete imap name] deletes mailbox [name]. *)
 
-val rename: string -> string -> (unit, unit) cmd
+val rename: string -> string -> unit cmd
 (** [rename imap oldname newname] renames mailbox [oldname] to [newname]. *)
 
-val noop: (unit, unit) cmd
+val noop: unit cmd
 (** [noop imap] does nothing.  Since any command can return a status update as
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity. *)
 
-val list: ?ref:string -> string -> ((MailboxFlag.t list * char option * string) list, (MailboxFlag.t list * char option * string) list) cmd
+val list: ?ref:string -> string -> (MailboxFlag.t list * char option * string) list cmd
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 
-val status: string -> 'a Status.t -> ('a option, 'a option) cmd
+val status: string -> 'a Status.t -> 'a option cmd
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
-val copy: seq list -> string -> (unit, unit) cmd
+val copy: seq list -> string -> unit cmd
 (** [copy imap nums mbox] copies messages with sequence number in [nums] to
     mailbox [mbox]. *)
 
-val uid_copy: uid list -> string -> (unit, unit) cmd
+val uid_copy: uid list -> string -> unit cmd
 
-val expunge: (unit, unit) cmd
+val expunge: unit cmd
 (** [expunge imap] permanently removes all messages that have the [Deleted]
     {!flag} set from the currently selected mailbox. *)
 
-val uid_expunge: uid list -> (unit, unit) cmd
+val uid_expunge: uid list -> unit cmd
 (** Requires [UIDPLUS] extension. *)
 
-val search: Search.key -> (seq list list * modseq option, seq list * modseq option) cmd
+val search: Search.key -> (seq list * modseq option) cmd
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
 
-val uid_search: Search.key -> (uid list list * modseq option, uid list * modseq option) cmd
+val uid_search: Search.key -> (uid list * modseq option) cmd
 
-val examine: string -> (unit, unit) cmd
+val examine: string -> unit cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
-val select: string -> (unit, unit) cmd
+val select: string -> unit cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
-val append: string -> ?flags:Flag.t list -> ?internaldate:string -> string -> (unit, unit) cmd
+val append: string -> ?flags:Flag.t list -> ?internaldate:string -> string -> unit cmd
 (** [append imap mbox flags id data] appends [data] as a new message to the end
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
-val fetch: ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> (unit, unit) cmd
+val fetch: ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> unit cmd
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
@@ -119,7 +117,7 @@ val fetch: ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> (u
     [CHANGEDSINCE] mod-sequence value at least the passed value are affected
     (requires the [CONDSTORE] extension). *)
 
-val uid_fetch: ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a -> unit) -> (unit, unit) cmd
+val uid_fetch: ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a -> unit) -> unit cmd
 
 type store_mode =
   [ `Add
@@ -130,14 +128,14 @@ type store_kind =
   [ `Flags of Flag.t list
   | `Labels of string list ]
 
-val store: ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> (unit, unit) cmd
+val store: ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> unit cmd
 (** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
     [mode] for those message with sequence number in [nums].
 
     If [?unchanged_since] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
 
-val uid_store: ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -> (unit, unit) cmd
+val uid_store: ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -> unit cmd
 
 module Parser   = Parser
 module Encoder  = Encoder

@@ -97,55 +97,55 @@ let really f ofs len =
   in
   loop ofs len
 
-let rec send t r process res =
+let rec send t r cmd =
   match r with
   | [] ->
-      res
+      cmd
   | Imap.Encoder.Wait :: r  ->
-      let rec loop res =
+      let rec loop cmd =
         match parse t with
         | Imap.Response.Cont _ ->
-            send t r process res
+            send t r cmd
         | Untagged u ->
-            loop (process res u)
+            begin match Imap.process cmd u with
+            | Ok cmd ->
+                loop cmd
+            | Error s ->
+                failwith s
+            end
         | Tagged _ ->
             failwith "not expected"
       in
-      loop res
+      loop cmd
   | Crlf :: r ->
       really (Ssl.write t.sock (Bytes.of_string "\r\n")) 0 2;
-      send t r process res
+      send t r cmd
   | Raw s :: r ->
       let b = Bytes.unsafe_of_string s in
       really (Ssl.write t.sock b) 0 (Bytes.length b);
-      send t r process res
+      send t r cmd
 
-let send t r process res =
-  send t (r []) process res
-
-let wrap_process f res = function
-  | Imap.Response.Untagged.State (NO (_, s) | BAD (_, s)) ->
-      failwith s
-  | u ->
-      f res u
-
-let run t {Imap.format; default; process; finish} =
-  let process = wrap_process process in
+let run t cmd =
   let tag = Printf.sprintf "%04d" t.tag in
-  let r = Imap.Encoder.(raw tag ++ format & crlf) in
-  let rec loop res =
+  let rec loop cmd =
     match parse t with
     | Imap.Response.Cont _ ->
         failwith "unexpected"
     | Untagged u ->
-        loop (process res u)
+        begin match Imap.process cmd u with
+        | Ok cmd ->
+            loop cmd
+        | Error s ->
+            failwith s
+        end
     | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
         failwith s
     | Tagged (_, OK _) ->
         t.tag <- t.tag + 1;
-        res
+        Imap.finish cmd
   in
-  send t r process default |> loop |> finish
+  let r = Imap.(Encoder.(raw tag ++ encode cmd & crlf)) [] in
+  send t r cmd |> loop
 
 let ssl_init =
   Lazy.from_fun Ssl.init

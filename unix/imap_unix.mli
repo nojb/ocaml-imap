@@ -29,4 +29,4 @@ val connect: ?port:int -> string -> t
 val disconnect: t -> unit
 (** Disconnect. *)
 
-val run: t -> ('a, 'b) Imap.cmd -> 'b
+val run: t -> 'a Imap.cmd -> 'a
