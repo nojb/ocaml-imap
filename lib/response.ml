@@ -177,6 +177,14 @@ type mailbox_flag =
   | Trash
   | Extension of string
 
+type mailbox_attribute =
+  | MESSAGES of int
+  | RECENT of int
+  | UIDNEXT of int32
+  | UIDVALIDITY of int32
+  | UNSEEN of int
+  | HIGHESTMODSEQ of int64
+
 type untagged =
   | State of state
   | BYE of { code : code option; message : string }
@@ -185,7 +193,7 @@ type untagged =
   | LIST of mailbox_flag list * char option * string
   | LSUB of mailbox_flag list * char option * string
   | SEARCH of int32 list * int64 option
-  | STATUS of string * Status.MailboxAttribute.t list
+  | STATUS of string * mailbox_attribute list
   | EXISTS of int
   | RECENT of int
   | EXPUNGE of int32

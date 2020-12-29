@@ -532,12 +532,13 @@ let resp_text_code =
         | "READ-ONLY" -> return READ_ONLY
         | "READ-WRITE" -> return READ_WRITE
         | "TRYCREATE" -> return TRYCREATE
-        | "UIDNEXT" -> char ' ' *> nz_number >|= fun n -> UIDNEXT n
-        | "UIDVALIDITY" -> char ' ' *> nz_number >|= fun n -> UIDVALIDITY n
-        | "UNSEEN" -> char ' ' *> nz_number >|= fun n -> UNSEEN n
+        | "UIDNEXT" -> char ' ' *> nz_number >|= fun n -> (UIDNEXT n : code)
+        | "UIDVALIDITY" ->
+            char ' ' *> nz_number >|= fun n -> (UIDVALIDITY n : code)
+        | "UNSEEN" -> char ' ' *> nz_number >|= fun n -> (UNSEEN n : code)
         | "CLOSED" -> return CLOSED
         | "HIGHESTMODSEQ" ->
-            char ' ' *> mod_sequence_value >|= fun n -> HIGHESTMODSEQ n
+            char ' ' *> mod_sequence_value >|= fun n -> (HIGHESTMODSEQ n : code)
         | "NOMODSEQ" -> return NOMODSEQ
         | "MODIFIED" -> char ' ' *> set >|= fun set -> MODIFIED set
         | "APPENDUID" ->
@@ -1010,10 +1011,11 @@ let mod_sequence_valzer =
   f <$> take_while1 is_digit
 
 let status_att =
-  let open Status.MailboxAttribute in
   atom >>= function
   | "MESSAGES" -> char ' ' *> number >|= fun n -> MESSAGES (Int32.to_int n)
-  | "RECENT" -> char ' ' *> number >|= fun n -> RECENT (Int32.to_int n)
+  | "RECENT" ->
+      char ' ' *> number >|= fun n ->
+      (RECENT (Int32.to_int n) : mailbox_attribute)
   | "UIDNEXT" -> char ' ' *> number >|= fun n -> UIDNEXT n
   | "UIDVALIDITY" -> char ' ' *> number >|= fun n -> UIDVALIDITY n
   | "UNSEEN" -> char ' ' *> number >|= fun n -> UNSEEN (Int32.to_int n)

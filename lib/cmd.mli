@@ -61,6 +61,26 @@ val list :
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 
+module Status : sig
+  type 'a t
+
+  val messages : int t
+
+  val recent : int t
+
+  val uidnext : int32 t
+
+  val uidvalidity : int32 t
+
+  val unseen : int t
+
+  val highestmodseq : int64 t
+
+  val pair : 'a t -> 'b t -> ('a * 'b) t
+
+  val map : ('a -> 'b) -> 'a t -> 'b t
+end
+
 val status : string -> 'a Status.t -> 'a option cmd
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 

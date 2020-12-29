@@ -183,8 +183,51 @@ let list ?(ref = "") s =
   let finish = List.rev in
   { format; u = E ([], process, finish) }
 
-module Status_response = struct
-  type t = {
+module Status = struct
+  type 'a t =
+    | MESSAGES : int t
+    | RECENT : int t
+    | UIDNEXT : int32 t
+    | UIDVALIDITY : int32 t
+    | UNSEEN : int t
+    | HIGHESTMODSEQ : int64 t
+    | PAIR : 'a t * 'b t -> ('a * 'b) t
+    | MAP : ('a -> 'b) * 'a t -> 'b t
+
+  let messages = MESSAGES
+
+  let recent = RECENT
+
+  let uidnext = UIDNEXT
+
+  let uidvalidity = UIDVALIDITY
+
+  let unseen = UNSEEN
+
+  let highestmodseq = HIGHESTMODSEQ
+
+  let pair t1 t2 = PAIR (t1, t2)
+
+  let map f t = MAP (f, t)
+
+  module E = Encoder
+
+  let rec encode : type a. a t -> E.t = function
+    | MESSAGES -> E.raw "MESSAGES"
+    | RECENT -> E.raw "RECENT"
+    | UIDNEXT -> E.raw "UIDNEXT"
+    | UIDVALIDITY -> E.raw "UIDVALIDITY"
+    | UNSEEN -> E.raw "UNSEEN"
+    | HIGHESTMODSEQ -> E.raw "HIGHESTMODSEQ"
+    | MAP (_, x) -> encode x
+    | PAIR _ as x ->
+        let rec go : type a. _ -> a t -> _ =
+         fun acc x ->
+          match x with PAIR (x, y) -> go (go acc x) y | x -> encode x :: acc
+        in
+        E.list (fun x -> x) (List.rev (go [] x))
+
+  type u = {
     messages : int option;
     recent : int option;
     uidnext : Common.uid option;
@@ -193,7 +236,7 @@ module Status_response = struct
     highestmodseq : Common.modseq option;
   }
 
-  let default =
+  let empty =
     {
       messages = None;
       recent = None;
@@ -209,17 +252,17 @@ let status m att =
   let process res = function
     | STATUS (mbox, items) when m = mbox ->
         let aux res = function
-          | (MESSAGES n : Status.MailboxAttribute.t) ->
-              { res with Status_response.messages = Some n }
+          | (MESSAGES n : mailbox_attribute) ->
+              { res with Status.messages = Some n }
           | RECENT n -> { res with recent = Some n }
           | UIDNEXT n -> { res with uidnext = Some n }
           | UIDVALIDITY n -> { res with uidvalidity = Some n }
           | UNSEEN n -> { res with unseen = Some n }
           | HIGHESTMODSEQ n -> { res with highestmodseq = Some n }
         in
-        let r = List.fold_left aux Status_response.default items in
+        let r = List.fold_left aux Status.empty items in
         let rec go : type a. a Status.t -> a option = function
-          | Status.MESSAGES -> r.Status_response.messages
+          | Status.MESSAGES -> r.Status.messages
           | RECENT -> r.recent
           | UIDNEXT -> r.uidnext
           | UIDVALIDITY -> r.uidvalidity
