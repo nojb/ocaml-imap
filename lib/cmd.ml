@@ -40,6 +40,15 @@
 open Common
 open Response
 
+(* module Time = struct *)
+(*   type t = { hours : int; minutes : int; seconds : int; zone : int } *)
+
+(*   let to_string { hours; minutes; seconds; zone } = *)
+(*     Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds *)
+(*       (if zone >= 0 then '+' else '-') *)
+(*       (abs zone) *)
+(* end *)
+
 module Encoder = struct
   module Mutf7 = struct
     let recode ?nln ?encoding out_encoding src dst =
