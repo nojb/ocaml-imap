@@ -24,9 +24,10 @@ type t
 (** The type for connections. *)
 
 val connect : ?port:int -> string -> t
-(** [connect server username password mailbox]. *)
+(** [connect ?port host]. *)
 
 val disconnect : t -> unit
 (** Disconnect. *)
 
 val run : t -> 'a Imap.Cmd.cmd -> 'a
+(** Run an IMAP command. *)
