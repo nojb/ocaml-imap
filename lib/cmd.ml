@@ -490,6 +490,35 @@ module Fetch = struct
 
   let pair x y = PAIR (x, y)
 
+  (* module Request = struct *)
+  (*   open Encoder *)
+
+  (*   let section_msgtext = function *)
+  (*     | HEADER -> raw "HEADER" *)
+  (*     | HEADER_FIELDS l -> raw "HEADER.FIELDS" ++ plist str l *)
+  (*     | HEADER_FIELDS_NOT l -> raw "HEADER.FIELDS.NOT" ++ plist str l *)
+  (*     | TEXT -> raw "TEXT" *)
+  (*     | MIME -> raw "MIME" *)
+
+  (*   let encode (nl, sec) = *)
+  (*     let sec = *)
+  (*       match sec with None -> empty | Some sec -> section_msgtext sec *)
+  (*     in *)
+  (*     match nl with [] -> sec | _ :: _ -> list ~sep:'.' int nl & raw "." & sec *)
+
+  (*   let header ?(part = []) () = (part, Some HEADER) *)
+
+  (*   let header_fields ?(part = []) l = (part, Some (HEADER_FIELDS l)) *)
+
+  (*   let header_fields_not ?(part = []) l = (part, Some (HEADER_FIELDS_NOT l)) *)
+
+  (*   let text ?(part = []) () = (part, Some TEXT) *)
+
+  (*   let part ~part () = (part, None) *)
+
+  (*   let mime ~part () = (part, Some MIME) *)
+  (* end *)
+
   let rec encode : type a. a t -> Encoder.t = function
     | ENVELOPE -> Encoder.raw "ENVELOPE"
     | INTERNALDATE -> Encoder.raw "INTERNALDATE"
