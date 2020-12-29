@@ -51,9 +51,8 @@ let rec encode : type a. a t -> E.t = function
   | HIGHESTMODSEQ -> E.raw "HIGHESTMODSEQ"
   | MAP (_, x) -> encode x
   | PAIR _ as x ->
-      let rec go : type a. _ -> a t -> _ = fun acc x ->
-        match x with
-        | PAIR (x, y) -> go (go acc x) y
-        | x -> encode x :: acc
+      let rec go : type a. _ -> a t -> _ =
+       fun acc x ->
+        match x with PAIR (x, y) -> go (go acc x) y | x -> encode x :: acc
       in
       E.list (fun x -> x) (List.rev (go [] x))

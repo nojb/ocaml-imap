@@ -73,7 +73,4 @@ module Untagged = struct
     | ENABLED of Capability.t list
 end
 
-type t =
-  | Untagged of Untagged.t
-  | Cont of string
-  | Tagged of string * State.t
+type t = Untagged of Untagged.t | Cont of string | Tagged of string * State.t

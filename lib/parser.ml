@@ -22,76 +22,35 @@
 
 open Response
 
-type buffer =
-  {
-    s: string;
-    mutable p: int;
-  }
+type buffer = { s : string; mutable p : int }
 
 let some x = Some x
 
-type 'a t =
-  buffer -> ('a, string * int) result
+type 'a t = buffer -> ('a, string * int) result
 
-let return x _ =
-  Ok x
+let return x _ = Ok x
 
-let ( *> ) p q buf =
-  match p buf with
-  | Ok () ->
-      q buf
-  | Error _ as e ->
-      e
+let ( *> ) p q buf = match p buf with Ok () -> q buf | Error _ as e -> e
 
 let ( <* ) p q buf =
   match p buf with
-  | Ok _ as o ->
-      begin match q buf with
-      | Ok () ->
-          o
-      | Error _ as e ->
-          e
-      end
-  | Error _ as e ->
-      e
+  | Ok _ as o -> ( match q buf with Ok () -> o | Error _ as e -> e )
+  | Error _ as e -> e
 
-let ( <$> ) f p buf =
-  match p buf with
-  | Ok x ->
-      Ok (f x)
-  | Error _ as e ->
-      e
+let ( <$> ) f p buf = match p buf with Ok x -> Ok (f x) | Error _ as e -> e
 
-let ( >>= ) p f buf =
-  match p buf with
-  | Ok x ->
-      f x buf
-  | Error _ as e ->
-      e
+let ( >>= ) p f buf = match p buf with Ok x -> f x buf | Error _ as e -> e
 
-let ( >|= ) p f buf =
-  match p buf with
-  | Ok x ->
-      Ok (f x)
-  | Error _ as e ->
-      e
+let ( >|= ) p f buf = match p buf with Ok x -> Ok (f x) | Error _ as e -> e
 
-let error buf =
-  Error (buf.s, buf.p)
+let error buf = Error (buf.s, buf.p)
 
-let is_eol buf =
-  Ok (buf.p >= String.length buf.s)
+let is_eol buf = Ok (buf.p >= String.length buf.s)
 
-let eol =
-  is_eol >>= function
-  | true -> return ()
-  | false -> error
+let eol = is_eol >>= function true -> return () | false -> error
 
 let curr buf =
-  if buf.p >= String.length buf.s then
-    Ok '\000'
-  else
-    Ok buf.s.[buf.p]
+  if buf.p >= String.length buf.s then Ok '\000' else Ok buf.s.[buf.p]
 
 let next buf =
   assert (buf.p < String.length buf.s);
@@ -99,16 +58,15 @@ let next buf =
   Ok ()
 
 let take n buf =
-  if buf.p + n > String.length buf.s then
-    (buf.p <- String.length buf.s; error buf)
-  else begin
+  if buf.p + n > String.length buf.s then (
+    buf.p <- String.length buf.s;
+    error buf )
+  else
     let s = String.sub buf.s buf.p n in
     buf.p <- buf.p + n;
     Ok s
-  end
 
-let char c =
-  curr >>= fun c1 -> if c1 = c then next else error
+let char c = curr >>= fun c1 -> if c1 = c then next else error
 
 let take_while1 f buf =
   let pos0 = buf.p in
@@ -116,12 +74,10 @@ let take_while1 f buf =
   while !pos < String.length buf.s && f buf.s.[!pos] do
     incr pos
   done;
-  if pos0 = !pos then
-    error buf
-  else begin
+  if pos0 = !pos then error buf
+  else (
     buf.p <- !pos;
-    Ok (String.sub buf.s pos0 (!pos - pos0))
-  end
+    Ok (String.sub buf.s pos0 (!pos - pos0)) )
 
 (*
    CHAR           =  %x01-7F
@@ -147,13 +103,13 @@ let take_while1 f buf =
 
 let is_atom_char = function
   | '(' | ')' | '{' | ' '
-  | '\x00' .. '\x1F' | '\x7F'
-  | '%' | '*' | '"' | '\\' | ']' -> false
+  | '\x00' .. '\x1F'
+  | '\x7F' | '%' | '*' | '"' | '\\' | ']' ->
+      false
   | '\x01' .. '\x7F' -> true
   | _ -> false
 
-let atom =
-  take_while1 is_atom_char
+let atom = take_while1 is_atom_char
 
 (*
    quoted          = DQUOTE *QUOTED-CHAR DQUOTE
@@ -164,27 +120,22 @@ let atom =
 
 let quoted_char =
   curr >>= function
-  | '\\' ->
-      next *> curr >>= begin function
-      | '\\' | '"' as c ->
-          next *> return c
-      | _ ->
-          error
-      end
-  | '"' ->
-      error
-  | '\x01'..'\x7f' as c ->
-      next *> return c
-  | _ ->
-      error
+  | '\\' -> (
+      next *> curr >>= function
+      | ('\\' | '"') as c -> next *> return c
+      | _ -> error )
+  | '"' -> error
+  | '\x01' .. '\x7f' as c -> next *> return c
+  | _ -> error
 
 let quoted =
   let rec loop b =
     curr >>= function
-    | '"' ->
-        next *> return (Buffer.contents b)
+    | '"' -> next *> return (Buffer.contents b)
     | _ ->
-        quoted_char >>= fun c -> Buffer.add_char b c; loop b
+        quoted_char >>= fun c ->
+        Buffer.add_char b c;
+        loop b
   in
   char '"' >>= fun () -> loop (Buffer.create 17)
 
@@ -201,19 +152,15 @@ let quoted =
                        ; Strictly ascending
 *)
 
-let is_digit = function
-  | '0'..'9' -> true
-  | _ -> false
+let is_digit = function '0' .. '9' -> true | _ -> false
 
 let number =
   let f s = Scanf.sscanf s "%lu" (fun n -> n) in
   f <$> take_while1 is_digit
 
-let nz_number =
-  number
+let nz_number = number
 
-let uniqueid =
-  number
+let uniqueid = number
 
 (*
    literal         = "{" number "}" CRLF *CHAR8
@@ -223,26 +170,18 @@ let uniqueid =
 *)
 
 let get_exactly n buf =
-  if n + buf.p > String.length buf.s then
-    error buf
-  else begin
+  if n + buf.p > String.length buf.s then error buf
+  else
     let s = String.sub buf.s buf.p n in
     buf.p <- buf.p + n;
     Ok s
-  end
 
 let literal =
   char '{' *> number >>= fun n ->
   char '}' *> eol *> get_exactly (Int32.to_int n)
 
 let imap_string =
-  curr >>= function
-  | '"' ->
-      quoted
-  | '{' ->
-      literal
-  | _ ->
-      error
+  curr >>= function '"' -> quoted | '{' -> literal | _ -> error
 
 (*
    ASTRING-CHAR   = ATOM-CHAR / resp-specials
@@ -250,15 +189,12 @@ let imap_string =
    astring         = 1*ASTRING-CHAR / string
 *)
 
-let is_astring_char c =
-  is_atom_char c || c = ']'
+let is_astring_char c = is_atom_char c || c = ']'
 
 let astring =
   curr >>= function
-  | '"' | '{' ->
-      imap_string
-  | _ ->
-      take_while1 is_astring_char
+  | '"' | '{' -> imap_string
+  | _ -> take_while1 is_astring_char
 
 (*
    nil             = "NIL"
@@ -268,10 +204,8 @@ let astring =
 
 let nstring =
   curr >>= function
-  | '"' | '{' ->
-      imap_string
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return ""
+  | '"' | '{' -> imap_string
+  | _ -> char 'N' *> char 'I' *> char 'L' *> return ""
 
 (*
    TEXT-CHAR       = <any CHAR except CR and LF>
@@ -285,22 +219,14 @@ let is_text_char = function
   | _ -> false
 
 let text =
-  is_eol >>= function
-  | true ->
-      return ""
-  | false ->
-      take_while1 is_text_char
+  is_eol >>= function true -> return "" | false -> take_while1 is_text_char
 
-let is_text_other_char = function
-  | ']' -> false
-  | c -> is_text_char c
+let is_text_other_char = function ']' -> false | c -> is_text_char c
 
 let text_1 =
   is_eol >>= function
-  | true ->
-      return ""
-  | false ->
-      take_while1 is_text_other_char
+  | true -> return ""
+  | false -> take_while1 is_text_other_char
 
 (*
    mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
@@ -334,30 +260,27 @@ let text_1 =
 
 let mbx_flag =
   let open MailboxFlag in
-  char '\\' *> atom >|= begin fun a ->
-    match String.lowercase_ascii a with
-    | "noselect" -> Noselect
-    | "marked" -> Marked
-    | "unmarked" -> Unmarked
-    | "noinferiors" -> Noinferiors
-    | "haschildren" -> HasChildren
-    | "hasnochildren" -> HasNoChildren
-    | "all" -> All
-    | "archive" -> Archive
-    | "drafts" -> Drafts
-    | "flagged" -> Flagged
-    | "junk" -> Junk
-    | "sent" -> Sent
-    | "trash" -> Trash
-    | _ -> Extension a
-  end
+  char '\\' *> atom >|= fun a ->
+  match String.lowercase_ascii a with
+  | "noselect" -> Noselect
+  | "marked" -> Marked
+  | "unmarked" -> Unmarked
+  | "noinferiors" -> Noinferiors
+  | "haschildren" -> HasChildren
+  | "hasnochildren" -> HasNoChildren
+  | "all" -> All
+  | "archive" -> Archive
+  | "drafts" -> Drafts
+  | "flagged" -> Flagged
+  | "junk" -> Junk
+  | "sent" -> Sent
+  | "trash" -> Trash
+  | _ -> Extension a
 
 let delim =
   curr >>= function
-  | '"' ->
-      some <$> (char '"' *> quoted_char <* char '"')
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return None
+  | '"' -> some <$> (char '"' *> quoted_char <* char '"')
+  | _ -> char 'N' *> char 'I' *> char 'L' *> return None
 
 (*
    mailbox         = "INBOX" / astring
@@ -371,11 +294,9 @@ let delim =
 *)
 
 let is_inbox s =
-  String.length s = String.length "INBOX" &&
-  String.uppercase_ascii s = "INBOX"
+  String.length s = String.length "INBOX" && String.uppercase_ascii s = "INBOX"
 
-let mailbox =
-  astring >|= fun s -> if is_inbox s then "INBOX" else s
+let mailbox = astring >|= fun s -> if is_inbox s then "INBOX" else s
 
 (*
    mailbox-list    = "(" [mbx-list-flags] ")" SP
@@ -384,25 +305,20 @@ let mailbox =
 
 let plist p =
   char '(' *> curr >>= function
-  | ')' ->
-      next *> return []
+  | ')' -> next *> return []
   | _ ->
       let rec loop acc =
         curr >>= function
-        | ' ' ->
-            next *> p >>= fun x -> loop (x :: acc)
-        | ')' ->
-            next *> return (List.rev acc)
-        | _ ->
-            error
+        | ' ' -> next *> p >>= fun x -> loop (x :: acc)
+        | ')' -> next *> return (List.rev acc)
+        | _ -> error
       in
-      p >>= fun x -> loop [x]
+      p >>= fun x -> loop [ x ]
 
 let mailbox_list =
   plist mbx_flag >>= fun flags ->
   char ' ' *> delim >>= fun delim ->
-  char ' ' *> mailbox >>= fun mbox ->
-  return (flags, delim, mbox)
+  char ' ' *> mailbox >>= fun mbox -> return (flags, delim, mbox)
 
 (*
    auth-type       = atom
@@ -435,7 +351,7 @@ let capability =
   | "AUTH=PLAIN" -> AUTH_PLAIN
   | "AUTH=LOGIN" -> AUTH_LOGIN
   | "XOAUTH2" -> XOAUTH2
-  | "X-GM-EXT-1"  -> X_GM_EXT_1
+  | "X-GM-EXT-1" -> X_GM_EXT_1
   | a -> OTHER a
 
 (*
@@ -490,27 +406,22 @@ let mod_sequence_value =
   f <$> take_while1 is_digit
 
 let uid_range =
-  uniqueid >>= fun n -> curr >>= function
-  | ':' ->
-      next *> uniqueid >|= fun m -> (n, m)
-  | _ ->
-      return (n, n)
+  uniqueid >>= fun n ->
+  curr >>= function
+  | ':' -> next *> uniqueid >|= fun m -> (n, m)
+  | _ -> return (n, n)
 
 let uid_set =
   let rec loop acc =
     curr >>= function
-    | ',' ->
-        next *> uid_range >>= fun r -> loop (r :: acc)
-    | _ ->
-        return (List.rev acc)
+    | ',' -> next *> uid_range >>= fun r -> loop (r :: acc)
+    | _ -> return (List.rev acc)
   in
-  uid_range >>= fun r -> loop [r]
+  uid_range >>= fun r -> loop [ r ]
 
-let sequence_set =
-  uid_set
+let sequence_set = uid_set
 
-let set =
-  sequence_set
+let set = sequence_set
 
 (*
    flag-extension  = "\\" atom
@@ -535,33 +446,26 @@ let set =
 let flag_gen recent any =
   let open Flag in
   curr >>= function
-  | '\\' ->
-      next *> curr >>= begin function
-      | '*' when any ->
-          next *> return Any
-      | _ ->
-          atom >|= begin fun a ->
-            match String.lowercase_ascii a with
-            | "recent" when recent -> Recent
-            | "answered" -> Answered
-            | "flagged" -> Flagged
-            | "deleted" -> Deleted
-            | "seen" -> Seen
-            | "draft" -> Draft
-            | _ -> Extension a
-          end
-      end
-  | _ ->
-      atom >|= fun a -> Keyword a
+  | '\\' -> (
+      next *> curr >>= function
+      | '*' when any -> next *> return Any
+      | _ -> (
+          atom >|= fun a ->
+          match String.lowercase_ascii a with
+          | "recent" when recent -> Recent
+          | "answered" -> Answered
+          | "flagged" -> Flagged
+          | "deleted" -> Deleted
+          | "seen" -> Seen
+          | "draft" -> Draft
+          | _ -> Extension a ) )
+  | _ -> atom >|= fun a -> Keyword a
 
-let flag =
-  flag_gen false false
+let flag = flag_gen false false
 
-let flag_fetch =
-  flag_gen true false
+let flag_fetch = flag_gen true false
 
-let flag_perm =
-  flag_gen false true
+let flag_perm = flag_gen false true
 
 (*
    capability-data = "CAPABILITY" *(SP capability) SP "IMAP4rev1"
@@ -606,97 +510,71 @@ let flag_perm =
                     ; IMAP [RFC3501]
 *)
 
-let append_uid =
-  uniqueid
+let append_uid = uniqueid
 
 let slist p =
   let rec loop acc =
     curr >>= function
-    | ' ' ->
-        next *> p >>= fun x -> loop (x :: acc)
-    | _ ->
-        return (List.rev acc)
+    | ' ' -> next *> p >>= fun x -> loop (x :: acc)
+    | _ -> return (List.rev acc)
   in
   loop []
 
 let resp_text_code =
   let open Code in
-  char '[' *> atom >>= begin function
-  | "ALERT" ->
-      return ALERT
-  | "BADCHARSET" ->
-      curr >>= begin function
-      | ' ' ->
-          next *> plist astring >|= fun l -> BADCHARSET l
-      | _ ->
-          return (BADCHARSET [])
-      end
-  | "CAPABILITY" ->
-      slist capability >|= fun l -> CAPABILITY l
-  | "PARSE" ->
-      return PARSE
-  | "PERMANENTFLAGS" ->
-      char ' ' *> plist flag_perm >|= fun l -> PERMANENTFLAGS l
-  | "READ-ONLY" ->
-      return READ_ONLY
-  | "READ-WRITE" ->
-      return READ_WRITE
-  | "TRYCREATE" ->
-      return TRYCREATE
-  | "UIDNEXT" ->
-      char ' ' *> nz_number >|= fun n -> UIDNEXT n
-  | "UIDVALIDITY" ->
-      char ' ' *> nz_number >|= fun n -> UIDVALIDITY n
-  | "UNSEEN" ->
-      char ' ' *> nz_number >|= fun n -> UNSEEN n
-  | "CLOSED" ->
-      return CLOSED
-  | "HIGHESTMODSEQ" ->
-      char ' ' *> mod_sequence_value >|= fun n -> HIGHESTMODSEQ n
-  | "NOMODSEQ" ->
-      return NOMODSEQ
-  | "MODIFIED" ->
-      char ' ' *> set >|= fun set -> MODIFIED set
-  | "APPENDUID" ->
-      char ' ' *> nz_number >>= fun n ->
-      char ' ' *> append_uid >|= fun uid -> APPENDUID (n, uid)
-  | "COPYUID" ->
-      char ' ' *> nz_number >>= fun n ->
-      char ' ' *> set >>= fun s1 ->
-      char ' ' *> set >|= fun s2 ->
-      COPYUID (n, s1, s2)
-  | "UIDNOTSTICKY" ->
-      return UIDNOTSTICKY
-  | "COMPRESSIONACTIVE" ->
-      return COMPRESSIONACTIVE
-  | "USEATTR" ->
-      return USEATTR
-  | a ->
-      curr >>= begin function
-      | ' ' ->
-          text_1 >|= fun x -> OTHER (a, Some x)
-      | _ ->
-          return (OTHER (a, None))
-      end
-  end <* char ']'
+  char '[' *> atom
+  >>= (function
+        | "ALERT" -> return ALERT
+        | "BADCHARSET" -> (
+            curr >>= function
+            | ' ' -> next *> plist astring >|= fun l -> BADCHARSET l
+            | _ -> return (BADCHARSET []) )
+        | "CAPABILITY" -> slist capability >|= fun l -> CAPABILITY l
+        | "PARSE" -> return PARSE
+        | "PERMANENTFLAGS" ->
+            char ' ' *> plist flag_perm >|= fun l -> PERMANENTFLAGS l
+        | "READ-ONLY" -> return READ_ONLY
+        | "READ-WRITE" -> return READ_WRITE
+        | "TRYCREATE" -> return TRYCREATE
+        | "UIDNEXT" -> char ' ' *> nz_number >|= fun n -> UIDNEXT n
+        | "UIDVALIDITY" -> char ' ' *> nz_number >|= fun n -> UIDVALIDITY n
+        | "UNSEEN" -> char ' ' *> nz_number >|= fun n -> UNSEEN n
+        | "CLOSED" -> return CLOSED
+        | "HIGHESTMODSEQ" ->
+            char ' ' *> mod_sequence_value >|= fun n -> HIGHESTMODSEQ n
+        | "NOMODSEQ" -> return NOMODSEQ
+        | "MODIFIED" -> char ' ' *> set >|= fun set -> MODIFIED set
+        | "APPENDUID" ->
+            char ' ' *> nz_number >>= fun n ->
+            char ' ' *> append_uid >|= fun uid -> APPENDUID (n, uid)
+        | "COPYUID" ->
+            char ' ' *> nz_number >>= fun n ->
+            char ' ' *> set >>= fun s1 ->
+            char ' ' *> set >|= fun s2 -> COPYUID (n, s1, s2)
+        | "UIDNOTSTICKY" -> return UIDNOTSTICKY
+        | "COMPRESSIONACTIVE" -> return COMPRESSIONACTIVE
+        | "USEATTR" -> return USEATTR
+        | a -> (
+            curr >>= function
+            | ' ' -> text_1 >|= fun x -> OTHER (a, Some x)
+            | _ -> return (OTHER (a, None)) ))
+  <* char ']'
 
 (*
    resp-text       = ["[" resp-text-code "]" SP] text
 *)
 
 let resp_text =
-  curr >>= begin function ' ' -> next | _ -> return () end >>= fun () ->
-  curr >>= begin function '[' -> resp_text_code | _ -> return Response.Code.NONE end >>= fun c ->
-  curr >>= begin function ' ' -> next | _ -> return () end >>= fun () ->
+  (curr >>= function ' ' -> next | _ -> return ()) >>= fun () ->
+  (curr >>= function '[' -> resp_text_code | _ -> return Response.Code.NONE)
+  >>= fun c ->
+  (curr >>= function ' ' -> next | _ -> return ()) >>= fun () ->
   text >|= fun t -> (c, t)
 
 let search_sort_mod_seq =
-  char '(' *> atom >>= begin function
-  | "MODSEQ" ->
-      char ' ' *> mod_sequence_value
-  | _ ->
-      error
-  end <* char ')'
+  char '(' *> atom
+  >>= (function "MODSEQ" -> char ' ' *> mod_sequence_value | _ -> error)
+  <* char ')'
 
 (*
    address         = "(" addr-name SP addr-adl SP addr-mailbox SP
@@ -727,7 +605,7 @@ let address =
   char ' ' *> nstring >>= fun ad_adl ->
   char ' ' *> nstring >>= fun ad_mailbox ->
   char ' ' *> nstring >>= fun ad_host ->
-  char ')' *> return {Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host}
+  char ')' *> return { Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host }
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -760,14 +638,11 @@ let address_list =
   | '(' ->
       let rec loop acc =
         curr >>= function
-        | ')' ->
-            next *> return (List.rev acc)
-        | _ ->
-          address >>= fun ad -> loop (ad :: acc)
+        | ')' -> next *> return (List.rev acc)
+        | _ -> address >>= fun ad -> loop (ad :: acc)
       in
       next *> loop []
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return []
+  | _ -> char 'N' *> char 'I' *> char 'L' *> return []
 
 let envelope =
   char '(' *> nstring >>= fun env_date ->
@@ -780,17 +655,20 @@ let envelope =
   char ' ' *> address_list >>= fun env_bcc ->
   char ' ' *> nstring >>= fun env_in_reply_to ->
   char ' ' *> nstring >>= fun env_message_id ->
-  char ')' *> return {Envelope.env_date;
-                      env_subject;
-                      env_from;
-                      env_sender;
-                      env_reply_to;
-                      env_to;
-                      env_cc;
-                      env_bcc;
-                      env_in_reply_to;
-                      env_message_id}
-
+  char ')'
+  *> return
+       {
+         Envelope.env_date;
+         env_subject;
+         env_from;
+         env_sender;
+         env_reply_to;
+         env_to;
+         env_cc;
+         env_bcc;
+         env_in_reply_to;
+         env_message_id;
+       }
 
 (*
    body-extension  = nstring / number /
@@ -803,8 +681,7 @@ let envelope =
                        ; revisions of this specification.
 *)
 
-let _body_extension =
-  error
+let _body_extension = error
 
 (*
    body-fld-param  = "(" string SP string *(SP string SP string) ")" / nil
@@ -825,12 +702,12 @@ let _body_extension =
 let body_fld_param =
   curr >>= function
   | '(' ->
-      plist (imap_string >>= fun x -> char ' ' *> imap_string >|= fun y -> (x, y))
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return []
+      plist
+        ( imap_string >>= fun x ->
+          char ' ' *> imap_string >|= fun y -> (x, y) )
+  | _ -> char 'N' *> char 'I' *> char 'L' *> return []
 
-let body_fld_octets =
-  Int32.to_int <$> number
+let body_fld_octets = Int32.to_int <$> number
 
 let body_fields =
   let open MIME.Response.Fields in
@@ -839,7 +716,7 @@ let body_fields =
   char ' ' *> (some <$> nstring) >>= fun fld_desc ->
   char ' ' *> imap_string >>= fun fld_enc ->
   char ' ' *> body_fld_octets >|= fun fld_octets ->
-  {fld_params; fld_id; fld_desc; fld_enc; fld_octets}
+  { fld_params; fld_id; fld_desc; fld_enc; fld_octets }
 
 (*
    body-fld-md5    = nstring
@@ -861,70 +738,53 @@ let body_fields =
                        ; "BODY" fetch
 *)
 
-let body_fld_md5 =
-  nstring
+let body_fld_md5 = nstring
 
 let body_fld_dsp =
   curr >>= function
   | '(' ->
       next *> imap_string >>= fun s ->
-      char ' ' *> body_fld_param >>= fun l ->
-      char ')' *> return (Some (s, l))
-  | _ ->
-      char 'N' *> char 'I' *> char 'L' *> return None
+      char ' ' *> body_fld_param >>= fun l -> char ')' *> return (Some (s, l))
+  | _ -> char 'N' *> char 'I' *> char 'L' *> return None
 
 let body_fld_lang =
   curr >>= function
-  | '(' ->
-      plist imap_string
-  | _ ->
-      nstring >|= function "" -> [] | s -> [s]
+  | '(' -> plist imap_string
+  | _ -> ( nstring >|= function "" -> [] | s -> [ s ] )
 
-let body_fld_loc =
-  nstring
+let body_fld_loc = nstring
 
 let body_ext_1part =
   let open MIME.Response.Extension in
   body_fld_md5 >>= fun _md5 ->
   curr >>= function
-  | ' ' ->
+  | ' ' -> (
       next *> body_fld_dsp >>= fun ext_dsp ->
-      curr >>= begin function
-      | ' ' ->
+      curr >>= function
+      | ' ' -> (
           next *> body_fld_lang >>= fun ext_lang ->
-          curr >>= begin function
+          curr >>= function
           | ' ' ->
               next *> body_fld_loc >|= fun ext_loc ->
-              {ext_dsp; ext_lang; ext_loc; ext_ext = []}
-          | _ ->
-              return {ext_dsp; ext_lang; ext_loc = ""; ext_ext = []}
-          end
-      | _ ->
-          return {ext_dsp; ext_lang = []; ext_loc = ""; ext_ext = []}
-      end
-  | _ ->
-      return {ext_dsp = None; ext_lang = []; ext_loc = ""; ext_ext = []}
+              { ext_dsp; ext_lang; ext_loc; ext_ext = [] }
+          | _ -> return { ext_dsp; ext_lang; ext_loc = ""; ext_ext = [] } )
+      | _ -> return { ext_dsp; ext_lang = []; ext_loc = ""; ext_ext = [] } )
+  | _ -> return { ext_dsp = None; ext_lang = []; ext_loc = ""; ext_ext = [] }
 
 let body_ext_mpart =
   body_fld_param >>= fun p ->
-  begin curr >>= function
-    | ' ' ->
-        next *> body_fld_dsp >>= fun _ ->
-        curr >>= begin function
-        | ' ' ->
-            next *> body_fld_lang >>= fun _ ->
-            curr >>= begin function
-            | ' ' ->
-                next *> body_fld_loc >|= ignore
-            | _ ->
-                return ()
-            end
-        | _ ->
-            return ()
-        end
-    | _ ->
-        return ()
-  end *> return p
+  (curr >>= function
+   | ' ' -> (
+       next *> body_fld_dsp >>= fun _ ->
+       curr >>= function
+       | ' ' -> (
+           next *> body_fld_lang >>= fun _ ->
+           curr >>= function
+           | ' ' -> next *> body_fld_loc >|= ignore
+           | _ -> return () )
+       | _ -> return () )
+   | _ -> return ())
+  *> return p
 
 (*
    body-fld-lines  = number
@@ -964,8 +824,7 @@ let fix f =
   let rec p buf = f p buf in
   f p
 
-let body_fld_lines =
-  Int32.to_int <$> number
+let body_fld_lines = Int32.to_int <$> number
 
 let body_type_msg body =
   body_fields >>= fun fields ->
@@ -986,48 +845,34 @@ let body_type_basic media_type media_subtype =
 let body_type_1part body =
   imap_string >>= fun media_type ->
   char ' ' *> imap_string >>= fun media_subtype ->
-  begin match media_type, media_subtype with
-  | "MESSAGE", "RFC822" ->
-      char ' ' *> body_type_msg body
-  | "TEXT", _ ->
-      char ' ' *> body_type_text media_subtype
-  | _ ->
-      char ' ' *> body_type_basic media_type media_subtype
-  end >>= fun body ->
-  begin curr >>= function
-  | ' ' ->
-      next *> body_ext_1part >>= fun _ -> return ()
-  | _ ->
-      return ()
-  end *> return body
+  ( match (media_type, media_subtype) with
+  | "MESSAGE", "RFC822" -> char ' ' *> body_type_msg body
+  | "TEXT", _ -> char ' ' *> body_type_text media_subtype
+  | _ -> char ' ' *> body_type_basic media_type media_subtype )
+  >>= fun body ->
+  (curr >>= function
+   | ' ' -> next *> body_ext_1part >>= fun _ -> return ()
+   | _ -> return ())
+  *> return body
 
 let body_type_mpart body =
   let rec loop acc =
     curr >>= function
     | ' ' ->
         next *> imap_string >>= fun media_subtype ->
-        begin curr >>= function
-        | ' ' ->
-            next *> body_ext_mpart
-        | _ ->
-            return []
-        end >|= fun params ->
+        (curr >>= function ' ' -> next *> body_ext_mpart | _ -> return [])
+        >|= fun params ->
         MIME.Response.Multipart (List.rev acc, media_subtype, params)
-    | _ ->
-        body >>= fun b -> loop (b :: acc)
+    | _ -> body >>= fun b -> loop (b :: acc)
   in
   loop []
 
 let body body =
-  char '(' *> curr >>= begin function
-  | '(' ->
-      body_type_mpart body
-  | _ ->
-      body_type_1part body
-  end <* char ')'
+  char '(' *> curr
+  >>= (function '(' -> body_type_mpart body | _ -> body_type_1part body)
+  <* char ')'
 
-let body =
-  fix body
+let body = fix body
 
 (*
    DIGIT           =  %x30-39
@@ -1057,9 +902,7 @@ let body =
 *)
 
 (* DD-MMM-YYYY HH:MM:SS +ZZZZ *)
-let date_time =
-  char '"' *> take 26 <* char '"'
-
+let date_time = char '"' *> take 26 <* char '"'
 
 (*
    header-fld-name = astring
@@ -1081,8 +924,9 @@ let date_time =
    section         = "[" [section-spec] "]"
 *)
 
-let _section =
-  error (* TODO *)
+let _section = error
+
+(* TODO *)
 
 (*
    msg-att-static  = "ENVELOPE" SP envelope / "INTERNALDATE" SP date-time /
@@ -1119,51 +963,37 @@ let _section =
                           ; https://developers.google.com/gmail/imap_extensions
 *)
 
-let permsg_modsequence =
-  mod_sequence_value
+let permsg_modsequence = mod_sequence_value
 
 let msg_att =
   let open Fetch.MessageAttribute in
   atom >>= function
-  | "FLAGS" ->
-      char ' ' *> plist flag_fetch >|= fun l -> FLAGS l
+  | "FLAGS" -> char ' ' *> plist flag_fetch >|= fun l -> FLAGS l
   | "MODSEQ" ->
-      char ' ' *> char '(' *> permsg_modsequence >>= fun n -> char ')' *> return (MODSEQ n)
-  | "X-GM-LABELS" ->
-      char ' ' *> curr >>= begin function
-      | '(' ->
-          plist astring >|= fun l -> X_GM_LABELS l
-      | _ ->
-          char 'N' *> char 'I' *> char 'L' *> return (X_GM_LABELS [])
-      end
-  | "ENVELOPE" ->
-      char ' ' *> envelope >|= fun e -> ENVELOPE e
-  | "INTERNALDATE" ->
-      char ' ' *> date_time >|= fun s -> INTERNALDATE s
-  | "RFC822.HEADER" ->
-      char ' ' *> nstring >|= fun s -> RFC822_HEADER s
-  | "RFC822.TEXT" ->
-      char ' ' *> nstring >|= fun s -> RFC822_TEXT s
+      char ' ' *> char '(' *> permsg_modsequence >>= fun n ->
+      char ')' *> return (MODSEQ n)
+  | "X-GM-LABELS" -> (
+      char ' ' *> curr >>= function
+      | '(' -> plist astring >|= fun l -> X_GM_LABELS l
+      | _ -> char 'N' *> char 'I' *> char 'L' *> return (X_GM_LABELS []) )
+  | "ENVELOPE" -> char ' ' *> envelope >|= fun e -> ENVELOPE e
+  | "INTERNALDATE" -> char ' ' *> date_time >|= fun s -> INTERNALDATE s
+  | "RFC822.HEADER" -> char ' ' *> nstring >|= fun s -> RFC822_HEADER s
+  | "RFC822.TEXT" -> char ' ' *> nstring >|= fun s -> RFC822_TEXT s
   | "RFC822.SIZE" ->
       char ' ' *> number >|= fun n -> RFC822_SIZE (Int32.to_int n)
-  | "RFC822" ->
-      char ' ' *> nstring >|= fun s -> RFC822 s
-  | "BODYSTRUCTURE" ->
-      char ' ' *> body >|= (fun b -> BODYSTRUCTURE b)
+  | "RFC822" -> char ' ' *> nstring >|= fun s -> RFC822 s
+  | "BODYSTRUCTURE" -> char ' ' *> body >|= fun b -> BODYSTRUCTURE b
   (* | "BODY" ->
    *     let section =
    *       section >>= fun s -> sp *> nstring >>| fun x ->
    *       BODY_SECTION (s, x)
    *     in
    *     choice [sp *> body >>| (fun b -> BODY b); section] *)
-  | "UID" ->
-      char ' ' *> uniqueid >|= fun n -> UID n
-  | "X-GM-MSGID" ->
-      char ' ' *> mod_sequence_value >|= fun n -> X_GM_MSGID n
-  | "X-GM-THRID" ->
-      char ' ' *> mod_sequence_value >|= fun n -> X_GM_THRID n
-  | _ ->
-      error
+  | "UID" -> char ' ' *> uniqueid >|= fun n -> UID n
+  | "X-GM-MSGID" -> char ' ' *> mod_sequence_value >|= fun n -> X_GM_MSGID n
+  | "X-GM-THRID" -> char ' ' *> mod_sequence_value >|= fun n -> X_GM_THRID n
+  | _ -> error
 
 (*
    status          = "STATUS" SP mailbox SP
@@ -1190,24 +1020,16 @@ let mod_sequence_valzer =
 let status_att =
   let open Status.MailboxAttribute in
   atom >>= function
-  | "MESSAGES" ->
-      char ' ' *> number >|= fun n -> MESSAGES (Int32.to_int n)
-  | "RECENT" ->
-      char ' ' *> number >|= fun n -> RECENT (Int32.to_int n)
-  | "UIDNEXT" ->
-      char ' ' *> number >|= fun n -> UIDNEXT n
-  | "UIDVALIDITY" ->
-      char ' ' *> number >|= fun n -> UIDVALIDITY n
-  | "UNSEEN" ->
-      char ' ' *> number >|= fun n -> UNSEEN (Int32.to_int n)
+  | "MESSAGES" -> char ' ' *> number >|= fun n -> MESSAGES (Int32.to_int n)
+  | "RECENT" -> char ' ' *> number >|= fun n -> RECENT (Int32.to_int n)
+  | "UIDNEXT" -> char ' ' *> number >|= fun n -> UIDNEXT n
+  | "UIDVALIDITY" -> char ' ' *> number >|= fun n -> UIDVALIDITY n
+  | "UNSEEN" -> char ' ' *> number >|= fun n -> UNSEEN (Int32.to_int n)
   | "HIGHESTMODSEQ" ->
       char ' ' *> mod_sequence_valzer >|= fun n -> HIGHESTMODSEQ n
-  | _ ->
-      error
+  | _ -> error
 
-let known_ids =
-  uid_set
-
+let known_ids = uid_set
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
@@ -1250,73 +1072,49 @@ let known_ids =
 let response_data =
   let open Response.Untagged in
   char '*' *> char ' ' *> curr >>= function
-  | '0'..'9' ->
+  | '0' .. '9' -> (
       number >>= fun n ->
-      char ' ' *> atom >>= begin function
-      | "EXISTS" ->
-          return (EXISTS (Int32.to_int n))
-      | "RECENT" ->
-          return (RECENT (Int32.to_int n))
-      | "EXPUNGE" ->
-          return (EXPUNGE n)
-      | "FETCH" ->
-          char ' ' *> plist msg_att >|= fun x -> FETCH (n, x)
-      | _ ->
-          error
-      end
-  | _ ->
-      atom >>= begin function
-      | "OK" ->
-          resp_text >|= fun (code, text) -> State (OK (code, text))
-      | "NO" ->
-          resp_text >|= fun (code, text) -> State (NO (code, text))
-      | "BAD" ->
-          resp_text >|= fun (code, text) -> State (BAD (code, text))
-      | "BYE" ->
-          resp_text >|= fun (code, text) -> BYE (code, text)
-      | "FLAGS" ->
-          char ' ' *> plist flag >|= fun l -> FLAGS l
-      | "LIST" ->
-          char ' ' *> mailbox_list >|= fun (xs, c, m) -> LIST (xs, c, m)
-      | "LSUB" ->
-          char ' ' *> mailbox_list >|= fun (xs, c, m) -> LSUB (xs, c, m)
+      char ' ' *> atom >>= function
+      | "EXISTS" -> return (EXISTS (Int32.to_int n))
+      | "RECENT" -> return (RECENT (Int32.to_int n))
+      | "EXPUNGE" -> return (EXPUNGE n)
+      | "FETCH" -> char ' ' *> plist msg_att >|= fun x -> FETCH (n, x)
+      | _ -> error )
+  | _ -> (
+      atom >>= function
+      | "OK" -> resp_text >|= fun (code, text) -> State (OK (code, text))
+      | "NO" -> resp_text >|= fun (code, text) -> State (NO (code, text))
+      | "BAD" -> resp_text >|= fun (code, text) -> State (BAD (code, text))
+      | "BYE" -> resp_text >|= fun (code, text) -> BYE (code, text)
+      | "FLAGS" -> char ' ' *> plist flag >|= fun l -> FLAGS l
+      | "LIST" -> char ' ' *> mailbox_list >|= fun (xs, c, m) -> LIST (xs, c, m)
+      | "LSUB" -> char ' ' *> mailbox_list >|= fun (xs, c, m) -> LSUB (xs, c, m)
       | "SEARCH" ->
           let rec loop acc =
             curr >>= function
-            | ' ' ->
-                next *> curr >>= begin function
+            | ' ' -> (
+                next *> curr >>= function
                 | '(' ->
-                    search_sort_mod_seq >|= fun n -> SEARCH (List.rev acc, Some n)
-                | _ ->
-                    nz_number >>= fun n -> loop (n :: acc)
-                end
-            | _ ->
-                return (SEARCH (List.rev acc, None))
+                    search_sort_mod_seq >|= fun n ->
+                    SEARCH (List.rev acc, Some n)
+                | _ -> nz_number >>= fun n -> loop (n :: acc) )
+            | _ -> return (SEARCH (List.rev acc, None))
           in
           loop []
       | "STATUS" ->
           char ' ' *> mailbox >>= fun mbox ->
           char ' ' *> plist status_att >|= fun l -> STATUS (mbox, l)
-      | "CAPABILITY" ->
-          slist capability >|= fun l -> CAPABILITY l
-      | "ENABLED" ->
-          slist capability >|= fun l -> ENABLED l
-      | "PREAUTH" ->
-          resp_text >|= fun (code, text) -> PREAUTH (code, text)
-      | "VANISHED" ->
-          char ' ' *> curr >>= begin function
+      | "CAPABILITY" -> slist capability >|= fun l -> CAPABILITY l
+      | "ENABLED" -> slist capability >|= fun l -> ENABLED l
+      | "PREAUTH" -> resp_text >|= fun (code, text) -> PREAUTH (code, text)
+      | "VANISHED" -> (
+          char ' ' *> curr >>= function
           | '(' ->
-              next *> atom >>= begin function
-              | "EARLIER" -> char ')'
-              | _ -> error
-              end >>= fun () ->
+              (next *> atom >>= function "EARLIER" -> char ')' | _ -> error)
+              >>= fun () ->
               char ' ' *> known_ids >|= fun ids -> VANISHED_EARLIER ids
-          | _ ->
-              known_ids >|= fun ids -> VANISHED ids
-          end
-      | _ ->
-          error
-      end
+          | _ -> known_ids >|= fun ids -> VANISHED ids )
+      | _ -> error )
 
 (*
    greeting        = "*" SP (resp-cond-auth / resp-cond-bye) CRLF
@@ -1333,30 +1131,22 @@ let response_data =
    response-done   = response-tagged / response-fatal
 *)
 
-let is_tag_char = function
-  | '+' -> false
-  | c -> is_astring_char c
+let is_tag_char = function '+' -> false | c -> is_astring_char c
 
-let tag =
-  take_while1 is_tag_char
+let tag = take_while1 is_tag_char
 
 let resp_cond_state =
   let open Response.State in
   atom >>= function
-  | "OK" ->
-      resp_text >|= fun (code, text) -> OK (code, text)
-  | "NO" ->
-      resp_text >|= fun (code, text) -> NO (code, text)
-  | "BAD" ->
-      resp_text >|= fun (code, text) -> BAD (code, text)
-  | _ ->
-      error
+  | "OK" -> resp_text >|= fun (code, text) -> OK (code, text)
+  | "NO" -> resp_text >|= fun (code, text) -> NO (code, text)
+  | "BAD" -> resp_text >|= fun (code, text) -> BAD (code, text)
+  | _ -> error
 
 let response =
   curr >>= function
-  | '+' ->
-      next *> resp_text >|= fun (_, x) -> Cont x
-  | '*' ->
-      response_data >|= fun x -> Untagged x
+  | '+' -> next *> resp_text >|= fun (_, x) -> Cont x
+  | '*' -> response_data >|= fun x -> Untagged x
   | _ ->
-      tag >>= fun tag -> char ' ' *> resp_cond_state >|= fun st -> Tagged (tag, st)
+      tag >>= fun tag ->
+      char ' ' *> resp_cond_state >|= fun st -> Tagged (tag, st)

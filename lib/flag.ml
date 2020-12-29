@@ -42,5 +42,4 @@ let to_string = function
   | Recent -> "\\Recent"
   | Any -> "\\*"
 
-let encode f =
-  Encoder.raw (to_string f)
+let encode f = Encoder.raw (to_string f)

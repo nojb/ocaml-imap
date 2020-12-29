@@ -21,25 +21,23 @@
    SOFTWARE. *)
 
 module Address = struct
-  type t =
-    {
-      ad_name: string;
-      ad_adl: string;
-      ad_mailbox: string;
-      ad_host: string;
-    }
+  type t = {
+    ad_name : string;
+    ad_adl : string;
+    ad_mailbox : string;
+    ad_host : string;
+  }
 end
 
-type t =
-  {
-    env_date: string;
-    env_subject: string;
-    env_from: Address.t list;
-    env_sender: Address.t list;
-    env_reply_to: Address.t list;
-    env_to: Address.t list;
-    env_cc: Address.t list;
-    env_bcc: Address.t list;
-    env_in_reply_to: string;
-    env_message_id: string;
-  }
+type t = {
+  env_date : string;
+  env_subject : string;
+  env_from : Address.t list;
+  env_sender : Address.t list;
+  env_reply_to : Address.t list;
+  env_to : Address.t list;
+  env_cc : Address.t list;
+  env_bcc : Address.t list;
+  env_in_reply_to : string;
+  env_message_id : string;
+}

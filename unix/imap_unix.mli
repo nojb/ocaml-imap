@@ -23,10 +23,10 @@
 type t
 (** The type for connections. *)
 
-val connect: ?port:int -> string -> t
+val connect : ?port:int -> string -> t
 (** [connect server username password mailbox]. *)
 
-val disconnect: t -> unit
+val disconnect : t -> unit
 (** Disconnect. *)
 
-val run: t -> 'a Imap.cmd -> 'a
+val run : t -> 'a Imap.cmd -> 'a

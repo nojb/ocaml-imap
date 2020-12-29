@@ -20,13 +20,12 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type t =
-  {
-    sock: Ssl.socket;
-    mutable tag: int;
-    mutable buf: Bytes.t;
-    mutable len: int;
-  }
+type t = {
+  sock : Ssl.socket;
+  mutable tag : int;
+  mutable buf : Bytes.t;
+  mutable len : int;
+}
 
 let parse t =
   let rec loop () =
@@ -43,11 +42,9 @@ let parse t =
         loop ()
   in
   let s = loop () in
-  match Imap.Parser.response {Imap.Parser.s; p = 0} with
-  | Ok x ->
-      x
-  | Error _ ->
-      failwith "parsing error"
+  match Imap.Parser.response { Imap.Parser.s; p = 0 } with
+  | Ok x -> x
+  | Error _ -> failwith "parsing error"
 
 let really f ofs len =
   let rec loop ofs len =
@@ -60,22 +57,16 @@ let really f ofs len =
 
 let rec send t r cmd =
   match r with
-  | `End ->
-      cmd
+  | `End -> cmd
   | `Wait r ->
       let rec loop cmd =
         match parse t with
-        | Imap.Response.Cont _ ->
-            send t r cmd
-        | Untagged u ->
-            begin match Imap.process cmd u with
-            | Ok cmd ->
-                loop cmd
-            | Error s ->
-                failwith s
-            end
-        | Tagged _ ->
-            failwith "not expected"
+        | Imap.Response.Cont _ -> send t r cmd
+        | Untagged u -> (
+            match Imap.process cmd u with
+            | Ok cmd -> loop cmd
+            | Error s -> failwith s )
+        | Tagged _ -> failwith "not expected"
       in
       loop cmd
   | `Next (s, r) ->
@@ -87,17 +78,12 @@ let rec send t r cmd =
 let run t cmd =
   let rec loop cmd =
     match parse t with
-    | Imap.Response.Cont _ ->
-        failwith "unexpected"
-    | Untagged u ->
-        begin match Imap.process cmd u with
-        | Ok cmd ->
-            loop cmd
-        | Error s ->
-            failwith s
-        end
-    | Tagged (_, (NO (_code, s) | BAD (_code, s))) ->
-        failwith s
+    | Imap.Response.Cont _ -> failwith "unexpected"
+    | Untagged u -> (
+        match Imap.process cmd u with
+        | Ok cmd -> loop cmd
+        | Error s -> failwith s )
+    | Tagged (_, (NO (_code, s) | BAD (_code, s))) -> failwith s
     | Tagged (_, OK _) ->
         t.tag <- t.tag + 1;
         Imap.finish cmd
@@ -105,8 +91,7 @@ let run t cmd =
   let tag = Printf.sprintf "%04d" t.tag in
   send t (Imap.encode tag cmd) cmd |> loop
 
-let ssl_init =
-  Lazy.from_fun Ssl.init
+let ssl_init = Lazy.from_fun Ssl.init
 
 let connect ?(port = 993) host =
   Lazy.force ssl_init;
@@ -116,12 +101,9 @@ let connect ?(port = 993) host =
     let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     Ssl.open_connection_with_context ctx sa
   in
-  let t = {sock; tag = 1; buf = Bytes.create 4096; len = 0} in
+  let t = { sock; tag = 1; buf = Bytes.create 4096; len = 0 } in
   match parse t with
-  | Imap.Response.Untagged _ ->
-      t
-  | Tagged _ | Cont _ ->
-      failwith "unexpected response"
+  | Imap.Response.Untagged _ -> t
+  | Tagged _ | Cont _ -> failwith "unexpected response"
 
-let disconnect t =
-  Ssl.shutdown_connection t.sock
+let disconnect t = Ssl.shutdown_connection t.sock

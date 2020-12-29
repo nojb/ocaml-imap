@@ -20,37 +20,28 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type s =
-  | Wait
-  | Crlf
-  | Raw of string
+type s = Wait | Crlf | Raw of string
 
-type t =
-  s list -> s list
+type t = s list -> s list
 
-let raw s k =
-  Raw s :: k
+let raw s k = Raw s :: k
 
-let empty k =
-  k
+let empty k = k
 
-let char c =
-  raw (String.make 1 c)
+let char c = raw (String.make 1 c)
 
-let (&) f g k =
-  f (g k)
+let ( & ) f g k = f (g k)
 
-let (++) f g =
-  f & char ' ' & g
+let ( ++ ) f g = f & char ' ' & g
 
-let wait k =
-  Wait :: k
+let wait k = Wait :: k
 
-let crlf k =
-  Crlf :: k
+let crlf k = Crlf :: k
 
 let literal s =
-  char '{' & raw (string_of_int (String.length s)) & char '}' & crlf & wait & raw s
+  char '{'
+  & raw (string_of_int (String.length s))
+  & char '}' & crlf & wait & raw s
 
 let str s =
   let literal_chars = function
@@ -58,53 +49,45 @@ let str s =
     | _ -> false
   in
   let quoted_chars = function
-    | '(' | ')' | '{' | ' ' | '\x00' .. '\x1F' | '\x7F'
-    | '%' | '*' | '\"' | '\\' -> true
+    | '(' | ')' | '{' | ' '
+    | '\x00' .. '\x1F'
+    | '\x7F' | '%' | '*' | '\"' | '\\' ->
+        true
     | _ -> false
   in
   let needs f s =
-    let rec loop i = i < String.length s && (f s.[i] || loop (i+1)) in
+    let rec loop i = i < String.length s && (f s.[i] || loop (i + 1)) in
     loop 0
   in
-  if s = "" then
-    raw "\"\""
-  else if needs literal_chars s then
-    literal s
-  else if needs quoted_chars s then
-    raw (Printf.sprintf "\"%s\"" s)
-  else
-    raw s
+  if s = "" then raw "\"\""
+  else if needs literal_chars s then literal s
+  else if needs quoted_chars s then raw (Printf.sprintf "\"%s\"" s)
+  else raw s
 
-let p f =
-  char '(' & f & char ')'
+let p f = char '(' & f & char ')'
 
-let mutf7 s =
-  str (Mutf7.encode s)
+let mutf7 s = str (Mutf7.encode s)
 
-let int n =
-  raw (string_of_int n)
+let int n = raw (string_of_int n)
 
-let uint64 m =
-  raw (Printf.sprintf "%Lu" m)
+let uint64 m = raw (Printf.sprintf "%Lu" m)
 
-let label l =
-  raw (Mutf7.encode l)
+let label l = raw (Mutf7.encode l)
 
 let list ?(sep = ' ') f l =
   let rec loop = function
     | [] -> empty
-    | [x] -> f x
+    | [ x ] -> f x
     | x :: xs -> f x & char sep & loop xs
   in
   loop l
 
-let plist ?sep f l =
-  char '(' & list ?sep f l & char ')'
+let plist ?sep f l = char '(' & list ?sep f l & char ')'
 
 let eset s =
   let elt = function 0l -> "*" | n -> Printf.sprintf "%lu" n in
   let f = function
-    | (lo, hi) when lo = hi -> raw (elt lo)
-    | (lo, hi) -> raw (Printf.sprintf "%s:%s" (elt lo) (elt hi))
+    | lo, hi when lo = hi -> raw (elt lo)
+    | lo, hi -> raw (Printf.sprintf "%s:%s" (elt lo) (elt hi))
   in
   list ~sep:',' f s

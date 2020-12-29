@@ -28,8 +28,7 @@ module Section = struct
     | TEXT
     | MIME
 
-  type t =
-    int list * msgtext option
+  type t = int list * msgtext option
 end
 
 module Request = struct
@@ -44,48 +43,46 @@ module Request = struct
     | MIME -> raw "MIME"
 
   let encode (nl, sec) =
-    let sec = match sec with None -> empty | Some sec -> section_msgtext sec in
-    match nl with
-    | [] ->
-        sec
-    | _ :: _ ->
-        list ~sep:'.' int nl & raw "." & sec
+    let sec =
+      match sec with None -> empty | Some sec -> section_msgtext sec
+    in
+    match nl with [] -> sec | _ :: _ -> list ~sep:'.' int nl & raw "." & sec
 
-  let header ?(part = []) () = part, Some HEADER
-  let header_fields ?(part = []) l = part, Some (HEADER_FIELDS l)
-  let header_fields_not ?(part = []) l = part, Some (HEADER_FIELDS_NOT l)
-  let text ?(part = []) () = part, Some TEXT
-  let part ~part () = part, None
-  let mime ~part () = part, Some MIME
+  let header ?(part = []) () = (part, Some HEADER)
+
+  let header_fields ?(part = []) l = (part, Some (HEADER_FIELDS l))
+
+  let header_fields_not ?(part = []) l = (part, Some (HEADER_FIELDS_NOT l))
+
+  let text ?(part = []) () = (part, Some TEXT)
+
+  let part ~part () = (part, None)
+
+  let mime ~part () = (part, Some MIME)
 end
 
 module Response = struct
   module Fields = struct
-    type t =
-      {
-        fld_params : (string * string) list;
-        fld_id : string option;
-        fld_desc : string option;
-        fld_enc : string;
-        fld_octets : int;
-      }
+    type t = {
+      fld_params : (string * string) list;
+      fld_id : string option;
+      fld_desc : string option;
+      fld_enc : string;
+      fld_octets : int;
+    }
   end
 
   module BodyExtension = struct
-    type t =
-      | List of t list
-      | Number of int32
-      | String of string
+    type t = List of t list | Number of int32 | String of string
   end
 
   module Extension = struct
-    type t =
-      {
-        ext_dsp: (string * (string * string) list) option;
-        ext_lang: string list;
-        ext_loc: string;
-        ext_ext: BodyExtension.t list;
-      }
+    type t = {
+      ext_dsp : (string * (string * string) list) option;
+      ext_lang : string list;
+      ext_loc : string;
+      ext_ext : BodyExtension.t list;
+    }
   end
 
   type t =

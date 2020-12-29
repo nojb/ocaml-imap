@@ -23,38 +23,37 @@
 open Common
 
 module Date = struct
-  type t =
-    {
-      day: int;
-      month: int;
-      year: int;
-    }
+  type t = { day : int; month : int; year : int }
 
-  let to_string {day; month; year} =
+  let to_string { day; month; year } =
     let months =
       [|
-        "Jan"; "Feb"; "Mar"; "Apr"; "May"; "Jun";
-        "Jul"; "Aug"; "Sep"; "Oct"; "Nov"; "Dec";
+        "Jan";
+        "Feb";
+        "Mar";
+        "Apr";
+        "May";
+        "Jun";
+        "Jul";
+        "Aug";
+        "Sep";
+        "Oct";
+        "Nov";
+        "Dec";
       |]
     in
     Printf.sprintf "%2d-%s-%4d" day months.(month) year
 
-  let encode d =
-    Encoder.raw (to_string d)
+  let encode d = Encoder.raw (to_string d)
 end
 
 module Time = struct
-  type t =
-    {
-      hours: int;
-      minutes: int;
-      seconds: int;
-      zone: int;
-    }
+  type t = { hours : int; minutes : int; seconds : int; zone : int }
 
-  let to_string {hours; minutes; seconds; zone} =
+  let to_string { hours; minutes; seconds; zone } =
     Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds
-      (if zone >= 0 then '+' else '-') (abs zone)
+      (if zone >= 0 then '+' else '-')
+      (abs zone)
 end
 
 module MessageAttribute = struct
@@ -95,7 +94,9 @@ type 'a t =
   | MAP : ('a -> 'b) * 'a t -> 'b t
 
 let flags = FLAGS
+
 let map f x = MAP (f, x)
+
 let pair x y = PAIR (x, y)
 
 let rec encode : type a. a t -> Encoder.t = function
@@ -114,10 +115,9 @@ let rec encode : type a. a t -> Encoder.t = function
   | X_GM_THRID -> Encoder.raw "X-GM-THRID"
   | X_GM_LABELS -> Encoder.raw "X-GM-LABELS"
   | PAIR _ as x ->
-      let rec go : type a. _ -> a t -> _ = fun acc x ->
-        match x with
-        | PAIR (x, y) -> go (go acc x) y
-        | x -> encode x :: acc
+      let rec go : type a. _ -> a t -> _ =
+       fun acc x ->
+        match x with PAIR (x, y) -> go (go acc x) y | x -> encode x :: acc
       in
       Encoder.plist (fun x -> x) (List.rev (go [] x))
   | MAP (_, x) -> encode x

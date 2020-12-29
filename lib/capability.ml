@@ -84,5 +84,4 @@ let to_string = function
   | X_GM_EXT_1 -> "X-GM-EXT-1"
   | OTHER s -> s
 
-let encode s =
-  Encoder.raw (to_string s)
+let encode s = Encoder.raw (to_string s)

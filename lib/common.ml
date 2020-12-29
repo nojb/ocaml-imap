@@ -20,11 +20,8 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type modseq =
-  int64
+type modseq = int64
 
-type uid =
-  int32
+type uid = int32
 
-type seq =
-  int32
+type seq = int32
