@@ -29,7 +29,7 @@ type 'a cmd
 val encode :
   string -> 'a cmd -> ([ `Next of string * 'x | `Wait of 'x | `End ] as 'x)
 
-val process : 'a cmd -> Response.Untagged.t -> ('a cmd, string) result
+val process : 'a cmd -> Response.untagged -> ('a cmd, string) result
 
 val finish : 'a cmd -> 'a
 

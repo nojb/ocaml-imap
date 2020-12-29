@@ -83,8 +83,9 @@ let run t cmd =
         match Imap.process cmd u with
         | Ok cmd -> loop cmd
         | Error s -> failwith s )
-    | Tagged (_, (NO (_code, s) | BAD (_code, s))) -> failwith s
-    | Tagged (_, OK _) ->
+    | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
+        failwith message
+    | Tagged { state = { status = OK; _ }; _ } ->
         t.tag <- t.tag + 1;
         Imap.finish cmd
   in

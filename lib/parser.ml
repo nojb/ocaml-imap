@@ -331,7 +331,6 @@ let mailbox_list =
 *)
 
 let capability =
-  let open Capability in
   atom >|= function
   | "COMPRESS=DEFLATE" -> COMPRESS_DEFLATE
   | "CONDSTORE" -> CONDSTORE
@@ -521,7 +520,6 @@ let slist p =
   loop []
 
 let resp_text_code =
-  let open Code in
   char '[' *> atom
   >>= (function
         | "ALERT" -> return ALERT
@@ -529,7 +527,7 @@ let resp_text_code =
             curr >>= function
             | ' ' -> next *> plist astring >|= fun l -> BADCHARSET l
             | _ -> return (BADCHARSET []) )
-        | "CAPABILITY" -> slist capability >|= fun l -> CAPABILITY l
+        | "CAPABILITY" -> slist capability >|= fun l -> (CAPABILITY l : code)
         | "PARSE" -> return PARSE
         | "PERMANENTFLAGS" ->
             char ' ' *> plist flag_perm >|= fun l -> PERMANENTFLAGS l
@@ -566,7 +564,7 @@ let resp_text_code =
 
 let resp_text =
   (curr >>= function ' ' -> next | _ -> return ()) >>= fun () ->
-  (curr >>= function '[' -> resp_text_code | _ -> return Response.Code.NONE)
+  (curr >>= function '[' -> resp_text_code >|= Option.some | _ -> return None)
   >>= fun c ->
   (curr >>= function ' ' -> next | _ -> return ()) >>= fun () ->
   text >|= fun t -> (c, t)
@@ -1070,7 +1068,6 @@ let known_ids = uid_set
 *)
 
 let response_data =
-  let open Response.Untagged in
   char '*' *> char ' ' *> curr >>= function
   | '0' .. '9' -> (
       number >>= fun n ->
@@ -1082,10 +1079,16 @@ let response_data =
       | _ -> error )
   | _ -> (
       atom >>= function
-      | "OK" -> resp_text >|= fun (code, text) -> State (OK (code, text))
-      | "NO" -> resp_text >|= fun (code, text) -> State (NO (code, text))
-      | "BAD" -> resp_text >|= fun (code, text) -> State (BAD (code, text))
-      | "BYE" -> resp_text >|= fun (code, text) -> BYE (code, text)
+      | "OK" ->
+          resp_text >|= fun (code, message) ->
+          State { status = OK; code; message }
+      | "NO" ->
+          resp_text >|= fun (code, message) ->
+          State { status = NO; code; message }
+      | "BAD" ->
+          resp_text >|= fun (code, message) ->
+          State { status = BAD; code; message }
+      | "BYE" -> resp_text >|= fun (code, message) -> BYE { code; message }
       | "FLAGS" -> char ' ' *> plist flag >|= fun l -> FLAGS l
       | "LIST" -> char ' ' *> mailbox_list >|= fun (xs, c, m) -> LIST (xs, c, m)
       | "LSUB" -> char ' ' *> mailbox_list >|= fun (xs, c, m) -> LSUB (xs, c, m)
@@ -1136,11 +1139,11 @@ let is_tag_char = function '+' -> false | c -> is_astring_char c
 let tag = take_while1 is_tag_char
 
 let resp_cond_state =
-  let open Response.State in
   atom >>= function
-  | "OK" -> resp_text >|= fun (code, text) -> OK (code, text)
-  | "NO" -> resp_text >|= fun (code, text) -> NO (code, text)
-  | "BAD" -> resp_text >|= fun (code, text) -> BAD (code, text)
+  | "OK" -> resp_text >|= fun (code, message) -> { status = OK; code; message }
+  | "NO" -> resp_text >|= fun (code, message) -> { status = NO; code; message }
+  | "BAD" ->
+      resp_text >|= fun (code, message) -> { status = BAD; code; message }
   | _ -> error
 
 let response =
@@ -1149,4 +1152,4 @@ let response =
   | '*' -> response_data >|= fun x -> Untagged x
   | _ ->
       tag >>= fun tag ->
-      char ' ' *> resp_cond_state >|= fun st -> Tagged (tag, st)
+      char ' ' *> resp_cond_state >|= fun state -> Tagged { tag; state }

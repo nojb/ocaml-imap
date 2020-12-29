@@ -20,57 +20,84 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-module Code = struct
-  type t =
-    | ALERT
-    | BADCHARSET of string list
-    | CAPABILITY of Capability.t list
-    | PARSE
-    | PERMANENTFLAGS of Flag.t list
-    | READ_ONLY
-    | READ_WRITE
-    | TRYCREATE
-    | UIDNEXT of int32
-    | UIDVALIDITY of int32
-    | UNSEEN of int32
-    | OTHER of string * string option
-    | CLOSED
-    | HIGHESTMODSEQ of int64
-    | NOMODSEQ
-    | MODIFIED of (int32 * int32) list
-    | APPENDUID of int32 * int32
-    | COPYUID of int32 * (int32 * int32) list * (int32 * int32) list
-    | UIDNOTSTICKY
-    | COMPRESSIONACTIVE
-    | USEATTR
-    | NONE
-end
+type capability =
+  | IMAP4rev1
+  | ACL
+  | BINARY
+  | CATENATE
+  | CHILDREN
+  | COMPRESS_DEFLATE
+  | CONDSTORE
+  | ESEARCH
+  | ENABLE
+  | IDLE
+  | ID
+  | LITERALPLUS
+  | LITERALMINUS
+  | UTF8_ACCEPT
+  | UTF8_ONLY
+  | MULTIAPPEND
+  | NAMESPACE
+  | QRESYNC
+  | QUOTE
+  | SORT
+  | STARTTLS
+  | UIDPLUS
+  | UNSELECT
+  | XLIST
+  | AUTH_ANONYMOUS
+  | AUTH_LOGIN
+  | AUTH_PLAIN
+  | XOAUTH2
+  | X_GM_EXT_1
+  | OTHER of string
 
-module State = struct
-  type t =
-    | OK of Code.t * string
-    | NO of Code.t * string
-    | BAD of Code.t * string
-end
+type code =
+  | ALERT
+  | BADCHARSET of string list
+  | CAPABILITY of capability list
+  | PARSE
+  | PERMANENTFLAGS of Flag.t list
+  | READ_ONLY
+  | READ_WRITE
+  | TRYCREATE
+  | UIDNEXT of int32
+  | UIDVALIDITY of int32
+  | UNSEEN of int32
+  | OTHER of string * string option
+  | CLOSED
+  | HIGHESTMODSEQ of int64
+  | NOMODSEQ
+  | MODIFIED of (int32 * int32) list
+  | APPENDUID of int32 * int32
+  | COPYUID of int32 * (int32 * int32) list * (int32 * int32) list
+  | UIDNOTSTICKY
+  | COMPRESSIONACTIVE
+  | USEATTR
 
-module Untagged = struct
-  type t =
-    | State of State.t
-    | BYE of Code.t * string
-    | PREAUTH of Code.t * string
-    | FLAGS of Flag.t list
-    | LIST of MailboxFlag.t list * char option * string
-    | LSUB of MailboxFlag.t list * char option * string
-    | SEARCH of int32 list * int64 option
-    | STATUS of string * Status.MailboxAttribute.t list
-    | EXISTS of int
-    | RECENT of int
-    | EXPUNGE of int32
-    | FETCH of int32 * Fetch.MessageAttribute.t list
-    | CAPABILITY of Capability.t list
-    | VANISHED of Uint32.Set.t
-    | VANISHED_EARLIER of Uint32.Set.t
-    | ENABLED of Capability.t list
-end
+type status = OK | NO | BAD
 
-type t = Untagged of Untagged.t | Cont of string | Tagged of string * State.t
+type state = { code : code option; message : string; status : status }
+
+type untagged =
+  | State of state
+  | BYE of { code : code option; message : string }
+  | PREAUTH of code option * string
+  | FLAGS of Flag.t list
+  | LIST of MailboxFlag.t list * char option * string
+  | LSUB of MailboxFlag.t list * char option * string
+  | SEARCH of int32 list * int64 option
+  | STATUS of string * Status.MailboxAttribute.t list
+  | EXISTS of int
+  | RECENT of int
+  | EXPUNGE of int32
+  | FETCH of int32 * Fetch.MessageAttribute.t list
+  | CAPABILITY of capability list
+  | VANISHED of Uint32.Set.t
+  | VANISHED_EARLIER of Uint32.Set.t
+  | ENABLED of capability list
+
+type t =
+  | Untagged of untagged
+  | Cont of string
+  | Tagged of { tag : string; state : state }

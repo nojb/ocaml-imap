@@ -38,7 +38,7 @@
 (*           None *)
 (*     ) *)
 
-type _ u = E : 'b * ('b -> Response.Untagged.t -> 'b) * ('b -> 'a) -> 'a u
+type _ u = E : 'b * ('b -> Response.untagged -> 'b) * ('b -> 'a) -> 'a u
 
 type 'a cmd = { format : Encoder.t; u : 'a u }
 
@@ -55,7 +55,7 @@ let encode tag { format; _ } =
   loop [] (Encoder.((raw tag ++ format) & crlf) [])
 
 let process { format; u = E (res, process, finish) } = function
-  | Response.Untagged.State (NO (_, s) | BAD (_, s)) -> Error s
+  | Response.State { status = NO | BAD; message; _ } -> Error message
   | u -> Ok { format; u = E (process res u, process, finish) }
 
 let finish { u = E (res, _, finish); _ } = finish res
@@ -102,7 +102,7 @@ let login username password =
 let _capability =
   let format = Encoder.(str "CAPABILITY") in
   let process caps = function
-    | Response.Untagged.CAPABILITY caps1 -> caps1 :: caps
+    | Response.CAPABILITY caps1 -> caps1 :: caps
     | _ -> caps
   in
   let finish l = List.rev l |> List.flatten in
@@ -131,7 +131,7 @@ let noop =
 let list ?(ref = "") s =
   let format = Encoder.(str "LIST" ++ mutf7 ref ++ str s) in
   let process res = function
-    | Response.Untagged.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
+    | Response.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
     | _ -> res
   in
   let finish = List.rev in
@@ -161,7 +161,7 @@ end
 let status m att =
   let format = Encoder.(str "STATUS" ++ mutf7 m ++ Status.encode att) in
   let process res = function
-    | Response.Untagged.STATUS (mbox, items) when m = mbox ->
+    | Response.STATUS (mbox, items) when m = mbox ->
         let aux res = function
           | (MESSAGES n : Status.MailboxAttribute.t) ->
               { res with Status_response.messages = Some n }
@@ -219,7 +219,7 @@ let uid_expunge nums =
 let search_gen cmd sk =
   let format = Encoder.(raw cmd ++ Search.encode sk) in
   let process res = function
-    | Response.Untagged.SEARCH (ids, modseq) -> (ids :: fst res, modseq)
+    | Response.SEARCH (ids, modseq) -> (ids :: fst res, modseq)
     | _ -> res
   in
   let finish (ids, modseq) = (List.(rev ids |> flatten), modseq) in
@@ -272,7 +272,7 @@ let fetch_gen cmd ?changed_since nums att push =
     (raw cmd ++ eset (Uint32.Set.of_list nums) ++ attx) & changed_since
   in
   let process () = function
-    | Response.Untagged.FETCH (_seq, items) -> (
+    | Response.FETCH (_seq, items) -> (
         let rec choose f = function
           | [] -> None
           | x :: xs -> (
