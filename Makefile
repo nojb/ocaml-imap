@@ -1,23 +1,35 @@
+.PHONY: all
 all:
-	dune build @install
+	dune build @all
 
+.PHONY: test
 test:
 	dune runtest
 
+.PHONY: clean
 clean:
 	dune clean
 
+.PHONY: fmt
+fmt:
+	dune build @fmt --auto-promote
+
+.PHONY: install
 install:
 	dune install
 
+.PHONY: uninstall
 uninstall:
 	dune uninstall
 
+.PHONY: reinstall
 reinstall: uninstall install
 
+.PHONY: doc
 doc:
 	dune build @doc
 
+.PHONY: publish-doc
 publish-doc: doc
 	rm -rf .gh-pages
 	git clone `git config --get remote.origin.url` .gh-pages --reference .
@@ -29,7 +41,6 @@ publish-doc: doc
 	git -C .gh-pages commit -m "Update Pages"
 	git -C .gh-pages push origin gh-pages -f
 
+.PHONY: publish
 publish: gh-pages
 	opam-publish submit "./imap.$(VERSION)"
-
-.PHONY: all test clean install uninstall doc
