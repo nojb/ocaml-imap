@@ -18,12 +18,14 @@
  (depends
   (dune (>= 2.7))
   (base64 (>= 2.0.0))
-  uutf
+  uutf))
+
+(package
+ (name imap-unix)
+ (depends ssl))
+
+(package
+ (name imap-lwt)
+ (depends
   lwt
   lwt_ssl))
-
-(package
- (name imap-unix))
-
-(package
- (name imap-lwt))
