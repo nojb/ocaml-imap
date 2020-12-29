@@ -54,7 +54,7 @@ val flags : state -> flag list option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val uidnext : state -> int32 option
+val uidnext : state -> uid option
 (** Returns the predicted next uid for a message in the currently selected
     mailbox, as most recently reported by the server. The server can update this
     count during most any interaction. Old IMAP servers might not report this
@@ -143,7 +143,7 @@ module Status : sig
   val unseen : int t
   (** Number of unseen messages. *)
 
-  val highestmodseq : int64 t
+  val highestmodseq : modseq t
 
   val pair : 'a t -> 'b t -> ('a * 'b) t
 
@@ -291,7 +291,7 @@ module Search : sig
   val ( && ) : t -> t -> t
   (** Messages that satisfy both search criteria. *)
 
-  val modseq : int64 -> t
+  val modseq : modseq -> t
   (** Messages that have equal or greater modification sequence numbers. *)
 
   val x_gm_raw : string -> t
