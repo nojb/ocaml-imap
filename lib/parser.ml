@@ -535,7 +535,8 @@ let resp_text_code =
         | "UIDNEXT" -> char ' ' *> nz_number >|= fun n -> (UIDNEXT n : code)
         | "UIDVALIDITY" ->
             char ' ' *> nz_number >|= fun n -> (UIDVALIDITY n : code)
-        | "UNSEEN" -> char ' ' *> nz_number >|= fun n -> (UNSEEN n : code)
+        | "UNSEEN" ->
+            char ' ' *> nz_number >|= fun n -> (UNSEEN (Int32.to_int n) : code)
         | "CLOSED" -> return CLOSED
         | "HIGHESTMODSEQ" ->
             char ' ' *> mod_sequence_value >|= fun n -> (HIGHESTMODSEQ n : code)

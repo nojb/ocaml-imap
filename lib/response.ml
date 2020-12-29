@@ -76,7 +76,7 @@ type code =
   | TRYCREATE
   | UIDNEXT of int32
   | UIDVALIDITY of int32
-  | UNSEEN of int32
+  | UNSEEN of int
   | OTHER of string * string option
   | CLOSED
   | HIGHESTMODSEQ of int64

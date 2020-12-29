@@ -45,6 +45,7 @@ module L = struct
 end
 
 type t = {
+  mutable imap : Cmd.t;
   sock : Ssl.socket;
   mutable tag : int;
   mutable buf : Bytes.t;
@@ -79,42 +80,24 @@ let really f ofs len =
   in
   loop ofs len
 
-let rec send t r cmd =
-  match r with
-  | `End -> cmd
-  | `Wait r ->
-      let rec loop cmd =
-        match parse t with
-        | Response.Cont _ -> send t r cmd
-        | Untagged u -> (
-            match Cmd.process cmd u with
-            | Ok cmd -> loop cmd
-            | Error s -> failwith s )
-        | Tagged _ -> failwith "not expected"
-      in
-      loop cmd
-  | `Next (s, r) ->
-      let b = Bytes.unsafe_of_string s in
-      Printf.eprintf "C: %s\n%!" (Bytes.sub_string b 0 (Bytes.length b - 2));
-      really (Ssl.write t.sock b) 0 (Bytes.length b);
-      send t r cmd
-
-let run t cmd =
-  let rec loop cmd =
-    match parse t with
-    | Response.Cont _ -> failwith "unexpected"
-    | Untagged u -> (
-        match Cmd.process cmd u with
-        | Ok cmd -> loop cmd
-        | Error s -> failwith s )
-    | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
-        failwith message
-    | Tagged { state = { status = OK; _ }; _ } ->
-        t.tag <- t.tag + 1;
-        Cmd.finish cmd
+let run t cmd notify =
+  let rec loop t imap = function
+    | Cmd.Send (s, next) ->
+        let b = Bytes.unsafe_of_string s in
+        Printf.eprintf "C: %s\n%!" (Bytes.sub_string b 0 (Bytes.length b - 2));
+        really (Ssl.write t.sock b) 0 (Bytes.length b);
+        loop t imap next
+    | Wait next -> loop t imap (next (parse t))
+    | Partial (imap, x, next) ->
+        notify x;
+        loop t imap next
+    | Done (imap, x) -> (imap, x)
+    | Error s -> failwith s
   in
-  let tag = Printf.sprintf "%04d" t.tag in
-  send t (Cmd.encode tag cmd) cmd |> loop
+  let imap, state = Cmd.run t.imap cmd in
+  let imap, x = loop t imap state in
+  t.imap <- imap;
+  x
 
 let ssl_init = Lazy.from_fun Ssl.init
 
@@ -126,7 +109,9 @@ let connect ?(port = 993) host =
     let sa = Unix.ADDR_INET (he.Unix.h_addr_list.(0), port) in
     Ssl.open_connection_with_context ctx sa
   in
-  let t = { sock; tag = 1; buf = Bytes.create 4096; len = 0 } in
+  let t =
+    { imap = Cmd.empty; sock; tag = 1; buf = Bytes.create 4096; len = 0 }
+  in
   match parse t with
   | Response.Untagged _ -> t
   | Tagged _ | Cont _ -> failwith "unexpected response"

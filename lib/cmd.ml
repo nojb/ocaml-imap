@@ -290,72 +290,145 @@ let flag_to_string = function
 
 let encode_flag f = Encoder.raw (flag_to_string f)
 
-type _ u = E : 'b * ('b -> untagged -> 'b) * ('b -> 'a) -> 'a u
+type status = {
+  messages : int option;
+  recent : int option;
+  uidnext : uid option;
+  uidvalidity : uid option;
+  unseen : int option;
+  highestmodseq : modseq option;
+}
 
-type 'a cmd = { format : Encoder.t; u : 'a u }
+let empty_status =
+  {
+    messages = None;
+    recent = None;
+    uidnext = None;
+    uidvalidity = None;
+    unseen = None;
+    highestmodseq = None;
+  }
 
-let encode tag { format; _ } =
-  let rec loop acc = function
-    | Encoder.Wait :: k as k' ->
-        if acc = [] then `Wait (loop [] k)
-        else `Next (String.concat "" (List.rev acc), loop [] k')
-    | Raw s :: k -> loop (s :: acc) k
-    | Crlf :: k -> loop ("\r\n" :: acc) k
-    | [] ->
-        if acc = [] then `End else `Next (String.concat "" (List.rev acc), `End)
+let update_status t = function
+  | MESSAGES n -> { t with messages = Some n }
+  | RECENT n -> { t with recent = Some n }
+  | UIDNEXT n -> { t with uidnext = Some n }
+  | UIDVALIDITY n -> { t with uidvalidity = Some n }
+  | UNSEEN n -> { t with unseen = Some n }
+  | HIGHESTMODSEQ n -> { t with highestmodseq = Some n }
+
+type t = {
+  next_tag : int;
+  current_tag : int option;
+  status : status;
+  flags : flag list option;
+}
+
+let messages { status = { messages; _ }; _ } = messages
+
+let recent { status = { recent; _ }; _ } = recent
+
+let flags { flags; _ } = flags
+
+let uidnext { status = { uidnext; _ }; _ } = uidnext
+
+let uidvalidity { status = { uidvalidity; _ }; _ } = uidvalidity
+
+let unseen { status = { unseen; _ }; _ } = unseen
+
+let highestmodseq { status = { highestmodseq; _ }; _ } = highestmodseq
+
+let empty =
+  { next_tag = 1; current_tag = None; status = empty_status; flags = None }
+
+type ('a, 'b) state =
+  | Send of string * ('a, 'b) state
+  | Wait of (response -> ('a, 'b) state)
+  | Partial of t * 'a * ('a, 'b) state
+  | Done of t * 'b
+  | Error of string
+
+type ('a, 'b) cmd =
+  | Cmd : {
+      format : Encoder.t;
+      process : 'x -> untagged -> 'x * 'a option;
+      init : 'x;
+      finish : 'x -> 'b;
+    }
+      -> ('a, 'b) cmd
+
+let run t (Cmd { format; process; init; finish }) =
+  assert (t.current_tag = None);
+
+  let current_tag = t.next_tag in
+
+  let process t init u wait =
+    let t =
+      match u with
+      | EXISTS n -> { t with status = { t.status with messages = Some n } }
+      | RECENT n -> { t with status = { t.status with recent = Some n } }
+      | FLAGS l -> { t with flags = Some l }
+      | EXPUNGE _ ->
+          {
+            t with
+            status =
+              { t.status with messages = Option.map pred t.status.messages };
+          }
+      | STATUS (_, l) ->
+          { t with status = List.fold_left update_status t.status l }
+      | _ -> t
+    in
+    let init, partial = process init u in
+    let next = Wait (wait t init) in
+    match partial with Some x -> Partial (t, x, next) | None -> next
   in
-  loop [] (Encoder.((raw tag ++ format) & crlf) [])
 
-let process { format; u = E (res, process, finish) } = function
-  | State { status = NO | BAD; message; _ } -> Error message
-  | u -> Ok { format; u = E (process res u, process, finish) }
+  let rec aux t init accu = function
+    | Encoder.Wait :: k ->
+        let rec wait t init = function
+          | Cont _ -> aux t init [] k
+          | Untagged u -> process t init u wait
+          | Tagged _ -> assert false
+        in
+        if accu = [] then Wait (wait t init)
+        else Send (String.concat "" (List.rev accu), Wait (wait t init))
+    | Raw s :: k -> aux t init (s :: accu) k
+    | Crlf :: k -> aux t init ("\r\n" :: accu) k
+    | [] ->
+        let rec wait t init = function
+          | Cont _ -> assert false
+          | Untagged u -> process t init u wait
+          | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
+              Error message
+          | Tagged { state = { status = OK; _ }; _ } -> Done (t, finish init)
+        in
+        if accu = [] then Wait (wait t init)
+        else Send (String.concat "" (List.rev accu), Wait (wait t init))
+  in
 
-let finish { u = E (res, _, finish); _ } = finish res
+  let t =
+    { t with next_tag = current_tag + 1; current_tag = Some current_tag }
+  in
 
-(* let idle imap = *)
-(*   let process = wrap_process (fun _ r _ -> r) in *)
-(*   let tag = tag imap in *)
-(*   let r = Encoder.(raw tag ++ raw "IDLE" & crlf) in *)
-(*   let t, u = Lwt.wait () in *)
-(*   let t = t >>= fun () -> send imap Encoder.(raw "DONE" & crlf) process () in *)
-(*   let stop () = imap.stop_poll <- None; Lwt.wakeup u () in *)
-(*   send imap r process () >>= fun () -> *)
-(*   let rec loop () = *)
-(*     recv imap >>= function *)
-(*     | Response.Cont _ -> *)
-(*         imap.stop_poll <- Some stop; *)
-(*         loop () *)
-(*     | Untagged _ -> *)
-(*         stop (); *)
-(*         loop () *)
-(*     | Tagged (_t, _) -> (\* FIXME *\) *)
-(*         imap.tag <- imap.tag + 1; *)
-(*         Lwt.return_unit *)
-(*   in *)
-(*   Lwt.join [loop (); t] *)
+  ( t,
+    aux t init []
+      (Encoder.((raw (Printf.sprintf "%04d" current_tag) ++ format) & crlf) [])
+  )
 
-(* let stop_poll imap = *)
-(*   match imap.stop_poll with *)
-(*   | Some f -> f () *)
-(*   | None -> () *)
-
-(* let poll imap = *)
-(*   idle imap *)
-
-let simple format v =
-  let process res _ = res in
+let simple format init =
+  let process res _ = (res, None) in
   let finish res = res in
-  { format; u = E (v, process, finish) }
+  Cmd { format; process; finish; init }
 
 let login username password =
   let format = Encoder.(str "LOGIN" ++ str username ++ str password) in
   simple format ()
 
-let _capability =
-  let format = Encoder.(str "CAPABILITY") in
-  let process caps = function CAPABILITY caps1 -> caps1 :: caps | _ -> caps in
-  let finish l = List.rev l |> List.flatten in
-  { format; u = E ([], process, finish) }
+(* let _capability = *)
+(*   let format = Encoder.(str "CAPABILITY") in *)
+(*   let process caps = function CAPABILITY caps1 -> caps1 :: caps | _ -> caps in *)
+(*   let finish l = List.rev l |> List.flatten in *)
+(*   Cmd { format; u = E ([], process, finish) } *)
 
 let create m =
   let format = Encoder.(str "CREATE" ++ mutf7 m) in
@@ -380,11 +453,11 @@ let noop =
 let list ?(ref = "") s =
   let format = Encoder.(str "LIST" ++ mutf7 ref ++ str s) in
   let process res = function
-    | LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
-    | _ -> res
+    | LIST (flags, delim, mbox) -> ((flags, delim, mbox) :: res, None)
+    | _ -> (res, None)
   in
   let finish = List.rev in
-  { format; u = E ([], process, finish) }
+  Cmd { format; process; finish; init = [] }
 
 module Status = struct
   type 'a t =
@@ -430,59 +503,39 @@ module Status = struct
         in
         E.list (fun x -> x) (List.rev (go [] x))
 
-  type u = {
-    messages : int option;
-    recent : int option;
-    uidnext : Common.uid option;
-    uidvalidity : Common.uid option;
-    unseen : int option;
-    highestmodseq : Common.modseq option;
-  }
-
-  let empty =
-    {
-      messages = None;
-      recent = None;
-      uidnext = None;
-      uidvalidity = None;
-      unseen = None;
-      highestmodseq = None;
-    }
+  let matches t a =
+    let aux res = function
+      | (MESSAGES n : mailbox_attribute) -> { res with messages = Some n }
+      | RECENT n -> { res with recent = Some n }
+      | UIDNEXT n -> { res with uidnext = Some n }
+      | UIDVALIDITY n -> { res with uidvalidity = Some n }
+      | UNSEEN n -> { res with unseen = Some n }
+      | HIGHESTMODSEQ n -> { res with highestmodseq = Some n }
+    in
+    let r = List.fold_left aux empty_status a in
+    let rec go : type a. a t -> a option = function
+      | MESSAGES -> r.messages
+      | RECENT -> r.recent
+      | UIDNEXT -> r.uidnext
+      | UIDVALIDITY -> r.uidvalidity
+      | UNSEEN -> r.unseen
+      | HIGHESTMODSEQ -> r.highestmodseq
+      | PAIR (x, y) -> (
+          match (go x, go y) with Some x, Some y -> Some (x, y) | _ -> None )
+      | MAP (f, x) -> ( match go x with Some x -> Some (f x) | None -> None )
+    in
+    go t
 end
 
 let status m att =
   let format = Encoder.(str "STATUS" ++ mutf7 m ++ Status.encode att) in
   let process res = function
-    | STATUS (mbox, items) when m = mbox ->
-        let aux res = function
-          | (MESSAGES n : mailbox_attribute) ->
-              { res with Status.messages = Some n }
-          | RECENT n -> { res with recent = Some n }
-          | UIDNEXT n -> { res with uidnext = Some n }
-          | UIDVALIDITY n -> { res with uidvalidity = Some n }
-          | UNSEEN n -> { res with unseen = Some n }
-          | HIGHESTMODSEQ n -> { res with highestmodseq = Some n }
-        in
-        let r = List.fold_left aux Status.empty items in
-        let rec go : type a. a Status.t -> a option = function
-          | Status.MESSAGES -> r.Status.messages
-          | RECENT -> r.recent
-          | UIDNEXT -> r.uidnext
-          | UIDVALIDITY -> r.uidvalidity
-          | UNSEEN -> r.unseen
-          | HIGHESTMODSEQ -> r.highestmodseq
-          | PAIR (x, y) -> (
-              match (go x, go y) with
-              | Some x, Some y -> Some (x, y)
-              | _ -> None )
-          | MAP (f, x) -> (
-              match go x with Some x -> Some (f x) | None -> None )
-        in
-        go att
+    | STATUS (mbox, items) when m = mbox -> Status.matches att items
     | _ -> res
   in
+  let process init u = (process init u, None) in
   let finish res = res in
-  { format; u = E (None, process, finish) }
+  Cmd { format; process; finish; init = None }
 
 let copy_gen cmd nums mbox =
   let format =
@@ -601,11 +654,11 @@ end
 let search_gen cmd sk =
   let format = Encoder.(raw cmd ++ sk) in
   let process res = function
-    | SEARCH (ids, modseq) -> (ids :: fst res, modseq)
-    | _ -> res
+    | SEARCH (ids, modseq) -> ((ids :: fst res, modseq), None)
+    | _ -> (res, None)
   in
   let finish (ids, modseq) = (List.(rev ids |> flatten), modseq) in
-  { format; u = E (([], None), process, finish) }
+  Cmd { format; process; finish; init = ([], None) }
 
 let search = search_gen "SEARCH"
 
@@ -829,7 +882,7 @@ module Fetch = struct
     go t
 end
 
-let fetch_gen cmd ?changed_since nums att push =
+let fetch_gen cmd ?changed_since nums att =
   let open Encoder in
   let attx = Fetch.encode att in
   let changed_since =
@@ -841,17 +894,15 @@ let fetch_gen cmd ?changed_since nums att push =
     (raw cmd ++ eset (Uint32.Set.of_list nums) ++ attx) & changed_since
   in
   let process () = function
-    | FETCH (_seq, items) -> (
-        match Fetch.matches att items with None -> () | Some x -> push x )
-    | _ -> ()
+    | FETCH (_seq, items) -> ((), Fetch.matches att items)
+    | _ -> ((), None)
   in
-  { format; u = E ((), process, ignore) }
+  Cmd { format; process; finish = ignore; init = () }
 
-let fetch ?changed_since nums att push =
-  fetch_gen "FETCH" ?changed_since nums att push
+let fetch ?changed_since nums att = fetch_gen "FETCH" ?changed_since nums att
 
-let uid_fetch ?changed_since nums att push =
-  fetch_gen "UID FETCH" ?changed_since nums att push
+let uid_fetch ?changed_since nums att =
+  fetch_gen "UID FETCH" ?changed_since nums att
 
 type store_mode = [ `Add | `Remove | `Set ]
 

@@ -23,41 +23,64 @@
 open Common
 open Response
 
-(** {1 Commands} *)
+type t
+(** The type of IMAP connections. Values of type [t] keep track of the implicit
+    state in IMAP connections: number of unseen messages, total number of
+    messages in the current mailbox, etc. Note that this state can be updated
+    during the execution of almost any IMAP command. *)
 
-type 'a cmd
+val messages : t -> int option
 
-val encode :
-  string -> 'a cmd -> ([ `Next of string * 'x | `Wait of 'x | `End ] as 'x)
+val recent : t -> int option
 
-val process : 'a cmd -> untagged -> ('a cmd, string) result
+val flags : t -> flag list option
 
-val finish : 'a cmd -> 'a
+val uidnext : t -> int32 option
 
-(* val poll: t -> unit Lwt.t *)
+val uidvalidity : t -> int32 option
 
-(* val stop_poll: t -> unit *)
+val unseen : t -> int option
 
-val login : string -> string -> unit cmd
+val highestmodseq : t -> int64 option
 
-val logout : unit cmd
+type ('a, 'b) cmd
+(** The type of IMAP commands which return a response of type ['a]. *)
 
-val create : string -> unit cmd
+val empty : t
+
+type ('a, 'b) state =
+  | Send of string * ('a, 'b) state
+  | Wait of (response -> ('a, 'b) state)
+  | Partial of t * 'a * ('a, 'b) state
+  | Done of t * 'b
+  | Error of string
+
+val run : t -> ('a, 'b) cmd -> t * ('a, 'b) state
+
+val login : string -> string -> (unit, unit) cmd
+
+val logout : (unit, unit) cmd
+
+(* val poll : unit -> (unit -> unit) * (unit, unit) cmd *)
+
+val create : string -> (unit, unit) cmd
 (** [create imap name] creates a mailbox named [name]. *)
 
-val delete : string -> unit cmd
+val delete : string -> (unit, unit) cmd
 (** [delete imap name] deletes mailbox [name]. *)
 
-val rename : string -> string -> unit cmd
+val rename : string -> string -> (unit, unit) cmd
 (** [rename imap oldname newname] renames mailbox [oldname] to [newname]. *)
 
-val noop : unit cmd
+val noop : (unit, unit) cmd
 (** [noop imap] does nothing.  Since any command can return a status update as
     untagged data, the [noop] command can be used as a periodic poll for new
     messages or message status updates during a period of inactivity. *)
 
 val list :
-  ?ref:string -> string -> (mailbox_flag list * char option * string) list cmd
+  ?ref:string ->
+  string ->
+  (unit, (mailbox_flag list * char option * string) list) cmd
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 
@@ -81,20 +104,20 @@ module Status : sig
   val map : ('a -> 'b) -> 'a t -> 'b t
 end
 
-val status : string -> 'a Status.t -> 'a option cmd
+val status : string -> 'a Status.t -> (unit, 'a option) cmd
 (** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
 
-val copy : seq list -> string -> unit cmd
+val copy : seq list -> string -> (unit, unit) cmd
 (** [copy imap nums mbox] copies messages with sequence number in [nums] to
     mailbox [mbox]. *)
 
-val uid_copy : uid list -> string -> unit cmd
+val uid_copy : uid list -> string -> (unit, unit) cmd
 
-val expunge : unit cmd
+val expunge : (unit, unit) cmd
 (** [expunge imap] permanently removes all messages that have the [Deleted]
     {!flag} set from the currently selected mailbox. *)
 
-val uid_expunge : uid list -> unit cmd
+val uid_expunge : uid list -> (unit, unit) cmd
 (** Requires [UIDPLUS] extension. *)
 
 module Search : sig
@@ -241,20 +264,24 @@ module Search : sig
   (** Messages with given Gmail labels. *)
 end
 
-val search : Search.t -> (seq list * modseq option) cmd
+val search : Search.t -> (unit, seq list * modseq option) cmd
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
 
-val uid_search : Search.t -> (uid list * modseq option) cmd
+val uid_search : Search.t -> (unit, uid list * modseq option) cmd
 
-val examine : string -> unit cmd
+val examine : string -> (unit, unit) cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
-val select : string -> unit cmd
+val select : string -> (unit, unit) cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
 val append :
-  string -> ?flags:flag list -> ?internaldate:string -> string -> unit cmd
+  string ->
+  ?flags:flag list ->
+  ?internaldate:string ->
+  string ->
+  (unit, unit) cmd
 (** [append imap mbox flags id data] appends [data] as a new message to the end
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
@@ -295,8 +322,7 @@ module Fetch : sig
   val pair : 'a t -> 'b t -> ('a * 'b) t
 end
 
-val fetch :
-  ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> unit cmd
+val fetch : ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a, unit) cmd
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
     messages with sequence number in [set].
 
@@ -305,7 +331,7 @@ val fetch :
     (requires the [CONDSTORE] extension). *)
 
 val uid_fetch :
-  ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a -> unit) -> unit cmd
+  ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a, unit) cmd
 
 type store_mode = [ `Add | `Remove | `Set ]
 
@@ -317,7 +343,7 @@ val store :
   seq list ->
   'a store_kind ->
   'a list ->
-  unit cmd
+  (unit, unit) cmd
 (** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
     [mode] for those message with sequence number in [nums].
 
@@ -330,4 +356,4 @@ val uid_store :
   uid list ->
   'a store_kind ->
   'a list ->
-  unit cmd
+  (unit, unit) cmd
