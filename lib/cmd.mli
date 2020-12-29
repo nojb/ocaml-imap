@@ -95,6 +95,42 @@ val append :
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
 
+module Fetch : sig
+  type 'a t
+
+  val flags : flag list t
+
+  val envelope : envelope t
+
+  val internaldate : string t
+
+  val uid : uid t
+
+  val x_gm_msgid : int64 t
+
+  val x_gm_thrid : int64 t
+
+  val x_gm_labels : string list t
+
+  val rfc822 : string t
+
+  val rfc822_text : string t
+
+  val rfc822_header : string t
+
+  val rfc822_size : int t
+
+  val body : mime t
+
+  val bodystructure : mime t
+
+  val modseq : int64 t
+
+  val map : ('a -> 'b) -> 'a t -> 'b t
+
+  val pair : 'a t -> 'b t -> ('a * 'b) t
+end
+
 val fetch :
   ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a -> unit) -> unit cmd
 (** [fetch imap uid ?changed_since set att] retrieves data associated with
