@@ -153,7 +153,10 @@ val status : string -> 'a Status.t -> (unit, 'a option) cmd
 
 val copy : int32 list -> string -> (unit, unit) cmd
 (** Copies the specified messages from the currently selected mailbox to the
-    specified mailbox. *)
+    specified mailbox.
+
+    Messages are specified by the
+*)
 
 val expunge : int32 list -> (unit, unit) cmd
 (** Purges messages with the given uids which are {e also} marked with the
@@ -301,7 +304,7 @@ module Search : sig
 end
 
 val search : Search.t -> (unit, int32 list * int64 option) cmd
-(** Returns the sequence numbers of messages satisfying the search criteria. *)
+(** Returns the uids of messages satisfying the search criteria. *)
 
 val examine : string -> (unit, unit) cmd
 (** [select imap m] selects the mailbox [m] for access. *)
@@ -317,20 +320,26 @@ module Fetch : sig
   type 'a t
 
   val flags : flag list t
+  (** The list of message flags. *)
 
   val envelope : envelope t
 
   val internaldate : string t
 
   val uid : int32 t
+  (** The message uid. *)
 
   val x_gm_msgid : int64 t
+  (** The Gmail message id. *)
 
   val x_gm_thrid : int64 t
+  (** The Gmail thread id. *)
 
   val x_gm_labels : string list t
+  (** The list of Gmail labels. *)
 
   val rfc822 : string t
+  (** The raw RFC822 message contents. *)
 
   val rfc822_text : string t
 
@@ -343,6 +352,7 @@ module Fetch : sig
   val bodystructure : mime t
 
   val modseq : int64 t
+  (** The message modification sequence number. *)
 
   val map : ('a -> 'b) -> 'a t -> 'b t
 
@@ -360,25 +370,31 @@ val get_messages : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
     If the [?since] argument is passed, only data for those messages with
     modification sequence value no less than this value will be fetched. *)
 
-type store_mode = Add | Remove | Set
+type 'a store_cmd = ?before:int64 -> int32 list -> 'a list -> (unit, unit) cmd
 
-type _ store_kind = Flags : flag store_kind | Labels : string store_kind
+val add_flags : flag store_cmd
+(** [add_flags ?before uids flags] adds flags [flags] to a set of messages.
 
-val store :
-  ?since:int64 ->
-  store_mode ->
-  int32 list ->
-  'a store_kind ->
-  'a list ->
-  (unit, unit) cmd
-(** [store ?since mode uids kind flags] Sets flags [flags] for a set of messages. The mode
-    argument specifies how flags are set:
-    {ul {- [Add] -- Add the given flags to each message}
-    {- [Remove] -- Remove the given flags from each message}
-    {- [Set] -- Set each message's flags to the given set}}
+    The [uids] argument specifies a set of messages by their uids.
 
-    The [uids] argument specifies a set of messages by their uids.  The [flags]
-    argument specifies the imap flags or Gmail labels to add/remove/install.
+    If [?before] is present, then only those messages with modification sequence
+    number at most the given value are affected. *)
 
-    If [?since] is present, then only those messages with [UNCHANGEDSINCE]
-    mod-sequence value at least the passed value are affected. *)
+val set_flags : flag store_cmd
+(** Like {!add_flags} but changes the set of existing flags, instead of adding
+    to it. *)
+
+val remove_flags : flag store_cmd
+(** Like {!add_flags}, but removes the given flags instead of adding them. *)
+
+val add_labels : string store_cmd
+(** Like {!add_flags}, but modifies the set of Gmail labels, instead of message
+    flags. *)
+
+val set_labels : string store_cmd
+(** Like {!add_labels}, but changes the set of Gmail labels, instead of
+    adding to it. *)
+
+val remove_labels : string store_cmd
+(** Like {!add_labels}, but removes from the set of Gmail labels, instead of
+    adding to it. *)

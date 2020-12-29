@@ -22,38 +22,6 @@
 
 open Common
 
-type capability =
-  | IMAP4rev1
-  | ACL
-  | BINARY
-  | CATENATE
-  | CHILDREN
-  | COMPRESS_DEFLATE
-  | CONDSTORE
-  | ESEARCH
-  | ENABLE
-  | IDLE
-  | ID
-  | LITERALPLUS
-  | LITERALMINUS
-  | UTF8_ACCEPT
-  | UTF8_ONLY
-  | MULTIAPPEND
-  | NAMESPACE
-  | QRESYNC
-  | QUOTE
-  | SORT
-  | STARTTLS
-  | UIDPLUS
-  | UNSELECT
-  | XLIST
-  | AUTH_ANONYMOUS
-  | AUTH_LOGIN
-  | AUTH_PLAIN
-  | XOAUTH2
-  | X_GM_EXT_1
-  | OTHER of string
-
 type flag =
   | Answered
   | Flagged
@@ -68,7 +36,7 @@ type flag =
 type code =
   | ALERT
   | BADCHARSET of string list
-  | CAPABILITY of capability list
+  | CAPABILITY of string list
   | PARSE
   | PERMANENTFLAGS of flag list
   | READ_ONLY
@@ -87,10 +55,6 @@ type code =
   | UIDNOTSTICKY
   | COMPRESSIONACTIVE
   | USEATTR
-
-type status = OK | NO | BAD
-
-type state = { code : code option; message : string; status : status }
 
 type mime_msgtext =
   | HEADER
@@ -186,7 +150,9 @@ type mailbox_attribute =
   | HIGHESTMODSEQ of int64
 
 type untagged =
-  | State of state
+  | OK of { code : code option; message : string }
+  | NO of { code : code option; message : string }
+  | BAD of { code : code option; message : string }
   | BYE of { code : code option; message : string }
   | PREAUTH of code option * string
   | FLAGS of flag list
@@ -198,12 +164,19 @@ type untagged =
   | RECENT of int
   | EXPUNGE of int32
   | FETCH of int32 * message_attribute list
-  | CAPABILITY of capability list
+  | CAPABILITY of string list
   | VANISHED of Uint32.Set.t
   | VANISHED_EARLIER of Uint32.Set.t
-  | ENABLED of capability list
+  | ENABLED of string list
+
+type status = OK | NO | BAD
 
 type response =
   | Untagged of untagged
   | Cont of string
-  | Tagged of { tag : string; state : state }
+  | Tagged of {
+      tag : string;
+      status : status;
+      code : code option;
+      message : string;
+    }

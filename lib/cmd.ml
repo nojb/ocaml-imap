@@ -243,39 +243,37 @@ let date_to_string { day; month; year } =
 
 let encode_date d = Encoder.raw (date_to_string d)
 
-let capability_to_string = function
-  | IMAP4rev1 -> "IMAP4rev1"
-  | ACL -> "ACL"
-  | BINARY -> "BINARY"
-  | CATENATE -> "CATENATE"
-  | CHILDREN -> "CHILDREN"
-  | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
-  | CONDSTORE -> "CONDSTORE"
-  | ESEARCH -> "ESEARCH"
-  | ENABLE -> "ENABLE"
-  | IDLE -> "IDLE"
-  | ID -> "ID"
-  | LITERALPLUS -> "LITERAL+"
-  | LITERALMINUS -> "LITERAL-"
-  | UTF8_ACCEPT -> "UTF8=ACCEPT"
-  | UTF8_ONLY -> "UTF8=ONLY"
-  | MULTIAPPEND -> "MULTIAPPEND"
-  | NAMESPACE -> "NAMESPACE"
-  | QRESYNC -> "QRESYNC"
-  | QUOTE -> "QUOTE"
-  | SORT -> "SORT"
-  | STARTTLS -> "STARTTLS"
-  | UIDPLUS -> "UIDPLUS"
-  | UNSELECT -> "UNSELECT"
-  | XLIST -> "XLIST"
-  | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
-  | AUTH_LOGIN -> "AUTH=LOGIN"
-  | AUTH_PLAIN -> "AUTH=PLAIN"
-  | XOAUTH2 -> "XOAUTH2"
-  | X_GM_EXT_1 -> "X-GM-EXT-1"
-  | OTHER s -> s
-
-let encode_capability s = Encoder.raw (capability_to_string s)
+(* let _capability_to_string = function *)
+(*   | IMAP4rev1 -> "IMAP4rev1" *)
+(*   | ACL -> "ACL" *)
+(*   | BINARY -> "BINARY" *)
+(*   | CATENATE -> "CATENATE" *)
+(*   | CHILDREN -> "CHILDREN" *)
+(*   | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE" *)
+(*   | CONDSTORE -> "CONDSTORE" *)
+(*   | ESEARCH -> "ESEARCH" *)
+(*   | ENABLE -> "ENABLE" *)
+(*   | IDLE -> "IDLE" *)
+(*   | ID -> "ID" *)
+(*   | LITERALPLUS -> "LITERAL+" *)
+(*   | LITERALMINUS -> "LITERAL-" *)
+(*   | UTF8_ACCEPT -> "UTF8=ACCEPT" *)
+(*   | UTF8_ONLY -> "UTF8=ONLY" *)
+(*   | MULTIAPPEND -> "MULTIAPPEND" *)
+(*   | NAMESPACE -> "NAMESPACE" *)
+(*   | QRESYNC -> "QRESYNC" *)
+(*   | QUOTE -> "QUOTE" *)
+(*   | SORT -> "SORT" *)
+(*   | STARTTLS -> "STARTTLS" *)
+(*   | UIDPLUS -> "UIDPLUS" *)
+(*   | UNSELECT -> "UNSELECT" *)
+(*   | XLIST -> "XLIST" *)
+(*   | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS" *)
+(*   | AUTH_LOGIN -> "AUTH=LOGIN" *)
+(*   | AUTH_PLAIN -> "AUTH=PLAIN" *)
+(*   | XOAUTH2 -> "XOAUTH2" *)
+(*   | X_GM_EXT_1 -> "X-GM-EXT-1" *)
+(*   | OTHER s -> s *)
 
 let flag_to_string = function
   | Answered -> "\\Answered"
@@ -398,9 +396,8 @@ let run t (Cmd { format; process; init; finish }) =
         let rec wait t init = function
           | Cont _ -> assert false
           | Untagged u -> process t init u wait
-          | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
-              Error message
-          | Tagged { state = { status = OK; _ }; _ } -> Done (t, finish init)
+          | Tagged { status = NO | BAD; message; _ } -> Error message
+          | Tagged { status = OK; _ } -> Done (t, finish init)
         in
         if accu = [] then Wait (wait t init)
         else Send (String.concat "" (List.rev accu), Wait (wait t init))
@@ -875,7 +872,9 @@ type store_mode = Add | Remove | Set
 
 type _ store_kind = Flags : flag store_kind | Labels : string store_kind
 
-let store (type a) ?since mode nums (att : a store_kind) (l : a list) =
+type 'a store_cmd = ?before:int64 -> int32 list -> 'a list -> (unit, unit) cmd
+
+let store (type a) mode (att : a store_kind) ?before nums (l : a list) =
   let open Encoder in
   let base =
     let mode = match mode with Add -> "+" | Set -> "" | Remove -> "-" in
@@ -886,7 +885,7 @@ let store (type a) ?since mode nums (att : a store_kind) (l : a list) =
     match att with Flags -> list encode_flag l | Labels -> list label l
   in
   let unchanged_since =
-    match since with
+    match before with
     | None -> str ""
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
@@ -897,6 +896,18 @@ let store (type a) ?since mode nums (att : a store_kind) (l : a list) =
   in
   simple format ()
 
-let _enable caps =
-  let format = Encoder.(str "ENABLE" ++ list encode_capability caps) in
-  simple format ()
+let add_flags ?before uids l = store Add Flags ?before uids l
+
+let set_flags ?before uids l = store Set Flags ?before uids l
+
+let remove_flags ?before uids l = store Remove Flags ?before uids l
+
+let add_labels ?before uids l = store Add Labels ?before uids l
+
+let remove_labels ?before uids l = store Remove Labels ?before uids l
+
+let set_labels ?before uids l = store Set Labels ?before uids l
+
+(* let _enable caps = *)
+(*   let format = Encoder.(str "ENABLE" ++ list encode_capability caps) in *)
+(*   simple format () *)

@@ -329,28 +329,7 @@ let mailbox_list =
                        ; standards-track
 *)
 
-let capability =
-  atom >|= function
-  | "COMPRESS=DEFLATE" -> COMPRESS_DEFLATE
-  | "CONDSTORE" -> CONDSTORE
-  | "ESEARCH" -> ESEARCH
-  | "ENABLE" -> ENABLE
-  | "IDLE" -> IDLE
-  | "LITERAL+" -> LITERALPLUS
-  | "LITERAL-" -> LITERALMINUS
-  | "UTF8=ACCEPT" -> UTF8_ACCEPT
-  | "UTF8=ONLY" -> UTF8_ONLY
-  | "NAMESPACE" -> NAMESPACE
-  | "ID" -> ID
-  | "QRESYNC" -> QRESYNC
-  | "UIDPLUS" -> UIDPLUS
-  | "UNSELECT" -> UNSELECT
-  | "XLIST" -> XLIST
-  | "AUTH=PLAIN" -> AUTH_PLAIN
-  | "AUTH=LOGIN" -> AUTH_LOGIN
-  | "XOAUTH2" -> XOAUTH2
-  | "X-GM-EXT-1" -> X_GM_EXT_1
-  | a -> OTHER a
+let capability = atom
 
 (*
    seq-number      = nz-number / "*"
@@ -525,7 +504,7 @@ let resp_text_code =
             curr >>= function
             | ' ' -> next *> plist astring >|= fun l -> BADCHARSET l
             | _ -> return (BADCHARSET []) )
-        | "CAPABILITY" -> slist capability >|= fun l -> (CAPABILITY l : code)
+        | "CAPABILITY" -> slist atom >|= fun l -> (CAPABILITY l : code)
         | "PARSE" -> return PARSE
         | "PERMANENTFLAGS" ->
             char ' ' *> plist flag_perm >|= fun l -> PERMANENTFLAGS l
@@ -1077,14 +1056,11 @@ let response_data =
   | _ -> (
       atom >>= function
       | "OK" ->
-          resp_text >|= fun (code, message) ->
-          State { status = OK; code; message }
+          resp_text >|= fun (code, message) -> (OK { code; message } : untagged)
       | "NO" ->
-          resp_text >|= fun (code, message) ->
-          State { status = NO; code; message }
+          resp_text >|= fun (code, message) -> (NO { code; message } : untagged)
       | "BAD" ->
-          resp_text >|= fun (code, message) ->
-          State { status = BAD; code; message }
+          resp_text >|= fun (code, message) -> (BAD { code; message } : untagged)
       | "BYE" -> resp_text >|= fun (code, message) -> BYE { code; message }
       | "FLAGS" -> char ' ' *> plist flag >|= fun l -> FLAGS l
       | "LIST" -> char ' ' *> mailbox_list >|= fun (xs, c, m) -> LIST (xs, c, m)
@@ -1137,10 +1113,9 @@ let tag = take_while1 is_tag_char
 
 let resp_cond_state =
   atom >>= function
-  | "OK" -> resp_text >|= fun (code, message) -> { status = OK; code; message }
-  | "NO" -> resp_text >|= fun (code, message) -> { status = NO; code; message }
-  | "BAD" ->
-      resp_text >|= fun (code, message) -> { status = BAD; code; message }
+  | "OK" -> resp_text >|= fun (code, message) -> (OK, code, message)
+  | "NO" -> resp_text >|= fun (code, message) -> (NO, code, message)
+  | "BAD" -> resp_text >|= fun (code, message) -> (BAD, code, message)
   | _ -> error
 
 let response =
@@ -1149,6 +1124,7 @@ let response =
   | '*' -> response_data >|= fun x -> Untagged x
   | _ ->
       tag >>= fun tag ->
-      char ' ' *> resp_cond_state >|= fun state -> Tagged { tag; state }
+      char ' ' *> resp_cond_state >|= fun (status, code, message) ->
+      Tagged { tag; status; code; message }
 
 let response s p = response { s; p }
