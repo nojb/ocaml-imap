@@ -504,15 +504,7 @@ module Status = struct
         E.list (fun x -> x) (List.rev (go [] x))
 
   let matches t a =
-    let aux res = function
-      | (MESSAGES n : mailbox_attribute) -> { res with messages = Some n }
-      | RECENT n -> { res with recent = Some n }
-      | UIDNEXT n -> { res with uidnext = Some n }
-      | UIDVALIDITY n -> { res with uidvalidity = Some n }
-      | UNSEEN n -> { res with unseen = Some n }
-      | HIGHESTMODSEQ n -> { res with highestmodseq = Some n }
-    in
-    let r = List.fold_left aux empty_status a in
+    let r = List.fold_left update_status empty_status a in
     let rec go : type a. a t -> a option = function
       | MESSAGES -> r.messages
       | RECENT -> r.recent
