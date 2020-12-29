@@ -259,7 +259,6 @@ let text_1 =
 *)
 
 let mbx_flag =
-  let open MailboxFlag in
   char '\\' *> atom >|= fun a ->
   match String.lowercase_ascii a with
   | "noselect" -> Noselect

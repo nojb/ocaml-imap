@@ -161,13 +161,29 @@ type message_attribute =
   | X_GM_THRID of int64
   | X_GM_LABELS of string list
 
+type mailbox_flag =
+  | Noselect
+  | Marked
+  | Unmarked
+  | Noinferiors
+  | HasChildren
+  | HasNoChildren
+  | All
+  | Archive
+  | Drafts
+  | Flagged
+  | Junk
+  | Sent
+  | Trash
+  | Extension of string
+
 type untagged =
   | State of state
   | BYE of { code : code option; message : string }
   | PREAUTH of code option * string
   | FLAGS of flag list
-  | LIST of MailboxFlag.t list * char option * string
-  | LSUB of MailboxFlag.t list * char option * string
+  | LIST of mailbox_flag list * char option * string
+  | LSUB of mailbox_flag list * char option * string
   | SEARCH of int32 list * int64 option
   | STATUS of string * Status.MailboxAttribute.t list
   | EXISTS of int

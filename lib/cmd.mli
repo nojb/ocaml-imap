@@ -57,7 +57,7 @@ val noop : unit cmd
     messages or message status updates during a period of inactivity. *)
 
 val list :
-  ?ref:string -> string -> (MailboxFlag.t list * char option * string) list cmd
+  ?ref:string -> string -> (mailbox_flag list * char option * string) list cmd
 (** [list imap ref m] returns the list of mailboxes with names matching
     [ref]. *)
 

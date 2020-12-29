@@ -40,6 +40,40 @@
 open Common
 open Response
 
+let capability_to_string = function
+  | IMAP4rev1 -> "IMAP4rev1"
+  | ACL -> "ACL"
+  | BINARY -> "BINARY"
+  | CATENATE -> "CATENATE"
+  | CHILDREN -> "CHILDREN"
+  | COMPRESS_DEFLATE -> "COMPRESS=DEFLATE"
+  | CONDSTORE -> "CONDSTORE"
+  | ESEARCH -> "ESEARCH"
+  | ENABLE -> "ENABLE"
+  | IDLE -> "IDLE"
+  | ID -> "ID"
+  | LITERALPLUS -> "LITERAL+"
+  | LITERALMINUS -> "LITERAL-"
+  | UTF8_ACCEPT -> "UTF8=ACCEPT"
+  | UTF8_ONLY -> "UTF8=ONLY"
+  | MULTIAPPEND -> "MULTIAPPEND"
+  | NAMESPACE -> "NAMESPACE"
+  | QRESYNC -> "QRESYNC"
+  | QUOTE -> "QUOTE"
+  | SORT -> "SORT"
+  | STARTTLS -> "STARTTLS"
+  | UIDPLUS -> "UIDPLUS"
+  | UNSELECT -> "UNSELECT"
+  | XLIST -> "XLIST"
+  | AUTH_ANONYMOUS -> "AUTH=ANONYMOUS"
+  | AUTH_LOGIN -> "AUTH=LOGIN"
+  | AUTH_PLAIN -> "AUTH=PLAIN"
+  | XOAUTH2 -> "XOAUTH2"
+  | X_GM_EXT_1 -> "X-GM-EXT-1"
+  | OTHER s -> s
+
+let encode_capability s = Encoder.raw (capability_to_string s)
+
 let flag_to_string = function
   | Answered -> "\\Answered"
   | Flagged -> "\\Flagged"
@@ -330,7 +364,7 @@ let uid_store ?unchanged_since mode nums att l =
   store_gen "UID STORE" ?unchanged_since mode nums att l
 
 let _enable caps =
-  let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in
+  let format = Encoder.(str "ENABLE" ++ list encode_capability caps) in
   simple format ()
 
 module L = struct
