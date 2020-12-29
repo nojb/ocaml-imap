@@ -37,6 +37,7 @@
 (*       | _ -> *)
 (*           None *)
 (*     ) *)
+open Common
 
 type _ u = E : 'b * ('b -> Response.untagged -> 'b) * ('b -> 'a) -> 'a u
 
