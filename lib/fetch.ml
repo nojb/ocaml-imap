@@ -24,7 +24,7 @@ open Common
 open Response
 
 type 'a t =
-  | FLAGS : Flag.t list t
+  | FLAGS : flag list t
   | ENVELOPE : envelope t
   | INTERNALDATE : string t
   | UID : uid t
@@ -100,7 +100,7 @@ let rec encode : type a. a t -> Encoder.t = function
    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Request.encode sec & raw "]" *)
 
 type u = {
-  flags : Flag.t list option;
+  flags : flag list option;
   uid : uid option;
   envelope : envelope option;
   internaldate : string option;

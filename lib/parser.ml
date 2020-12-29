@@ -443,7 +443,6 @@ let set = sequence_set
 *)
 
 let flag_gen recent any =
-  let open Flag in
   curr >>= function
   | '\\' -> (
       next *> curr >>= function

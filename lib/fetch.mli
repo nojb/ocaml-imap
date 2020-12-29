@@ -25,7 +25,7 @@ open Response
 
 type 'a t
 
-val flags : Flag.t list t
+val flags : flag list t
 
 val envelope : envelope t
 

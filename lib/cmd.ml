@@ -38,8 +38,22 @@
 (*           None *)
 (*     ) *)
 open Common
+open Response
 
-type _ u = E : 'b * ('b -> Response.untagged -> 'b) * ('b -> 'a) -> 'a u
+let flag_to_string = function
+  | Answered -> "\\Answered"
+  | Flagged -> "\\Flagged"
+  | Deleted -> "\\Deleted"
+  | Seen -> "\\Seen"
+  | Draft -> "\\Draft"
+  | Keyword s -> s
+  | Extension s -> "\\" ^ s
+  | Recent -> "\\Recent"
+  | Any -> "\\*"
+
+let encode_flag f = Encoder.raw (flag_to_string f)
+
+type _ u = E : 'b * ('b -> untagged -> 'b) * ('b -> 'a) -> 'a u
 
 type 'a cmd = { format : Encoder.t; u : 'a u }
 
@@ -56,7 +70,7 @@ let encode tag { format; _ } =
   loop [] (Encoder.((raw tag ++ format) & crlf) [])
 
 let process { format; u = E (res, process, finish) } = function
-  | Response.State { status = NO | BAD; message; _ } -> Error message
+  | State { status = NO | BAD; message; _ } -> Error message
   | u -> Ok { format; u = E (process res u, process, finish) }
 
 let finish { u = E (res, _, finish); _ } = finish res
@@ -102,10 +116,7 @@ let login username password =
 
 let _capability =
   let format = Encoder.(str "CAPABILITY") in
-  let process caps = function
-    | Response.CAPABILITY caps1 -> caps1 :: caps
-    | _ -> caps
-  in
+  let process caps = function CAPABILITY caps1 -> caps1 :: caps | _ -> caps in
   let finish l = List.rev l |> List.flatten in
   { format; u = E ([], process, finish) }
 
@@ -132,7 +143,7 @@ let noop =
 let list ?(ref = "") s =
   let format = Encoder.(str "LIST" ++ mutf7 ref ++ str s) in
   let process res = function
-    | Response.LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
+    | LIST (flags, delim, mbox) -> (flags, delim, mbox) :: res
     | _ -> res
   in
   let finish = List.rev in
@@ -162,7 +173,7 @@ end
 let status m att =
   let format = Encoder.(str "STATUS" ++ mutf7 m ++ Status.encode att) in
   let process res = function
-    | Response.STATUS (mbox, items) when m = mbox ->
+    | STATUS (mbox, items) when m = mbox ->
         let aux res = function
           | (MESSAGES n : Status.MailboxAttribute.t) ->
               { res with Status_response.messages = Some n }
@@ -220,7 +231,7 @@ let uid_expunge nums =
 let search_gen cmd sk =
   let format = Encoder.(raw cmd ++ Search.encode sk) in
   let process res = function
-    | Response.SEARCH (ids, modseq) -> (ids :: fst res, modseq)
+    | SEARCH (ids, modseq) -> (ids :: fst res, modseq)
     | _ -> res
   in
   let finish (ids, modseq) = (List.(rev ids |> flatten), modseq) in
@@ -247,7 +258,7 @@ let append m ?flags ?internaldate data =
   let flags =
     match flags with
     | None -> Encoder.empty
-    | Some l -> Encoder.(raw " " & p (list Flag.encode l))
+    | Some l -> Encoder.(raw " " & p (list encode_flag l))
   in
   let internaldate =
     match internaldate with
@@ -273,7 +284,7 @@ let fetch_gen cmd ?changed_since nums att push =
     (raw cmd ++ eset (Uint32.Set.of_list nums) ++ attx) & changed_since
   in
   let process () = function
-    | Response.FETCH (_seq, items) -> (
+    | FETCH (_seq, items) -> (
         match Fetch.matches att items with None -> () | Some x -> push x )
     | _ -> ()
   in
@@ -287,7 +298,7 @@ let uid_fetch ?changed_since nums att push =
 
 type store_mode = [ `Add | `Remove | `Set ]
 
-type _ store_kind = Flags : Flag.t store_kind | Labels : string store_kind
+type _ store_kind = Flags : flag store_kind | Labels : string store_kind
 
 let store_gen (type a) cmd ?unchanged_since mode nums (att : a store_kind)
     (l : a list) =
@@ -298,7 +309,7 @@ let store_gen (type a) cmd ?unchanged_since mode nums (att : a store_kind)
     Printf.sprintf "%s%s.SILENT" mode name
   in
   let att =
-    match att with Flags -> list Flag.encode l | Labels -> list label l
+    match att with Flags -> list encode_flag l | Labels -> list label l
   in
   let unchanged_since =
     match unchanged_since with
@@ -321,10 +332,6 @@ let uid_store ?unchanged_since mode nums att l =
 let _enable caps =
   let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in
   simple format ()
-
-module Parser = Parser
-module Encoder = Encoder
-module Response = Response
 
 module L = struct
   type state = Begin | Int of int | Cr of int | Lf of int

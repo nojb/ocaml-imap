@@ -21,6 +21,7 @@
    SOFTWARE. *)
 
 open Common
+open Response
 
 (** {1 Commands} *)
 
@@ -29,7 +30,7 @@ type 'a cmd
 val encode :
   string -> 'a cmd -> ([ `Next of string * 'x | `Wait of 'x | `End ] as 'x)
 
-val process : 'a cmd -> Response.untagged -> ('a cmd, string) result
+val process : 'a cmd -> untagged -> ('a cmd, string) result
 
 val finish : 'a cmd -> 'a
 
@@ -89,7 +90,7 @@ val select : string -> unit cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
 val append :
-  string -> ?flags:Flag.t list -> ?internaldate:string -> string -> unit cmd
+  string -> ?flags:flag list -> ?internaldate:string -> string -> unit cmd
 (** [append imap mbox flags id data] appends [data] as a new message to the end
     of the mailbox [mbox]. An optional flag list can be passed using the [flags]
     argument. *)
@@ -108,7 +109,7 @@ val uid_fetch :
 
 type store_mode = [ `Add | `Remove | `Set ]
 
-type _ store_kind = Flags : Flag.t store_kind | Labels : string store_kind
+type _ store_kind = Flags : flag store_kind | Labels : string store_kind
 
 val store :
   ?unchanged_since:modseq ->
@@ -130,10 +131,6 @@ val uid_store :
   'a store_kind ->
   'a list ->
   unit cmd
-
-module Parser = Parser
-module Encoder = Encoder
-module Response = Response
 
 module L : sig
   val is_complete : Bytes.t -> int -> int option

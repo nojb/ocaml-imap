@@ -54,12 +54,23 @@ type capability =
   | X_GM_EXT_1
   | OTHER of string
 
+type flag =
+  | Answered
+  | Flagged
+  | Deleted
+  | Seen
+  | Draft
+  | Keyword of string
+  | Extension of string
+  | Recent
+  | Any
+
 type code =
   | ALERT
   | BADCHARSET of string list
   | CAPABILITY of capability list
   | PARSE
-  | PERMANENTFLAGS of Flag.t list
+  | PERMANENTFLAGS of flag list
   | READ_ONLY
   | READ_WRITE
   | TRYCREATE
@@ -134,7 +145,7 @@ type mime =
   | Multipart of mime list * string * (string * string) list
 
 type message_attribute =
-  | FLAGS of Flag.t list
+  | FLAGS of flag list
   | ENVELOPE of envelope
   | INTERNALDATE of string (* Date.t * Time.t *)
   | RFC822 of string
@@ -154,7 +165,7 @@ type untagged =
   | State of state
   | BYE of { code : code option; message : string }
   | PREAUTH of code option * string
-  | FLAGS of Flag.t list
+  | FLAGS of flag list
   | LIST of MailboxFlag.t list * char option * string
   | LSUB of MailboxFlag.t list * char option * string
   | SEARCH of int32 list * int64 option
