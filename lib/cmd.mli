@@ -30,16 +30,47 @@ type t
     during the execution of almost any IMAP command. *)
 
 val messages : t -> int option
+(** Returns the number of messages in the selected mailbox. The server can
+    update this count during most any interaction.
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val recent : t -> int option
+(** Returns the number of "recent" messages in the currently selected mailbox,
+    as most recently reported by the server. The server can update this count
+    during most any interaction.
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val flags : t -> flag list option
 
 val uidnext : t -> int32 option
+(** Returns the predicted next uid for a message in the currently selected
+    mailbox, as most recently reported by the server. The server can update this
+    count during most any interaction. Old IMAP servers might not report this
+    value, in which case the result is [None].
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val uidvalidity : t -> int32 option
+(** Returns an id number that changes when all uids become invalid. The server
+    cannot update this number during a session. Old IMAP servers might not
+    report this value, in which case the result is [None].
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val unseen : t -> int option
+(** Returns the number of "unseen" messages in the currently selected mailbox,
+    as most recently reported by the server. The server can update this count
+    during most any interaction. Old IMAP servers might not report this value,
+    in which case the result is [None].
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val highestmodseq : t -> int64 option
 
@@ -64,7 +95,7 @@ val logout : (unit, unit) cmd
 (* val poll : unit -> (unit -> unit) * (unit, unit) cmd *)
 
 val create : string -> (unit, unit) cmd
-(** [create imap name] creates a mailbox named [name]. *)
+(** Creates mailbox. (It must not exist already.) *)
 
 val delete : string -> (unit, unit) cmd
 (** [delete imap name] deletes mailbox [name]. *)
@@ -73,9 +104,9 @@ val rename : string -> string -> (unit, unit) cmd
 (** [rename imap oldname newname] renames mailbox [oldname] to [newname]. *)
 
 val noop : (unit, unit) cmd
-(** [noop imap] does nothing.  Since any command can return a status update as
-    untagged data, the [noop] command can be used as a periodic poll for new
-    messages or message status updates during a period of inactivity. *)
+(** [noop imap] sends a "no-op" message to the server, typically to keep the
+    session alive. As for many commands, the server may report message-state
+    updates or expunges, which are recorded in [imap].  *)
 
 val list :
   ?ref:string ->
@@ -88,14 +119,19 @@ module Status : sig
   type 'a t
 
   val messages : int t
+  (** Number of messages. *)
 
   val recent : int t
+  (** Number of recent messages. *)
 
   val uidnext : int32 t
+  (** Uid for next received message. *)
 
   val uidvalidity : int32 t
+  (** Id that changes when uids are modified. *)
 
   val unseen : int t
+  (** Number of unseen messages. *)
 
   val highestmodseq : int64 t
 
@@ -105,17 +141,21 @@ module Status : sig
 end
 
 val status : string -> 'a Status.t -> (unit, 'a option) cmd
-(** [status imap mbox items] requests status [items] for mailbox [mbox]. *)
+(** Requests information about a mailbox from the server, typically not the
+    currently selected mailbox. *)
 
 val copy : seq list -> string -> (unit, unit) cmd
-(** [copy imap nums mbox] copies messages with sequence number in [nums] to
-    mailbox [mbox]. *)
+(** Copies the specified messages from the currently selected mailbox to the
+    specified mailbox.
+
+    Pending expunges must be handled before calling this function; see
+    imap-get-expunges. *)
 
 val uid_copy : uid list -> string -> (unit, unit) cmd
 
 val expunge : (unit, unit) cmd
-(** [expunge imap] permanently removes all messages that have the [Deleted]
-    {!flag} set from the currently selected mailbox. *)
+(** Purges every message currently marked with the [Deleted] flag from the
+    mailbox. *)
 
 val uid_expunge : uid list -> (unit, unit) cmd
 (** Requires [UIDPLUS] extension. *)
@@ -282,9 +322,7 @@ val append :
   ?internaldate:string ->
   string ->
   (unit, unit) cmd
-(** [append imap mbox flags id data] appends [data] as a new message to the end
-    of the mailbox [mbox]. An optional flag list can be passed using the [flags]
-    argument. *)
+(** Adds a new message (containing message) to the given mailbox. *)
 
 module Fetch : sig
   type 'a t
