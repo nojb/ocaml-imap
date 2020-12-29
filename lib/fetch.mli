@@ -21,12 +21,13 @@
    SOFTWARE. *)
 
 open Common
+open Response
 
 type 'a t
 
 val flags : Flag.t list t
 
-val envelope : Envelope.t t
+val envelope : envelope t
 
 val internaldate : string t
 
@@ -46,9 +47,9 @@ val rfc822_header : string t
 
 val rfc822_size : int t
 
-val body : Response.mime t
+val body : mime t
 
-val bodystructure : Response.mime t
+val bodystructure : mime t
 
 val modseq : int64 t
 
@@ -58,4 +59,4 @@ val pair : 'a t -> 'b t -> ('a * 'b) t
 
 val encode : _ t -> Encoder.t
 
-val matches : 'a t -> Response.message_attribute list -> 'a option
+val matches : 'a t -> message_attribute list -> 'a option

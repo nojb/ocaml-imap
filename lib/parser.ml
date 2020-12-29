@@ -603,7 +603,7 @@ let address =
   char ' ' *> nstring >>= fun ad_adl ->
   char ' ' *> nstring >>= fun ad_mailbox ->
   char ' ' *> nstring >>= fun ad_host ->
-  char ')' *> return { Envelope.Address.ad_name; ad_adl; ad_mailbox; ad_host }
+  char ')' *> return { ad_name; ad_adl; ad_mailbox; ad_host }
 
 (*
    envelope        = "(" env-date SP env-subject SP env-from SP
@@ -656,7 +656,7 @@ let envelope =
   char ')'
   *> return
        {
-         Envelope.env_date;
+         env_date;
          env_subject;
          env_from;
          env_sender;

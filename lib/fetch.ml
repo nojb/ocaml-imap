@@ -21,10 +21,11 @@
    SOFTWARE. *)
 
 open Common
+open Response
 
 type 'a t =
   | FLAGS : Flag.t list t
-  | ENVELOPE : Envelope.t t
+  | ENVELOPE : envelope t
   | INTERNALDATE : string t
   | UID : uid t
   | X_GM_MSGID : int64 t
@@ -34,8 +35,8 @@ type 'a t =
   | RFC822_TEXT : string t
   | RFC822_HEADER : string t
   | RFC822_SIZE : int t
-  | BODY : Response.mime t
-  | BODYSTRUCTURE : Response.mime t
+  | BODY : mime t
+  | BODYSTRUCTURE : mime t
   | MODSEQ : int64 t
   | PAIR : 'a t * 'b t -> ('a * 'b) t
   | MAP : ('a -> 'b) * 'a t -> 'b t
@@ -101,14 +102,14 @@ let rec encode : type a. a t -> Encoder.t = function
 type u = {
   flags : Flag.t list option;
   uid : uid option;
-  envelope : Envelope.t option;
+  envelope : envelope option;
   internaldate : string option;
   rfc822 : string option;
   rfc822_header : string option;
   rfc822_text : string option;
   rfc822_size : int option;
-  body : Response.mime option;
-  bodystructure : Response.mime option;
+  body : mime option;
+  bodystructure : mime option;
   modseq : int64 option;
   x_gm_msgid : int64 option;
   x_gm_thrid : int64 option;
@@ -135,7 +136,7 @@ let empty =
 
 let matches t a =
   let aux u = function
-    | (FLAGS l : Response.message_attribute) -> { u with flags = Some l }
+    | (FLAGS l : message_attribute) -> { u with flags = Some l }
     | UID n -> { u with uid = Some n }
     | ENVELOPE e -> { u with envelope = Some e }
     | INTERNALDATE x -> { u with internaldate = Some x }

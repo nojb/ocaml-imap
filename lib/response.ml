@@ -86,6 +86,26 @@ type mime_msgtext =
   | TEXT
   | MIME
 
+type address = {
+  ad_name : string;
+  ad_adl : string;
+  ad_mailbox : string;
+  ad_host : string;
+}
+
+type envelope = {
+  env_date : string;
+  env_subject : string;
+  env_from : address list;
+  env_sender : address list;
+  env_reply_to : address list;
+  env_to : address list;
+  env_cc : address list;
+  env_bcc : address list;
+  env_in_reply_to : string;
+  env_message_id : string;
+}
+
 type mime_section = int list * mime_msgtext option
 
 type mime_fields = {
@@ -107,13 +127,13 @@ type mime_extension = {
 
 type mime =
   | Text of string * mime_fields * int
-  | Message of mime_fields * Envelope.t * mime * int
+  | Message of mime_fields * envelope * mime * int
   | Basic of string * string * mime_fields
   | Multipart of mime list * string * (string * string) list
 
 type message_attribute =
   | FLAGS of Flag.t list
-  | ENVELOPE of Envelope.t
+  | ENVELOPE of envelope
   | INTERNALDATE of string (* Date.t * Time.t *)
   | RFC822 of string
   | RFC822_HEADER of string
