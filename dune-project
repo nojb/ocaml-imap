@@ -7,7 +7,7 @@
 (license MIT)
 
 (authors
- "Nicolas Ojeda Bar")
+ "Nicolás Ojeda Bär <n.oje.bar@gmail.com>")
 
 (source
  (github nojb/ocaml-imap))
@@ -16,7 +16,7 @@
  (name imap)
  (synopsis "Lwt-compatible IMAP4rev1 client library")
  (depends
-  (dune (>= 2.7))
+  dune
   (base64 (>= 2.0.0))
   uutf))
 
@@ -29,3 +29,5 @@
  (depends
   lwt
   lwt_ssl))
+
+(generate_opam_files true)
