@@ -317,7 +317,7 @@ let update_status t = function
   | UNSEEN n -> { t with unseen = Some n }
   | HIGHESTMODSEQ n -> { t with highestmodseq = Some n }
 
-type t = {
+type state = {
   next_tag : int;
   current_tag : int option;
   status : status;
@@ -338,14 +338,14 @@ let unseen { status = { unseen; _ }; _ } = unseen
 
 let highestmodseq { status = { highestmodseq; _ }; _ } = highestmodseq
 
-let empty =
+let initial =
   { next_tag = 1; current_tag = None; status = empty_status; flags = None }
 
-type ('a, 'b) state =
-  | Send of string * ('a, 'b) state
-  | Wait of (response -> ('a, 'b) state)
-  | Partial of t * 'a * ('a, 'b) state
-  | Done of t * 'b
+type ('a, 'b) step =
+  | Send of string * ('a, 'b) step
+  | Wait of (response -> ('a, 'b) step)
+  | Partial of state * 'a * ('a, 'b) step
+  | Done of state * 'b
   | Error of string
 
 type ('a, 'b) cmd =

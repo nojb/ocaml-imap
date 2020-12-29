@@ -45,7 +45,7 @@ module L = struct
 end
 
 type t = {
-  mutable imap : Cmd.t;
+  mutable imap : Cmd.state;
   sock : Ssl.socket;
   mutable tag : int;
   mutable buf : Bytes.t;
@@ -110,7 +110,7 @@ let connect ?(port = 993) host =
     Ssl.open_connection_with_context ctx sa
   in
   let t =
-    { imap = Cmd.empty; sock; tag = 1; buf = Bytes.create 4096; len = 0 }
+    { imap = Cmd.initial; sock; tag = 1; buf = Bytes.create 4096; len = 0 }
   in
   match parse t with
   | Response.Untagged _ -> t

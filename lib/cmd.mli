@@ -23,20 +23,20 @@
 open Common
 open Response
 
-type t
+type state
 (** The type of IMAP connections. Values of type [t] keep track of the implicit
     state in IMAP connections: number of unseen messages, total number of
     messages in the current mailbox, etc. Note that this state can be updated
     during the execution of almost any IMAP command. *)
 
-val messages : t -> int option
+val messages : state -> int option
 (** Returns the number of messages in the selected mailbox. The server can
     update this count during most any interaction.
 
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val recent : t -> int option
+val recent : state -> int option
 (** Returns the number of "recent" messages in the currently selected mailbox,
     as most recently reported by the server. The server can update this count
     during most any interaction.
@@ -44,9 +44,9 @@ val recent : t -> int option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val flags : t -> flag list option
+val flags : state -> flag list option
 
-val uidnext : t -> int32 option
+val uidnext : state -> int32 option
 (** Returns the predicted next uid for a message in the currently selected
     mailbox, as most recently reported by the server. The server can update this
     count during most any interaction. Old IMAP servers might not report this
@@ -55,7 +55,7 @@ val uidnext : t -> int32 option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val uidvalidity : t -> int32 option
+val uidvalidity : state -> int32 option
 (** Returns an id number that changes when all uids become invalid. The server
     cannot update this number during a session. Old IMAP servers might not
     report this value, in which case the result is [None].
@@ -63,7 +63,7 @@ val uidvalidity : t -> int32 option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val unseen : t -> int option
+val unseen : state -> int option
 (** Returns the number of "unseen" messages in the currently selected mailbox,
     as most recently reported by the server. The server can update this count
     during most any interaction. Old IMAP servers might not report this value,
@@ -72,21 +72,23 @@ val unseen : t -> int option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val highestmodseq : t -> int64 option
+val highestmodseq : state -> int64 option
 
 type ('a, 'b) cmd
 (** The type of IMAP commands which return a response of type ['a]. *)
 
-val empty : t
+val initial : state
 
-type ('a, 'b) state =
-  | Send of string * ('a, 'b) state
-  | Wait of (response -> ('a, 'b) state)
-  | Partial of t * 'a * ('a, 'b) state
-  | Done of t * 'b
+type ('a, 'b) step =
+  | Send of string * ('a, 'b) step
+  | Wait of (response -> ('a, 'b) step)
+  | Partial of state * 'a * ('a, 'b) step
+  | Done of state * 'b
   | Error of string
 
-val run : t -> ('a, 'b) cmd -> t * ('a, 'b) state
+val run : state -> ('a, 'b) cmd -> state * ('a, 'b) step
+
+(** {2 IMAP Commands} *)
 
 val login : string -> string -> (unit, unit) cmd
 
@@ -158,7 +160,8 @@ val expunge : (unit, unit) cmd
     mailbox. *)
 
 val uid_expunge : uid list -> (unit, unit) cmd
-(** Requires [UIDPLUS] extension. *)
+(** Purges the messages with the given uids which are {em also} marked with the
+    [Deleted] flag from the mailbox. *)
 
 module Search : sig
   type t
