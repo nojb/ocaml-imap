@@ -22,6 +22,10 @@
 
 open Response
 
+type uid = private int32
+
+type modseq = private int64
+
 type state
 (** The type of IMAP connections. Values of type [t] keep track of the implicit
     state in IMAP connections: number of unseen messages, total number of
@@ -59,7 +63,7 @@ val uidnext : state -> int32 option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val uidvalidity : state -> int32 option
+val uidvalidity : state -> uid option
 (** Returns an id number that changes when all uids become invalid. The server
     cannot update this number during a session. Old IMAP servers might not
     report this value, in which case the result is [None].
@@ -76,7 +80,7 @@ val unseen : state -> int option
     This operation does not communicate with the server. It merely reports the
     result of previous communication. *)
 
-val highestmodseq : state -> int64 option
+val highestmodseq : state -> modseq option
 
 type ('a, 'b) cmd
 (** The type of IMAP commands which return a response of type ['a]. *)
@@ -130,10 +134,10 @@ module Status : sig
   val recent : int t
   (** Number of recent messages. *)
 
-  val uidnext : int32 t
+  val uidnext : uid t
   (** Uid for next received message. *)
 
-  val uidvalidity : int32 t
+  val uidvalidity : uid t
   (** Id that changes when uids are modified. *)
 
   val unseen : int t
@@ -150,13 +154,13 @@ val status : string -> 'a Status.t -> (unit, 'a option) cmd
 (** Requests information about a mailbox from the server, typically not the
     currently selected mailbox. *)
 
-val copy : int32 list -> string -> (unit, unit) cmd
+val copy : uid list -> string -> (unit, unit) cmd
 (** Copies the specified messages from the currently selected mailbox to the
     specified mailbox.
 
     Messages are specified by the *)
 
-val expunge : int32 list -> (unit, unit) cmd
+val expunge : uid list -> (unit, unit) cmd
 (** Purges messages with the given uids which are {e also} marked with the
     [Deleted] flag from the mailbox. *)
 
@@ -263,7 +267,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  val uid : int32 list -> t
+  val uid : uid list -> t
   (** Messages with UID in the given set. *)
 
   val unanswered : t
@@ -303,7 +307,7 @@ module Search : sig
   (** Messages with given Gmail labels. *)
 end
 
-val search : Search.t -> (unit, int32 list * int64 option) cmd
+val search : Search.t -> (unit, uid list * modseq option) cmd
 (** Returns the uids of messages satisfying the search criteria. *)
 
 val examine : string -> (unit, unit) cmd
@@ -328,7 +332,7 @@ module Fetch : sig
 
   val internaldate : string t
 
-  val uid : int32 t
+  val uid : uid t
   (** The message uid. *)
 
   val x_gm_msgid : int64 t
@@ -353,7 +357,7 @@ module Fetch : sig
 
   val bodystructure : mime t
 
-  val modseq : int64 t
+  val modseq : modseq t
   (** The message modification sequence number. *)
 
   val map : ('a -> 'b) -> 'a t -> 'b t
@@ -361,7 +365,7 @@ module Fetch : sig
   val pair : 'a t -> 'b t -> ('a * 'b) t
 end
 
-val fetch : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
+val fetch : ?since:modseq -> uid list -> 'a Fetch.t -> ('a, unit) cmd
 (** [fetch ?since uids fields] downloads information for a set of messages,
     specified by their uids [uids]. The [fields] argument specifies the type of
     information to download for each message. The available fields are specified
@@ -374,7 +378,7 @@ val fetch : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
 
 (** {2 Modifying message metadata} *)
 
-type 'a store_cmd = ?before:int64 -> int32 list -> 'a list -> (unit, unit) cmd
+type 'a store_cmd = ?before:modseq -> uid list -> 'a list -> (unit, unit) cmd
 
 val add_flags : flag store_cmd
 (** [add_flags ?before uids flags] adds flags [flags] to a set of messages.

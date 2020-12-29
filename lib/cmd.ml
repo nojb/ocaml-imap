@@ -20,24 +20,11 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-(* type error = *)
-(*   | Incorrect_tag of string * string *)
-(*   | Decode_error of string * int *)
-(*   | Unexpected_cont *)
-(*   | Bad_greeting *)
-(*   | Auth_error of string *)
-(*   | Server_error of string *)
-
-(* exception Error of error *)
-
-(* let () = *)
-(*   Printexc.register_printer (function *)
-(*       | Error (Decode_error (s, pos)) -> *)
-(*           Some (Printf.sprintf "Parsing error:\n%s\n%s^\n" s (String.make pos ' ')) *)
-(*       | _ -> *)
-(*           None *)
-(*     ) *)
 open Response
+
+type uid = int32
+
+type modseq = int64
 
 (* module Time = struct *)
 (*   type t = { hours : int; minutes : int; seconds : int; zone : int } *)
