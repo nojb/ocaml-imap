@@ -4,8 +4,26 @@
 
 (name imap)
 
-(package (name imap))
+(license MIT)
 
-(package (name imap-unix))
+(authors
+ "Nicolas Ojeda Bar")
 
-(package (name imap-lwt))
+(source
+ (github nojb/ocaml-imap))
+
+(package
+ (name imap)
+ (synopsis "Lwt-compatible IMAP4rev1 client library")
+ (depends
+  (dune (>= 2.7))
+  (base64 (>= 2.0.0))
+  uutf
+  lwt
+  lwt_ssl))
+
+(package
+ (name imap-unix))
+
+(package
+ (name imap-lwt))
