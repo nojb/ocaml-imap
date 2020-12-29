@@ -1003,7 +1003,11 @@ let status_att =
       char ' ' *> mod_sequence_valzer >|= fun n -> HIGHESTMODSEQ n
   | _ -> error
 
-let known_ids = uid_set
+let known_ids =
+  uid_set >|= fun l ->
+  List.fold_left
+    (fun accu (n, m) -> Uint32.Set.add_interval n m accu)
+    Uint32.Set.empty l
 
 (*
    resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text

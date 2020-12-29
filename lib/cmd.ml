@@ -37,7 +37,6 @@
 (*       | _ -> *)
 (*           None *)
 (*     ) *)
-open Common
 open Response
 
 (* module Time = struct *)
@@ -214,6 +213,7 @@ module Encoder = struct
   let plist ?sep f l = char '(' & list ?sep f l & char ')'
 
   let eset s =
+    let s = Uint32.Set.elements s in
     let elt = function 0l -> "*" | n -> Printf.sprintf "%lu" n in
     let f = function
       | lo, hi when lo = hi -> raw (elt lo)
@@ -851,7 +851,7 @@ module Fetch = struct
     go t
 end
 
-let get_messages ?since nums att =
+let fetch ?since nums att =
   let open Encoder in
   let attx = Fetch.encode att in
   let changed_since =

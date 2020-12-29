@@ -20,7 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-open Common
 open Response
 
 type state
@@ -155,12 +154,13 @@ val copy : int32 list -> string -> (unit, unit) cmd
 (** Copies the specified messages from the currently selected mailbox to the
     specified mailbox.
 
-    Messages are specified by the
-*)
+    Messages are specified by the *)
 
 val expunge : int32 list -> (unit, unit) cmd
 (** Purges messages with the given uids which are {e also} marked with the
     [Deleted] flag from the mailbox. *)
+
+(** {2 Searching for messages} *)
 
 module Search : sig
   type t
@@ -316,6 +316,8 @@ val append :
   string -> ?flags:flag list -> ?date:string -> string -> (unit, unit) cmd
 (** Adds a new message (containing message) to the given mailbox. *)
 
+(** {2 Fetch message data} *)
+
 module Fetch : sig
   type 'a t
 
@@ -359,16 +361,18 @@ module Fetch : sig
   val pair : 'a t -> 'b t -> ('a * 'b) t
 end
 
-val get_messages : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
-(** [get_messages ?since uids fields] downloads information for a set of
-    messages, specified by their uids [uids]. The [fields] argument specifies
-    the type of information to download for each message. The available fields
-    are specified above.
+val fetch : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
+(** [fetch ?since uids fields] downloads information for a set of messages,
+    specified by their uids [uids]. The [fields] argument specifies the type of
+    information to download for each message. The available fields are specified
+    above.
 
     The return value is a list of entry items in parallel to [uids].
 
     If the [?since] argument is passed, only data for those messages with
     modification sequence value no less than this value will be fetched. *)
+
+(** {2 Modifying message metadata} *)
 
 type 'a store_cmd = ?before:int64 -> int32 list -> 'a list -> (unit, unit) cmd
 
