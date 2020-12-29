@@ -46,7 +46,7 @@ let parse t =
   match Imap.Parser.response {Imap.Parser.s; p = 0} with
   | Ok x ->
       x
-  | Pervasives.Error _ ->
+  | Error _ ->
       failwith "parsing error"
 
 let really f ofs len =
