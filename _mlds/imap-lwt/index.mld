@@ -1,0 +1,4 @@
+{0 imap-lwt index}
+{1 Library imap-lwt}
+The entry point of this library is the module:
+{!module-Imap_lwt}.

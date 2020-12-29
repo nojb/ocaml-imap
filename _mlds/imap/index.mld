@@ -1,0 +1,4 @@
+{0 imap index}
+{1 Library imap}
+The entry point of this library is the module:
+{!module-Imap}.
