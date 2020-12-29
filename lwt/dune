@@ -1,4 +1,0 @@
-(library
- (name imap_lwt)
- (public_name imap-lwt)
- (libraries imap lwt lwt_ssl))

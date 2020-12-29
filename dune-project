@@ -24,10 +24,4 @@
  (name imap-unix)
  (depends ssl))
 
-(package
- (name imap-lwt)
- (depends
-  lwt
-  lwt_ssl))
-
 (generate_opam_files true)
