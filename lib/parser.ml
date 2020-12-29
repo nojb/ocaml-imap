@@ -1149,3 +1149,5 @@ let response =
   | _ ->
       tag >>= fun tag ->
       char ' ' *> resp_cond_state >|= fun state -> Tagged { tag; state }
+
+let response s p = response { s; p }

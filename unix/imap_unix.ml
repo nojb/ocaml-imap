@@ -64,7 +64,7 @@ let parse t =
         loop ()
   in
   let s = loop () in
-  match Imap.Parser.response { Imap.Parser.s; p = 0 } with
+  match Imap.Parser.response s 0 with
   | Ok x -> x
   | Error _ -> failwith "parsing error"
 
