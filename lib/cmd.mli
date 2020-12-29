@@ -222,7 +222,7 @@ module Search : sig
 
   val on : date -> t
   (** Messages whose internal date (disregarding time and timezone) is within
-    the specified date.  *)
+      the specified date.  *)
 
   val ( || ) : t -> t -> t
   (** OR of search criteria. *)
@@ -235,34 +235,34 @@ module Search : sig
 
   val sent_before : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
-    than the specified date. *)
+      than the specified date. *)
 
   val sent_on : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is within
-    the specified date. *)
+      the specified date. *)
 
   val sent_since : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is within
-    or later than the specified date.  *)
+      or later than the specified date.  *)
 
   val since : date -> t
   (** Messages whose internal date (disregarding time and timezone) is within or
-    later than the specified date.  *)
+      later than the specified date.  *)
 
   val smaller : int -> t
   (** Messages with a size smaller than the specified number of octets. *)
 
   val subject : string -> t
   (** Messages that contain the specified string in the envelope structure's
-    "SUBJECT" field. *)
+      "SUBJECT" field. *)
 
   val text : string -> t
   (** Messages that contain the specified string in the header or body of the
-    message. *)
+      message. *)
 
   val to_ : string -> t
   (** Messages that contain the specified string in the envelope structure's
-    "TO" field. *)
+      "TO" field. *)
 
   val uid : uid list -> t
   (** Messages with UID in the given set. *)
