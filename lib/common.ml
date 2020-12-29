@@ -47,8 +47,6 @@ module Date = struct
       |]
     in
     Printf.sprintf "%2d-%s-%4d" day months.(month) year
-
-  let encode d = Encoder.raw (to_string d)
 end
 
 module Time = struct
