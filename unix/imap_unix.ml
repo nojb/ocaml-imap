@@ -29,7 +29,7 @@ type t = {
 
 let parse t =
   let rec loop () =
-    match Imap.L.is_complete t.buf t.len with
+    match Imap.Cmd.L.is_complete t.buf t.len with
     | Some pos ->
         let s = Bytes.sub_string t.buf 0 pos in
         t.len <- t.len - pos;
@@ -63,7 +63,7 @@ let rec send t r cmd =
         match parse t with
         | Imap.Response.Cont _ -> send t r cmd
         | Untagged u -> (
-            match Imap.process cmd u with
+            match Imap.Cmd.process cmd u with
             | Ok cmd -> loop cmd
             | Error s -> failwith s )
         | Tagged _ -> failwith "not expected"
@@ -80,17 +80,17 @@ let run t cmd =
     match parse t with
     | Imap.Response.Cont _ -> failwith "unexpected"
     | Untagged u -> (
-        match Imap.process cmd u with
+        match Imap.Cmd.process cmd u with
         | Ok cmd -> loop cmd
         | Error s -> failwith s )
     | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
         failwith message
     | Tagged { state = { status = OK; _ }; _ } ->
         t.tag <- t.tag + 1;
-        Imap.finish cmd
+        Imap.Cmd.finish cmd
   in
   let tag = Printf.sprintf "%04d" t.tag in
-  send t (Imap.encode tag cmd) cmd |> loop
+  send t (Imap.Cmd.encode tag cmd) cmd |> loop
 
 let ssl_init = Lazy.from_fun Ssl.init
 
