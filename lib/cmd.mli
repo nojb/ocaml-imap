@@ -114,7 +114,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
     "BCC" field. *)
 
-  val before : Date.t -> key
+  val before : date -> key
   (** Messages whose internal date (disregarding time and timezone) is earlier
     than the specified date. *)
 
@@ -157,7 +157,7 @@ module Search : sig
   val old : key
   (** Messages that do not have the [Recent] {!flag} set. *)
 
-  val on : Date.t -> key
+  val on : date -> key
   (** Messages whose internal date (disregarding time and timezone) is within
     the specified date.  *)
 
@@ -170,19 +170,19 @@ module Search : sig
   val seen : key
   (** Messages that have the [Seen] {!flag} set. *)
 
-  val sent_before : Date.t -> key
+  val sent_before : date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
     than the specified date. *)
 
-  val sent_on : Date.t -> key
+  val sent_on : date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is within
     the specified date. *)
 
-  val sent_since : Date.t -> key
+  val sent_since : date -> key
   (** Messages whose "Date:" header (disregarding time and timezone) is within
     or later than the specified date.  *)
 
-  val since : Date.t -> key
+  val since : date -> key
   (** Messages whose internal date (disregarding time and timezone) is within or
     later than the specified date.  *)
 

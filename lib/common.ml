@@ -26,28 +26,7 @@ type uid = int32
 
 type seq = int32
 
-module Date = struct
-  type t = { day : int; month : int; year : int }
-
-  let to_string { day; month; year } =
-    let months =
-      [|
-        "Jan";
-        "Feb";
-        "Mar";
-        "Apr";
-        "May";
-        "Jun";
-        "Jul";
-        "Aug";
-        "Sep";
-        "Oct";
-        "Nov";
-        "Dec";
-      |]
-    in
-    Printf.sprintf "%2d-%s-%4d" day months.(month) year
-end
+type date = { day : int; month : int; year : int }
 
 module Time = struct
   type t = { hours : int; minutes : int; seconds : int; zone : int }
