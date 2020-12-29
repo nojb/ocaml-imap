@@ -98,154 +98,154 @@ val uid_expunge : uid list -> unit cmd
 (** Requires [UIDPLUS] extension. *)
 
 module Search : sig
-  type key
+  type t
   (** Message search *)
 
-  val all : key
+  val all : t
   (** All messages in the mailbox. *)
 
-  val seq : seq list -> key
+  val seq : seq list -> t
   (** Messages with message sequence number in the given set. *)
 
-  val answered : key
+  val answered : t
   (** Messages with the [Answered] flag set. *)
 
-  val bcc : string -> key
+  val bcc : string -> t
   (** Messages that contain the specified string in the envelope structure's
     "BCC" field. *)
 
-  val before : date -> key
+  val before : date -> t
   (** Messages whose internal date (disregarding time and timezone) is earlier
     than the specified date. *)
 
-  val body : string -> key
+  val body : string -> t
   (** Messages that contain the specified string in the body of the message. *)
 
-  val cc : string -> key
+  val cc : string -> t
   (** Messages that contain the specified string in the envelope structure's
     "CC" field. *)
 
-  val deleted : key
+  val deleted : t
   (** Messages with the [Deleted] {!flag} set. *)
 
-  val draft : key
+  val draft : t
   (** Messages with the [Draft] {!flag} set. *)
 
-  val flagged : key
+  val flagged : t
   (** Messages with the [Flagged] {!flag} set. *)
 
-  val from : string -> key
+  val from : string -> t
   (** Messages with FROM field containing given string. *)
 
-  val header : string -> string -> key
+  val header : string -> string -> t
   (** Messages with headers with the specified field-name and that
     contains the specified string in the text of the header (what comes after
     the colon). *)
 
-  val keyword : string -> key
+  val keyword : string -> t
   (** Messages with the specified [Keyword] {!flag} set. *)
 
-  val larger : int -> key
+  val larger : int -> t
   (** Messages with size at least the given number of bytes. *)
 
-  val new_ : key
+  val new_ : t
   (** Messages that have the [Recent] {!flag} set but not the [Seen] {!flag}. *)
 
-  val not : key -> key
+  val not : t -> t
   (** Negation of search criteria. *)
 
-  val old : key
+  val old : t
   (** Messages that do not have the [Recent] {!flag} set. *)
 
-  val on : date -> key
+  val on : date -> t
   (** Messages whose internal date (disregarding time and timezone) is within
     the specified date.  *)
 
-  val ( || ) : key -> key -> key
+  val ( || ) : t -> t -> t
   (** OR of search criteria. *)
 
-  val recent : key
+  val recent : t
   (** Messages that have the [Recent] {!flag} set. *)
 
-  val seen : key
+  val seen : t
   (** Messages that have the [Seen] {!flag} set. *)
 
-  val sent_before : date -> key
+  val sent_before : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is earlier
     than the specified date. *)
 
-  val sent_on : date -> key
+  val sent_on : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is within
     the specified date. *)
 
-  val sent_since : date -> key
+  val sent_since : date -> t
   (** Messages whose "Date:" header (disregarding time and timezone) is within
     or later than the specified date.  *)
 
-  val since : date -> key
+  val since : date -> t
   (** Messages whose internal date (disregarding time and timezone) is within or
     later than the specified date.  *)
 
-  val smaller : int -> key
+  val smaller : int -> t
   (** Messages with a size smaller than the specified number of octets. *)
 
-  val subject : string -> key
+  val subject : string -> t
   (** Messages that contain the specified string in the envelope structure's
     "SUBJECT" field. *)
 
-  val text : string -> key
+  val text : string -> t
   (** Messages that contain the specified string in the header or body of the
     message. *)
 
-  val to_ : string -> key
+  val to_ : string -> t
   (** Messages that contain the specified string in the envelope structure's
     "TO" field. *)
 
-  val uid : uid list -> key
+  val uid : uid list -> t
   (** Messages with UID in the given set. *)
 
-  val unanswered : key
+  val unanswered : t
   (** Messages that do not have the [Answered] {!flag} set. *)
 
-  val undeleted : key
+  val undeleted : t
   (** Messages that do not have the [Deleted] {!flag} set. *)
 
-  val undraft : key
+  val undraft : t
   (** Messages that do not have the [`Draft] {!flag} set. *)
 
-  val unflagged : key
+  val unflagged : t
   (** Messages that do not have the [`Flagged] {!flag} set. *)
 
-  val unkeyword : string -> key
-  (** Messages that do not have the specified keyword {!flag} set. *)
+  val unkeyword : string -> t
+  (** Messages that do not have the specified tword {!flag} set. *)
 
-  val unseen : key
+  val unseen : t
   (** Messages that do not have the [`Seen] {!flag} set. *)
 
-  val ( && ) : key -> key -> key
+  val ( && ) : t -> t -> t
   (** Messages that satisfy both search criteria. *)
 
-  val modseq : modseq -> key
+  val modseq : modseq -> t
   (** Messages that have equal or greater modification sequence numbers. *)
 
-  val x_gm_raw : string -> key
+  val x_gm_raw : string -> t
   (** Gmail search string *)
 
-  val x_gm_msgid : modseq -> key
+  val x_gm_msgid : modseq -> t
   (** Messages with a given Gmail Message ID. *)
 
-  val x_gm_thrid : modseq -> key
+  val x_gm_thrid : modseq -> t
   (** Messages with a given Gmail Thread ID. *)
 
-  val x_gm_labels : string list -> key
+  val x_gm_labels : string list -> t
   (** Messages with given Gmail labels. *)
 end
 
-val search : Search.key -> (seq list * modseq option) cmd
+val search : Search.t -> (seq list * modseq option) cmd
 (** [uid_search imap key] returns the set of UIDs of messages satisfying the
     criteria [key]. *)
 
-val uid_search : Search.key -> (uid list * modseq option) cmd
+val uid_search : Search.t -> (uid list * modseq option) cmd
 
 val examine : string -> unit cmd
 (** [select imap m] selects the mailbox [m] for access. *)

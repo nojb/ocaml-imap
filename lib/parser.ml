@@ -26,7 +26,7 @@ type buffer = { s : string; mutable p : int }
 
 let some x = Some x
 
-type 'a t = buffer -> ('a, string * int) result
+(* type 'a t = buffer -> ('a, string * int) result *)
 
 let return x _ = Ok x
 

@@ -511,7 +511,7 @@ let uid_expunge nums =
 module Search = struct
   open Encoder
 
-  type key = t
+  type t = Encoder.t
 
   let all = raw "ALL"
 
