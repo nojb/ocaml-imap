@@ -20,42 +20,42 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type modseq = int64
+open Common
 
-type uid = int32
+type 'a t
 
-type seq = int32
+val flags : Flag.t list t
 
-module Date = struct
-  type t = { day : int; month : int; year : int }
+val envelope : Envelope.t t
 
-  let to_string { day; month; year } =
-    let months =
-      [|
-        "Jan";
-        "Feb";
-        "Mar";
-        "Apr";
-        "May";
-        "Jun";
-        "Jul";
-        "Aug";
-        "Sep";
-        "Oct";
-        "Nov";
-        "Dec";
-      |]
-    in
-    Printf.sprintf "%2d-%s-%4d" day months.(month) year
+val internaldate : string t
 
-  let encode d = Encoder.raw (to_string d)
-end
+val uid : uid t
 
-module Time = struct
-  type t = { hours : int; minutes : int; seconds : int; zone : int }
+val x_gm_msgid : int64 t
 
-  let to_string { hours; minutes; seconds; zone } =
-    Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds
-      (if zone >= 0 then '+' else '-')
-      (abs zone)
-end
+val x_gm_thrid : int64 t
+
+val x_gm_labels : string list t
+
+val rfc822 : string t
+
+val rfc822_text : string t
+
+val rfc822_header : string t
+
+val rfc822_size : int t
+
+val body : MIME.Response.t t
+
+val bodystructure : MIME.Response.t t
+
+val modseq : int64 t
+
+val map : ('a -> 'b) -> 'a t -> 'b t
+
+val pair : 'a t -> 'b t -> ('a * 'b) t
+
+val encode : _ t -> Encoder.t
+
+val matches : 'a t -> Response.message_attribute list -> 'a option

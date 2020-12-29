@@ -273,47 +273,7 @@ let fetch_gen cmd ?changed_since nums att push =
   in
   let process () = function
     | Response.FETCH (_seq, items) -> (
-        let rec choose f = function
-          | [] -> None
-          | x :: xs -> (
-              match f x with Some _ as x -> x | None -> choose f xs )
-        in
-        let module FA = Fetch.MessageAttribute in
-        let rec go : type a. a Fetch.t -> a option = function
-          | Fetch.FLAGS ->
-              choose (function FA.FLAGS l -> Some l | _ -> None) items
-          | UID -> choose (function FA.UID x -> Some x | _ -> None) items
-          | ENVELOPE ->
-              choose (function FA.ENVELOPE e -> Some e | _ -> None) items
-          | INTERNALDATE ->
-              choose (function FA.INTERNALDATE s -> Some s | _ -> None) items
-          | RFC822 ->
-              choose (function FA.RFC822 x -> Some x | _ -> None) items
-          | RFC822_HEADER ->
-              choose (function FA.RFC822_HEADER x -> Some x | _ -> None) items
-          | RFC822_TEXT ->
-              choose (function FA.RFC822_TEXT x -> Some x | _ -> None) items
-          | RFC822_SIZE ->
-              choose (function FA.RFC822_SIZE n -> Some n | _ -> None) items
-          | BODY -> choose (function FA.BODY x -> Some x | _ -> None) items
-          | BODYSTRUCTURE ->
-              choose (function FA.BODYSTRUCTURE x -> Some x | _ -> None) items
-          | MODSEQ ->
-              choose (function FA.MODSEQ n -> Some n | _ -> None) items
-          | X_GM_MSGID ->
-              choose (function FA.X_GM_MSGID l -> Some l | _ -> None) items
-          | X_GM_THRID ->
-              choose (function FA.X_GM_THRID l -> Some l | _ -> None) items
-          | X_GM_LABELS ->
-              choose (function FA.X_GM_LABELS l -> Some l | _ -> None) items
-          | MAP (f, att) -> (
-              match go att with Some x -> Some (f x) | None -> None )
-          | PAIR (att1, att2) -> (
-              match (go att1, go att2) with
-              | Some x, Some y -> Some (x, y)
-              | _ -> None )
-        in
-        match go att with Some x -> push x | None -> () )
+        match Fetch.matches att items with None -> () | Some x -> push x )
     | _ -> ()
   in
   { format; u = E ((), process, ignore) }
@@ -326,20 +286,18 @@ let uid_fetch ?changed_since nums att push =
 
 type store_mode = [ `Add | `Remove | `Set ]
 
-type store_kind = [ `Flags of Flag.t list | `Labels of string list ]
+type _ store_kind = Flags : Flag.t store_kind | Labels : string store_kind
 
-let store_gen cmd ?unchanged_since mode nums att =
+let store_gen (type a) cmd ?unchanged_since mode nums (att : a store_kind)
+    (l : a list) =
   let open Encoder in
   let base =
     let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
-    match att with
-    | `Flags _ -> Printf.sprintf "%sFLAGS.SILENT" mode
-    | `Labels _ -> Printf.sprintf "%sX-GM-LABELS.SILENT" mode
+    let name = match att with Flags -> "FLAGS" | Labels -> "X-GM-LABELS" in
+    Printf.sprintf "%s%s.SILENT" mode name
   in
   let att =
-    match att with
-    | `Flags flags -> list Flag.encode flags
-    | `Labels labels -> list label labels
+    match att with Flags -> list Flag.encode l | Labels -> list label l
   in
   let unchanged_since =
     match unchanged_since with
@@ -353,9 +311,11 @@ let store_gen cmd ?unchanged_since mode nums att =
   in
   simple format ()
 
-let store = store_gen "STORE"
+let store ?unchanged_since mode nums att l =
+  store_gen "STORE" ?unchanged_since mode nums att l
 
-let uid_store = store_gen "UID STORE"
+let uid_store ?unchanged_since mode nums att l =
+  store_gen "UID STORE" ?unchanged_since mode nums att l
 
 let _enable caps =
   let format = Encoder.(str "ENABLE" ++ list Capability.encode caps) in

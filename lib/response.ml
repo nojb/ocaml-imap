@@ -79,6 +79,23 @@ type status = OK | NO | BAD
 
 type state = { code : code option; message : string; status : status }
 
+type message_attribute =
+  | FLAGS of Flag.t list
+  | ENVELOPE of Envelope.t
+  | INTERNALDATE of string (* Date.t * Time.t *)
+  | RFC822 of string
+  | RFC822_HEADER of string
+  | RFC822_TEXT of string
+  | RFC822_SIZE of int
+  | BODY of MIME.Response.t
+  | BODYSTRUCTURE of MIME.Response.t
+  | BODY_SECTION of MIME.Section.t * string option
+  | UID of int32
+  | MODSEQ of int64
+  | X_GM_MSGID of int64
+  | X_GM_THRID of int64
+  | X_GM_LABELS of string list
+
 type untagged =
   | State of state
   | BYE of { code : code option; message : string }
@@ -91,7 +108,7 @@ type untagged =
   | EXISTS of int
   | RECENT of int
   | EXPUNGE of int32
-  | FETCH of int32 * Fetch.MessageAttribute.t list
+  | FETCH of int32 * message_attribute list
   | CAPABILITY of capability list
   | VANISHED of Uint32.Set.t
   | VANISHED_EARLIER of Uint32.Set.t

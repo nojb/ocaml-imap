@@ -38,7 +38,7 @@ val bcc : string -> key
 (** Messages that contain the specified string in the envelope structure's
     "BCC" field. *)
 
-val before : Fetch.Date.t -> key
+val before : Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is earlier
     than the specified date. *)
 
@@ -81,7 +81,7 @@ val not : key -> key
 val old : key
 (** Messages that do not have the [Recent] {!flag} set. *)
 
-val on : Fetch.Date.t -> key
+val on : Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is within
     the specified date.  *)
 
@@ -94,19 +94,19 @@ val recent : key
 val seen : key
 (** Messages that have the [Seen] {!flag} set. *)
 
-val sent_before : Fetch.Date.t -> key
+val sent_before : Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is earlier
     than the specified date. *)
 
-val sent_on : Fetch.Date.t -> key
+val sent_on : Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is within
     the specified date. *)
 
-val sent_since : Fetch.Date.t -> key
+val sent_since : Date.t -> key
 (** Messages whose "Date:" header (disregarding time and timezone) is within
     or later than the specified date.  *)
 
-val since : Fetch.Date.t -> key
+val since : Date.t -> key
 (** Messages whose internal date (disregarding time and timezone) is within or
     later than the specified date.  *)
 

@@ -20,6 +20,7 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+open Common
 open Encoder
 
 type key = t
@@ -32,7 +33,7 @@ let answered = raw "ANSWERED"
 
 let bcc s = raw "BCC" ++ str s
 
-let before t = raw "BEFORE" ++ Fetch.Date.encode t
+let before t = raw "BEFORE" ++ Date.encode t
 
 let body s = raw "BODY" ++ str s
 
@@ -58,7 +59,7 @@ let not k = raw "NOT" ++ p k
 
 let old = raw "OLD"
 
-let on t = raw "ON" ++ Fetch.Date.encode t
+let on t = raw "ON" ++ Date.encode t
 
 let ( || ) k1 k2 = raw "OR" ++ p k1 ++ p k2
 
@@ -66,13 +67,13 @@ let recent = raw "RECENT"
 
 let seen = raw "SEEN"
 
-let sent_before t = raw "SENTBEFORE" ++ Fetch.Date.encode t
+let sent_before t = raw "SENTBEFORE" ++ Date.encode t
 
-let sent_on t = raw "SENTON" ++ Fetch.Date.encode t
+let sent_on t = raw "SENTON" ++ Date.encode t
 
-let sent_since t = raw "SENTSINCE" ++ Fetch.Date.encode t
+let sent_since t = raw "SENTSINCE" ++ Date.encode t
 
-let since t = raw "SINCE" ++ Fetch.Date.encode t
+let since t = raw "SINCE" ++ Date.encode t
 
 let smaller n = raw "SMALLER" ++ int n
 

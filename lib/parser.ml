@@ -964,9 +964,9 @@ let _section = error
 let permsg_modsequence = mod_sequence_value
 
 let msg_att =
-  let open Fetch.MessageAttribute in
   atom >>= function
-  | "FLAGS" -> char ' ' *> plist flag_fetch >|= fun l -> FLAGS l
+  | "FLAGS" ->
+      char ' ' *> plist flag_fetch >|= fun l -> (FLAGS l : message_attribute)
   | "MODSEQ" ->
       char ' ' *> char '(' *> permsg_modsequence >>= fun n ->
       char ')' *> return (MODSEQ n)

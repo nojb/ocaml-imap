@@ -108,10 +108,15 @@ val uid_fetch :
 
 type store_mode = [ `Add | `Remove | `Set ]
 
-type store_kind = [ `Flags of Flag.t list | `Labels of string list ]
+type _ store_kind = Flags : Flag.t store_kind | Labels : string store_kind
 
 val store :
-  ?unchanged_since:modseq -> store_mode -> seq list -> store_kind -> unit cmd
+  ?unchanged_since:modseq ->
+  store_mode ->
+  seq list ->
+  'a store_kind ->
+  'a list ->
+  unit cmd
 (** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
     [mode] for those message with sequence number in [nums].
 
@@ -119,7 +124,12 @@ val store :
     mod-sequence value at least the passed value are affected. *)
 
 val uid_store :
-  ?unchanged_since:modseq -> store_mode -> uid list -> store_kind -> unit cmd
+  ?unchanged_since:modseq ->
+  store_mode ->
+  uid list ->
+  'a store_kind ->
+  'a list ->
+  unit cmd
 
 module Parser = Parser
 module Encoder = Encoder

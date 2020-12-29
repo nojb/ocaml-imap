@@ -22,59 +22,6 @@
 
 open Common
 
-module Date = struct
-  type t = { day : int; month : int; year : int }
-
-  let to_string { day; month; year } =
-    let months =
-      [|
-        "Jan";
-        "Feb";
-        "Mar";
-        "Apr";
-        "May";
-        "Jun";
-        "Jul";
-        "Aug";
-        "Sep";
-        "Oct";
-        "Nov";
-        "Dec";
-      |]
-    in
-    Printf.sprintf "%2d-%s-%4d" day months.(month) year
-
-  let encode d = Encoder.raw (to_string d)
-end
-
-module Time = struct
-  type t = { hours : int; minutes : int; seconds : int; zone : int }
-
-  let to_string { hours; minutes; seconds; zone } =
-    Printf.sprintf "%02d:%02d:%02d %c%04d" hours minutes seconds
-      (if zone >= 0 then '+' else '-')
-      (abs zone)
-end
-
-module MessageAttribute = struct
-  type t =
-    | FLAGS of Flag.t list
-    | ENVELOPE of Envelope.t
-    | INTERNALDATE of string (* Date.t * Time.t *)
-    | RFC822 of string
-    | RFC822_HEADER of string
-    | RFC822_TEXT of string
-    | RFC822_SIZE of int
-    | BODY of MIME.Response.t
-    | BODYSTRUCTURE of MIME.Response.t
-    | BODY_SECTION of MIME.Section.t * string option
-    | UID of int32
-    | MODSEQ of int64
-    | X_GM_MSGID of int64
-    | X_GM_THRID of int64
-    | X_GM_LABELS of string list
-end
-
 type 'a t =
   | FLAGS : Flag.t list t
   | ENVELOPE : Envelope.t t
@@ -94,6 +41,32 @@ type 'a t =
   | MAP : ('a -> 'b) * 'a t -> 'b t
 
 let flags = FLAGS
+
+let envelope = ENVELOPE
+
+let internaldate = INTERNALDATE
+
+let uid = UID
+
+let x_gm_msgid = X_GM_MSGID
+
+let x_gm_thrid = X_GM_THRID
+
+let x_gm_labels = X_GM_LABELS
+
+let rfc822 = RFC822
+
+let rfc822_text = RFC822_TEXT
+
+let rfc822_header = RFC822_HEADER
+
+let rfc822_size = RFC822_SIZE
+
+let body = BODY
+
+let bodystructure = BODYSTRUCTURE
+
+let modseq = MODSEQ
 
 let map f x = MAP (f, x)
 
@@ -124,3 +97,82 @@ let rec encode : type a. a t -> Encoder.t = function
 
 (* let body_section ?(peek = true) ?section:(sec = [], None) () =
    raw (if peek then "BODY.PEEK" else "BODY") & raw "[" & MIME.Request.encode sec & raw "]" *)
+
+type u = {
+  flags : Flag.t list option;
+  uid : uid option;
+  envelope : Envelope.t option;
+  internaldate : string option;
+  rfc822 : string option;
+  rfc822_header : string option;
+  rfc822_text : string option;
+  rfc822_size : int option;
+  body : MIME.Response.t option;
+  bodystructure : MIME.Response.t option;
+  modseq : int64 option;
+  x_gm_msgid : int64 option;
+  x_gm_thrid : int64 option;
+  x_gm_labels : string list option;
+}
+
+let empty =
+  {
+    flags = None;
+    uid = None;
+    envelope = None;
+    internaldate = None;
+    rfc822 = None;
+    rfc822_header = None;
+    rfc822_text = None;
+    rfc822_size = None;
+    body = None;
+    bodystructure = None;
+    modseq = None;
+    x_gm_msgid = None;
+    x_gm_thrid = None;
+    x_gm_labels = None;
+  }
+
+let matches t a =
+  let aux u = function
+    | (FLAGS l : Response.message_attribute) -> { u with flags = Some l }
+    | UID n -> { u with uid = Some n }
+    | ENVELOPE e -> { u with envelope = Some e }
+    | INTERNALDATE x -> { u with internaldate = Some x }
+    | RFC822 x -> { u with rfc822 = Some x }
+    | RFC822_HEADER x -> { u with rfc822_header = Some x }
+    | RFC822_TEXT x -> { u with rfc822_text = Some x }
+    | RFC822_SIZE x -> { u with rfc822_size = Some x }
+    | BODY x -> { u with body = Some x }
+    | BODYSTRUCTURE x -> { u with bodystructure = Some x }
+    | MODSEQ x -> { u with modseq = Some x }
+    | X_GM_MSGID x -> { u with x_gm_msgid = Some x }
+    | X_GM_THRID x -> { u with x_gm_thrid = Some x }
+    | X_GM_LABELS l -> { u with x_gm_labels = Some l }
+    | BODY_SECTION _ -> u (* TODO *)
+  in
+  let u = List.fold_left aux empty a in
+  let rec go : type a. a t -> a option =
+   fun t ->
+    match t with
+    | FLAGS -> u.flags
+    | UID -> u.uid
+    | ENVELOPE -> u.envelope
+    | INTERNALDATE -> u.internaldate
+    | RFC822 -> u.rfc822
+    | RFC822_HEADER -> u.rfc822_header
+    | RFC822_TEXT -> u.rfc822_text
+    | RFC822_SIZE -> u.rfc822_size
+    | BODY -> u.body
+    | BODYSTRUCTURE -> u.bodystructure
+    | MODSEQ -> u.modseq
+    | X_GM_MSGID -> u.x_gm_msgid
+    | X_GM_THRID -> u.x_gm_thrid
+    | X_GM_LABELS -> u.x_gm_labels
+    | MAP (f, t) -> ( match go t with Some x -> Some (f x) | None -> None )
+    | PAIR (t1, t2) -> (
+        match (go t1, go t2) with
+        | Some x1, Some x2 -> Some (x1, x2)
+        | _ -> None )
+  in
+  go t
