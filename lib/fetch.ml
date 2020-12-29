@@ -34,8 +34,8 @@ type 'a t =
   | RFC822_TEXT : string t
   | RFC822_HEADER : string t
   | RFC822_SIZE : int t
-  | BODY : MIME.Response.t t
-  | BODYSTRUCTURE : MIME.Response.t t
+  | BODY : Response.mime t
+  | BODYSTRUCTURE : Response.mime t
   | MODSEQ : int64 t
   | PAIR : 'a t * 'b t -> ('a * 'b) t
   | MAP : ('a -> 'b) * 'a t -> 'b t
@@ -107,8 +107,8 @@ type u = {
   rfc822_header : string option;
   rfc822_text : string option;
   rfc822_size : int option;
-  body : MIME.Response.t option;
-  bodystructure : MIME.Response.t option;
+  body : Response.mime option;
+  bodystructure : Response.mime option;
   modseq : int64 option;
   x_gm_msgid : int64 option;
   x_gm_thrid : int64 option;
@@ -149,7 +149,8 @@ let matches t a =
     | X_GM_MSGID x -> { u with x_gm_msgid = Some x }
     | X_GM_THRID x -> { u with x_gm_thrid = Some x }
     | X_GM_LABELS l -> { u with x_gm_labels = Some l }
-    | BODY_SECTION _ -> u (* TODO *)
+    | BODY_SECTION _ -> u
+    (* TODO *)
   in
   let u = List.fold_left aux empty a in
   let rec go : type a. a t -> a option =

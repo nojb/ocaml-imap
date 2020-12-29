@@ -708,7 +708,6 @@ let body_fld_param =
 let body_fld_octets = Int32.to_int <$> number
 
 let body_fields =
-  let open MIME.Response.Fields in
   body_fld_param >>= fun fld_params ->
   char ' ' *> (some <$> nstring) >>= fun fld_id ->
   char ' ' *> (some <$> nstring) >>= fun fld_desc ->
@@ -753,7 +752,6 @@ let body_fld_lang =
 let body_fld_loc = nstring
 
 let body_ext_1part =
-  let open MIME.Response.Extension in
   body_fld_md5 >>= fun _md5 ->
   curr >>= function
   | ' ' -> (
@@ -829,16 +827,15 @@ let body_type_msg body =
   char ' ' *> envelope >>= fun envelope ->
   char ' ' *> body >>= fun b ->
   char ' ' *> body_fld_lines >|= fun fld_lines ->
-  MIME.Response.Message (fields, envelope, b, fld_lines)
+  Message (fields, envelope, b, fld_lines)
 
 let body_type_text media_subtype =
   body_fields >>= fun fields ->
   char ' ' *> body_fld_lines >|= fun fld_lines ->
-  MIME.Response.Text (media_subtype, fields, fld_lines)
+  Text (media_subtype, fields, fld_lines)
 
 let body_type_basic media_type media_subtype =
-  body_fields >|= fun fields ->
-  MIME.Response.Basic (media_type, media_subtype, fields)
+  body_fields >|= fun fields -> Basic (media_type, media_subtype, fields)
 
 let body_type_1part body =
   imap_string >>= fun media_type ->
@@ -859,8 +856,7 @@ let body_type_mpart body =
     | ' ' ->
         next *> imap_string >>= fun media_subtype ->
         (curr >>= function ' ' -> next *> body_ext_mpart | _ -> return [])
-        >|= fun params ->
-        MIME.Response.Multipart (List.rev acc, media_subtype, params)
+        >|= fun params -> Multipart (List.rev acc, media_subtype, params)
     | _ -> body >>= fun b -> loop (b :: acc)
   in
   loop []

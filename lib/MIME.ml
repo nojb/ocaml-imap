@@ -20,20 +20,10 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-module Section = struct
-  type msgtext =
-    | HEADER
-    | HEADER_FIELDS of string list
-    | HEADER_FIELDS_NOT of string list
-    | TEXT
-    | MIME
-
-  type t = int list * msgtext option
-end
+open Response
 
 module Request = struct
   open Encoder
-  open Section
 
   let section_msgtext = function
     | HEADER -> raw "HEADER"
@@ -59,35 +49,4 @@ module Request = struct
   let part ~part () = (part, None)
 
   let mime ~part () = (part, Some MIME)
-end
-
-module Response = struct
-  module Fields = struct
-    type t = {
-      fld_params : (string * string) list;
-      fld_id : string option;
-      fld_desc : string option;
-      fld_enc : string;
-      fld_octets : int;
-    }
-  end
-
-  module BodyExtension = struct
-    type t = List of t list | Number of int32 | String of string
-  end
-
-  module Extension = struct
-    type t = {
-      ext_dsp : (string * (string * string) list) option;
-      ext_lang : string list;
-      ext_loc : string;
-      ext_ext : BodyExtension.t list;
-    }
-  end
-
-  type t =
-    | Text of string * Fields.t * int
-    | Message of Fields.t * Envelope.t * t * int
-    | Basic of string * string * Fields.t
-    | Multipart of t list * string * (string * string) list
 end

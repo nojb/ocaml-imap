@@ -46,9 +46,9 @@ val rfc822_header : string t
 
 val rfc822_size : int t
 
-val body : MIME.Response.t t
+val body : Response.mime t
 
-val bodystructure : MIME.Response.t t
+val bodystructure : Response.mime t
 
 val modseq : int64 t
 

@@ -79,6 +79,38 @@ type status = OK | NO | BAD
 
 type state = { code : code option; message : string; status : status }
 
+type mime_msgtext =
+  | HEADER
+  | HEADER_FIELDS of string list
+  | HEADER_FIELDS_NOT of string list
+  | TEXT
+  | MIME
+
+type mime_section = int list * mime_msgtext option
+
+type mime_fields = {
+  fld_params : (string * string) list;
+  fld_id : string option;
+  fld_desc : string option;
+  fld_enc : string;
+  fld_octets : int;
+}
+
+type sexp = List of sexp list | Number of int32 | String of string
+
+type mime_extension = {
+  ext_dsp : (string * (string * string) list) option;
+  ext_lang : string list;
+  ext_loc : string;
+  ext_ext : sexp list;
+}
+
+type mime =
+  | Text of string * mime_fields * int
+  | Message of mime_fields * Envelope.t * mime * int
+  | Basic of string * string * mime_fields
+  | Multipart of mime list * string * (string * string) list
+
 type message_attribute =
   | FLAGS of Flag.t list
   | ENVELOPE of Envelope.t
@@ -87,9 +119,9 @@ type message_attribute =
   | RFC822_HEADER of string
   | RFC822_TEXT of string
   | RFC822_SIZE of int
-  | BODY of MIME.Response.t
-  | BODYSTRUCTURE of MIME.Response.t
-  | BODY_SECTION of MIME.Section.t * string option
+  | BODY of mime
+  | BODYSTRUCTURE of mime
+  | BODY_SECTION of mime_section * string option
   | UID of int32
   | MODSEQ of int64
   | X_GM_MSGID of int64
@@ -114,7 +146,7 @@ type untagged =
   | VANISHED_EARLIER of Uint32.Set.t
   | ENABLED of capability list
 
-type t =
+type response =
   | Untagged of untagged
   | Cont of string
   | Tagged of { tag : string; state : state }
