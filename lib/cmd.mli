@@ -45,6 +45,11 @@ val recent : state -> int option
     result of previous communication. *)
 
 val flags : state -> flag list option
+(** Returns the set of flags supported by currently selected mailbox, as most
+    recently reported by the server.
+
+    This operation does not communicate with the server. It merely reports the
+    result of previous communication. *)
 
 val uidnext : state -> int32 option
 (** Returns the predicted next uid for a message in the currently selected
@@ -96,7 +101,7 @@ val logout : (unit, unit) cmd
 
 (* val poll : unit -> (unit -> unit) * (unit, unit) cmd *)
 
-val create : string -> (unit, unit) cmd
+val create_mailbox : string -> (unit, unit) cmd
 (** Creates mailbox. (It must not exist already.) *)
 
 val delete : string -> (unit, unit) cmd
@@ -146,21 +151,12 @@ val status : string -> 'a Status.t -> (unit, 'a option) cmd
 (** Requests information about a mailbox from the server, typically not the
     currently selected mailbox. *)
 
-val copy : seq list -> string -> (unit, unit) cmd
+val copy : int32 list -> string -> (unit, unit) cmd
 (** Copies the specified messages from the currently selected mailbox to the
-    specified mailbox.
+    specified mailbox. *)
 
-    Pending expunges must be handled before calling this function; see
-    imap-get-expunges. *)
-
-val uid_copy : uid list -> string -> (unit, unit) cmd
-
-val expunge : (unit, unit) cmd
-(** Purges every message currently marked with the [Deleted] flag from the
-    mailbox. *)
-
-val uid_expunge : uid list -> (unit, unit) cmd
-(** Purges the messages with the given uids which are {em also} marked with the
+val expunge : int32 list -> (unit, unit) cmd
+(** Purges messages with the given uids which are {e also} marked with the
     [Deleted] flag from the mailbox. *)
 
 module Search : sig
@@ -169,9 +165,6 @@ module Search : sig
 
   val all : t
   (** All messages in the mailbox. *)
-
-  val seq : seq list -> t
-  (** Messages with message sequence number in the given set. *)
 
   val answered : t
   (** Messages with the [Answered] flag set. *)
@@ -267,7 +260,7 @@ module Search : sig
   (** Messages that contain the specified string in the envelope structure's
       "TO" field. *)
 
-  val uid : uid list -> t
+  val uid : int32 list -> t
   (** Messages with UID in the given set. *)
 
   val unanswered : t
@@ -291,27 +284,24 @@ module Search : sig
   val ( && ) : t -> t -> t
   (** Messages that satisfy both search criteria. *)
 
-  val modseq : modseq -> t
+  val modseq : int64 -> t
   (** Messages that have equal or greater modification sequence numbers. *)
 
   val x_gm_raw : string -> t
   (** Gmail search string *)
 
-  val x_gm_msgid : modseq -> t
+  val x_gm_msgid : int64 -> t
   (** Messages with a given Gmail Message ID. *)
 
-  val x_gm_thrid : modseq -> t
+  val x_gm_thrid : int64 -> t
   (** Messages with a given Gmail Thread ID. *)
 
   val x_gm_labels : string list -> t
   (** Messages with given Gmail labels. *)
 end
 
-val search : Search.t -> (unit, seq list * modseq option) cmd
-(** [uid_search imap key] returns the set of UIDs of messages satisfying the
-    criteria [key]. *)
-
-val uid_search : Search.t -> (unit, uid list * modseq option) cmd
+val search : Search.t -> (unit, int32 list * int64 option) cmd
+(** Returns the sequence numbers of messages satisfying the search criteria. *)
 
 val examine : string -> (unit, unit) cmd
 (** [select imap m] selects the mailbox [m] for access. *)
@@ -320,11 +310,7 @@ val select : string -> (unit, unit) cmd
 (** [select imap m] selects the mailbox [m] for access. *)
 
 val append :
-  string ->
-  ?flags:flag list ->
-  ?internaldate:string ->
-  string ->
-  (unit, unit) cmd
+  string -> ?flags:flag list -> ?date:string -> string -> (unit, unit) cmd
 (** Adds a new message (containing message) to the given mailbox. *)
 
 module Fetch : sig
@@ -336,7 +322,7 @@ module Fetch : sig
 
   val internaldate : string t
 
-  val uid : uid t
+  val uid : int32 t
 
   val x_gm_msgid : int64 t
 
@@ -363,38 +349,36 @@ module Fetch : sig
   val pair : 'a t -> 'b t -> ('a * 'b) t
 end
 
-val fetch : ?changed_since:modseq -> seq list -> 'a Fetch.t -> ('a, unit) cmd
-(** [fetch imap uid ?changed_since set att] retrieves data associated with
-    messages with sequence number in [set].
+val get_messages : ?since:int64 -> int32 list -> 'a Fetch.t -> ('a, unit) cmd
+(** [get_messages ?since uids fields] downloads information for a set of
+    messages, specified by their uids [uids]. The [fields] argument specifies
+    the type of information to download for each message. The available fields
+    are specified above.
 
-    If the [?changed_since] argument is passed, only those messages with
-    [CHANGEDSINCE] mod-sequence value at least the passed value are affected
-    (requires the [CONDSTORE] extension). *)
+    The return value is a list of entry items in parallel to [uids].
 
-val uid_fetch :
-  ?changed_since:modseq -> uid list -> 'a Fetch.t -> ('a, unit) cmd
+    If the [?since] argument is passed, only data for those messages with
+    modification sequence value no less than this value will be fetched. *)
 
-type store_mode = [ `Add | `Remove | `Set ]
+type store_mode = Add | Remove | Set
 
 type _ store_kind = Flags : flag store_kind | Labels : string store_kind
 
 val store :
-  ?unchanged_since:modseq ->
+  ?since:int64 ->
   store_mode ->
-  seq list ->
+  int32 list ->
   'a store_kind ->
   'a list ->
   (unit, unit) cmd
-(** [store imap ?unchanged_since mode nums kind] modifies [kind] according to
-    [mode] for those message with sequence number in [nums].
+(** [store ?since mode uids kind flags] Sets flags [flags] for a set of messages. The mode
+    argument specifies how flags are set:
+    {ul {- [Add] -- Add the given flags to each message}
+    {- [Remove] -- Remove the given flags from each message}
+    {- [Set] -- Set each message's flags to the given set}}
 
-    If [?unchanged_since] is present, then only those messages with [UNCHANGEDSINCE]
+    The [uids] argument specifies a set of messages by their uids.  The [flags]
+    argument specifies the imap flags or Gmail labels to add/remove/install.
+
+    If [?since] is present, then only those messages with [UNCHANGEDSINCE]
     mod-sequence value at least the passed value are affected. *)
-
-val uid_store :
-  ?unchanged_since:modseq ->
-  store_mode ->
-  uid list ->
-  'a store_kind ->
-  'a list ->
-  (unit, unit) cmd

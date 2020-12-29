@@ -20,12 +20,6 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
-type modseq = int64
-
-type uid = int32
-
-type seq = int32
-
 type date = { day : int; month : int; year : int }
 
 module Uint32 = struct

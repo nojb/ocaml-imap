@@ -293,10 +293,10 @@ let encode_flag f = Encoder.raw (flag_to_string f)
 type status = {
   messages : int option;
   recent : int option;
-  uidnext : uid option;
-  uidvalidity : uid option;
+  uidnext : int32 option;
+  uidvalidity : int32 option;
   unseen : int option;
-  highestmodseq : modseq option;
+  highestmodseq : int64 option;
 }
 
 let empty_status =
@@ -430,7 +430,7 @@ let login username password =
 (*   let finish l = List.rev l |> List.flatten in *)
 (*   Cmd { format; u = E ([], process, finish) } *)
 
-let create m =
+let create_mailbox m =
   let format = Encoder.(str "CREATE" ++ mutf7 m) in
   simple format ()
 
@@ -529,27 +529,13 @@ let status m att =
   let finish res = res in
   Cmd { format; process; finish; init = None }
 
-let copy_gen cmd nums mbox =
+let copy nums mbox =
   let format =
-    Encoder.(raw cmd ++ eset (Uint32.Set.of_list nums) ++ mutf7 mbox)
+    Encoder.(raw "UID COPY" ++ eset (Uint32.Set.of_list nums) ++ mutf7 mbox)
   in
   simple format ()
 
-let copy = copy_gen "COPY"
-
-let uid_copy = copy_gen "UID COPY"
-
-let _check =
-  let format = Encoder.(str "CHECK") in
-  simple format ()
-
-let _close = simple Encoder.(raw "CLOSE") ()
-
-let expunge =
-  let format = Encoder.(str "EXPUNGE") in
-  simple format ()
-
-let uid_expunge nums =
+let expunge nums =
   let format = Encoder.(str "UID EXPUNGE" ++ eset (Uint32.Set.of_list nums)) in
   simple format ()
 
@@ -559,8 +545,6 @@ module Search = struct
   type t = Encoder.t
 
   let all = raw "ALL"
-
-  let seq s = eset (Uint32.Set.of_list s)
 
   let answered = raw "ANSWERED"
 
@@ -643,18 +627,14 @@ module Search = struct
   let x_gm_labels l = raw "X-GM-LABELS" ++ list str l
 end
 
-let search_gen cmd sk =
-  let format = Encoder.(raw cmd ++ sk) in
+let search sk =
+  let format = Encoder.(raw "UID SEARCH" ++ sk) in
   let process res = function
     | SEARCH (ids, modseq) -> ((ids :: fst res, modseq), None)
     | _ -> (res, None)
   in
   let finish (ids, modseq) = (List.(rev ids |> flatten), modseq) in
   Cmd { format; process; finish; init = ([], None) }
-
-let search = search_gen "SEARCH"
-
-let uid_search = search_gen "UID SEARCH"
 
 let select_gen cmd m =
   let arg =
@@ -669,14 +649,14 @@ let select = select_gen "SELECT"
 
 let examine = select_gen "EXAMINE"
 
-let append m ?flags ?internaldate data =
+let append m ?flags ?date data =
   let flags =
     match flags with
     | None -> Encoder.empty
     | Some l -> Encoder.(raw " " & p (list encode_flag l))
   in
   let internaldate =
-    match internaldate with
+    match date with
     | None -> Encoder.empty
     | Some s -> Encoder.(raw " " & str s)
   in
@@ -692,7 +672,7 @@ module Fetch = struct
     | FLAGS : flag list t
     | ENVELOPE : envelope t
     | INTERNALDATE : string t
-    | UID : uid t
+    | UID : int32 t
     | X_GM_MSGID : int64 t
     | X_GM_THRID : int64 t
     | X_GM_LABELS : string list t
@@ -795,7 +775,7 @@ module Fetch = struct
 
   type u = {
     flags : flag list option;
-    uid : uid option;
+    uid : int32 option;
     envelope : envelope option;
     internaldate : string option;
     rfc822 : string option;
@@ -874,16 +854,16 @@ module Fetch = struct
     go t
 end
 
-let fetch_gen cmd ?changed_since nums att =
+let get_messages ?since nums att =
   let open Encoder in
   let attx = Fetch.encode att in
   let changed_since =
-    match changed_since with
+    match since with
     | None -> empty
     | Some m -> p (raw " CHANGEDSINCE" ++ uint64 m ++ raw "VANISHED")
   in
   let format =
-    (raw cmd ++ eset (Uint32.Set.of_list nums) ++ attx) & changed_since
+    (raw "UID FETCH" ++ eset (Uint32.Set.of_list nums) ++ attx) & changed_since
   in
   let process () = function
     | FETCH (_seq, items) -> ((), Fetch.matches att items)
@@ -891,20 +871,14 @@ let fetch_gen cmd ?changed_since nums att =
   in
   Cmd { format; process; finish = ignore; init = () }
 
-let fetch ?changed_since nums att = fetch_gen "FETCH" ?changed_since nums att
-
-let uid_fetch ?changed_since nums att =
-  fetch_gen "UID FETCH" ?changed_since nums att
-
-type store_mode = [ `Add | `Remove | `Set ]
+type store_mode = Add | Remove | Set
 
 type _ store_kind = Flags : flag store_kind | Labels : string store_kind
 
-let store_gen (type a) cmd ?unchanged_since mode nums (att : a store_kind)
-    (l : a list) =
+let store (type a) ?since mode nums (att : a store_kind) (l : a list) =
   let open Encoder in
   let base =
-    let mode = match mode with `Add -> "+" | `Set -> "" | `Remove -> "-" in
+    let mode = match mode with Add -> "+" | Set -> "" | Remove -> "-" in
     let name = match att with Flags -> "FLAGS" | Labels -> "X-GM-LABELS" in
     Printf.sprintf "%s%s.SILENT" mode name
   in
@@ -912,22 +886,16 @@ let store_gen (type a) cmd ?unchanged_since mode nums (att : a store_kind)
     match att with Flags -> list encode_flag l | Labels -> list label l
   in
   let unchanged_since =
-    match unchanged_since with
+    match since with
     | None -> str ""
     | Some m -> p (raw "UNCHANGEDSINCE" ++ uint64 m)
   in
   let format =
-    raw cmd
+    raw "UID STORE"
     ++ eset (Uint32.Set.of_list nums)
     ++ unchanged_since ++ raw base ++ p att
   in
   simple format ()
-
-let store ?unchanged_since mode nums att l =
-  store_gen "STORE" ?unchanged_since mode nums att l
-
-let uid_store ?unchanged_since mode nums att l =
-  store_gen "UID STORE" ?unchanged_since mode nums att l
 
 let _enable caps =
   let format = Encoder.(str "ENABLE" ++ list encode_capability caps) in
