@@ -20,6 +20,28 @@
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
 
+module L = struct
+  type state = Begin | Int of int | Cr of int | Lf of int
+
+  let is_complete s len =
+    assert (len <= Bytes.length s);
+    let rec loop state i =
+      if i >= len then None
+      else
+        match (state, Bytes.get s i) with
+        | Begin, '{' -> loop (Int 0) (i + 1)
+        | Int n, ('0' .. '9' as c) ->
+            loop (Int ((10 * n) + Char.code c - Char.code '0')) (i + 1)
+        | Int n, '}' -> loop (Cr n) (i + 1)
+        | Begin, '\r' -> loop (Lf (-1)) (i + 1)
+        | Cr n, '\r' -> loop (Lf n) (i + 1)
+        | Lf -1, '\n' -> Some (i + 1)
+        | Lf n, '\n' -> loop Begin (i + 1 + n)
+        | _ -> loop Begin (i + 1)
+    in
+    loop Begin 0
+end
+
 type t = {
   sock : Ssl.socket;
   mutable tag : int;
@@ -29,7 +51,7 @@ type t = {
 
 let parse t =
   let rec loop () =
-    match Imap.Cmd.L.is_complete t.buf t.len with
+    match L.is_complete t.buf t.len with
     | Some pos ->
         let s = Bytes.sub_string t.buf 0 pos in
         t.len <- t.len - pos;
