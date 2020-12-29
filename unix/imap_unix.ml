@@ -19,6 +19,7 @@
    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE. *)
+open Imap
 
 module L = struct
   type state = Begin | Int of int | Cr of int | Lf of int
@@ -64,7 +65,7 @@ let parse t =
         loop ()
   in
   let s = loop () in
-  match Imap.Parser.response s 0 with
+  match Parser.response s 0 with
   | Ok x -> x
   | Error _ -> failwith "parsing error"
 
@@ -83,9 +84,9 @@ let rec send t r cmd =
   | `Wait r ->
       let rec loop cmd =
         match parse t with
-        | Imap.Response.Cont _ -> send t r cmd
+        | Response.Cont _ -> send t r cmd
         | Untagged u -> (
-            match Imap.Cmd.process cmd u with
+            match Cmd.process cmd u with
             | Ok cmd -> loop cmd
             | Error s -> failwith s )
         | Tagged _ -> failwith "not expected"
@@ -100,19 +101,19 @@ let rec send t r cmd =
 let run t cmd =
   let rec loop cmd =
     match parse t with
-    | Imap.Response.Cont _ -> failwith "unexpected"
+    | Response.Cont _ -> failwith "unexpected"
     | Untagged u -> (
-        match Imap.Cmd.process cmd u with
+        match Cmd.process cmd u with
         | Ok cmd -> loop cmd
         | Error s -> failwith s )
     | Tagged { state = { status = NO | BAD; message; _ }; _ } ->
         failwith message
     | Tagged { state = { status = OK; _ }; _ } ->
         t.tag <- t.tag + 1;
-        Imap.Cmd.finish cmd
+        Cmd.finish cmd
   in
   let tag = Printf.sprintf "%04d" t.tag in
-  send t (Imap.Cmd.encode tag cmd) cmd |> loop
+  send t (Cmd.encode tag cmd) cmd |> loop
 
 let ssl_init = Lazy.from_fun Ssl.init
 
@@ -126,7 +127,7 @@ let connect ?(port = 993) host =
   in
   let t = { sock; tag = 1; buf = Bytes.create 4096; len = 0 } in
   match parse t with
-  | Imap.Response.Untagged _ -> t
+  | Response.Untagged _ -> t
   | Tagged _ | Cont _ -> failwith "unexpected response"
 
 let disconnect t = Ssl.shutdown_connection t.sock
